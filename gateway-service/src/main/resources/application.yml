@@ -1,0 +1,46 @@
+server:
+  port: 8080
+
+spring:
+  application:
+    name: gateway-service
+  cloud:
+    nacos:
+      discovery:
+        server-addr: 127.0.0.1:8848
+    # Sentinel 限流：骨架阶段仅引入依赖，默认关闭；后续变更接入网关限流时开启并配置规则
+    sentinel:
+      enabled: false
+    gateway:
+      routes:
+        # 用户域路由
+        - id: route-user-service
+          uri: lb://user-service
+          predicates:
+            - Path=/user/**
+          filters:
+            - StripPrefix=1
+        # 记录域路由
+        - id: route-record-service
+          uri: lb://record-service
+          predicates:
+            - Path=/record/**
+          filters:
+            - StripPrefix=1
+        # 校验域路由
+        - id: route-verify-service
+          uri: lb://verify-service
+          predicates:
+            - Path=/verify/**
+          filters:
+            - StripPrefix=1
+
+# 健康检查端点（K8s/监控探针可用）
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info
+  endpoint:
+    health:
+      show-details: always

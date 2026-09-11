@@ -1,0 +1,45 @@
+server:
+  port: 8083
+
+spring:
+  application:
+    name: verify-service
+  config:
+    import: optional:nacos:verify-service.yml
+  cloud:
+    nacos:
+      discovery:
+        server-addr: 127.0.0.1:8848
+      config:
+        server-addr: 127.0.0.1:8848
+        file-extension: yml
+  # 数据源：独立 verify_db
+  datasource:
+    driver-class-name: com.mysql.cj.jdbc.Driver
+    url: jdbc:mysql://127.0.0.1:3306/verify_db?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai&useSSL=false&allowPublicKeyRetrieval=true
+    username: root
+    password: root
+    # 骨架阶段容错：中间件未启动时服务仍可启动（连接延迟到首次访问）；
+    # 生产环境建议移除并保持 fail-fast，让数据库故障在启动期暴露
+    hikari:
+      initialization-fail-timeout: -1
+
+# RocketMQ（骨架阶段仅接入 producer，校验结果事件随后续变更定义）
+rocketmq:
+  name-server: 127.0.0.1:9876
+  producer:
+    group: verify-service-group
+
+mybatis-plus:
+  configuration:
+    map-underscore-to-camel-case: true
+    log-impl: org.apache.ibatis.logging.slf4j.Slf4jImpl
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info
+  endpoint:
+    health:
+      show-details: always

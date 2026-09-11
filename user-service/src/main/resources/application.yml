@@ -1,0 +1,46 @@
+server:
+  port: 8081
+
+spring:
+  application:
+    name: user-service
+  # 从 Nacos 配置中心拉取同名配置（optional：Nacos 不可用时启动不失败）
+  config:
+    import: optional:nacos:user-service.yml
+  cloud:
+    nacos:
+      discovery:
+        server-addr: 127.0.0.1:8848
+      config:
+        server-addr: 127.0.0.1:8848
+        file-extension: yml
+  # 数据源：独立 user_db
+  datasource:
+    driver-class-name: com.mysql.cj.jdbc.Driver
+    url: jdbc:mysql://127.0.0.1:3306/user_db?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai&useSSL=false&allowPublicKeyRetrieval=true
+    username: root
+    password: root
+    # 骨架阶段容错：中间件未启动时服务仍可启动（连接延迟到首次访问）；
+    # 生产环境建议移除并保持 fail-fast，让数据库故障在启动期暴露
+    hikari:
+      initialization-fail-timeout: -1
+  # Redisson 自动装配数据源（redisson-spring-boot-starter），业务随后续变更使用
+  data:
+    redis:
+      host: 127.0.0.1
+      port: 6379
+
+# MyBatis-Plus 基础配置（无 Mapper 骨架阶段仅占位）
+mybatis-plus:
+  configuration:
+    map-underscore-to-camel-case: true
+    log-impl: org.apache.ibatis.logging.slf4j.Slf4jImpl
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info
+  endpoint:
+    health:
+      show-details: always
