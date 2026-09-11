@@ -1,0 +1,113 @@
+[
+  {
+    "number": 1,
+    "category": "阶段 1：基础设施（W1）",
+    "task": "版本矩阵验证与仓库初始化",
+    "steps": [
+      { "step": "git init 并配置 .gitignore（忽略 target/、.idea、日志、.env）", "completed": true },
+      { "step": "创建父工程 pom.xml，dependencyManagement 锁定 Java21/Boot3.2.4/Cloud2023.0.1/SCA2023.0.1.0/Lombok1.18.30 等", "completed": true },
+      { "step": "验证 JDK21 与 Maven 版本（mvn -v），编译空父工程", "completed": true }
+    ],
+    "passes": true
+  },
+  {
+    "number": 2,
+    "category": "阶段 1：基础设施（W1）",
+    "task": "中间件本地编排",
+    "steps": [
+      { "step": "编写 docker-compose.yml：Nacos 2.3.2 / MySQL×3（user_db/record_db/verify_db）/ Redis / RocketMQ", "completed": true },
+      { "step": "配置健康检查与启动依赖顺序", "completed": true },
+      { "step": "docker compose up 并验证各中间件健康（本会话 Docker Desktop 无法启动，待本地环境验证）", "completed": false }
+    ],
+    "passes": false
+  },
+  {
+    "number": 3,
+    "category": "阶段 2：工程骨架（W2）",
+    "task": "common 模块",
+    "steps": [
+      { "step": "定义统一 Result<T> 响应包装", "completed": true },
+      { "step": "定义错误码枚举与业务异常", "completed": true },
+      { "step": "实现全局异常处理器", "completed": true }
+    ],
+    "passes": true
+  },
+  {
+    "number": 4,
+    "category": "阶段 2：工程骨架（W2）",
+    "task": "api 模块（Feign 契约）",
+    "steps": [
+      { "step": "定义 record-api 包：Feign 接口 + DTO", "completed": true },
+      { "step": "定义 verify-api 包：Feign 接口 + DTO", "completed": true },
+      { "step": "定义 user-api 包：Feign 接口 + DTO", "completed": true }
+    ],
+    "passes": true
+  },
+  {
+    "number": 5,
+    "category": "阶段 2：工程骨架（W2）",
+    "task": "4 服务 + 网关空壳",
+    "steps": [
+      { "step": "创建 user-service：bootstrap/application 配置 + Nacos 注册 + Actuator 健康端点 + user_db 数据源", "completed": true },
+      { "step": "创建 record-service：同骨架 + record_db 数据源", "completed": true },
+      { "step": "创建 verify-service：同骨架 + verify_db 数据源", "completed": true },
+      { "step": "创建 gateway-service：路由配置指向三服务 + Nacos 注册", "completed": true }
+    ],
+    "passes": true
+  },
+  {
+    "number": 6,
+    "category": "阶段 2：工程骨架（W2）",
+    "task": "建表 SQL 与数据源接入",
+    "steps": [
+      { "step": "编写 sql/ 下全部建表脚本（审批版 §6 定义的表，含分片表 track_point）", "completed": true },
+      { "step": "各服务 DataSource 连接独立库并验证连接（需 MySQL 环境，本会话 Docker 不可用，待验证）", "completed": false },
+      { "step": "验证幂等初始化（重复执行不报错，脚本按 IF NOT EXISTS 编写，待 MySQL 环境验证）", "completed": false }
+    ],
+    "passes": false
+  },
+  {
+    "number": 7,
+    "category": "阶段 3：集成验证（W3）",
+    "task": "启动冒烟",
+    "steps": [
+      { "step": "启动 5 个服务，Nacos 控制台可见注册实例（Nacos 2.3.2 独立版验证：4 服务各 1 实例）", "completed": true },
+      { "step": "经 gateway 路由访问各服务健康端点（/user|record|verify/internal/health 全部 200）", "completed": true },
+      { "step": "服务间 Feign 探活调用成功（verify→record health ping 返回 record-service is alive）", "completed": true }
+    ],
+    "passes": true
+  },
+  {
+    "number": 8,
+    "category": "阶段 3：集成验证（W3）",
+    "task": "中间件依赖接入（不实现业务）",
+    "steps": [
+      { "step": "record-service 接入 ShardingSphere-JDBC（shardingsphere-jdbc-core 5.4.1，默认关闭）与 mybatis-plus-spring-boot3-starter", "completed": true },
+      { "step": "user-service 接入 redisson-spring-boot-starter", "completed": true },
+      { "step": "record/verify 接入 rocketmq-spring-boot-starter 与 Caffeine", "completed": true },
+      { "step": "gateway 接入 Sentinel 限流（仅引入与最小配置，默认关闭）", "completed": true }
+    ],
+    "passes": true
+  },
+  {
+    "number": 9,
+    "category": "阶段 3：集成验证（W3）",
+    "task": "README + ADR 骨架",
+    "steps": [
+      { "step": "编写 README：架构图、模块说明、一键启动与编译命令", "completed": true },
+      { "step": "编写 ADR：版本矩阵选型理由（Boot 3.2.4 不升 3.3、RocketMQ 独立 starter 等）", "completed": true }
+    ],
+    "passes": true
+  },
+  {
+    "number": 10,
+    "category": "阶段 4：验收",
+    "task": "交付标准核验",
+    "steps": [
+      { "step": "mvn clean install 全量编译通过（父工程 + 6 模块 BUILD SUCCESS）", "completed": true },
+      { "step": "docker compose up 一键拉起全部中间件（compose config 校验通过；本会话 Docker Desktop 无法启动，待本地环境验证）", "completed": false },
+      { "step": "冒烟通过：注册可见 + 网关路由 + Feign 探活（Nacos 独立版验证全部通过）", "completed": true }
+    ],
+    "passes": false
+  }
+]
