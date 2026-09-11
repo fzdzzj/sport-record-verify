@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <parent>
+        <groupId>com.sportverify</groupId>
+        <artifactId>sport-verify-parent</artifactId>
+        <version>0.1.0-SNAPSHOT</version>
+    </parent>
+
+    <!-- api 模块：服务间 Feign 契约（接口与实现分离）
+         三个包：record-api / verify-api / user-api
+         任何跨服务调用只允许走本模块接口，禁止直连实例地址 -->
+    <artifactId>sport-verify-api</artifactId>
+    <name>sport-verify-api</name>
+
+    <dependencies>
+        <!-- 统一响应类型 -->
+        <dependency>
+            <groupId>com.sportverify</groupId>
+            <artifactId>sport-verify-common</artifactId>
+        </dependency>
+        <!-- Feign 注解与客户端 -->
+        <dependency>
+            <groupId>org.springframework.cloud</groupId>
+            <artifactId>spring-cloud-starter-openfeign</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.projectlombok</groupId>
+            <artifactId>lombok</artifactId>
+            <scope>provided</scope>
+        </dependency>
+    </dependencies>
+</project>
