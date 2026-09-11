@@ -1,0 +1,119 @@
+# ============================================================
+# 运动记录真实性校验系统 · 中间件一键编排
+# 用法：docker compose up -d     （首次会拉取镜像，稍候）
+#       docker compose down      （停止并移除容器，数据卷保留）
+# 编排内容：Nacos 2.3.2 / MySQL 8（user_db·record_db·verify_db 三库）/ Redis 7 / RocketMQ 5
+# 说明：MySQL 采用单实例三库（逻辑独立），如需物理隔离拆成三个 service 即可（见 ADR-0001）
+# ============================================================
+name: sport-verify
+
+services:
+  # ---------- 注册中心 / 配置中心 ----------
+  nacos:
+    image: nacos/nacos-server:v2.3.2
+    container_name: sport-verify-nacos
+    environment:
+      # 单机模式，内嵌 Derby 存储（开发环境够用）
+      - MODE=standalone
+      # 关闭鉴权，本地开发直连
+      - NACOS_AUTH_ENABLE=false
+      - JVM_XMS=256m
+      - JVM_XMX=512m
+    ports:
+      - "8848:8848"   # 控制台与 HTTP 接口
+      - "9848:9848"   # gRPC 端口（Nacos 2.x 客户端必需）
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://127.0.0.1:8848/nacos/v1/console/health/readiness"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 20s
+    networks:
+      - sport-verify-net
+
+  # ---------- MySQL：user_db / record_db / verify_db 三个逻辑独立库 ----------
+  mysql:
+    image: mysql:8.0
+    container_name: sport-verify-mysql
+    environment:
+      MYSQL_ROOT_PASSWORD: root
+      TZ: Asia/Shanghai
+    ports:
+      - "3306:3306"
+    command:
+      - --character-set-server=utf8mb4
+      - --collation-server=utf8mb4_unicode_ci
+    volumes:
+      # 首次初始化时按文件名顺序执行 sql/ 下全部建表脚本（幂等，可重复执行）
+      - ./sql:/docker-entrypoint-initdb.d:ro
+      - mysql-data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "127.0.0.1", "-uroot", "-proot"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 30s
+    networks:
+      - sport-verify-net
+
+  # ---------- Redis：榜单 ZSet / 点赞计数 / 缓存 ----------
+  redis:
+    image: redis:7.2-alpine
+    container_name: sport-verify-redis
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+    networks:
+      - sport-verify-net
+
+  # ---------- RocketMQ：NameServer ----------
+  rocketmq-namesrv:
+    image: apache/rocketmq:5.2.0
+    container_name: sport-verify-rocketmq-namesrv
+    command: sh mqnamesrv
+    ports:
+      - "9876:9876"   # NameServer 端口
+    healthcheck:
+      test: ["CMD", "sh", "-c", "ss -lnt | grep -q 9876"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 20s
+    networks:
+      - sport-verify-net
+
+  # ---------- RocketMQ：Broker ----------
+  rocketmq-broker:
+    image: apache/rocketmq:5.2.0
+    container_name: sport-verify-rocketmq-broker
+    command: sh mqbroker -n rocketmq-namesrv:9876
+    depends_on:
+      rocketmq-namesrv:
+        condition: service_healthy
+    environment:
+      NAMESRV_ADDR: rocketmq-namesrv:9876
+    ports:
+      - "10911:10911"  # Broker 主端口
+      - "10909:10909"  # 快速重连端口（vIP 通道）
+    volumes:
+      # brokerIP1 指向宿主机回环地址：本机 Java 服务（宿主进程）直连 127.0.0.1 可通
+      - ./rocketmq/broker.conf:/home/rocketmq/conf/broker.conf:ro
+    healthcheck:
+      test: ["CMD", "sh", "-c", "ss -lnt | grep -q 10911"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 30s
+    networks:
+      - sport-verify-net
+
+volumes:
+  mysql-data:
+
+networks:
+  sport-verify-net:
+    driver: bridge
