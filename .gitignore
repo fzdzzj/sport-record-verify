@@ -1,0 +1,41 @@
+# ===== Java / Maven =====
+target/
+*.class
+*.jar
+!.mvn/wrapper/maven-wrapper.jar
+*.war
+# 工作区本地 Maven 仓库与临时构建文件（本会话使用）
+.m2-repo/
+.mvn-settings.xml
+build.log
+
+# ===== IDE =====
+.idea/
+*.iml
+.vscode/
+.classpath
+.project
+.settings/
+.factorypath
+
+# ===== 日志 =====
+logs/
+*.log
+
+# ===== 本地环境配置（勿提交） =====
+.env
+.env.*
+application-local.yml
+bootstrap-local.yml
+
+# ===== 系统与临时文件 =====
+.DS_Store
+Thumbs.db
+*.tmp
+*.swp
+.~lock.*
+
+# ===== 中间件本地数据（勿提交） =====
+mysql-data/
+redis-data/
+nacos-data/
