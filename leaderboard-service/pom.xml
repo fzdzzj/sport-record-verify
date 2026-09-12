@@ -1,0 +1,96 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <parent>
+        <groupId>com.sportverify</groupId>
+        <artifactId>sport-verify-parent</artifactId>
+        <version>0.1.0-SNAPSHOT</version>
+    </parent>
+
+    <!-- leaderboard-service：独立榜单微服务（第 5 个服务，拆分自 record-service，见 ADR-0005）
+         职责：榜单读热（ZSet 秒级）+ 事件沉淀（VERIFIED/REJECTED 消费入榜/回滚）+ 定时快照结算 -->
+    <artifactId>sport-verify-leaderboard-service</artifactId>
+    <name>sport-verify-leaderboard-service</name>
+
+    <dependencies>
+        <!-- 内部模块 -->
+        <dependency>
+            <groupId>com.sportverify</groupId>
+            <artifactId>sport-verify-common</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>com.sportverify</groupId>
+            <artifactId>sport-verify-api</artifactId>
+        </dependency>
+
+        <!-- Spring Boot / Cloud 基础 -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-web</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-actuator</artifactId>
+        </dependency>
+        <!-- Prometheus 指标导出（可观测性，见 ADR-0003）：把 Micrometer 指标以
+             Prometheus 文本格式经 /actuator/prometheus 暴露；版本由父 pom BOM 管理 -->
+        <dependency>
+            <groupId>io.micrometer</groupId>
+            <artifactId>micrometer-registry-prometheus</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>com.alibaba.cloud</groupId>
+            <artifactId>spring-cloud-starter-alibaba-nacos-discovery</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>com.alibaba.cloud</groupId>
+            <artifactId>spring-cloud-starter-alibaba-nacos-config</artifactId>
+        </dependency>
+        <!-- Feign 负载均衡：好友榜经 UserApi 调 user-service（Cloud 2023.0.x 需显式声明）。
+             openfeign starter 由 api 模块传递引入，无需重复声明 -->
+        <dependency>
+            <groupId>org.springframework.cloud</groupId>
+            <artifactId>spring-cloud-starter-loadbalancer</artifactId>
+        </dependency>
+
+        <!-- 数据访问：MyBatis-Plus + MySQL（复用 record_db，贡献表 leaderboard_contribution
+             仍在该库，与 record-service 共享；本服务对 sport_record 仅只读快照查询） -->
+        <dependency>
+            <groupId>com.baomidou</groupId>
+            <artifactId>mybatis-plus-spring-boot3-starter</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>com.mysql</groupId>
+            <artifactId>mysql-connector-j</artifactId>
+            <scope>runtime</scope>
+        </dependency>
+
+        <!-- 消息：RocketMQ（榜单事件消费 VERIFIED/REJECTED + 死信投递 RocketMQTemplate） -->
+        <dependency>
+            <groupId>org.apache.rocketmq</groupId>
+            <artifactId>rocketmq-spring-boot-starter</artifactId>
+        </dependency>
+
+        <!-- 分布式锁 + Redis 客户端：Redisson（入榜/回滚互斥 lock:rollback / 结算防重
+             lock:scheduler:leaderboard / 消费幂等 eventId SETNX；starter 自带 spring-data-redis，
+             StringRedisTemplate 承载 ZSet 热读层） -->
+        <dependency>
+            <groupId>org.redisson</groupId>
+            <artifactId>redisson-spring-boot-starter</artifactId>
+        </dependency>
+
+        <dependency>
+            <groupId>org.projectlombok</groupId>
+            <artifactId>lombok</artifactId>
+            <scope>provided</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-test</artifactId>
+            <scope>test</scope>
+        </dependency>
+    </dependencies>
+</project>

@@ -8,7 +8,7 @@
     <!-- 父工程：运动记录真实性校验系统
          职责：
          1. 集中锁定版本矩阵（审批版 §3.3，Java21/Boot3.2.4/Cloud2023.0.1/SCA2023.0.1.0）
-         2. 声明 6 个子模块（common/api/gateway/user/record/verify）
+         2. 声明 7 个子模块（common/api/gateway/user/record/verify/leaderboard）
          3. 统一编译参数（release 21、UTF-8、-parameters）与 JDK 版本强校验 -->
     <groupId>com.sportverify</groupId>
     <artifactId>sport-verify-parent</artifactId>
@@ -25,6 +25,7 @@
         <module>user-service</module>
         <module>record-service</module>
         <module>verify-service</module>
+        <module>leaderboard-service</module>
     </modules>
 
     <properties>
