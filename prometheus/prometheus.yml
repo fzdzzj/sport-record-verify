@@ -11,6 +11,10 @@ global:
   scrape_interval: 15s
   evaluation_interval: 15s
 
+# 告警规则文件：与本文件同目录，docker-compose 侧一并挂载到 /etc/prometheus/
+rule_files:
+  - /etc/prometheus/alert-rules.yml
+
 scrape_configs:
   # ---------- 抓取地址说明（重要，勿盲目改成容器服务名） ----------
   # 四个 Java 服务以宿主机进程（java -jar）方式运行，不在 compose 内，

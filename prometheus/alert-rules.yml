@@ -1,0 +1,84 @@
+# ============================================================
+# 告警规则（可观测性变更，见 spec/changes/add-observability 与 ADR-0003）
+#
+# 挂载：prometheus.yml 的 rule_files 引用 /etc/prometheus/alert-rules.yml，
+#       docker-compose.yml 中 prometheus 服务将本文件一并挂入容器
+# 查看：Prometheus 控制台 http://127.0.0.1:9090 → Alerts / Status → Rules
+# 说明：firing 告警目前停留在 Prometheus 控制台（本地演示口径），
+#       通知渠道（邮件/钉钉等）需对接 Alertmanager，属生产化后续项
+#
+# 阈值依据：
+#   P95>200ms   —— 审批版《运动记录校验系统需求文档》§8.2 延迟预算
+#                  （网关 10ms + 落库 50ms + 校验 100ms ≈ 160ms，P95<200ms）；
+#                  与压测报告（docs/perf/压测报告.md）同口径
+#   错误率>5%   —— 通用 SLO 错误预算惯例（可用性 95% ↔ 错误率 5%）
+#   JVM 堆>80%  —— 提案与 spec-delta 明确口径，留 20% 余量防 GC 晋升抖动误报
+#   实例下线    —— up==0 连续 1 分钟（约 4 个抓取周期，容忍单次抓取抖动）
+# ============================================================
+
+groups:
+  # ---------- 可用性：实例下线（spec-delta「实例下线可见 / 实例下线告警」） ----------
+  - name: sport-verify-availability
+    rules:
+      - alert: ServiceInstanceDown
+        # up：Prometheus 对每个 target 的抓取成功标志（1=UP，0=DOWN）。
+        # job 正则覆盖四服务；leaderboard-service 上线后在正则中追加
+        expr: up{job=~"gateway-service|user-service|record-service|verify-service"} == 0
+        # 连续 1 分钟为 0 才触发：容忍一次网络抖动的误报（15s 抓取 × 4 次）
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "服务实例下线：{{ $labels.job }}（{{ $labels.instance }}）"
+          description: "Prometheus 连续 1 分钟抓取失败（up=0），实例可能已停止或 /actuator/prometheus 不可达。"
+
+  # ---------- HTTP 质量：错误率 / P95 延迟 ----------
+  - name: sport-verify-http
+    rules:
+      - alert: HttpErrorRateHigh
+        # 5 分钟窗口内 5xx 请求占比；无流量时比值为空（NaN），自然不触发
+        expr: |
+          sum by (job) (rate(http_server_requests_seconds_count{status=~"5.."}[5m]))
+            /
+          sum by (job) (rate(http_server_requests_seconds_count[5m])) > 0.05
+        for: 2m
+        labels:
+          severity: warning
+        annotations:
+          summary: "HTTP 5xx 错误率超 5%：{{ $labels.job }}"
+          description: "5 分钟窗口 5xx 占比连续 2 分钟超过 5%（错误预算口径），当前 {{ $value | humanizePercentage }}。"
+
+      - alert: HttpP95LatencyHigh
+        # P95 直方图分位数：先按 le、job 聚合 bucket，再取 0.95 分位；
+        # 阈值 0.2s 对齐审批版 §8.2「延迟预算 P95<200ms」。
+        # 前置依赖：各服务已开启
+        # management.metrics.distribution.percentiles-histogram.http.server.requests，
+        # 否则无 seconds_bucket 序列，本规则永不触发
+        expr: |
+          histogram_quantile(0.95,
+            sum by (le, job) (rate(http_server_requests_seconds_bucket[5m]))
+          ) > 0.2
+        for: 2m
+        labels:
+          severity: warning
+        annotations:
+          summary: "HTTP P95 延迟超 200ms：{{ $labels.job }}"
+          description: "5 分钟窗口 P95 连续 2 分钟超过 200ms（审批版 §8.2 延迟预算），当前 {{ $value | humanizeDuration }}。"
+
+  # ---------- JVM：堆使用率 ----------
+  - name: sport-verify-jvm
+    rules:
+      - alert: JvmHeapUsageHigh
+        # 堆使用率 = 已用 / 上限。G1 的 Eden/Survivor 无固定上限（max=-1），
+        # 分母先过滤 >0 剔除无上限分代再求和，避免 -1 把比值拉成负数/失真
+        expr: |
+          sum by (job, instance) (jvm_memory_used_bytes{area="heap"})
+            /
+          sum by (job, instance) (jvm_memory_max_bytes{area="heap"} > 0) > 0.8
+        # 持续 5 分钟：GC 前的短时堆冲高不告警，只抓持续性增长（泄漏/容量不足）
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "JVM 堆使用率超 80%：{{ $labels.job }}（{{ $labels.instance }}）"
+          description: "堆使用率连续 5 分钟超过 80%，当前 {{ $value | humanizePercentage }}，关注 GC 压力与内存泄漏。"
