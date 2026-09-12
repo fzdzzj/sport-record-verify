@@ -17,20 +17,20 @@
     "steps": [
       { "step": "实现当前 VerifyProperties 阈值的 JSON 快照序列化（rules_json）", "completed": true },
       { "step": "实现从 rules_json 反序列化为规则执行对象", "completed": true },
-      { "step": "Caffeine 缓存版本快照（key 含 version，短 TTL）", "completed": false }
+      { "step": "Caffeine 缓存版本快照（key 含 version，短 TTL）", "completed": true }
     ],
-    "passes": false
+    "passes": true
   },
   {
     "number": 3,
     "category": "阶段 3：灰度路由",
     "task": "灰度采样路由",
     "steps": [
-      { "step": "校验入口按 userId%100 < gray_ratio 选择灰/基线版本", "completed": false },
-      { "step": "灰度分支读库内快照，基线分支读 Nacos/默认配置", "completed": false },
-      { "step": "保证同一 userId 采样稳定（userId%100 恒定）", "completed": false }
+      { "step": "校验入口按 userId%100 < gray_ratio 选择灰/基线版本", "completed": true },
+      { "step": "灰度分支读库内快照，基线分支读 Nacos/默认配置", "completed": true },
+      { "step": "保证同一 userId 采样稳定（userId%100 恒定）", "completed": true }
     ],
-    "passes": false
+    "passes": true
   },
   {
     "number": 4,

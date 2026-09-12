@@ -10,14 +10,20 @@ import java.time.Duration;
 /**
  * 本地缓存配置（Caffeine）。
  *
- * <p>骨架阶段仅注册缓存实例；后续校验阈值读取按「Nacos 配置 + Caffeine 缓存」
- * （审批版 §5.2/§7.4）策略接入，改配置 60s 内生效。</p>
+ * <p>共享单实例缓存（写入 1 分钟后过期），承载三类 key：</p>
+ * <ul>
+ *   <li>{@code verify:result:{recordId}}：判定结果缓存（压测 P95 达标关键：命中缓存不重算）；</li>
+ *   <li>{@code verify:rules:gray} / {@code verify:rules:active}：灰度/基线路由行；</li>
+ *   <li>{@code verify:rules:v{version}}：版本规则快照。</li>
+ * </ul>
+ * <p>1 分钟 TTL 即规范「回滚 ≤60s 生效」的上界：生命周期操作只失效本实例缓存，
+ * 其余实例靠 TTL 收敛。</p>
  */
 @Configuration
 public class CacheConfig {
 
     /**
-     * 阈值/规则本地缓存：容量上限 1 万条，写入 1 分钟后过期（配合 Nacos 灰度刷新）。
+     * 共享本地缓存：容量上限 1 万条，写入 1 分钟后过期（配合灰度回滚/全量收敛）。
      */
     @Bean
     public Cache<String, Object> caffeineCache() {

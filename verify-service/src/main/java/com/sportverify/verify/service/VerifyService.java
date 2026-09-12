@@ -41,6 +41,7 @@ import java.util.List;
  * <p>职责：</p>
  * <ul>
  *   <li>判定主流程：预处理 + R1-R4 → 证据落 verification_result → 发事件 → Feign 回调 record 迁移状态；</li>
+ *   <li>灰度路由：规则集按 userId%100 采样——命中灰度走 rule_version 库内快照，未命中走基线；</li>
  *   <li>幂等：verification_result 主键 record_id + Caffeine 缓存，重复触发不重算；</li>
  *   <li>申诉：建申诉单（record_id 唯一）/ 管理员终判（乐观锁 + 回调 + 事件）。</li>
  * </ul>
@@ -59,6 +60,7 @@ public class VerifyService {
     private final RecordApi recordApi;
     private final VerifyEventProducer verifyEventProducer;
     private final VerifyProperties verifyProperties;
+    private final RuleVersionService ruleVersionService;
     private final Cache<String, Object> caffeineCache;
     private final ObjectMapper objectMapper;
 
@@ -87,8 +89,10 @@ public class VerifyService {
         }
         List<TrackPointDTO> points = recordApi.listPoints(recordId).getData();
 
-        // 引擎判定（阈值实时读取 verify.rules.*，Nacos 改配置即生效）
-        VerdictResult result = verifyEngine.verify(points == null ? List.of() : points, verifyProperties);
+        // 引擎判定：规则集经灰度路由——floorMod(userId,100)<gray_ratio 用 rule_version 库内
+        // 灰度快照（不受 Nacos 瞬时变更影响），未命中走基线（ACTIVE 快照/Nacos 实时配置）
+        VerdictResult result = verifyEngine.verify(points == null ? List.of() : points,
+                ruleVersionService.getActiveRulesForUser(record.getUserId()));
         result.setRecordId(recordId);
 
         // 证据落库（record_id 主键 upsert；重复判定只覆盖不新增）
