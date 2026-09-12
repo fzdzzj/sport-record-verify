@@ -59,6 +59,14 @@ mybatis-plus:
     map-underscore-to-camel-case: true
     log-impl: org.apache.ibatis.logging.slf4j.Slf4jImpl
 
+# ===== 认证鉴权（add-jwt-auth，见 ADR-0007）=====
+app:
+  auth:
+    # 鉴权降级开关：false=旧行为（好友榜查询人 userId 显式携带），true=以网关注入的 X-User-Id 认定身份
+    # 默认 false 兼容本地调试与压测脚本；切换 true 前先验证验收项并更新压测脚本带 token
+    # 说明：本服务只消费网关注入的身份（friend 榜 userId），不自行签发/校验 token
+    enabled: false
+
 management:
   endpoints:
     web:
