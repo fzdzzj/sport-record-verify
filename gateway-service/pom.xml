@@ -45,6 +45,22 @@
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-actuator</artifactId>
         </dependency>
+        <!-- JWT 解析（add-jwt-auth，见 ADR-0007）：网关只校验/解析 access token（不做签发），
+             与 user-service 用同一 HS256 密钥；jjwt 三段式，api 编译 / impl+jackson 运行时 -->
+        <dependency>
+            <groupId>io.jsonwebtoken</groupId>
+            <artifactId>jjwt-api</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>io.jsonwebtoken</groupId>
+            <artifactId>jjwt-impl</artifactId>
+            <scope>runtime</scope>
+        </dependency>
+        <dependency>
+            <groupId>io.jsonwebtoken</groupId>
+            <artifactId>jjwt-jackson</artifactId>
+            <scope>runtime</scope>
+        </dependency>
         <!-- Prometheus 指标导出（可观测性，见 ADR-0003）：把 Micrometer 指标以
              Prometheus 文本格式经 /actuator/prometheus 暴露；版本由父 pom BOM 管理 -->
         <dependency>
