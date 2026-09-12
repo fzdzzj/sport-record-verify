@@ -16,12 +16,14 @@ import org.springframework.web.bind.annotation.RestController;
 /**
  * 规则版本管理接口（管理端，Swagger 级；规范「版本管理接口」，审批版 §7.4）。
  *
- * <p>服务直连路径 {@code /verify/rules/**}；暂不接鉴权（项目骨架无 JWT）。
+ * <p>网关 /verify/** → verify-service（StripPrefix=1）→ 本控制器，
+ * 外部访问路径形如 {@code /verify/rules/versions}（与项目「文档路径=网关外部路径」
+ * 约定一致）；服务直连路径为 {@code /rules/versions}。暂不接鉴权（项目骨架无 JWT）。
  * 三端点覆盖灰度发布全流程：创建（快照落库 + GRAY）→ 调灰度（0 = 秒级回滚）
  * → 全量（100 + ACTIVE + 旧版本退役），返回体均携带最新版本信息与灰度比例。</p>
  */
 @RestController
-@RequestMapping("/verify/rules")
+@RequestMapping("/rules")
 @RequiredArgsConstructor
 public class RuleVersionController {
 
