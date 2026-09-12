@@ -77,7 +77,29 @@
         </dependency>
     </dependencies>
 
-    <!-- 打包插件（spring-boot repackage + lombok 排除）随 Step2 与启动类一并加入：
-         repackage 要求主类存在，骨架阶段先以普通 jar 编译保持可构建 -->
+    <!-- 打包：spring-boot repackage（父 pom 非 spring-boot-starter-parent，需显式绑定到 package 阶段） -->
+    <build>
+        <plugins>
+            <plugin>
+                <groupId>org.springframework.boot</groupId>
+                <artifactId>spring-boot-maven-plugin</artifactId>
+                <executions>
+                    <execution>
+                        <goals>
+                            <goal>repackage</goal>
+                        </goals>
+                    </execution>
+                </executions>
+                <configuration>
+                    <excludes>
+                        <exclude>
+                            <groupId>org.projectlombok</groupId>
+                            <artifactId>lombok</artifactId>
+                        </exclude>
+                    </excludes>
+                </configuration>
+            </plugin>
+        </plugins>
+    </build>
 
 </project>

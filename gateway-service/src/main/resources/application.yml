@@ -57,6 +57,14 @@ spring:
             - Path=/admin/**
           filters:
             - StripPrefix=1
+        # 路网匹配域路由（服务数 5→6，见 ADR-0006）：外部访问 /mapmatch/match → mapmatch-service 的 /match，
+        # 主要供管理端/演示直接调匹配接口；校验链路内 verify→mapmatch 走 Feign 直连不经网关
+        - id: route-mapmatch-service
+          uri: lb://mapmatch-service
+          predicates:
+            - Path=/mapmatch/**
+          filters:
+            - StripPrefix=1
 
 # 健康检查端点（K8s/监控探针可用）
 management:

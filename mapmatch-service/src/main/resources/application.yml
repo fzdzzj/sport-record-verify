@@ -1,0 +1,72 @@
+# ============================================================
+# mapmatch-service 配置（道路拓扑匹配微服务，端口 8085，见 ADR-0006）
+#
+# 职责：承载真实 OSM 路网（PostGIS 空间库 road_db）+ 最近边投影匹配算法，
+#       对外暴露 POST /match（网关 /mapmatch/** 路由；verify-service 的 R5
+#       离路规则经 MapMatchApi Feign 直调）。
+#
+# 为何用 application.yml：本服务无 ShardingSphere（路网表不参与业务分片），
+# 无 snakeyaml 1.x/2.x 冲突（该冲突仅存在于 record-service），与
+# user/verify/leaderboard 三个服务保持 yml 同构。
+# ============================================================
+
+server:
+  port: 8085
+
+spring:
+  application:
+    name: mapmatch-service
+  config:
+    import: optional:nacos:mapmatch-service.yml
+  cloud:
+    nacos:
+      discovery:
+        server-addr: 127.0.0.1:8848
+      config:
+        server-addr: 127.0.0.1:8848
+        file-extension: yml
+  # 数据源：PostGIS 路网库 road_db（docker-compose 的 postgis 服务，库随容器首次初始化创建）。
+  # 空间查询走 JdbcTemplate 手写 SQL（ST_DWithin + GIST 索引），不用 ORM——
+  # geometry 类型与空间函数是查询主体，实体映射无收益（见 ADR-0006）
+  datasource:
+    driver-class-name: org.postgresql.Driver
+    # 宿主机 5432 被本机 PostgreSQL 占用时，compose 侧设 POSTGRES_PORT=5433，服务侧注入同名变量即可
+    url: jdbc:postgresql://127.0.0.1:${POSTGRES_PORT:5432}/road_db?stringtype=unspecified
+    username: postgres
+    password: postgres
+    # 容错口径与 MySQL 三库一致：PostGIS 未启动时服务仍可起（连接延迟到首次匹配请求），
+    # 配合 verify 侧 R5 熔断降级，匹配库故障不拖垮校验主链路
+    hikari:
+      initialization-fail-timeout: -1
+
+# 匹配算法参数（add-mapmatch-service 提案「匹配限制在固定采样点数防超时」）：
+# R5 同步调用本服务，参数收敛决定校验链路延迟上界；Nacos mapmatch-service.yml 可覆盖
+mapmatch:
+  match:
+    # 采样点上限：超长轨迹均匀抽稀到该值再匹配（防单请求超时；200 点 × 单点空间查询 ≈ 数十 ms）
+    max-sampled-points: 200
+    # 吸附阈值（米）：点到最近道路边垂距 ≤ 该值视为「在路网上」。
+    # 25m 口径：手机 GPS 民用误差（10-20m）+ OSM 路网线画偏移余量，真实轨迹误判率低
+    snap-threshold-meters: 25
+    # 候选边查询半径（米）：空间索引预筛半径，同时是「离路距离」的上报封顶值——
+    # 无候选边时按该半径计离路距离（悬浮轨迹不因查不到边而报无穷大）
+    search-radius-meters: 300
+
+management:
+  endpoints:
+    web:
+      exposure:
+        # prometheus：/actuator/prometheus 以 Prometheus 文本格式暴露 Micrometer 指标（监控抓取入口）；
+        # metrics：/actuator/metrics JSON 查询端点（手工排查看单个指标）
+        include: health,info,prometheus,metrics
+  # HTTP 指标直方图：默认只输出 count/sum/max（summary），没有 bucket；
+  # P95 计算（PromQL histogram_quantile）依赖 bucket，必须显式开启，告警与面板依赖
+  metrics:
+    distribution:
+      percentiles-histogram:
+        http:
+          server:
+            requests: true
+  endpoint:
+    health:
+      show-details: always

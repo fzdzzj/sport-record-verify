@@ -22,8 +22,9 @@ groups:
     rules:
       - alert: ServiceInstanceDown
         # up：Prometheus 对每个 target 的抓取成功标志（1=UP，0=DOWN）。
-        # job 正则覆盖五服务（leaderboard-service 随服务拆分变更加入，见 ADR-0005）
-        expr: up{job=~"gateway-service|user-service|record-service|verify-service|leaderboard-service"} == 0
+        # job 正则覆盖六服务（leaderboard 随服务拆分加入见 ADR-0005，
+        # mapmatch 随道路拓扑匹配加入见 ADR-0006）
+        expr: up{job=~"gateway-service|user-service|record-service|verify-service|leaderboard-service|mapmatch-service"} == 0
         # 连续 1 分钟为 0 才触发：容忍一次网络抖动的误报（15s 抓取 × 4 次）
         for: 1m
         labels:
