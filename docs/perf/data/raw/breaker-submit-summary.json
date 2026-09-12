@@ -1,0 +1,16 @@
+{
+  "label": "breaker-submit-c10",
+  "concurrency": 10,
+  "total": 30,
+  "ok": 30,
+  "limited429": 0,
+  "errors": 0,
+  "errRate": 0.0000,
+  "wallSeconds": 0.991,
+  "qps": 30.26,
+  "p50ms": 79.78,
+  "p95ms": 829.54,
+  "p99ms": 829.59,
+  "maxMs": 829.61,
+  "statusHistogram": {"200": 30}
+}

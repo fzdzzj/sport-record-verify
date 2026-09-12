@@ -1,0 +1,16 @@
+{
+  "label": "base-c1000",
+  "concurrency": 1000,
+  "total": 2000,
+  "ok": 1753,
+  "limited429": 0,
+  "errors": 247,
+  "errRate": 0.1235,
+  "wallSeconds": 52.214,
+  "qps": 38.30,
+  "p50ms": 22849.77,
+  "p95ms": 29385.21,
+  "p99ms": 29577.37,
+  "maxMs": 29989.52,
+  "statusHistogram": {"EXCEPTION": 247, "200": 1753}
+}

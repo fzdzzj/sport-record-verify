@@ -1,0 +1,12 @@
+-- Explain AFTER: 加组合索引 idx_record_seq(record_id, seq) 后（recordId=2 shard=7）
+EXPLAIN
+-> Filter: (track_point_7.user_id = 7)  (cost=248 rows=30)\n    -> Index lookup on track_point_7 using idx_record_seq (record_id=2)  (cost=248 rows=300)\n
+-- EXPLAIN ANALYZE（含实际耗时）
+EXPLAIN
+-> Filter: (track_point_7.user_id = 7)  (cost=248 rows=30) (actual time=1.29..1.85 rows=300 loops=1)\n    -> Index lookup on track_point_7 using idx_record_seq (record_id=2)  (cost=248 rows=300) (actual time=1.26..1.8 rows=300 loops=1)\n
+-- 表索引现状
+Table	Non_unique	Key_name	Seq_in_index	Column_name	Collation	Cardinality	Sub_part	Packed	Null	Index_type	Comment	Index_comment	Visible	Expression
+track_point_7	0	PRIMARY	1	id	A	108461	NULL	NULL		BTREE			YES	NULL
+track_point_7	1	idx_record	1	record_id	A	367	NULL	NULL		BTREE			YES	NULL
+track_point_7	1	idx_record_seq	1	record_id	A	359	NULL	NULL		BTREE			YES	NULL
+track_point_7	1	idx_record_seq	2	seq	A	108484	NULL	NULL		BTREE			YES	NULL

@@ -1,0 +1,16 @@
+{
+  "label": "base-c500",
+  "concurrency": 500,
+  "total": 2000,
+  "ok": 1863,
+  "limited429": 0,
+  "errors": 137,
+  "errRate": 0.0685,
+  "wallSeconds": 55.803,
+  "qps": 35.84,
+  "p50ms": 13795.95,
+  "p95ms": 17170.86,
+  "p99ms": 17321.01,
+  "maxMs": 22538.61,
+  "statusHistogram": {"EXCEPTION": 137, "200": 1863}
+}

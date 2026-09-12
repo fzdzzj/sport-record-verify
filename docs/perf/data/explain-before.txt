@@ -1,0 +1,10 @@
+-- Explain BEFORE: SELECT * FROM track_point_7 WHERE user_id=7 AND record_id=2 ORDER BY seq
+EXPLAIN
+-> Sort: track_point_7.seq  (cost=211 rows=300)\n    -> Filter: (track_point_7.user_id = 7)  (cost=211 rows=300)\n        -> Index lookup on track_point_7 using idx_record (record_id=2)  (cost=211 rows=300)\n
+-- EXPLAIN ANALYZE（含实际耗时）
+EXPLAIN
+-> Sort: track_point_7.seq  (cost=211 rows=300) (actual time=3.71..3.72 rows=300 loops=1)\n    -> Filter: (track_point_7.user_id = 7)  (cost=211 rows=300) (actual time=1.84..2.53 rows=300 loops=1)\n        -> Index lookup on track_point_7 using idx_record (record_id=2)  (cost=211 rows=300) (actual time=1.69..2.35 rows=300 loops=1)\n
+-- 表索引现状
+Table	Non_unique	Key_name	Seq_in_index	Column_name	Collation	Cardinality	Sub_part	Packed	Null	Index_type	Comment	Index_comment	Visible	Expression
+track_point_7	0	PRIMARY	1	id	A	108461	NULL	NULL		BTREE			YES	NULL
+track_point_7	1	idx_record	1	record_id	A	367	NULL	NULL		BTREE			YES	NULL

@@ -1,0 +1,16 @@
+{
+  "label": "base-c100",
+  "concurrency": 100,
+  "total": 2000,
+  "ok": 2000,
+  "limited429": 0,
+  "errors": 0,
+  "errRate": 0.0000,
+  "wallSeconds": 56.341,
+  "qps": 35.50,
+  "p50ms": 2660.21,
+  "p95ms": 3757.52,
+  "p99ms": 4257.83,
+  "maxMs": 4941.41,
+  "statusHistogram": {"200": 2000}
+}

@@ -1,0 +1,16 @@
+{
+  "label": "ratelimit-qps100-c500",
+  "concurrency": 500,
+  "total": 295754,
+  "ok": 1927,
+  "limited429": 293826,
+  "errors": 1,
+  "errRate": 0.9935,
+  "wallSeconds": 22.166,
+  "qps": 13342.54,
+  "p50ms": 2.16,
+  "p95ms": 14.94,
+  "p99ms": 208.67,
+  "maxMs": 11783.77,
+  "statusHistogram": {"EXCEPTION": 1, "200": 1927, "429": 293826}
+}

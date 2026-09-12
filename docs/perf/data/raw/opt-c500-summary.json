@@ -1,0 +1,16 @@
+{
+  "label": "opt-c500",
+  "concurrency": 500,
+  "total": 2000,
+  "ok": 2000,
+  "limited429": 0,
+  "errors": 0,
+  "errRate": 0.0000,
+  "wallSeconds": 15.474,
+  "qps": 129.25,
+  "p50ms": 3589.62,
+  "p95ms": 5746.15,
+  "p99ms": 6659.27,
+  "maxMs": 8914.98,
+  "statusHistogram": {"200": 2000}
+}

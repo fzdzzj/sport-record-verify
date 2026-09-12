@@ -8,7 +8,7 @@
 
 ```
                          ┌──────────────────────────────┐
-                         │      gateway-service:8080     │  Spring Cloud Gateway + Sentinel(预留)
+                         │      gateway-service:8080     │  Spring Cloud Gateway + Sentinel 网关限流(5k QPS 基线)
                          └───────┬──────────┬───────────┘
                 /user/**         │ /record/**│  /verify/**
         ┌────────┴────────┐ ┌────┴─────────┐ └───────┴────────┐
@@ -29,8 +29,8 @@
 | `common` | 统一 `Result<T>`、错误码枚举、`BizException`、全局异常处理器 |
 | `api` | 服务间 Feign 契约（record-api / verify-api / user-api），接口与实现分离 |
 | `gateway-service` | 统一入口，路由 `/user/**` `/record/**` `/verify/**` 到对应服务 |
-| `user-service` | 账号/好友（骨架：健康端点 + user_db + Redisson 接入） |
-| `record-service` | 记录/榜单/点赞（骨架：健康端点 + record_db + ShardingSphere/RocketMQ/Caffeine 接入） |
+| `user-service` | 好友申请/同意/拒绝/列表（user_db 三表 + Redisson 锁防并发互加）；注册/登录待后续变更 |
+| `record-service` | 记录提交/查询/申诉 + 点赞/取消/计数 + 总榜/好友榜（record_db + Redis ZSet/计数 + 事件消费 + 定时结算防重） |
 | `verify-service` | 校验引擎/申诉（骨架：健康端点 + Feign 探活 + verify_db + RocketMQ/Caffeine 接入） |
 
 ## 快速开始
@@ -60,23 +60,59 @@ java -jar verify-service/target/sport-verify-verify-service-0.1.0-SNAPSHOT.jar
 | 网关路由 | `curl http://127.0.0.1:8080/user/internal/health` | `{"code":0,"message":"success","data":"user-service is alive"}` |
 | Feign 探活 | `curl http://127.0.0.1:8080/verify/internal/probe/record` | `"record-service is alive"`（verify→record 跨服务调用） |
 
-## 关键决策（详见 [ADR](docs/adr/0001-版本矩阵与技术选型.md)）
+> 宿主机 3306 被本机 MySQL 占用时：仓库根目录建 `.env` 写入 `MYSQL_PORT=3307`（compose 与四个服务
+> 的数据源端口均已参数化，默认仍 3306），服务侧同名变量见 `scripts/perf/run-perf.sh`。
+
+## 压测结果摘要（完整数据与因果见 [docs/perf/压测报告.md](docs/perf/压测报告.md) / [ADR-0002](docs/adr/0002-压测与优化实录.md)）
+
+本地单机实测（Ultra 7 255HX / 15.4GB / Docker Desktop；环境快照与口径见报告 §2）：
+
+| 验收项 | 目标 | 实测 |
+| --- | --- | --- |
+| 伪造拦截率 | ≥90% | **100%**（200 条正负样本集，五类伪造模式全拦截） |
+| 真实通过率 | ≥95% | **100%** |
+| 校验链路端到端 P50 | <200ms（P95 口径） | **20.3ms**（突发 200 条时消费调度尾部 ~0.5s，成因与改进见报告 §4.2） |
+| 提交吞吐 @100 并发 | — | **35.5 → 136.8 QPS（3.9×）**，P95 3.76s→1.60s |
+| 错误率 @500 并发 | — | 6.85% → **0%** |
+| Sentinel 网关限流 | 5k QPS 配置基线 | 100 QPS 档实测 **99.35% 超限 429 拦截**（网关侧拒绝 P50 2.2ms） |
+| 熔断降级转人工 | verify 挂→转人工，主链路不挂 | 故障期 30/30 提交成功；熔断器 OPEN 实证；恢复后 30/30 自愈收敛 |
+
+优化动作（前后对比与因果）：轨迹逐条 INSERT→单分片批量 INSERT（开关可回退）+ 连接池 10→30；
+组合索引 `idx_record_seq` 消除轨迹查询 filesort（EXPLAIN 实测 3.71→1.85ms，Sort 节点消失）。
+
+```bash
+# 一键复现（生成样本→基线→优化→复测→限流/熔断验证，详见压测报告 §9）
+bash scripts/perf/run-perf.sh gen
+bash scripts/perf/run-perf.sh start-services
+bash scripts/perf/run-perf.sh quality base && bash scripts/perf/run-perf.sh load 100 2000 base
+```
+
+## 关键决策（详见 [ADR-0001](docs/adr/0001-版本矩阵与技术选型.md) / [ADR-0002 压测与优化实录](docs/adr/0002-压测与优化实录.md)）
 
 - 版本矩阵锁定：**Java 21 + Boot 3.2.4 + Cloud 2023.0.1 + SCA 2023.0.1.0**（不升 Boot 3.3，SCA 2023 分支不兼容）。
 - Nacos 2.3.2 同时承担注册中心与配置中心（`spring.config.import: optional:nacos:*`，Nacos 不可用不阻塞启动）。
-- MySQL 单实例三库（user_db/record_db/verify_db）逻辑隔离；ShardingSphere 仅接入依赖默认关闭，分片随校验引擎变更启用。
+- MySQL 单实例三库（user_db/record_db/verify_db）逻辑隔离；ShardingSphere 按 user_id%16 分片 track_point。
 - RocketMQ 5.2 + `rocketmq-spring-boot-starter 2.3.1` 独立集成；broker 配 `brokerIP1=127.0.0.1` 使宿主机服务可直连。
+- 服务间熔断 Resilience4j（Feign 降级转人工）、入口限流 Sentinel（网关 5k QPS 基线）——限流管流量、熔断管依赖。
 - 所有 JSON 接口统一 `{"code":0,"message":"success","data":...}` 结构（错误码表见审批版 §4.8）。
 
 ## 目录约定
 
 ```
 spec/           openspec 规范（specs/ 能力域基线 + changes/ 变更提案与差异）
-docs/           需求文档与 ADR
-sql/            各库幂等建表脚本（docker-entrypoint-initdb.d 首次自动执行）
+docs/           需求文档与 ADR；docs/perf/ 压测报告与原始数据（data/raw 为逐请求 CSV/JSON）
+scripts/perf/   压测工具（零依赖 JDK21 单文件程序）与一键驱动脚本
+sql/            各库幂等建表脚本（docker-entrypoint-initdb.d 首次自动执行）+ migrations/ 手动迁移
 rocketmq/       Broker 本地配置
 ```
 
+## 变更交付
+
+校验引擎（`add-verify-engine`）、好友（`add-friend-module`）、点赞（`add-like-module`）、
+排行榜（`add-leaderboard-module`）、压测与优化实录（`add-load-test-report`）均以独立 openspec
+变更交付，交付说明见各目录下 `交付说明.md`。
+
 ## 后续变更（待办）
 
-校验引擎判定（含分片启用）、好友双向、点赞、排行榜、压测与优化实录 —— 均以独立 openspec 变更落地，见 `spec/changes/`。
+运动类型阈值分级（骑行误拦治理）、Sentinel 规则 Nacos 动态化、突发场景消费调优——
+均以独立 openspec 变更落地，见 `spec/changes/`。

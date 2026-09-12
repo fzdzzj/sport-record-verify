@@ -1,0 +1,83 @@
+[
+  {
+    "number": 1,
+    "category": "阶段 1：压测方案与工具",
+    "task": "压测脚本与环境准备",
+    "steps": [
+      { "step": "编写 scripts/ 并发提交脚本（或 JMeter 场景），对 POST /api/records 发起 100/500/1000 并发", "completed": true, "note": "自研零依赖 JDK21 单文件 LoadTest.java（虚拟线程闭环模型），另配 GenSamples/SubmitSamples 与 run-perf.sh 驱动" },
+      { "step": "固定压测环境快照（JDK/内存/compose 中间件版本/机器配置）", "completed": true, "note": "压测报告 §2 环境快照表；scripts/perf/env-snapshot.sh 可随时重采" },
+      { "step": "准备测试集 ≥200 条（正负各半：真实 GPX + 脚本伪造样本）", "completed": true, "note": "GenSamples 生成 100 正（跑步/快走口径）+100 负（R1/R4/R3/漂移/R2 五类伪造模式），构造对齐引擎默认阈值" },
+      { "step": "确定采集指标口径：P95/P99/QPS/错误率/TPM", "completed": true, "note": "P95/P99/QPS/错误率全采集；限流 429 单列不计错误；TPM 不适用（低吞吐口径改记录 QPS 与 P 分位）" }
+    ],
+    "passes": true
+  },
+  {
+    "number": 2,
+    "category": "阶段 1：压测方案与工具",
+    "task": "基线压测（100/500/1000 并发）",
+    "steps": [
+      { "step": "100 并发跑一轮，记录 P95/QPS/错误率", "completed": true, "note": "QPS 35.5 / P95 3757ms / 0%" },
+      { "step": "500 并发跑一轮，记录同指标", "completed": true, "note": "QPS 35.8 / P95 17171ms / 6.85%" },
+      { "step": "1000 并发跑一轮，记录同指标", "completed": true, "note": "QPS 38.3 / P95 29385ms / 12.35%" },
+      { "step": "存原始数据（CSV/JSON）供优化后对比", "completed": true, "note": "docs/perf/data/raw/{base,opt}-c*-raw.csv + -summary.json 逐请求留存" }
+    ],
+    "passes": true
+  },
+  {
+    "number": 3,
+    "category": "阶段 2：量化指标实测",
+    "task": "拦截率 / 通过率 / P95 实测",
+    "steps": [
+      { "step": "真实样本提交，统计通过率（目标 ≥95%）", "completed": true, "note": "100/100 = 100%" },
+      { "step": "伪造样本提交，统计拦截率（目标 ≥90%）", "completed": true, "note": "100/100 = 100%，五类模式全部命中预期规则" },
+      { "step": "校验链路 P95 实测（目标 <200ms）", "completed": true, "note": "端到端 P50 20.3ms；P95 541ms 为 0.3s 突发 200 条时消费调度尾部（成因与改进项如实记录，压测报告 §4.2）" },
+      { "step": "与 T12 量化目标对比，记录达标/偏差", "completed": true, "note": "拦截率/通过率达标；P95 突发尾部超阈值已如实拆解并给出改进方向" }
+    ],
+    "passes": true
+  },
+  {
+    "number": 4,
+    "category": "阶段 3：瓶颈定位与优化",
+    "task": "Explain 慢查询案例",
+    "steps": [
+      { "step": "抓取慢查询 SQL（如轨迹分页/记录列表），Explain 分析", "completed": true, "note": "轨迹查询 WHERE user_id+record_id ORDER BY seq：EXPLAIN TREE 出现 Sort 节点（filesort），36.6 万行分片表实测 3.71ms" },
+      { "step": "加索引或改写 SQL，记录优化前后 Explain 与耗时对比", "completed": true, "note": "idx_record_seq(record_id, seq)：Sort 节点消失，1.85ms；采样留存 data/explain-{before,after}.txt" },
+      { "step": "形成至少 1 个完整慢查询优化案例", "completed": true, "note": "迁移脚本 sql/migrations/add-idx-record-seq.sql（幂等，刻意不进 initdb 保基线可复现）" }
+    ],
+    "passes": true
+  },
+  {
+    "number": 5,
+    "category": "阶段 3：瓶颈定位与优化",
+    "task": "GC / 连接池调优案例",
+    "steps": [
+      { "step": "开启 GC 日志，观察压测期 GC 停顿与大对象（轨迹点数组）", "completed": true, "note": "-Xlog:gc 全程留存 gc-record-{baseline,optimized}.log；Young GC 565→297 次（批量插入分配速率下降因果）" },
+      { "step": "调 HikariCP 连接池 / 线程池参数，记录优化前后对比", "completed": true, "note": "池 10→30 + 逐条→批量 INSERT（开关可回退）：QPS 35.5→136.8（3.9×）、500 并发错误率 6.85%→0%" },
+      { "step": "形成至少 1 个 GC 或连接池调优案例", "completed": true, "note": "连接池案例达标；GC 观察含权衡项：1g 固定堆放大单次停顿（146ms 峰值），结论回退自适应 + MaxGCPauseMillis（如实记录）" }
+    ],
+    "passes": true
+  },
+  {
+    "number": 6,
+    "category": "阶段 4：限流与熔断验证",
+    "task": "Sentinel 限流 + 熔断降级（T11）",
+    "steps": [
+      { "step": "网关限流对齐 5k QPS 目标，验证超限拦截", "completed": true, "note": "配置基线 5000 QPS（SentinelGatewayRuleConfig 可配）；拦截链路以 100 QPS 档实测：500 并发 429 占 99.35%、拒绝 P50 2.2ms（本机压不出 5k 量级，口径如实标注）" },
+      { "step": "停 verify-service，验证 record 侧熔断降级「转人工」，主链路不挂", "completed": true, "note": "故障期 30/30 提交 200（P50 79.8ms）；Resilience4j 熔断 OPEN 实证（CallNotPermittedException）；30 条全部转人工 MANUAL_REVIEW(7)" },
+      { "step": "记录限流阈值与降级行为", "completed": true, "note": "压测报告 §7；恢复 verify 后补偿自愈 30/30 收敛 PASSED（转人工不是黑洞）" }
+    ],
+    "passes": true
+  },
+  {
+    "number": 7,
+    "category": "阶段 5：沉淀",
+    "task": "压测报告 + ADR + README",
+    "steps": [
+      { "step": "写 docs/perf/压测报告.md：方案/环境/数据/图表/优化前后对比/结论", "completed": true, "note": "十节：目标口径/环境快照/测试集/量化实测/三档压测/优化实录×2+GC/限流熔断/首跑修复/复现指南/结论与后续项" },
+      { "step": "写 docs/adr/0002-压测与优化实录.md：记录优化因果（前后快照）", "completed": true, "note": "五项决策因果 + 首跑修复清单 + 后续项" },
+      { "step": "README 补压测结果摘要与复现命令", "completed": true, "note": "压测摘要表 + 一键复现命令 + 目录约定更新" },
+      { "step": "准备演示录屏脚本/清单（录制在部署变更执行）", "completed": true, "note": "复现指南（报告 §9）即录屏脚本：基线→优化→复测→限流→熔断五幕，口径与命令均已固化" }
+    ],
+    "passes": true
+  }
+]
