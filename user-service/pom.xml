@@ -66,6 +66,29 @@
             <artifactId>redisson-spring-boot-starter</artifactId>
         </dependency>
 
+        <!-- 认证域（add-jwt-auth，见 ADR-0007）：
+             spring-security-crypto 只引 BCrypt 哈希，避免拉 Spring Security 全家桶
+             （全家桶会触发自动安全过滤链，与网关统一鉴权 + 无状态的骨架冲突）；
+             jjwt 三段式（api 编译 / impl+jackson 运行时）签发校验 HS256 token -->
+        <dependency>
+            <groupId>org.springframework.security</groupId>
+            <artifactId>spring-security-crypto</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>io.jsonwebtoken</groupId>
+            <artifactId>jjwt-api</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>io.jsonwebtoken</groupId>
+            <artifactId>jjwt-impl</artifactId>
+            <scope>runtime</scope>
+        </dependency>
+        <dependency>
+            <groupId>io.jsonwebtoken</groupId>
+            <artifactId>jjwt-jackson</artifactId>
+            <scope>runtime</scope>
+        </dependency>
+
         <dependency>
             <groupId>org.projectlombok</groupId>
             <artifactId>lombok</artifactId>
