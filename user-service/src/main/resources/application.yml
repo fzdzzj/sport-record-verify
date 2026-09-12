@@ -49,8 +49,8 @@ app:
       refresh-ttl-days: 7
     refresh:
       # refresh token 存活键前缀（Redis，key=auth:refresh:{userId}:{jti}，TTL 与 refresh 时效一致；
-      # 轮换时原子作废旧 jti，防重放，见 ADR-0007）
-      redis-prefix: auth:refresh:
+      # 轮换时原子作废旧 jti，防重放，见 ADR-0007；值含冒号须加引号，否则 snakeyaml 报 mapping 错误）
+      redis-prefix: "auth:refresh:"
 
 # MyBatis-Plus 基础配置（无 Mapper 骨架阶段仅占位）
 mybatis-plus:

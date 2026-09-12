@@ -16,10 +16,12 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.dao.DuplicateKeyException;
 import org.springframework.data.redis.core.StringRedisTemplate;
+import org.springframework.data.redis.core.script.DefaultRedisScript;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.stereotype.Service;
 
 import java.time.LocalDateTime;
+import java.util.List;
 import java.util.concurrent.TimeUnit;
 
 /**
@@ -34,8 +36,8 @@ import java.util.concurrent.TimeUnit;
  *       <b>设计口径</b>：本实现先计数 + 告警，账号锁定由后续变更按阈值落地）；</li>
  *   <li><b>refresh 轮换</b>：refresh token 以 {@code auth:refresh:{userId}:{jti}} 存活键存 Redis
  *       （active 集合，TTL 与 refresh 时效一致，到点自然失效）；刷新时 <b>原子消费</b>
- *       旧 jti（GETDEL，并发刷新同一 refresh 只有一个赢家）→ 签发新 token 对 →
- *       新 refresh 持久化，旧 refresh 即刻作废（防重放，见 ADR-0007）。</li>
+ *       旧 jti（Lua 取走并删除，等效 GETDEL 语义且兼容 Redis <6.2；并发刷新同一 refresh
+ *       只有一个赢家）→ 签发新 token 对 → 新 refresh 持久化，旧 refresh 即刻作废（防重放，见 ADR-0007）。</li>
  * </ul>
  */
 @Service
@@ -60,6 +62,17 @@ public class AuthService {
     /** refresh token 存活键前缀（key=auth:refresh:{userId}:{jti}，TTL 与 refresh 时效一致） */
     @Value("${app.auth.refresh.redis-prefix:auth:refresh:}")
     private String refreshPrefix;
+
+    /**
+     * 原子「取走并删除」Lua 脚本（刷新轮换的核心原语）。
+     *
+     * <p>为什么不用 GETDEL：宿主机 Redis 版本 < 6.2（GETDEL 是 6.2 引入），
+     * Spring Data 的 {@code getAndDelete} 映射为 GETDEL 会直接报 ERR unknown command；
+     * Lua 脚本由 Redis 单线程原子执行，等效 GETDEL 语义且兼容所有版本。</p>
+     */
+    private static final DefaultRedisScript<String> GETDEL_LUA = new DefaultRedisScript<>(
+            "local v = redis.call('get', KEYS[1]); if v then redis.call('del', KEYS[1]) end; return v",
+            String.class);
 
     // ==================== 注册 ====================
 
@@ -134,8 +147,8 @@ public class AuthService {
      * <p>轮换语义（见 ADR-0007）：</p>
      * <ol>
      *   <li>JWT 校验（签名/时效/type=REFRESH）失败 → 401（1001）；</li>
-     *   <li>Redis 存活校验 + <b>原子消费</b>：GETDEL 旧 jti，值为空说明已轮换/过期 →
-     *       401（旧 refresh 重放被拒）；</li>
+     *   <li>Redis 存活校验 + <b>原子消费</b>：Lua 取走并删除旧 jti（等效 GETDEL 语义，
+     *       兼容 Redis <6.2），值为空说明已轮换/过期 → 401（旧 refresh 重放被拒）；</li>
      *   <li>签发新 token 对并持久化新 refresh（旧 jti 已删、新 jti 生效，轮换闭环）。</li>
      * </ol>
      */
@@ -150,10 +163,10 @@ public class AuthService {
             // 签名/时效/type 任一不符：一律视为无效 token（不区分细节，防探测）
             throw new BizException(ResultCode.UNAUTHORIZED, "refresh token 无效或过期");
         }
-        // —— 原子消费旧 jti（GETDEL）：并发刷新同一 refresh 只有一个赢家；
-        //    值为空 = 已轮换作废或已过 TTL → 拒绝（旧 refresh 重放防住了）
+        // —— 原子消费旧 jti（Lua 取走并删除，兼容 Redis <6.2 的 GETDEL 语义）：
+        //    并发刷新同一 refresh 只有一个赢家；值为空 = 已轮换作废或已过 TTL → 拒绝
         String key = refreshKey(parsed.userId(), parsed.jti());
-        String alive = stringRedisTemplate.opsForValue().getAndDelete(key);
+        String alive = stringRedisTemplate.execute(GETDEL_LUA, List.of(key));
         if (alive == null) {
             log.warn("refresh 已作废：userId={}, jti={}", parsed.userId(), parsed.jti());
             throw new BizException(ResultCode.UNAUTHORIZED, "refresh token 已作废，请重新登录");

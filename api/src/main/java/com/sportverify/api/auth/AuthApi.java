@@ -18,8 +18,11 @@ import org.springframework.web.bind.annotation.RequestBody;
  *
  * <p>鉴权闭环（见 ADR-0007）：认证端点本身不携带 token（注册/登录/刷新均无鉴权），
  * 业务接口的 token 校验统一由网关 GlobalFilter 承担，下游不自行校验 token。</p>
+ *
+ * <p>contextId 说明：UserApi 与 AuthApi 同指 user-service，OpenFeign 按 contextId 区分
+ * 同名客户端的注册上下文，否则会因重复的 FeignClientSpecification bean 导致启动失败。</p>
  */
-@FeignClient(name = "user-service", path = "/internal")
+@FeignClient(name = "user-service", contextId = "authApi", path = "/internal")
 public interface AuthApi {
 
     /**
