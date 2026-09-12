@@ -58,6 +58,14 @@
             <groupId>org.springframework.cloud</groupId>
             <artifactId>spring-cloud-starter-loadbalancer</artifactId>
         </dependency>
+        <!-- Resilience4j 熔断器：R5 调 mapmatch-service 的熔断降级（规范「匹配降级」，沿用
+             record-service 已验证模式）。与网关 Sentinel 分工：Sentinel 管入口流量（限流），
+             Resilience4j 管服务间依赖故障（熔断）；spring.cloud.openfeign.circuitbreaker.enabled
+             开启后 MapMatchApiFallback 生效，R5 降级为不命中不阻断校验 -->
+        <dependency>
+            <groupId>org.springframework.cloud</groupId>
+            <artifactId>spring-cloud-starter-circuitbreaker-resilience4j</artifactId>
+        </dependency>
 
         <!-- 数据访问：MyBatis-Plus + MySQL（verify_db） -->
         <dependency>

@@ -16,10 +16,10 @@ import org.springframework.web.bind.annotation.RequestBody;
  * StripPrefix=1；服务间调用经 Nacos 负载均衡直连，不经网关）。</p>
  *
  * <p>熔断降级（沿用 record-service 已验证模式）：verify 侧开启
- * {@code spring.cloud.openfeign.circuitbreaker.enabled} 后，mapmatch 不可用时由本契约的
- * FallbackFactory 统一抛 4005，R5 捕获后降级为「不命中」，不阻断校验主链路。</p>
+ * {@code spring.cloud.openfeign.circuitbreaker.enabled} 后，mapmatch 不可用时由
+ * {@link MapMatchApiFallback} 统一抛 4005，R5 捕获后降级为「不命中」，不阻断校验主链路。</p>
  */
-@FeignClient(name = "mapmatch-service", path = "/match")
+@FeignClient(name = "mapmatch-service", path = "/match", fallbackFactory = MapMatchApiFallback.class)
 public interface MapMatchApi {
 
     /**

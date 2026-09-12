@@ -58,6 +58,8 @@ public enum ResultCode {
     RULE_VERSION_STATUS_INVALID(4003, "规则版本状态不允许该操作"),
     /** 规则版本冲突（版本号重复 / 已有灰度版本在采样 / 灰度比例越界） */
     RULE_VERSION_CONFLICT(4004, "规则版本冲突"),
+    /** 匹配服务不可用（mapmatch 熔断降级；R5 侧捕获后降级为不命中，不阻断校验） */
+    MAPMATCH_SERVICE_UNAVAILABLE(4005, "匹配服务暂不可用"),
 
     // ===== 5xx 好友域 =====
     /** 好友重复申请或已存在关系 */
