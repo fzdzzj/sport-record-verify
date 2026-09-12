@@ -3,9 +3,10 @@
 # 用法：docker compose up -d     （首次会拉取镜像，稍候）
 #       docker compose down      （停止并移除容器，数据卷保留）
 # 编排内容：Nacos 2.3.2 / MySQL 8（user_db·record_db·verify_db 三库）/ Redis 7 / RocketMQ 5
+#           + PostGIS 16（road_db 路网空间库，mapmatch-service 路网匹配）
 #           + Prometheus 2.51（抓取与告警）/ Grafana 10.4（面板，provisioning 预置）
 # 说明：MySQL 采用单实例三库（逻辑独立），如需物理隔离拆成三个 service 即可（见 ADR-0001）；
-#       监控栈见 ADR-0003——本地内存预算吃紧时可先 docker compose up -d prometheus 前的五件套，
+#       监控栈见 ADR-0003——本地内存预算吃紧时可先 docker compose up -d prometheus 前的六件套，
 #       prometheus/grafana 单独按需拉起
 # ============================================================
 name: sport-verify
@@ -123,6 +124,31 @@ services:
     networks:
       - sport-verify-net
 
+  # ---------- PostGIS：OSM 路网空间库（mapmatch-service 路网匹配，见 ADR-0006） ----------
+  # 为何单独一个库不并 MySQL：路网匹配靠空间类型 geometry + GIST 索引 + ST_* 空间函数，
+  # MySQL 空间能力弱（函数少、索引在 8.0 才可用且数据类型支持差），PostGIS 是空间计算事实标准
+  postgis:
+    image: postgis/postgis:16-3.4
+    container_name: sport-verify-postgis
+    environment:
+      # 库名随容器首次初始化创建；导入脚本（scripts/mapmatch/import-road-network.sh）建 road_edge 路网表
+      POSTGRES_DB: road_db
+      POSTGRES_PASSWORD: postgres
+      TZ: Asia/Shanghai
+    ports:
+      # 宿主机端口可用 POSTGRES_PORT 覆盖（默认 5432；宿主机已有 PostgreSQL 时设 5433，服务侧同步注入同名变量）
+      - "${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - postgis-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d road_db"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 30s
+    networks:
+      - sport-verify-net
+
   # ---------- Prometheus：指标抓取 + 告警规则评估（可观测性变更，见 ADR-0003） ----------
   prometheus:
     image: prom/prometheus:v2.51.2
@@ -167,6 +193,8 @@ services:
 
 volumes:
   mysql-data:
+  # PostGIS 路网数据持久化：down 不掉路网，重跑导入脚本按覆盖刷新（幂等）
+  postgis-data:
   # Prometheus TSDB 持久化：down 不掉监控历史，up 期间实例下线告警才有历史可比
   prometheus-data:
 

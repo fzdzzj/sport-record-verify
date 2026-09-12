@@ -45,6 +45,9 @@ docs/perf/data/*.jsonl
 docs/perf/data/load-template.json
 docs/perf/data/raw/
 
+# ===== 路网数据生成物（可由 scripts/mapmatch/import-road-network.sh 重新下载导入，不入库） =====
+scripts/mapmatch/data/
+
 # ===== 临时文档提取产物（不入库） =====
 .tmp_doc_style/
 
