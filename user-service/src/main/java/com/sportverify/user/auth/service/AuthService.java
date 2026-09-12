@@ -2,6 +2,7 @@ package com.sportverify.user.auth.service;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.sportverify.api.auth.dto.LoginRequestDTO;
+import com.sportverify.api.auth.dto.RefreshRequestDTO;
 import com.sportverify.api.auth.dto.RegisterRequestDTO;
 import com.sportverify.api.auth.dto.TokenDTO;
 import com.sportverify.common.exception.BizException;
@@ -9,8 +10,10 @@ import com.sportverify.common.result.ResultCode;
 import com.sportverify.user.auth.util.JwtUtil;
 import com.sportverify.user.entity.User;
 import com.sportverify.user.mapper.UserMapper;
+import io.jsonwebtoken.JwtException;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.dao.DuplicateKeyException;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
@@ -20,7 +23,7 @@ import java.time.LocalDateTime;
 import java.util.concurrent.TimeUnit;
 
 /**
- * 认证服务（注册 / 登录 / token 签发；refresh 轮换见 AuthService#refresh）。
+ * 认证服务（注册 / 登录 / token 签发 / refresh 轮换）。
  *
  * <p>核心设计：</p>
  * <ul>
@@ -29,7 +32,10 @@ import java.util.concurrent.TimeUnit;
  *   <li><b>登录</b>：BCrypt matches 校验密码；失败统一 1001（不区分「用户不存在/密码错误」，
  *       防撞库探测）+ 按手机号计失败次数（Redis INCR + TTL 窗口，超过阈值锁定的
  *       <b>设计口径</b>：本实现先计数 + 告警，账号锁定由后续变更按阈值落地）；</li>
- *   <li><b>签发</b>：access（15min）+ refresh（7d）双 token（见 {@link JwtUtil}）。</li>
+ *   <li><b>refresh 轮换</b>：refresh token 以 {@code auth:refresh:{userId}:{jti}} 存活键存 Redis
+ *       （active 集合，TTL 与 refresh 时效一致，到点自然失效）；刷新时 <b>原子消费</b>
+ *       旧 jti（GETDEL，并发刷新同一 refresh 只有一个赢家）→ 签发新 token 对 →
+ *       新 refresh 持久化，旧 refresh 即刻作废（防重放，见 ADR-0007）。</li>
  * </ul>
  */
 @Service
@@ -50,6 +56,10 @@ public class AuthService {
     private static final long FAIL_COOLDOWN_MINUTES = 15;
     /** 失败次数阈值（设计口径：达到阈值建议锁定账号；本实现先计数告警，锁定落地见注释） */
     private static final int FAIL_THRESHOLD = 5;
+
+    /** refresh token 存活键前缀（key=auth:refresh:{userId}:{jti}，TTL 与 refresh 时效一致） */
+    @Value("${app.auth.refresh.redis-prefix:auth:refresh:}")
+    private String refreshPrefix;
 
     // ==================== 注册 ====================
 
@@ -116,13 +126,55 @@ public class AuthService {
         return issueTokenPair(user.getId());
     }
 
+    // ==================== refresh 轮换 ====================
+
+    /**
+     * 刷新（规范「Token 刷新与轮换」）：凭 refresh token 换新 access + 新 refresh。
+     *
+     * <p>轮换语义（见 ADR-0007）：</p>
+     * <ol>
+     *   <li>JWT 校验（签名/时效/type=REFRESH）失败 → 401（1001）；</li>
+     *   <li>Redis 存活校验 + <b>原子消费</b>：GETDEL 旧 jti，值为空说明已轮换/过期 →
+     *       401（旧 refresh 重放被拒）；</li>
+     *   <li>签发新 token 对并持久化新 refresh（旧 jti 已删、新 jti 生效，轮换闭环）。</li>
+     * </ol>
+     */
+    public TokenDTO refresh(String refreshToken) {
+        if (refreshToken == null || refreshToken.isBlank()) {
+            throw new BizException(ResultCode.UNAUTHORIZED, "refresh token 不能为空");
+        }
+        JwtUtil.ParsedRefresh parsed;
+        try {
+            parsed = jwtUtil.parseRefresh(refreshToken);
+        } catch (JwtException e) {
+            // 签名/时效/type 任一不符：一律视为无效 token（不区分细节，防探测）
+            throw new BizException(ResultCode.UNAUTHORIZED, "refresh token 无效或过期");
+        }
+        // —— 原子消费旧 jti（GETDEL）：并发刷新同一 refresh 只有一个赢家；
+        //    值为空 = 已轮换作废或已过 TTL → 拒绝（旧 refresh 重放防住了）
+        String key = refreshKey(parsed.userId(), parsed.jti());
+        String alive = stringRedisTemplate.opsForValue().getAndDelete(key);
+        if (alive == null) {
+            log.warn("refresh 已作废：userId={}, jti={}", parsed.userId(), parsed.jti());
+            throw new BizException(ResultCode.UNAUTHORIZED, "refresh token 已作废，请重新登录");
+        }
+        TokenDTO dto = issueTokenPair(parsed.userId());
+        log.info("refresh 轮换成功：userId={}, oldJti={}", parsed.userId(), parsed.jti());
+        return dto;
+    }
+
     // ==================== token 签发（登录/刷新共用） ====================
 
-    /** 签发 access + refresh 双 token（access 15min / refresh 7d，见 JwtUtil） */
+    /** 签发 access + refresh 双 token，并把 refresh 持久化到 Redis（存活校验 + 轮换作废的基础） */
     private TokenDTO issueTokenPair(Long userId) {
         TokenDTO dto = new TokenDTO();
         dto.setAccessToken(jwtUtil.issueAccessToken(userId));
-        dto.setRefreshToken(jwtUtil.issueRefreshToken(userId));
+        String refreshToken = jwtUtil.issueRefreshToken(userId);
+        dto.setRefreshToken(refreshToken);
+        // 存活键：key=auth:refresh:{userId}:{jti}，TTL 与 refresh 时效一致（到点自然失效，无需主动清理）
+        JwtUtil.ParsedRefresh parsed = jwtUtil.parseRefresh(refreshToken);
+        stringRedisTemplate.opsForValue().set(refreshKey(userId, parsed.jti()), "1",
+                jwtUtil.refreshTtlSeconds(), TimeUnit.SECONDS);
         dto.setTokenType("Bearer");
         dto.setExpiresIn(jwtUtil.accessTtlSeconds());
         return dto;
@@ -147,6 +199,11 @@ public class AuthService {
 
     private String failKey(String phone) {
         return FAIL_KEY_PREFIX + phone;
+    }
+
+    /** refresh 存活键：按 (userId, jti) 唯一（同一用户的多个 refresh 互不干扰） */
+    private String refreshKey(Long userId, String jti) {
+        return refreshPrefix + userId + ":" + jti;
     }
 
     /** 手机号脱敏（日志口径，与 InternalUserController 同款：保留前 3 后 4） */

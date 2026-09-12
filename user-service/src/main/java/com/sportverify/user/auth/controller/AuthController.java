@@ -1,6 +1,7 @@
 package com.sportverify.user.auth.controller;
 
 import com.sportverify.api.auth.dto.LoginRequestDTO;
+import com.sportverify.api.auth.dto.RefreshRequestDTO;
 import com.sportverify.api.auth.dto.RegisterRequestDTO;
 import com.sportverify.api.auth.dto.TokenDTO;
 import com.sportverify.common.exception.BizException;
@@ -46,6 +47,15 @@ public class AuthController {
     @PostMapping("/login")
     public Result<TokenDTO> login(@RequestBody LoginRequestDTO dto) {
         return Result.success(authService.login(dto));
+    }
+
+    /**
+     * 刷新（规范「Token 刷新与轮换」）：refresh 换新 access + 新 refresh；
+     * 旧 refresh 原子作废（重放 → 401），已作废/过期 → 401（1001）。
+     */
+    @PostMapping("/refresh")
+    public Result<TokenDTO> refresh(@RequestBody RefreshRequestDTO dto) {
+        return Result.success(authService.refresh(dto.getRefreshToken()));
     }
 
     /**

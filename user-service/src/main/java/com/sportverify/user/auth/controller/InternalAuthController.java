@@ -1,6 +1,7 @@
 package com.sportverify.user.auth.controller;
 
 import com.sportverify.api.auth.dto.LoginRequestDTO;
+import com.sportverify.api.auth.dto.RefreshRequestDTO;
 import com.sportverify.api.auth.dto.RegisterRequestDTO;
 import com.sportverify.api.auth.dto.TokenDTO;
 import com.sportverify.common.result.Result;
@@ -35,5 +36,11 @@ public class InternalAuthController {
     @PostMapping("/login")
     public Result<TokenDTO> login(@RequestBody LoginRequestDTO dto) {
         return Result.success(authService.login(dto));
+    }
+
+    /** 刷新（refresh 换新 + 轮换作废旧 refresh；已作废/过期 → 401） */
+    @PostMapping("/refresh")
+    public Result<TokenDTO> refresh(@RequestBody RefreshRequestDTO dto) {
+        return Result.success(authService.refresh(dto.getRefreshToken()));
     }
 }
