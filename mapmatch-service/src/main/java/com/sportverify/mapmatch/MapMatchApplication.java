@@ -1,7 +1,9 @@
 package com.sportverify.mapmatch;
 
+import com.sportverify.mapmatch.config.MatchProperties;
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
+import org.springframework.boot.context.properties.EnableConfigurationProperties;
 
 /**
  * 道路拓扑匹配服务启动类（第 6 个微服务，服务数 5→6，见 ADR-0006）。
@@ -15,6 +17,7 @@ import org.springframework.boot.autoconfigure.SpringBootApplication;
  * 处理器与 api 模块的契约支撑（与其他 5 个服务保持同一约定）。</p>
  */
 @SpringBootApplication(scanBasePackages = "com.sportverify")
+@EnableConfigurationProperties(MatchProperties.class)
 public class MapMatchApplication {
 
     public static void main(String[] args) {
