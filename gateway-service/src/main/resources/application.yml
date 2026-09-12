@@ -28,11 +28,19 @@ spring:
             - Path=/user/**
           filters:
             - StripPrefix=1
-        # 记录域路由
+        # 记录域路由（榜单端点已迁出：record-service 仅记录/点赞，榜单走 /leaderboard/**）
         - id: route-record-service
           uri: lb://record-service
           predicates:
             - Path=/record/**
+          filters:
+            - StripPrefix=1
+        # 榜单域路由（服务数 4→5，见 ADR-0005）：原 /record/api/leaderboard 已下线，
+        # 榜单查询统一走 /leaderboard/api/leaderboard → leaderboard-service 的 /api/leaderboard
+        - id: route-leaderboard-service
+          uri: lb://leaderboard-service
+          predicates:
+            - Path=/leaderboard/**
           filters:
             - StripPrefix=1
         # 校验域路由
