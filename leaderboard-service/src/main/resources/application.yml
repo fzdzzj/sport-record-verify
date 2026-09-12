@@ -1,0 +1,79 @@
+# ============================================================
+# leaderboard-service 配置（独立榜单微服务，端口 8084，见 ADR-0005）
+#
+# 职责：榜单读热（ZSet 秒级）+ 事件沉淀（消费 VERIFIED/REJECTED 入榜/回滚）
+#       + 定时快照结算（对账纠偏）。记录读写仍归 record-service，二者职责分离。
+#
+# 为何用 application.yml：本服务不引 ShardingSphere（榜单只读 record_db 中
+# 未分片的 sport_record / leaderboard_contribution 单表），无 snakeyaml 1.x/2.x
+# 冲突（该冲突仅存在于 record-service，见其 application.properties 头部说明）。
+# ============================================================
+
+server:
+  port: 8084
+
+spring:
+  application:
+    name: leaderboard-service
+  config:
+    import: optional:nacos:leaderboard-service.yml
+  cloud:
+    nacos:
+      discovery:
+        server-addr: 127.0.0.1:8848
+      config:
+        server-addr: 127.0.0.1:8848
+        file-extension: yml
+  # 数据源：复用 record_db（默认方案，最低改动，见提案「榜单数据依赖」）——
+  # leaderboard_contribution 贡献表仍在该库，本服务读写；sport_record 仅只读快照查询
+  # （状态/里程），写路径仍归 record-service，避免双写
+  datasource:
+    driver-class-name: com.mysql.cj.jdbc.Driver
+    # 宿主机已有 MySQL 占用 3306 时，compose 侧设 MYSQL_PORT=3307，服务侧注入同名变量即可，默认仍 3306
+    url: jdbc:mysql://127.0.0.1:${MYSQL_PORT:3306}/record_db?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai&useSSL=false&allowPublicKeyRetrieval=true
+    username: root
+    password: root
+    # 骨架阶段容错：中间件未启动时服务仍可启动（连接延迟到首次访问）
+    hikari:
+      initialization-fail-timeout: -1
+  # Redis：榜单 ZSet 热读层 leaderboard:overall（member=userId，score=累计 pass 里程）
+  # + 入榜/回滚互斥锁 lock:rollback:{recordId} + 结算防重 lock:scheduler:leaderboard
+  data:
+    redis:
+      host: 127.0.0.1
+      port: 6379
+
+# RocketMQ：以独立消费组订阅 record-verify-events 的 VERIFIED/REJECTED Tag 驱动入榜/回滚；
+# 消费组 leaderboard-consumer-group 随榜单职责整体迁自 record-service（record 侧已下线，防双写）
+rocketmq:
+  name-server: 127.0.0.1:9876
+  # 生产端仅供死信投递（消费重试超阈值 → record-verify-events-dlq）
+  producer:
+    group: leaderboard-service-group
+  leaderboard:
+    consumer:
+      group: leaderboard-consumer-group
+
+mybatis-plus:
+  configuration:
+    map-underscore-to-camel-case: true
+    log-impl: org.apache.ibatis.logging.slf4j.Slf4jImpl
+
+management:
+  endpoints:
+    web:
+      exposure:
+        # prometheus：/actuator/prometheus 以 Prometheus 文本格式暴露 Micrometer 指标（监控抓取入口）；
+        # metrics：/actuator/metrics JSON 查询端点（手工排查看单个指标）
+        include: health,info,prometheus,metrics
+  # HTTP 指标直方图：默认只输出 count/sum/max（summary），没有 bucket；
+  # P95 计算（PromQL histogram_quantile）依赖 bucket，必须显式开启，告警与面板依赖
+  metrics:
+    distribution:
+      percentiles-histogram:
+        http:
+          server:
+            requests: true
+  endpoint:
+    health:
+      show-details: always
