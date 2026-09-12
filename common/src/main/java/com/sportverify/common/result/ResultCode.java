@@ -52,6 +52,12 @@ public enum ResultCode {
     // ===== 4xx 校验服务 =====
     /** 校验服务不可用（已降级转人工） */
     VERIFY_SERVICE_UNAVAILABLE(4001, "校验服务暂不可用，请稍后重试"),
+    /** 规则版本不存在 */
+    RULE_VERSION_NOT_FOUND(4002, "规则版本不存在"),
+    /** 规则版本状态不允许该操作（仅 GRAY 可调比例/全量、并发状态迁移冲突） */
+    RULE_VERSION_STATUS_INVALID(4003, "规则版本状态不允许该操作"),
+    /** 规则版本冲突（版本号重复 / 已有灰度版本在采样 / 灰度比例越界） */
+    RULE_VERSION_CONFLICT(4004, "规则版本冲突"),
 
     // ===== 5xx 好友域 =====
     /** 好友重复申请或已存在关系 */

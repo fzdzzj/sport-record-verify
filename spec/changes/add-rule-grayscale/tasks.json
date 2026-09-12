@@ -37,11 +37,11 @@
     "category": "阶段 4：回滚与全量",
     "task": "秒级回滚 + 全量发布",
     "steps": [
-      { "step": "实现 gray_ratio=0 秒级回滚（短 TTL 缓存失效）", "completed": false },
-      { "step": "实现 gray_ratio=100 全量发布 + 旧版本 RETIRED", "completed": false },
-      { "step": "版本状态迁移约束（同一时刻至多一个 ACTIVE）", "completed": false }
+      { "step": "实现 gray_ratio=0 秒级回滚（短 TTL 缓存失效）", "completed": true },
+      { "step": "实现 gray_ratio=100 全量发布 + 旧版本 RETIRED", "completed": true },
+      { "step": "版本状态迁移约束（同一时刻至多一个 ACTIVE）", "completed": true }
     ],
-    "passes": false
+    "passes": true
   },
   {
     "number": 5,
