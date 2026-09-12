@@ -51,6 +51,9 @@ java -jar record-service/target/sport-verify-record-service-0.1.0-SNAPSHOT.jar
 java -jar verify-service/target/sport-verify-verify-service-0.1.0-SNAPSHOT.jar
 ```
 
+> `java` 必须是 JDK 21（PATH 上是 JDK 8 时会报 UnsupportedClassVersionError，改用绝对路径如
+> `D:\develop1\jdk21\bin\java`）；宿主机 3306 被本机 MySQL 占用时，服务启动同样注入 `MYSQL_PORT=3307`。
+
 ## 冒烟验证
 
 | 验证项 | 命令 | 期望 |
@@ -87,6 +90,23 @@ JVM 堆已用/上限、GC 暂停速率、HikariCP 连接池、JVM 线程数；�
 | HttpP95LatencyHigh | P95 >200ms 连续 2 分钟（§8.2 延迟预算） | warning |
 | JvmHeapUsageHigh | 堆使用率 >80% 连续 5 分钟 | warning |
 
+## 规则灰度发布（版本快照 + 采样路由 + 秒级回滚，选型理由见 [ADR-0004](docs/adr/0004-规则灰度发布.md)）
+
+新规则不再「一改全体生效」：管理员把候选阈值创建为版本（`rules_json` 快照落库），按
+`userId%100 < gray_ratio` 采样小流量验证；异常置 0 秒级回滚（本实例即时失效 + Redis 广播扇出，
+上界 60s TTL 收敛）；稳定后全量发布，旧版本自动 RETIRED。灰度期间执行库内快照而非 Nacos 实时配置，
+消除观察期配置漂移；同一用户采样键恒定，分支不抖动。
+
+| 操作 | 接口（经网关，管理端暂无鉴权） | 说明 |
+| --- | --- | --- |
+| 创建版本 | `POST /verify/rules/versions` | body 可带 `rules`（新阈值快照）与初始 `grayRatio`；缺省快照当前基线 |
+| 调灰度比例 | `PATCH /verify/rules/versions/{id}/gray` | 0-100；**0 = 秒级回滚** |
+| 全量发布 | `POST /verify/rules/versions/{id}/activate` | gray=100 + ACTIVE，旧版本全部 RETIRED |
+
+冒烟实录（同一 5.8 m/s 轨迹，基线阈值 5.5 / 灰度快照 6.6，走 提交→MQ→校验 真实链路）：灰度 10% 时
+userId=105（%100=5）PASSED、userId=150 REJECTED；回滚置 0 后 105 立即 REJECTED；全量后 150 也 PASSED。
+完整实录见 [交付说明](spec/changes/add-rule-grayscale/交付说明.md)。
+
 ## 压测结果摘要（完整数据与因果见 [docs/perf/压测报告.md](docs/perf/压测报告.md) / [ADR-0002](docs/adr/0002-压测与优化实录.md)）
 
 本地单机实测（Ultra 7 255HX / 15.4GB / Docker Desktop；环境快照与口径见报告 §2）：
@@ -111,13 +131,14 @@ bash scripts/perf/run-perf.sh start-services
 bash scripts/perf/run-perf.sh quality base && bash scripts/perf/run-perf.sh load 100 2000 base
 ```
 
-## 关键决策（详见 [ADR-0001](docs/adr/0001-版本矩阵与技术选型.md) / [ADR-0002 压测与优化实录](docs/adr/0002-压测与优化实录.md) / [ADR-0003 监控选型](docs/adr/0003-监控选型.md)）
+## 关键决策（详见 [ADR-0001](docs/adr/0001-版本矩阵与技术选型.md) / [ADR-0002 压测与优化实录](docs/adr/0002-压测与优化实录.md) / [ADR-0003 监控选型](docs/adr/0003-监控选型.md) / [ADR-0004 规则灰度发布](docs/adr/0004-规则灰度发布.md)）
 
 - 版本矩阵锁定：**Java 21 + Boot 3.2.4 + Cloud 2023.0.1 + SCA 2023.0.1.0**（不升 Boot 3.3，SCA 2023 分支不兼容）。
 - Nacos 2.3.2 同时承担注册中心与配置中心（`spring.config.import: optional:nacos:*`，Nacos 不可用不阻塞启动）。
 - MySQL 单实例三库（user_db/record_db/verify_db）逻辑隔离；ShardingSphere 按 user_id%16 分片 track_point。
 - RocketMQ 5.2 + `rocketmq-spring-boot-starter 2.3.1` 独立集成；broker 配 `brokerIP1=127.0.0.1` 使宿主机服务可直连。
 - 服务间熔断 Resilience4j（Feign 降级转人工）、入口限流 Sentinel（网关 5k QPS 基线）——限流管流量、熔断管依赖。
+- 规则灰度：版本快照落库（灰度期隔离 Nacos 竞态）+ `userId%100` 采样（同用户恒定同分支）+ Redis 广播失效缓存（秒级回滚，TTL 兜底）；全量乐观迁移保证至多一个 ACTIVE（[ADR-0004](docs/adr/0004-规则灰度发布.md)）。
 - 所有 JSON 接口统一 `{"code":0,"message":"success","data":...}` 结构（错误码表见审批版 §4.8）。
 
 ## 目录约定
@@ -135,8 +156,8 @@ grafana/        数据源/面板 provider 预置（provisioning/）与预置面�
 ## 变更交付
 
 校验引擎（`add-verify-engine`）、好友（`add-friend-module`）、点赞（`add-like-module`）、
-排行榜（`add-leaderboard-module`）、压测与优化实录（`add-load-test-report`）均以独立 openspec
-变更交付，交付说明见各目录下 `交付说明.md`。
+排行榜（`add-leaderboard-module`）、压测与优化实录（`add-load-test-report`）、可观测性（`add-observability`）、
+规则灰度发布（`add-rule-grayscale`）均以独立 openspec 变更交付，交付说明见各目录下 `交付说明.md`。
 
 ## 后续变更（待办）
 
