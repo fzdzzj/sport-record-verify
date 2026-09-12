@@ -15,8 +15,8 @@
     "category": "阶段 2：规则快照",
     "task": "规则快照序列化与读取",
     "steps": [
-      { "step": "实现当前 VerifyProperties 阈值的 JSON 快照序列化（rules_json）", "completed": false },
-      { "step": "实现从 rules_json 反序列化为规则执行对象", "completed": false },
+      { "step": "实现当前 VerifyProperties 阈值的 JSON 快照序列化（rules_json）", "completed": true },
+      { "step": "实现从 rules_json 反序列化为规则执行对象", "completed": true },
       { "step": "Caffeine 缓存版本快照（key 含 version，短 TTL）", "completed": false }
     ],
     "passes": false
