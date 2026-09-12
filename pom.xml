@@ -45,6 +45,9 @@
         <rocketmq-spring.version>2.3.1</rocketmq-spring.version>
         <caffeine.version>3.1.8</caffeine.version>
         <lombok.version>1.18.30</lombok.version>
+        <!-- Micrometer：对齐 spring-boot-dependencies 3.2.4 内置的 micrometer.version（1.12.4），
+             升级 Boot 时需同步；见 dependencyManagement 中 micrometer-registry-prometheus 的说明 -->
+        <micrometer.version>1.12.4</micrometer.version>
 
         <!-- ===== 插件版本 ===== -->
         <maven-compiler-plugin.version>3.12.1</maven-compiler-plugin.version>
@@ -119,6 +122,21 @@
                 <groupId>org.projectlombok</groupId>
                 <artifactId>lombok</artifactId>
                 <version>${lombok.version}</version>
+            </dependency>
+
+            <!-- ===== 可观测性（Prometheus 指标导出，见 ADR-0003） =====
+                 micrometer-registry-prometheus：把 Spring Boot 内置 Micrometer 指标
+                 以 Prometheus 文本格式经 /actuator/prometheus 暴露。
+                 为何显式写版本：本父 pom 非 spring-boot-starter-parent，而是自行 import
+                 spring-boot-dependencies——Boot BOM 对该构件的版本经其内部 import 的
+                 micrometer-bom 传递；同 POM 内自声明的无版本条目会覆盖 import 展开的
+                 条目（Maven 实测 effective-pom 无版本），子模块随之报 version missing。
+                 故对齐 Boot 3.2.4 的 micrometer.version 显式锁 1.12.4，与 actuator 自带的
+                 micrometer-core 同源不漂移；升级 Boot 版本时同步更新 ${micrometer.version}。 -->
+            <dependency>
+                <groupId>io.micrometer</groupId>
+                <artifactId>micrometer-registry-prometheus</artifactId>
+                <version>${micrometer.version}</version>
             </dependency>
         </dependencies>
     </dependencyManagement>
