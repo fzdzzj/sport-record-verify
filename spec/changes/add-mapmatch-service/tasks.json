@@ -1,0 +1,73 @@
+[
+  {
+    "number": 1,
+    "category": "阶段 1：路网数据与存储",
+    "task": "PostGIS + OSM 路网导入",
+    "steps": [
+      { "step": "docker-compose 追加 postgis service（如 postgis/postgis:16-3.4）", "completed": true },
+      { "step": "编写路网导入脚本：下载单城市 OSM 路网（如上海切片 PBF）", "completed": true },
+      { "step": "导入路网到 PostGIS（道路边表，含 geometry/道路类型/等级）", "completed": true },
+      { "step": "建空间索引（GIST），验证幂等可重跑", "completed": true }
+    ],
+    "passes": true
+  },
+  {
+    "number": 2,
+    "category": "阶段 2：匹配服务骨架",
+    "task": "mapmatch-service 骨架 + 匹配接口",
+    "steps": [
+      { "step": "父 pom modules 加 mapmatch-service；新建模块 pom + MapMatchApplication（端口 8085）", "completed": true },
+      { "step": "application.yml：Nacos + PostGIS 数据源", "completed": true },
+      { "step": "api 模块定义 MapMatchApi + MapMatchResultDTO", "completed": true },
+      { "step": "实现 POST /mapmatch/match 入口 + 骨架返回", "completed": true }
+    ],
+    "passes": true
+  },
+  {
+    "number": 3,
+    "category": "阶段 3：匹配算法",
+    "task": "最近边投影 + 偏离度计算",
+    "steps": [
+      { "step": "实现最近道路边投影（空间索引查询候选边 → 点到线段垂距）", "completed": true },
+      { "step": "计算 matchedRatio / avgOffRoadDistance / maxOffRoadDistance / offRoadRatio", "completed": true },
+      { "step": "采样点限流（固定点数上限防超时）", "completed": true }
+    ],
+    "passes": true
+  },
+  {
+    "number": 4,
+    "category": "阶段 3：匹配算法",
+    "task": "R5 离路规则接入 verify",
+    "steps": [
+      { "step": "verify-service 新增 R5OffRoadRule（实现 Rule 接口，code=R5_OFFROAD）", "completed": true },
+      { "step": "R5 evaluate 内通过 MapMatchApi Feign 调 mapmatch", "completed": true },
+      { "step": "阈值 verify.rules.r5.* 纳入 VerifyProperties 与 Nacos 配置", "completed": true },
+      { "step": "MapMatchResultDTO 转为 RuleHit（offRoadRatio 超阈值 → SOFT/HARD）", "completed": true }
+    ],
+    "passes": true
+  },
+  {
+    "number": 5,
+    "category": "阶段 4：降级与熔断",
+    "task": "mapmatch 熔断降级",
+    "steps": [
+      { "step": "verify-service 为 MapMatchApi 配 Resilience4j 熔断（沿用 record 已验证模式）", "completed": true },
+      { "step": "mapmatch 不可用 → R5 降级不命中，记录 warn，不阻断校验", "completed": true },
+      { "step": "验证主链路不挂（对照 T11 熔断降级）", "completed": true }
+    ],
+    "passes": true
+  },
+  {
+    "number": 6,
+    "category": "阶段 5：验收",
+    "task": "端到端验收（真实 vs 悬浮轨迹）",
+    "steps": [
+      { "step": "mvn clean install 全量编译通过（8 模块）", "completed": true },
+      { "step": "真实沿路轨迹 → R5 不命中，PASSED", "completed": true },
+      { "step": "伪造悬浮轨迹（海面/楼顶/直线穿地块）→ R5 命中，REJECTED", "completed": true },
+      { "step": "mapmatch 停机 → 校验降级不挂，主链路正常", "completed": true },
+      { "step": "Nacos 可见 6 服务；README/速览/ADR（空间匹配选型）更新", "completed": true }
+    ],
+    "passes": true
+  }
+]
