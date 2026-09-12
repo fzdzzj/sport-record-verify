@@ -5,10 +5,10 @@
     "task": "RuleVersion 实体 + Mapper",
     "steps": [
       { "step": "定义 RuleVersion 实体（id/version/status/gray_ratio/rules_json/created_at）", "completed": true },
-      { "step": "定义 RuleVersionMapper（CRUD + 状态迁移 UPDATE）", "completed": false },
+      { "step": "定义 RuleVersionMapper（CRUD + 状态迁移 UPDATE）", "completed": true },
       { "step": "验证 rule_version 表与实体字段对齐", "completed": true }
     ],
-    "passes": false
+    "passes": true
   },
   {
     "number": 2,
