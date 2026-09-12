@@ -69,7 +69,7 @@ public class FriendService {
      * status=PENDING 的 friend_request。</p>
      */
     public FriendRequestDTO createRequest(Long userId, Long targetUserId) {
-        // —— 入参校验（骨架无认证，userId 由调用方显式携带；自申请属非法参数 → 400）
+        // —— 入参校验（userId 已从网关注入的 X-User-Id 认定身份，见 ADR-0007；自申请属非法参数 → 400）
         if (userId == null || targetUserId == null) {
             throw new IllegalArgumentException("userId 与 targetUserId 不能为空");
         }

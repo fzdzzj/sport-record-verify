@@ -7,8 +7,8 @@ import java.io.Serializable;
 /**
  * 点赞请求 DTO（POST /api/records/{id}/like 请求体）。
  *
- * <p>骨架无认证鉴权，点赞人 userId 由调用方显式携带
- * （与 record 域提交/申诉、user 域好友申请入参约定一致，接 JWT 后改从 token 解析）。</p>
+ * <p>身份认定（add-jwt-auth，见 ADR-0007）：userId 已改从<b>网关注入的 X-User-Id</b>读取，
+ * 本字段仅为兼容旧行为（auth.enabled=false）的显式携带值；true 时若与 token 身份不一致 → 403。</p>
  */
 @Data
 public class LikeRequestDTO implements Serializable {
