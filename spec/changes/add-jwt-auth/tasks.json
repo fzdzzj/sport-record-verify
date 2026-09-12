@@ -1,0 +1,71 @@
+[
+  {
+    "number": 1,
+    "category": "阶段 1：认证基础",
+    "task": "注册/登录 + BCrypt + JWT 工具",
+    "steps": [
+      { "step": "api 定义 AuthApi + RegisterRequestDTO/LoginRequestDTO/TokenDTO", "completed": false },
+      { "step": "user-service 实现 JwtUtil（HS256 签发/校验/解析 userId）", "completed": false },
+      { "step": "实现 POST /api/auth/register（BCrypt，手机号唯一 → 2001）", "completed": false },
+      { "step": "实现 POST /api/auth/login（校验密码，错 → 401 + 计失败）", "completed": false }
+    ],
+    "passes": false
+  },
+  {
+    "number": 2,
+    "category": "阶段 1：认证基础",
+    "task": "refresh token 轮换",
+    "steps": [
+      { "step": "实现 POST /api/auth/refresh（refresh 换新 access+refresh）", "completed": false },
+      { "step": "refresh token 存 Redis（TTL + 轮换作废旧 refresh）", "completed": false },
+      { "step": "复用 life-habit-assistant 的 rotation 做法（新旧短暂共存或原子替换）", "completed": false }
+    ],
+    "passes": false
+  },
+  {
+    "number": 3,
+    "category": "阶段 2：网关鉴权",
+    "task": "网关鉴权过滤器",
+    "steps": [
+      { "step": "gateway 新增 GlobalFilter 校验 Authorization，失败 401（1001）", "completed": false },
+      { "step": "解析 userId 注入 X-User-Id 头透传下游", "completed": false },
+      { "step": "白名单放行 /api/auth、/internal、/actuator", "completed": false }
+    ],
+    "passes": false
+  },
+  {
+    "number": 4,
+    "category": "阶段 3：数据隔离改造",
+    "task": "业务 controller 改从 X-User-Id 取 userId",
+    "steps": [
+      { "step": "record-service：提交/详情/点赞 userId 改从 X-User-Id", "completed": false },
+      { "step": "user-service：好友申请/列表 userId 改从 X-User-Id", "completed": false },
+      { "step": "leaderboard：好友榜 userId 改从 X-User-Id", "completed": false },
+      { "step": "越权访问他人资源 → 403（1002）", "completed": false }
+    ],
+    "passes": false
+  },
+  {
+    "number": 5,
+    "category": "阶段 3：数据隔离改造",
+    "task": "鉴权降级开关",
+    "steps": [
+      { "step": "auth.enabled 开关（默认 false 走显式携带 userId 旧行为）", "completed": false },
+      { "step": "开关 true 时强制鉴权与数据隔离", "completed": false }
+    ],
+    "passes": false
+  },
+  {
+    "number": 6,
+    "category": "阶段 4：验收",
+    "task": "端到端验收",
+    "steps": [
+      { "step": "mvn clean install 全量编译通过", "completed": false },
+      { "step": "注册→登录→拿 token→访问本人记录成功", "completed": false },
+      { "step": "无 token 访问受保护接口 → 401；越权访问他人 → 403", "completed": false },
+      { "step": "refresh token 刷新成功，旧 refresh 作废", "completed": false },
+      { "step": "README/速览/ADR（鉴权选型）更新", "completed": false }
+    ],
+    "passes": false
+  }
+]
