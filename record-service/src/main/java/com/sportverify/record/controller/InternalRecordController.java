@@ -1,13 +1,11 @@
 package com.sportverify.record.controller;
 
-import com.sportverify.api.record.dto.LeaderboardDTO;
 import com.sportverify.api.record.dto.LikeDTO;
 import com.sportverify.api.record.dto.LikeRequestDTO;
 import com.sportverify.api.record.dto.SportRecordDTO;
 import com.sportverify.api.record.dto.StatusCallbackDTO;
 import com.sportverify.api.record.dto.TrackPointDTO;
 import com.sportverify.common.result.Result;
-import com.sportverify.record.service.LeaderboardService;
 import com.sportverify.record.service.RecordLikeService;
 import com.sportverify.record.service.SportRecordService;
 import lombok.RequiredArgsConstructor;
@@ -26,7 +24,9 @@ import java.util.List;
  * record-api Feign 契约实现（接口与实现分离，规范「服务间 Feign 契约」）。
  *
  * <p>消费方 verify-service 经 RecordApi 调用：拉记录/拉轨迹/状态回调；
- * 点赞三接口（点赞/取消/查询）与榜单查询供后续变更跨服务取数。</p>
+ * 点赞三接口（点赞/取消/查询）供后续变更跨服务取数。
+ * 榜单查询契约已随榜单职责迁至 leaderboard-service（LeaderboardApi，
+ * 服务数 4→5，见 ADR-0005），本服务不再暴露榜单接口。</p>
  */
 @RestController
 @RequestMapping("/internal")
@@ -35,7 +35,6 @@ public class InternalRecordController {
 
     private final SportRecordService sportRecordService;
     private final RecordLikeService recordLikeService;
-    private final LeaderboardService leaderboardService;
 
     /** 记录详情（含乐观锁版本，供回调携带） */
     @GetMapping("/records/{recordId}")
@@ -76,13 +75,5 @@ public class InternalRecordController {
     public Result<LikeDTO> getRecordLike(@PathVariable("recordId") Long recordId,
                                          @RequestParam("userId") Long userId) {
         return Result.success(recordLikeService.getLike(recordId, userId));
-    }
-
-    /** 榜单查询（Feign 契约实现，审批版 §4.5；与公开端点共用 LeaderboardService） */
-    @GetMapping("/leaderboard")
-    public Result<List<LeaderboardDTO>> leaderboard(@RequestParam("type") String type,
-                                                    @RequestParam(value = "userId", required = false) Long userId,
-                                                    @RequestParam(value = "size", defaultValue = "50") int size) {
-        return Result.success(leaderboardService.top(type, userId, size));
     }
 }

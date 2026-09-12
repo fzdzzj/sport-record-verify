@@ -1,6 +1,5 @@
 package com.sportverify.api.record;
 
-import com.sportverify.api.record.dto.LeaderboardDTO;
 import com.sportverify.api.record.dto.LikeDTO;
 import com.sportverify.api.record.dto.LikeRequestDTO;
 import com.sportverify.api.record.dto.SportRecordDTO;
@@ -21,7 +20,9 @@ import java.util.List;
  * record-service Feign 契约（record-api，接口与实现分离）。
  *
  * <p>消费方为 verify-service：判定前拉取记录与轨迹，判定/终判后回调状态迁移。
- * 实现位于 record-service 的 InternalRecordController（{@code /internal} 前缀）。</p>
+ * 实现位于 record-service 的 InternalRecordController（{@code /internal} 前缀）。
+ * 榜单查询契约已迁出至 {@link com.sportverify.api.leaderboard.LeaderboardApi}
+ * （榜单职责独立为 leaderboard-service，服务数 4→5，见 ADR-0005）。</p>
  */
 @FeignClient(name = "record-service", path = "/internal")
 public interface RecordApi {
@@ -77,16 +78,4 @@ public interface RecordApi {
     @GetMapping("/records/{recordId}/like")
     Result<LikeDTO> getRecordLike(@PathVariable("recordId") Long recordId,
                                   @RequestParam("userId") Long userId);
-
-    /**
-     * 榜单查询（审批版 §4.5，实现位于 record-service，与公开端点共用服务层）。
-     *
-     * @param type   overall 总榜 / friend 好友榜
-     * @param userId 查询人（friend 榜必填：按其好友列表过滤 ZSet；overall 忽略）
-     * @param size   取前 N 名（榜单读多写少：ZREVRANGE 秒级）
-     */
-    @GetMapping("/leaderboard")
-    Result<List<LeaderboardDTO>> leaderboard(@RequestParam("type") String type,
-                                             @RequestParam(value = "userId", required = false) Long userId,
-                                             @RequestParam(value = "size", defaultValue = "50") int size);
 }

@@ -10,7 +10,7 @@
         <version>0.1.0-SNAPSHOT</version>
     </parent>
 
-    <!-- record-service：运动记录提交/查询 + 榜单/点赞（骨架阶段仅空壳） -->
+    <!-- record-service：运动记录提交/查询 + 点赞（榜单职责已拆分至 leaderboard-service，见 ADR-0005） -->
     <artifactId>sport-verify-record-service</artifactId>
     <name>sport-verify-record-service</name>
 
@@ -93,7 +93,7 @@
             <artifactId>shardingsphere-jdbc-core</artifactId>
         </dependency>
 
-        <!-- 消息：RocketMQ（记录事件/榜单事件，骨架阶段仅接入） -->
+        <!-- 消息：RocketMQ（记录事件发布 SUBMITTED；榜单事件消费已迁至 leaderboard-service） -->
         <dependency>
             <groupId>org.apache.rocketmq</groupId>
             <artifactId>rocketmq-spring-boot-starter</artifactId>
