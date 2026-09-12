@@ -1,0 +1,59 @@
+[
+  {
+    "number": 1,
+    "category": "阶段 1：数据访问",
+    "task": "RuleVersion 实体 + Mapper",
+    "steps": [
+      { "step": "定义 RuleVersion 实体（id/version/status/gray_ratio/rules_json/created_at）", "completed": true },
+      { "step": "定义 RuleVersionMapper（CRUD + 状态迁移 UPDATE）", "completed": false },
+      { "step": "验证 rule_version 表与实体字段对齐", "completed": true }
+    ],
+    "passes": false
+  },
+  {
+    "number": 2,
+    "category": "阶段 2：规则快照",
+    "task": "规则快照序列化与读取",
+    "steps": [
+      { "step": "实现当前 VerifyProperties 阈值的 JSON 快照序列化（rules_json）", "completed": false },
+      { "step": "实现从 rules_json 反序列化为规则执行对象", "completed": false },
+      { "step": "Caffeine 缓存版本快照（key 含 version，短 TTL）", "completed": false }
+    ],
+    "passes": false
+  },
+  {
+    "number": 3,
+    "category": "阶段 3：灰度路由",
+    "task": "灰度采样路由",
+    "steps": [
+      { "step": "校验入口按 userId%100 < gray_ratio 选择灰/基线版本", "completed": false },
+      { "step": "灰度分支读库内快照，基线分支读 Nacos/默认配置", "completed": false },
+      { "step": "保证同一 userId 采样稳定（userId%100 恒定）", "completed": false }
+    ],
+    "passes": false
+  },
+  {
+    "number": 4,
+    "category": "阶段 4：回滚与全量",
+    "task": "秒级回滚 + 全量发布",
+    "steps": [
+      { "step": "实现 gray_ratio=0 秒级回滚（短 TTL 缓存失效）", "completed": false },
+      { "step": "实现 gray_ratio=100 全量发布 + 旧版本 RETIRED", "completed": false },
+      { "step": "版本状态迁移约束（同一时刻至多一个 ACTIVE）", "completed": false }
+    ],
+    "passes": false
+  },
+  {
+    "number": 5,
+    "category": "阶段 5：接口与验收",
+    "task": "版本管理接口 + 验收",
+    "steps": [
+      { "step": "实现 POST /verify/rules/versions（创建）+ PATCH 调灰度 + POST activate 全量", "completed": false },
+      { "step": "验收：gray_ratio=10 建版本 → userId%100 命中/未命中分支验证", "completed": false },
+      { "step": "验收：异常设 gray_ratio=0 秒回滚，灰度不再被采样", "completed": false },
+      { "step": "验收：稳定后全量，旧版本 RETIRED", "completed": false },
+      { "step": "mvn clean install 编译通过 + 端到端冒烟", "completed": false }
+    ],
+    "passes": false
+  }
+]
