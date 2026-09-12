@@ -1,9 +1,12 @@
 # ============================================================
-# 运动记录真实性校验系统 · 中间件一键编排
+# 运动记录真实性校验系统 · 中间件与监控栈一键编排
 # 用法：docker compose up -d     （首次会拉取镜像，稍候）
 #       docker compose down      （停止并移除容器，数据卷保留）
 # 编排内容：Nacos 2.3.2 / MySQL 8（user_db·record_db·verify_db 三库）/ Redis 7 / RocketMQ 5
-# 说明：MySQL 采用单实例三库（逻辑独立），如需物理隔离拆成三个 service 即可（见 ADR-0001）
+#           + Prometheus 2.51（抓取与告警）/ Grafana 10.4（面板，provisioning 预置）
+# 说明：MySQL 采用单实例三库（逻辑独立），如需物理隔离拆成三个 service 即可（见 ADR-0001）；
+#       监控栈见 ADR-0003——本地内存预算吃紧时可先 docker compose up -d prometheus 前的五件套，
+#       prometheus/grafana 单独按需拉起
 # ============================================================
 name: sport-verify
 
@@ -120,8 +123,52 @@ services:
     networks:
       - sport-verify-net
 
+  # ---------- Prometheus：指标抓取 + 告警规则评估（可观测性变更，见 ADR-0003） ----------
+  prometheus:
+    image: prom/prometheus:v2.51.2
+    container_name: sport-verify-prometheus
+    # 四个 Java 服务是宿主机 java -jar 进程（不在 compose 内），抓取 target 配的
+    # host.docker.internal 在 Docker Desktop 原生可用；host-gateway 映射保证
+    # 迁到 Linux 宿主机同样能从容器内解析到宿主机地址
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+      # 本地演示 7 天数据足够，限制 TSDB 磁盘/内存占用（宿主机内存预算 3-4GB 口径）
+      - --storage.tsdb.retention.time=7d
+    volumes:
+      # 抓取配置（四个服务 job）与告警规则（实例下线/错误率/P95/堆）一并挂入
+      - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./prometheus/alert-rules.yml:/etc/prometheus/alert-rules.yml:ro
+      - prometheus-data:/prometheus
+    ports:
+      - "9090:9090"   # 控制台与查询 API（Targets / Alerts / Graph）
+    networks:
+      - sport-verify-net
+
+  # ---------- Grafana：可视化面板（数据源与面板 provisioning 预置，零手工配置） ----------
+  grafana:
+    image: grafana/grafana:10.4.2
+    container_name: sport-verify-grafana
+    environment:
+      # 本地演示固定账号密码；生产环境改走密钥管理/SSO，勿硬编码
+      - GF_SECURITY_ADMIN_USER=admin
+      - GF_SECURITY_ADMIN_PASSWORD=admin
+    volumes:
+      # 左：数据源 + dashboard provider 预置；右：预置面板 JSON（8 面板总览）
+      - ./grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./grafana/dashboards:/var/lib/grafana/dashboards:ro
+    ports:
+      - "3000:3000"   # 控制台（admin/admin，登录后打开预置面板「全局监控总览」）
+    depends_on:
+      - prometheus
+    networks:
+      - sport-verify-net
+
 volumes:
   mysql-data:
+  # Prometheus TSDB 持久化：down 不掉监控历史，up 期间实例下线告警才有历史可比
+  prometheus-data:
 
 networks:
   sport-verify-net:

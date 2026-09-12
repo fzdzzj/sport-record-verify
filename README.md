@@ -63,6 +63,30 @@ java -jar verify-service/target/sport-verify-verify-service-0.1.0-SNAPSHOT.jar
 > 宿主机 3306 被本机 MySQL 占用时：仓库根目录建 `.env` 写入 `MYSQL_PORT=3307`（compose 与四个服务
 > 的数据源端口均已参数化，默认仍 3306），服务侧同名变量见 `scripts/perf/run-perf.sh`。
 
+## 监控与告警（Prometheus + Grafana，选型理由见 [ADR-0003](docs/adr/0003-监控选型.md)）
+
+`docker compose up -d` 已包含监控栈（prometheus:9090 / grafana:3000），无需额外命令。各服务经
+`/actuator/prometheus` 暴露 Micrometer 指标（JVM / HTTP / 连接池），Prometheus 抓取宿主机
+`host.docker.internal:8080-8083`（服务以宿主机进程运行；容器化后改 target 为服务名即可，见 prometheus.yml 注释）。
+
+| 访问入口 | 地址 | 说明 |
+| --- | --- | --- |
+| Prometheus 控制台 | http://127.0.0.1:9090 | Status → Targets 看抓取状态；Alerts 看告警 firing/pending |
+| Grafana 面板 | http://127.0.0.1:3000 | 账号 `admin/admin`，打开预置面板「运动记录校验系统 · 全局监控总览」 |
+| 指标端点（示例） | `curl http://127.0.0.1:8081/actuator/prometheus` | 任意服务均可，含 `jvm_` / `http_server_requests_` 前缀指标 |
+
+预置面板 8 块：服务可用性（up）、HTTP QPS、P95 延迟（200ms 红线，对齐审批版 §8.2）、5xx 错误率（5% 红线）、
+JVM 堆已用/上限、GC 暂停速率、HikariCP 连接池、JVM 线程数；数据源与面板均 provisioning 预置，零手工配置。
+
+告警规则（`prometheus/alert-rules.yml`，firing 目前在 Prometheus 控制台可见，通知渠道 Alertmanager 属后续项）：
+
+| 告警 | 条件 | 级别 |
+| --- | --- | --- |
+| ServiceInstanceDown | `up == 0` 连续 1 分钟（停任一服务即可演示 firing） | critical |
+| HttpErrorRateHigh | 5xx 占比 >5% 连续 2 分钟 | warning |
+| HttpP95LatencyHigh | P95 >200ms 连续 2 分钟（§8.2 延迟预算） | warning |
+| JvmHeapUsageHigh | 堆使用率 >80% 连续 5 分钟 | warning |
+
 ## 压测结果摘要（完整数据与因果见 [docs/perf/压测报告.md](docs/perf/压测报告.md) / [ADR-0002](docs/adr/0002-压测与优化实录.md)）
 
 本地单机实测（Ultra 7 255HX / 15.4GB / Docker Desktop；环境快照与口径见报告 §2）：
@@ -87,7 +111,7 @@ bash scripts/perf/run-perf.sh start-services
 bash scripts/perf/run-perf.sh quality base && bash scripts/perf/run-perf.sh load 100 2000 base
 ```
 
-## 关键决策（详见 [ADR-0001](docs/adr/0001-版本矩阵与技术选型.md) / [ADR-0002 压测与优化实录](docs/adr/0002-压测与优化实录.md)）
+## 关键决策（详见 [ADR-0001](docs/adr/0001-版本矩阵与技术选型.md) / [ADR-0002 压测与优化实录](docs/adr/0002-压测与优化实录.md) / [ADR-0003 监控选型](docs/adr/0003-监控选型.md)）
 
 - 版本矩阵锁定：**Java 21 + Boot 3.2.4 + Cloud 2023.0.1 + SCA 2023.0.1.0**（不升 Boot 3.3，SCA 2023 分支不兼容）。
 - Nacos 2.3.2 同时承担注册中心与配置中心（`spring.config.import: optional:nacos:*`，Nacos 不可用不阻塞启动）。
@@ -104,6 +128,8 @@ docs/           需求文档与 ADR；docs/perf/ 压测报告与原始数据（d
 scripts/perf/   压测工具（零依赖 JDK21 单文件程序）与一键驱动脚本
 sql/            各库幂等建表脚本（docker-entrypoint-initdb.d 首次自动执行）+ migrations/ 手动迁移
 rocketmq/       Broker 本地配置
+prometheus/     抓取配置（prometheus.yml，四服务 job + leaderboard 空位）与告警规则（alert-rules.yml）
+grafana/        数据源/面板 provider 预置（provisioning/）与预置面板 JSON（dashboards/）
 ```
 
 ## 变更交付
