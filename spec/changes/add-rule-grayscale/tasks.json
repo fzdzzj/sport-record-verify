@@ -48,12 +48,12 @@
     "category": "阶段 5：接口与验收",
     "task": "版本管理接口 + 验收",
     "steps": [
-      { "step": "实现 POST /verify/rules/versions（创建）+ PATCH 调灰度 + POST activate 全量", "completed": false },
-      { "step": "验收：gray_ratio=10 建版本 → userId%100 命中/未命中分支验证", "completed": false },
-      { "step": "验收：异常设 gray_ratio=0 秒回滚，灰度不再被采样", "completed": false },
-      { "step": "验收：稳定后全量，旧版本 RETIRED", "completed": false },
-      { "step": "mvn clean install 编译通过 + 端到端冒烟", "completed": false }
+      { "step": "实现 POST /verify/rules/versions（创建）+ PATCH 调灰度 + POST activate 全量", "completed": true },
+      { "step": "验收：gray_ratio=10 建版本 → userId%100 命中/未命中分支验证", "completed": true },
+      { "step": "验收：异常设 gray_ratio=0 秒回滚，灰度不再被采样", "completed": true },
+      { "step": "验收：稳定后全量，旧版本 RETIRED", "completed": true },
+      { "step": "mvn clean install 编译通过 + 端到端冒烟", "completed": true }
     ],
-    "passes": false
+    "passes": true
   }
 ]
