@@ -16,7 +16,7 @@ import lombok.NoArgsConstructor;
 @AllArgsConstructor
 public class RuleHit {
 
-    /** 规则编码：R1_SPEED / R2_ACCEL / R3_STAY / R4_DISTANCE / PREPROCESS_SUSPICIOUS */
+    /** 规则编码：R1_SPEED / R2_ACCEL / R3_STAY / R4_DISTANCE / R5_OFFROAD / PREPROCESS_SUSPICIOUS */
     private String rule;
 
     /** 级别：HARD / SOFT */

@@ -33,6 +33,8 @@ public class VerifyProperties {
         private R3 r3 = new R3();
         /** R4 距离一致性规则 */
         private R4 r4 = new R4();
+        /** R5 离路规则（空间真实性，远程调 mapmatch-service，见 ADR-0006） */
+        private R5 r5 = new R5();
     }
 
     @Data
@@ -73,5 +75,23 @@ public class VerifyProperties {
     public static class R4 {
         /** 累计轨迹距离 / 起终点直线距离 比值阈值 */
         private double maxRatio = 3.0;
+    }
+
+    @Data
+    public static class R5 {
+        /**
+         * SOFT 阈值：离路比例（offRoadRatio，0-1）超过该值记软证据。
+         * 依据：真实轨迹绝大多数点吸附在路网上（mapmatch 吸附阈值 25m 已含 GPS 误差与
+         * 路网画线余量），城区沿路轨迹实测 offRoadRatio≈0；50% 为作弊判定下限的同时，
+         * 给沿河绿道/公园弱路网区留足余量（R5 误判治理见 ADR-0006）
+         */
+        private double offRoadRatio = 0.5;
+        /**
+         * HARD 阈值：离路比例超过该值升级硬证据（整段悬浮海面/楼顶/无路网区，
+         * 作弊特征明确直接拒绝）；HARD-SOFT 之间为灰度观察带
+         */
+        private double hardOffRoadRatio = 0.8;
+        /** 最小匹配点数：有效点低于该值跳过 R5（短轨迹匹配无统计意义，防误判） */
+        private int minPoints = 5;
     }
 }

@@ -17,7 +17,8 @@ import java.util.List;
 /**
  * 校验引擎（审批版 §5.2 / 规范「规则链判定」「判定聚合」）。
  *
- * <p>流水线：预处理漂移过滤 → 规则链 R1-R4 按序执行（收集全部命中）→ 判定聚合 + 评分。</p>
+ * <p>流水线：预处理漂移过滤 → 规则链 R1-R5 按序执行（收集全部命中）→ 判定聚合 + 评分。
+ * R1-R4 为本地计算，R5 远程调 mapmatch-service 做路网匹配（不可用时降级不命中，见 ADR-0006）。</p>
  *
  * <p>判定聚合（规范「判定聚合」）：</p>
  * <ul>
@@ -35,7 +36,7 @@ public class VerifyEngine {
     /** 预处理漂移过滤 */
     private final TrackPreprocessor preprocessor;
 
-    /** 规则链（R1-R4，@Order 保证按序执行；PREPROCESS_SUSPICIOUS 由引擎先于规则链汇总） */
+    /** 规则链（R1-R5，@Order 保证按序执行；PREPROCESS_SUSPICIOUS 由引擎先于规则链汇总） */
     private final List<Rule> rules;
 
     /**

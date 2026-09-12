@@ -53,6 +53,11 @@ verify:
       segment-ratio: 0.4   # 停留段总时长占比阈值（>40% 命中）
     r4:
       max-ratio: 3.0       # 累计轨迹距离 / 起终点直线距离 比值阈值
+    r5:
+      # 离路规则（空间真实性，R5 经 Feign 调 mapmatch-service 匹配 OSM 路网，见 ADR-0006）
+      off-road-ratio: 0.5  # SOFT 阈值：离路点占比 >50% 记软证据（真实沿路轨迹实测≈0，50% 给弱路网场景留余量）
+      hard-off-road-ratio: 0.8 # HARD 阈值：>80% 即整段悬浮（海面/楼顶），升级硬证据直接拒绝
+      min-points: 5        # 有效点数下限：短轨迹不执行 R5（无统计意义防误判）
   policy:
     soft-only-reject: true # 仅 SOFT 命中默认 REJECTED（宽松开关属后续灰度变更，本变更仅提供配置项）
 
