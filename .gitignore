@@ -43,3 +43,13 @@ nacos-data/
 # ===== 压测生成物（可由 scripts/perf/GenSamples.java 重新生成，不入库） =====
 docs/perf/data/*.jsonl
 docs/perf/data/load-template.json
+docs/perf/data/raw/
+
+# ===== 临时文档提取产物（不入库） =====
+.tmp_doc_style/
+
+# ===== 运动健康助手旧材料（改造前历史，非本项目，不入库） =====
+docs/运动健康助手*.docx
+docs/运动健康助手*.pdf
+docs/运动健康助手*.md
+docs/project-task-prompt-v3.2.md
