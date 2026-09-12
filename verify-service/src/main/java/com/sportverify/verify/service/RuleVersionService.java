@@ -11,9 +11,14 @@ import com.sportverify.verify.entity.RuleVersionStatus;
 import com.sportverify.verify.mapper.RuleVersionMapper;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.redisson.api.RTopic;
+import org.redisson.api.RedissonClient;
+import org.redisson.client.codec.StringCodec;
 import org.springframework.dao.DuplicateKeyException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
@@ -29,18 +34,25 @@ import java.util.function.Supplier;
  * <p>读路径全部经 Caffeine（写入 1 分钟过期，即规范「≤60s」上限）：
  * 路由行两把 key（灰度/基线）+ 每版本快照 key（{@code verify:rules:v{version}}），
  * 命中即不查库。版本生命周期操作（调比例/全量）负责失效路由 key——本实例立即生效，
- * 其余实例靠 TTL 收敛，这是回滚延迟的上界。</p>
+ * 其余实例经 Redis 广播即时失效（广播不可用时退化为 TTL 收敛）。</p>
  */
 @Slf4j
 @Service
 @RequiredArgsConstructor
 public class RuleVersionService {
 
-    /** 灰度路由缓存 key：缓存「当前采样中灰度版本」整行（含 gray_ratio），回滚/调比例后必须失效 */
-    private static final String KEY_GRAY_ROUTE = "verify:rules:gray";
+    /**
+     * 规则缓存失效广播 topic（Redis pub/sub，跨实例扇出）。
+     * 灰度比例/版本状态缓存在各实例本地，管理操作须通知全部实例失效，见
+     * {@code RuleCacheInvalidationListener}。
+     */
+    public static final String RULE_CACHE_TOPIC = "verify:rules:invalidate";
 
-    /** 基线路由缓存 key：缓存「当前 ACTIVE 版本」整行，全量发布后必须失效 */
-    private static final String KEY_ACTIVE_ROUTE = "verify:rules:active";
+    /** 灰度路由缓存 key（公开：失效广播订阅者复用同一失效对象） */
+    public static final String KEY_GRAY_ROUTE = "verify:rules:gray";
+
+    /** 基线路由缓存 key（同上） */
+    public static final String KEY_ACTIVE_ROUTE = "verify:rules:active";
 
     /** 版本快照缓存 key 前缀：key 含版本号（rules:v{version}），版本间快照互不混淆 */
     private static final String KEY_SNAPSHOT_PREFIX = "verify:rules:v";
@@ -51,6 +63,7 @@ public class RuleVersionService {
     private final RuleVersionMapper ruleVersionMapper;
     private final Cache<String, Object> caffeineCache;
     private final VerifyProperties verifyProperties;
+    private final RedissonClient redissonClient;
 
     /**
      * 取 userId 当前应用的规则集（校验入口每次判定调用）：
@@ -102,7 +115,7 @@ public class RuleVersionService {
         } catch (DuplicateKeyException e) {
             throw new BizException(ResultCode.RULE_VERSION_CONFLICT, "版本号已存在：" + version.getVersion());
         }
-        invalidateRouteCache();
+        invalidateRouteCache(version.getId());
         return version;
     }
 
@@ -128,7 +141,7 @@ public class RuleVersionService {
         if (ruleVersionMapper.updateGrayRatio(id, grayRatio) == 0) {
             throw new BizException(ResultCode.RULE_VERSION_STATUS_INVALID, "并发冲突：版本状态已变更");
         }
-        invalidateRouteCache();
+        invalidateRouteCache(version.getId());
         return mustGet(id);
     }
 
@@ -154,7 +167,7 @@ public class RuleVersionService {
         if (ruleVersionMapper.promoteToActive(id) == 0) {
             throw new BizException(ResultCode.RULE_VERSION_STATUS_INVALID, "并发冲突：版本状态已变更");
         }
-        invalidateRouteCache();
+        invalidateRouteCache(version.getId());
         return mustGet(id);
     }
 
@@ -191,12 +204,38 @@ public class RuleVersionService {
     }
 
     /**
-     * 失效灰度/基线路由缓存：生命周期操作后本实例立即生效，
-     * 其余实例靠 ≤60s TTL 收敛（回滚延迟上界）。快照 key 不失效——快照落库后不可变。
+     * 失效灰度/基线路由缓存并广播：本实例立即生效，其余实例经 Redis 广播即时失效，
+     * 回滚秒级全网收敛（Redis 不可用时广播降级为 ≤60s TTL 收敛，不产生新故障面）。
+     * 快照 key 不失效——快照落库后不可变。
+     *
+     * <p>广播必须在 DB 提交后发出：否则其他实例先收到广播、重查到旧状态回填缓存，
+     * 反而把旧值续命一个 TTL。activate 处于事务内，经 afterCommit 同步器挂到提交后
+     * （与 record-service「事务提交后发事件」同一手法）；非事务路径直接发。</p>
      */
-    private void invalidateRouteCache() {
+    private void invalidateRouteCache(Long versionId) {
         caffeineCache.invalidate(KEY_GRAY_ROUTE);
         caffeineCache.invalidate(KEY_ACTIVE_ROUTE);
+        if (TransactionSynchronizationManager.isSynchronizationActive()) {
+            TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+                @Override
+                public void afterCommit() {
+                    broadcastInvalidation(versionId);
+                }
+            });
+        } else {
+            broadcastInvalidation(versionId);
+        }
+    }
+
+    /** 发布失效广播（负载为版本 id，便于订阅侧日志定位；失败仅告警不阻断管理操作） */
+    private void broadcastInvalidation(Long versionId) {
+        try {
+            RTopic topic = redissonClient.getTopic(RULE_CACHE_TOPIC, StringCodec.INSTANCE);
+            topic.publish(String.valueOf(versionId));
+            log.info("规则缓存失效广播已发送：versionId={}", versionId);
+        } catch (Exception e) {
+            log.warn("规则缓存失效广播发送失败，跨实例退化为 TTL 收敛：versionId={}", versionId, e);
+        }
     }
 
     /** 按 id 取版本，不存在报 4002（管理端显式 404 语义） */

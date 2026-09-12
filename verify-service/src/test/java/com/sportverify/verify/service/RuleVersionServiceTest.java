@@ -9,6 +9,8 @@ import com.sportverify.verify.entity.RuleVersion;
 import com.sportverify.verify.entity.RuleVersionStatus;
 import com.sportverify.verify.mapper.RuleVersionMapper;
 import org.junit.jupiter.api.Test;
+import org.redisson.api.RTopic;
+import org.redisson.api.RedissonClient;
 import org.springframework.dao.DuplicateKeyException;
 
 import java.time.Duration;
@@ -19,6 +21,7 @@ import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
@@ -37,8 +40,18 @@ class RuleVersionServiceTest {
     /** 基线阈值（Nacos 实时配置代身）：R1 速度默认 5.5 */
     private final VerifyProperties live = new VerifyProperties();
     private final RuleVersionMapper mapper = mock(RuleVersionMapper.class);
+    /** Redis 广播代身：getTopic 打桩到 mock topic，验证生命周期操作发出失效广播 */
+    private final RTopic topic = mock(RTopic.class);
     private final RuleVersionService service = new RuleVersionService(mapper,
-            Caffeine.newBuilder().expireAfterWrite(Duration.ofMinutes(1)).build(), live);
+            Caffeine.newBuilder().expireAfterWrite(Duration.ofMinutes(1)).build(), live,
+            stubRedisson());
+
+    /** RedissonClient 打桩：任意 topic 名都返回同一 mock，便于 verify(publish) */
+    private RedissonClient stubRedisson() {
+        RedissonClient client = mock(RedissonClient.class);
+        when(client.getTopic(anyString(), any())).thenReturn(topic);
+        return client;
+    }
 
     /** 构造 GRAY 版本：快照 R1 速度 6.6（与基线可区分） */
     private static RuleVersion grayVersion(int ratio) {
@@ -129,6 +142,16 @@ class RuleVersionServiceTest {
 
         assertEquals(5.5, service.getActiveRulesForUser(105L).getRules().getR1().getSpeed(),
                 "回滚后须立即回归基线（本实例缓存失效）");
+    }
+
+    /** 回滚须向 Redis 广播失效事件（跨实例秒级收敛），负载为版本 id */
+    @Test
+    void rollback_broadcastsInvalidation() {
+        RuleVersion gray = grayVersion(10);
+        when(mapper.selectById(2L)).thenReturn(gray);
+        when(mapper.updateGrayRatio(2L, 0)).thenReturn(1);
+        service.updateGrayRatio(2L, 0);
+        verify(topic).publish("2");
     }
 
     /** 全量生效（规范「全量生效」「旧版本退役」）：activate 后全部用户（含原未命中者）走新基线 */
