@@ -11,7 +11,7 @@
     </parent>
 
     <!-- api 模块：服务间 Feign 契约（接口与实现分离）
-         三个包：record-api / verify-api / user-api
+         四个包：record-api / verify-api / user-api / leaderboard-api
          任何跨服务调用只允许走本模块接口，禁止直连实例地址 -->
     <artifactId>sport-verify-api</artifactId>
     <name>sport-verify-api</name>
