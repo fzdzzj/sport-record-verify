@@ -8,7 +8,7 @@
     <!-- 父工程：运动记录真实性校验系统
          职责：
          1. 集中锁定版本矩阵（审批版 §3.3，Java21/Boot3.2.4/Cloud2023.0.1/SCA2023.0.1.0）
-         2. 声明 7 个子模块（common/api/gateway/user/record/verify/leaderboard）
+         2. 声明 8 个子模块（common/api/gateway/user/record/verify/leaderboard/mapmatch）
          3. 统一编译参数（release 21、UTF-8、-parameters）与 JDK 版本强校验 -->
     <groupId>com.sportverify</groupId>
     <artifactId>sport-verify-parent</artifactId>
@@ -26,6 +26,7 @@
         <module>record-service</module>
         <module>verify-service</module>
         <module>leaderboard-service</module>
+        <module>mapmatch-service</module>
     </modules>
 
     <properties>
@@ -42,6 +43,10 @@
         <spring-cloud-alibaba.version>2023.0.1.0</spring-cloud-alibaba.version>
         <mybatis-plus.version>3.5.7</mybatis-plus.version>
         <shardingsphere.version>5.4.1</shardingsphere.version>
+        <!-- PostgreSQL JDBC：mapmatch-service 的 PostGIS 路网数据源驱动（add-mapmatch-service）。
+             Boot BOM 虽传递管理该构件版本，此处显式锁 42.7.x 与版本矩阵同哲学——
+             驱动升级不随 Boot 版本隐式漂移 -->
+        <postgresql.version>42.7.3</postgresql.version>
         <redisson.version>3.27.2</redisson.version>
         <rocketmq-spring.version>2.3.1</rocketmq-spring.version>
         <caffeine.version>3.1.8</caffeine.version>
@@ -98,6 +103,12 @@
                 <groupId>com.baomidou</groupId>
                 <artifactId>mybatis-plus-spring-boot3-starter</artifactId>
                 <version>${mybatis-plus.version}</version>
+            </dependency>
+            <!-- PostgreSQL JDBC 驱动（mapmatch-service 专用）：连接 PostGIS 路网库 road_db -->
+            <dependency>
+                <groupId>org.postgresql</groupId>
+                <artifactId>postgresql</artifactId>
+                <version>${postgresql.version}</version>
             </dependency>
             <dependency>
                 <groupId>org.apache.shardingsphere</groupId>

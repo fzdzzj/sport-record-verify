@@ -1,0 +1,83 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <parent>
+        <groupId>com.sportverify</groupId>
+        <artifactId>sport-verify-parent</artifactId>
+        <version>0.1.0-SNAPSHOT</version>
+    </parent>
+
+    <!-- mapmatch-service：道路拓扑匹配微服务（第 6 个服务，服务数 5→6，见 ADR-0006）
+         职责：承载真实 OSM 路网（PostGIS）+ 最近边投影匹配算法，暴露 POST /match；
+         verify-service 的 R5 离路规则经 MapMatchApi(Feign) 远程调用本服务计算偏离路网比例 -->
+    <artifactId>sport-verify-mapmatch-service</artifactId>
+    <name>sport-verify-mapmatch-service</name>
+
+    <dependencies>
+        <!-- 内部模块 -->
+        <dependency>
+            <groupId>com.sportverify</groupId>
+            <artifactId>sport-verify-common</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>com.sportverify</groupId>
+            <artifactId>sport-verify-api</artifactId>
+        </dependency>
+
+        <!-- Spring Boot / Cloud 基础 -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-web</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-actuator</artifactId>
+        </dependency>
+        <!-- Prometheus 指标导出（可观测性，见 ADR-0003）：版本由父 pom BOM 管理 -->
+        <dependency>
+            <groupId>io.micrometer</groupId>
+            <artifactId>micrometer-registry-prometheus</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>com.alibaba.cloud</groupId>
+            <artifactId>spring-cloud-starter-alibaba-nacos-discovery</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>com.alibaba.cloud</groupId>
+            <artifactId>spring-cloud-starter-alibaba-nacos-config</artifactId>
+        </dependency>
+
+        <!-- 数据访问：JdbcTemplate + PostGIS。
+             为何不用 MyBatis-Plus：路网表核心字段是 geometry 空间类型，匹配查询依赖
+             ST_DWithin/ST_AsText 等空间函数（走 GIST 索引），ORM 实体映射收益低，
+             直接 JdbcTemplate 手写空间 SQL 更透明（见 ADR-0006） -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-jdbc</artifactId>
+        </dependency>
+        <!-- PostgreSQL JDBC 驱动：PostGIS 是 PostgreSQL 扩展，用 PG 协议驱动连接 -->
+        <dependency>
+            <groupId>org.postgresql</groupId>
+            <artifactId>postgresql</artifactId>
+            <scope>runtime</scope>
+        </dependency>
+
+        <dependency>
+            <groupId>org.projectlombok</groupId>
+            <artifactId>lombok</artifactId>
+            <scope>provided</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-test</artifactId>
+            <scope>test</scope>
+        </dependency>
+    </dependencies>
+
+    <!-- 打包插件（spring-boot repackage + lombok 排除）随 Step2 与启动类一并加入：
+         repackage 要求主类存在，骨架阶段先以普通 jar 编译保持可构建 -->
+
+</project>
