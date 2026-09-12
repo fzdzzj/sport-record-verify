@@ -9,15 +9,15 @@
 ```
                          ┌──────────────────────────────┐
                          │      gateway-service:8080     │  Spring Cloud Gateway + Sentinel 网关限流(5k QPS 基线)
-                         └───────┬──────────┬───────────┘
-                /user/**         │ /record/**│  /verify/**
-        ┌────────┴────────┐ ┌────┴─────────┐ └───────┴────────┐
-        │  user-service   │ │record-service│ │  verify-service│
-        │      :8081      │ │    :8082     │ │     :8083      │
-        └────────┬────────┘ └──────┬───────┘ └───────┬────────┘
-        user_db (MySQL)   record_db(MySQL)  verify_db(MySQL)
-        Redisson(Redis)   ShardingSphere*    RocketMQ* / Caffeine
-                          RocketMQ* / Caffeine
+                         └──┬─────────┬─────────┬─────┬─┘
+              /user/**      │/record/**│/verify/**│     │ /leaderboard/**
+        ┌────────┴────────┐ ┌────┴─────────┐└────┴─────┐└──────┴──────────┐
+        │  user-service   │ │record-service│ │verify-service│  │ leaderboard-service │
+        │      :8081      │ │    :8082     │ │    :8083     │  │       :8084         │
+        └────────┬────────┘ └──────┬───────┘ └──────┬───────┘  └─────────┬───────────┘
+        user_db (MySQL)   record_db(MySQL)  verify_db(MySQL)   record_db 复用(贡献表只读+自写)
+        Redisson(Redis)   ShardingSphere*    RocketMQ* / Caffeine   Redis ZSet / RocketMQ 消费
+                          RocketMQ 事件发布                        (事件驱动入榜/回滚+定时结算)
                          (* 骨架阶段仅接入依赖，业务随后续变更启用)
         Nacos 2.3.2（注册中心 + 配置中心）｜ Redis 7 ｜ RocketMQ 5
 ```
@@ -27,11 +27,12 @@
 | 模块 | 职责 |
 | --- | --- |
 | `common` | 统一 `Result<T>`、错误码枚举、`BizException`、全局异常处理器 |
-| `api` | 服务间 Feign 契约（record-api / verify-api / user-api），接口与实现分离 |
-| `gateway-service` | 统一入口，路由 `/user/**` `/record/**` `/verify/**` 到对应服务 |
+| `api` | 服务间 Feign 契约（record-api / verify-api / user-api / leaderboard-api），接口与实现分离 |
+| `gateway-service` | 统一入口，路由 `/user/**` `/record/**` `/verify/**` `/leaderboard/**` 到对应服务 |
 | `user-service` | 好友申请/同意/拒绝/列表（user_db 三表 + Redisson 锁防并发互加）；注册/登录待后续变更 |
-| `record-service` | 记录提交/查询/申诉 + 点赞/取消/计数 + 总榜/好友榜（record_db + Redis ZSet/计数 + 事件消费 + 定时结算防重） |
-| `verify-service` | 校验引擎/申诉（骨架：健康端点 + Feign 探活 + verify_db + RocketMQ/Caffeine 接入） |
+| `record-service` | 记录提交/查询/申诉 + 点赞/取消/计数（record_db 分片存储 + Redis 计数；榜单职责已拆出，见 ADR-0005） |
+| `verify-service` | 校验引擎/申诉（判定/终判 + 规则灰度发布 + verify_db + RocketMQ 事件发布） |
+| `leaderboard-service` | 榜单读热 + 事件沉淀：总榜/好友榜（Redis ZSet 秒级）+ VERIFIED/REJECTED 消费入榜/回滚 + 定时快照结算防重（复用 record_db 贡献表，见 ADR-0005） |
 
 ## 快速开始
 
@@ -41,14 +42,15 @@
 # 1. 一键拉起中间件（Nacos / MySQL×3库 / Redis / RocketMQ，含健康检查与依赖顺序）
 docker compose up -d
 
-# 2. 全量编译打包（父工程 + 6 个子模块）
+# 2. 全量编译打包（父工程 + 7 个子模块）
 mvn clean install
 
-# 3. 启动四个服务（各开一个终端）
+# 3. 启动五个服务（各开一个终端）
 java -jar gateway-service/target/sport-verify-gateway-service-0.1.0-SNAPSHOT.jar
 java -jar user-service/target/sport-verify-user-service-0.1.0-SNAPSHOT.jar
 java -jar record-service/target/sport-verify-record-service-0.1.0-SNAPSHOT.jar
 java -jar verify-service/target/sport-verify-verify-service-0.1.0-SNAPSHOT.jar
+java -jar leaderboard-service/target/sport-verify-leaderboard-service-0.1.0-SNAPSHOT.jar
 ```
 
 > `java` 必须是 JDK 21（PATH 上是 JDK 8 时会报 UnsupportedClassVersionError，改用绝对路径如
@@ -59,9 +61,10 @@ java -jar verify-service/target/sport-verify-verify-service-0.1.0-SNAPSHOT.jar
 | 验证项 | 命令 | 期望 |
 | --- | --- | --- |
 | 中间件健康 | `docker compose ps` | 5 个容器 `healthy` |
-| 注册可见 | 浏览器打开 `http://127.0.0.1:8848/nacos` 服务列表 | 4 个服务各 1 实例 |
+| 注册可见 | 浏览器打开 `http://127.0.0.1:8848/nacos` 服务列表 | 5 个服务各 1 实例 |
 | 网关路由 | `curl http://127.0.0.1:8080/user/internal/health` | `{"code":0,"message":"success","data":"user-service is alive"}` |
 | Feign 探活 | `curl http://127.0.0.1:8080/verify/internal/probe/record` | `"record-service is alive"`（verify→record 跨服务调用） |
+| 榜单查询 | `curl http://127.0.0.1:8080/leaderboard/api/leaderboard?type=overall` | `{"code":0,...,"data":[...]}`（总榜；`type=friend&userId=` 查好友榜） |
 
 > 宿主机 3306 被本机 MySQL 占用时：仓库根目录建 `.env` 写入 `MYSQL_PORT=3307`（compose 与四个服务
 > 的数据源端口均已参数化，默认仍 3306），服务侧同名变量见 `scripts/perf/run-perf.sh`。
@@ -70,7 +73,7 @@ java -jar verify-service/target/sport-verify-verify-service-0.1.0-SNAPSHOT.jar
 
 `docker compose up -d` 已包含监控栈（prometheus:9090 / grafana:3000），无需额外命令。各服务经
 `/actuator/prometheus` 暴露 Micrometer 指标（JVM / HTTP / 连接池），Prometheus 抓取宿主机
-`host.docker.internal:8080-8083`（服务以宿主机进程运行；容器化后改 target 为服务名即可，见 prometheus.yml 注释）。
+`host.docker.internal:8080-8084`（服务以宿主机进程运行；容器化后改 target 为服务名即可，见 prometheus.yml 注释）。
 
 | 访问入口 | 地址 | 说明 |
 | --- | --- | --- |
@@ -107,6 +110,14 @@ JVM 堆已用/上限、GC 暂停速率、HikariCP 连接池、JVM 线程数；�
 userId=105（%100=5）PASSED、userId=150 REJECTED；回滚置 0 后 105 立即 REJECTED；全量后 150 也 PASSED。
 完整实录见 [交付说明](spec/changes/add-rule-grayscale/交付说明.md)。
 
+## 榜单独立服务（服务数 4→5，选型理由见 [ADR-0005](docs/adr/0005-服务划分.md)）
+
+榜单读热与事件沉淀拆为独立 `leaderboard-service`（8084）：record-service 保留记录分片 + 点赞，
+榜单查询经网关 `/leaderboard/api/leaderboard?type=overall|friend`；VERIFIED/REJECTED 事件由
+独立消费组 `leaderboard-consumer-group` 在 leaderboard-service 消费入榜/回滚（record 侧消费者已下线，
+无双写）；贡献表 `leaderboard_contribution` 复用 record_db（物理隔离拆库为可选项）；
+对 `sport_record` 仅只读快照查询（Mapper 结构上无写方法）。
+
 ## 压测结果摘要（完整数据与因果见 [docs/perf/压测报告.md](docs/perf/压测报告.md) / [ADR-0002](docs/adr/0002-压测与优化实录.md)）
 
 本地单机实测（Ultra 7 255HX / 15.4GB / Docker Desktop；环境快照与口径见报告 §2）：
@@ -131,7 +142,7 @@ bash scripts/perf/run-perf.sh start-services
 bash scripts/perf/run-perf.sh quality base && bash scripts/perf/run-perf.sh load 100 2000 base
 ```
 
-## 关键决策（详见 [ADR-0001](docs/adr/0001-版本矩阵与技术选型.md) / [ADR-0002 压测与优化实录](docs/adr/0002-压测与优化实录.md) / [ADR-0003 监控选型](docs/adr/0003-监控选型.md) / [ADR-0004 规则灰度发布](docs/adr/0004-规则灰度发布.md)）
+## 关键决策（详见 [ADR-0001](docs/adr/0001-版本矩阵与技术选型.md) / [ADR-0002 压测与优化实录](docs/adr/0002-压测与优化实录.md) / [ADR-0003 监控选型](docs/adr/0003-监控选型.md) / [ADR-0004 规则灰度发布](docs/adr/0004-规则灰度发布.md) / [ADR-0005 服务划分](docs/adr/0005-服务划分.md)）
 
 - 版本矩阵锁定：**Java 21 + Boot 3.2.4 + Cloud 2023.0.1 + SCA 2023.0.1.0**（不升 Boot 3.3，SCA 2023 分支不兼容）。
 - Nacos 2.3.2 同时承担注册中心与配置中心（`spring.config.import: optional:nacos:*`，Nacos 不可用不阻塞启动）。
@@ -139,6 +150,7 @@ bash scripts/perf/run-perf.sh quality base && bash scripts/perf/run-perf.sh load
 - RocketMQ 5.2 + `rocketmq-spring-boot-starter 2.3.1` 独立集成；broker 配 `brokerIP1=127.0.0.1` 使宿主机服务可直连。
 - 服务间熔断 Resilience4j（Feign 降级转人工）、入口限流 Sentinel（网关 5k QPS 基线）——限流管流量、熔断管依赖。
 - 规则灰度：版本快照落库（灰度期隔离 Nacos 竞态）+ `userId%100` 采样（同用户恒定同分支）+ Redis 广播失效缓存（秒级回滚，TTL 兜底）；全量乐观迁移保证至多一个 ACTIVE（[ADR-0004](docs/adr/0004-规则灰度发布.md)）。
+- 服务划分 4→5：榜单读热/事件沉淀独立为 leaderboard-service（数据热点隔离、读写分离、独立降级面），贡献表复用 record_db，对记录域只读防双写（[ADR-0005](docs/adr/0005-服务划分.md)）。
 - 所有 JSON 接口统一 `{"code":0,"message":"success","data":...}` 结构（错误码表见审批版 §4.8）。
 
 ## 目录约定
@@ -149,7 +161,7 @@ docs/           需求文档与 ADR；docs/perf/ 压测报告与原始数据（d
 scripts/perf/   压测工具（零依赖 JDK21 单文件程序）与一键驱动脚本
 sql/            各库幂等建表脚本（docker-entrypoint-initdb.d 首次自动执行）+ migrations/ 手动迁移
 rocketmq/       Broker 本地配置
-prometheus/     抓取配置（prometheus.yml，四服务 job + leaderboard 空位）与告警规则（alert-rules.yml）
+prometheus/     抓取配置（prometheus.yml，五服务 job）与告警规则（alert-rules.yml）
 grafana/        数据源/面板 provider 预置（provisioning/）与预置面板 JSON（dashboards/）
 ```
 
@@ -157,7 +169,7 @@ grafana/        数据源/面板 provider 预置（provisioning/）与预置面�
 
 校验引擎（`add-verify-engine`）、好友（`add-friend-module`）、点赞（`add-like-module`）、
 排行榜（`add-leaderboard-module`）、压测与优化实录（`add-load-test-report`）、可观测性（`add-observability`）、
-规则灰度发布（`add-rule-grayscale`）均以独立 openspec 变更交付，交付说明见各目录下 `交付说明.md`。
+规则灰度发布（`add-rule-grayscale`）、榜单独立服务（`add-leaderboard-service`）均以独立 openspec 变更交付，交付说明见各目录下 `交付说明.md`。
 
 ## 后续变更（待办）
 

@@ -1,0 +1,72 @@
+[
+  {
+    "number": 1,
+    "category": "阶段 1：模块骨架",
+    "task": "创建 leaderboard-service 空模块",
+    "steps": [
+      { "step": "父 pom.xml modules 加 leaderboard-service；新建模块 pom（依赖 common/api/redisson/mybatis-plus/rocketmq）", "completed": true },
+      { "step": "创建 LeaderboardApplication（scanBasePackages=com.sportverify），端口 8084", "completed": true },
+      { "step": "application.yml：Nacos 注册 + 配置中心 + record_db 只读数据源 + Redis", "completed": true },
+      { "step": "mvn 编译通过，服务可启动注册到 Nacos", "completed": true }
+    ],
+    "passes": true
+  },
+  {
+    "number": 2,
+    "category": "阶段 2：代码平移",
+    "task": "榜单代码从 record-service 迁入",
+    "steps": [
+      { "step": "迁移 LeaderboardService/LeaderboardController/LeaderboardEventConsumer 到 com.sportverify.leaderboard", "completed": true },
+      { "step": "迁移 LeaderboardContribution/LeaderboardContributionMapper/ContributionStatus", "completed": true },
+      { "step": "调整依赖：SportRecordMapper 改为只读查询（排行榜只需查记录状态/里程）", "completed": true },
+      { "step": "调整 UserApi 好友列表调用保持可用", "completed": true }
+    ],
+    "passes": true
+  },
+  {
+    "number": 3,
+    "category": "阶段 3：事件订阅切换",
+    "task": "榜单消费者从 record 切到 leaderboard",
+    "steps": [
+      { "step": "leaderboard-service 以 leaderboard-consumer-group 订阅 VERIFIED/REJECTED", "completed": true },
+      { "step": "删除 record-service 的 LeaderboardEventConsumer 与榜单消费订阅", "completed": true },
+      { "step": "验证无双写：record 不再写榜单，仅 leaderboard 消费", "completed": true }
+    ],
+    "passes": true
+  },
+  {
+    "number": 4,
+    "category": "阶段 4：网关路由",
+    "task": "网关路由切换",
+    "steps": [
+      { "step": "gateway 新增 /leaderboard/** 路由指向 leaderboard-service(8084)", "completed": true },
+      { "step": "移除 /record/api/leaderboard 旧路由（或兼容期同时转发）", "completed": true },
+      { "step": "验证 /leaderboard/** 可访问榜单", "completed": true }
+    ],
+    "passes": true
+  },
+  {
+    "number": 5,
+    "category": "阶段 4：网关路由",
+    "task": "record-service 清理榜单残留",
+    "steps": [
+      { "step": "删除 record-service 榜单 Controller/Service 及不再使用的榜单依赖", "completed": true },
+      { "step": "确认 record-service 保留记录/点赞职责，编译通过", "completed": true },
+      { "step": "确认 leaderboard_contribution 表仍在 record_db（默认复用）", "completed": true }
+    ],
+    "passes": true
+  },
+  {
+    "number": 6,
+    "category": "阶段 5：验收",
+    "task": "端到端验收 T8 + 双服务冒烟",
+    "steps": [
+      { "step": "全量编译 mvn clean install 通过（7 模块）", "completed": true },
+      { "step": "T8 改判回滚在拆分后仍通过（REJECTED→申诉→RE_PASSED 加分，再 RE_CONFIRMED 回滚）", "completed": true },
+      { "step": "经网关 /leaderboard/** 查总榜/好友榜正常", "completed": true },
+      { "step": "Nacos 可见 5 服务，RECORD 服务不再含榜单接口", "completed": true },
+      { "step": "README/速览/ADR 更新服务划分与理由", "completed": true }
+    ],
+    "passes": true
+  }
+]
