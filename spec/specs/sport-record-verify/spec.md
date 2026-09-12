@@ -3,12 +3,25 @@
 > 首个能力域规范基线，由变更提案 `spec/changes/add-microservice-skeleton/` 落地生成。
 > 校验引擎、好友、点赞、排行榜等业务需求在后续变更中分别以 ADDED 需求补充。
 
-## ADDED Requirements
+## 本规范已归档以下提案
+
+- add-verify-engine（校验引擎）
+- add-friend-module（好友）
+- add-like-module（点赞）
+- add-leaderboard-module（榜单）
+- add-load-test-report（压测）
+- add-observability（可观测性）
+- add-rule-grayscale（规则灰度）
+- add-leaderboard-service（独立榜单服务）
+
+各提案的 spec-delta 中 ADDED 需求已全部合并进本规范，MODIFIED 需求按规则处理（见「服务划分」分组与「变更历史」）。
+
+## 工程结构
 
 ### Requirement: 多模块工程结构
 
 WHEN 工程被构建,
-系统 SHALL 产出父工程与 7 个可编译模块（common、api、gateway-service、user-service、record-service、verify-service），并 SHALL 通过 `mvn clean install`。
+系统 SHALL 产出父工程与 8 个可编译模块（common、api、gateway-service、user-service、record-service、verify-service、leaderboard-service），并 SHALL 通过 `mvn clean install`。
 
 #### Scenario: 全量构建成功
 
@@ -153,3 +166,978 @@ GIVEN 目标服务未启动
 WHEN 客户端请求对应网关路径
 THEN 网关返回 502/503
 AND 错误不泄漏内部拓扑
+
+## 校验引擎
+
+### Requirement: 轨迹分片存储
+
+WHEN 一条运动记录的轨迹点被写入,
+系统 SHALL 按 `user_id % 16` 路由到对应分片表 `track_point_0..15`，并 SHALL 先经 `sport_record → user_id` 解析分片键。
+
+#### Scenario: 分片路由正确
+
+GIVEN 用户 user_id=100（100%16=4）
+WHEN 该用户提交轨迹点
+THEN 轨迹点写入 `track_point_4`
+AND 不落其他分片
+
+#### Scenario: 记录本身不分片
+
+GIVEN sport_record 未声明分片
+WHEN 写入运动记录主表
+THEN 数据落单表
+AND 查询轨迹前先查 sport_record 得到 user_id 再路由
+
+#### Scenario: 分片分页查询
+
+GIVEN 轨迹点分布在多个分片
+WHEN MyBatis-Plus 分页查询该用户轨迹
+THEN 分页插件正确绑定 ShardingSphere 代理数据源
+AND 返回跨分片合并的完整分页结果
+
+### Requirement: 轨迹提交幂等
+
+WHEN 客户端提交运动记录,
+系统 SHALL 以 `request_id` 唯一识别，重复提交 SHALL 返回原结果而非重复入库。
+
+#### Scenario: 首次提交成功
+
+GIVEN 客户端携带新 request_id
+WHEN 提交记录
+THEN 记录落库，状态置 SUBMITTED
+AND 进入校验流程
+
+#### Scenario: 重复提交幂等
+
+GIVEN 相同 request_id 已提交过
+WHEN 再次提交相同 request_id
+THEN 系统返回 3004 幂等冲突或原结果
+AND 不产生第二条记录
+
+### Requirement: 漂移预处理
+
+WHEN 校验引擎处理轨迹点数组,
+系统 SHALL 逐点计算瞬时速度，将 `v > V_DRIFT(默认20 m/s)` 或 `Δt < 0.1s` 的点标记为漂移并剔除，且 SHALL 保留原始数组用于审计。
+
+#### Scenario: 漂移点剔除
+
+GIVEN 轨迹含瞬时速度 25 m/s 的跳变点
+WHEN 预处理器运行
+THEN 该点被标记为漂移
+AND 从有效点集剔除
+AND 原始数组保留待审计
+
+#### Scenario: 高漂移比例记软证据
+
+GIVEN 漂移点占比 driftRatio > 30%
+WHEN 预处理器汇总
+THEN 记录软证据 PREPROCESS_SUSPICIOUS
+AND 写入 preprocess 统计
+
+#### Scenario: 低漂移不触发
+
+GIVEN 漂移点占比 ≤ 30%
+WHEN 预处理器汇总
+THEN 不产生 PREPROCESS_SUSPICIOUS 软证据
+
+### Requirement: 规则链判定（R1-R4）
+
+WHEN 校验引擎执行规则链,
+系统 SHALL 按序计算 R1 速度、R2 加速度、R3 停留、R4 距离一致性，并 SHALL 为每条命中规则记录级别（HARD/SOFT）与证据。
+
+#### Scenario: 匀速刷里程触发 R1
+
+GIVEN 滑动 10 点平均速度 >5.5 m/s 且持续 ≥10 点
+WHEN R1 速度规则运行
+THEN 命中 R1_SPEED
+AND 级别 HARD
+AND 证据含窗口均值与起止点序号
+
+#### Scenario: 飞点拼接触发 R2
+
+GIVEN 相邻有效点加速度 Δv/Δt >3 m/s² 出现 ≥3 次
+WHEN R2 加速度规则运行
+THEN 命中 R2_ACCEL
+AND 级别 SOFT
+
+#### Scenario: 原地抖动触发 R3
+
+GIVEN 存在连续 ≥5min 位移 <5m 的段且段占比 >40% 总时长
+WHEN R3 停留规则运行
+THEN 命中 R3_STAY
+AND 级别 HARD
+
+#### Scenario: 折返刷里程触发 R4
+
+GIVEN 累计轨迹距离/起终点直线距离 >3.0
+WHEN R4 距离一致性规则运行
+THEN 命中 R4_DISTANCE
+AND 级别 SOFT
+
+#### Scenario: 无命中
+
+GIVEN 所有规则均未触发
+WHEN 规则链运行完毕
+THEN 无 rule_hits 命中记录
+
+### Requirement: 判定聚合
+
+WHEN 规则链执行完毕,
+系统 SHALL 按「命中 HARD→REJECTED；仅 SOFT→默认 REJECTED(可配)；无命中→PASSED」聚合判定，并 SHALL 以 `score = 50 + 20×HARD数 + 10×SOFT数` 计算分数（0-100）。
+
+#### Scenario: 命中 HARD 拒绝
+
+GIVEN 命中至少一条 HARD 规则
+WHEN 聚合判定
+THEN verdict=REJECTED
+AND score = 50 + 20×HARD数 + 10×SOFT数
+
+#### Scenario: 仅 SOFT 默认拒绝
+
+GIVEN 仅命中 SOFT 规则且未配置宽松策略
+WHEN 聚合判定
+THEN verdict=REJECTED
+
+#### Scenario: 无命中通过
+
+GIVEN 无任何规则命中
+WHEN 聚合判定
+THEN verdict=PASSED
+
+#### Scenario: 证据 JSON 完整
+
+GIVEN 判定完成
+WHEN 落库 verification_result
+THEN 证据 JSON 含 verdict/score/hits[rule+level+detail]/preprocess
+
+### Requirement: 校验状态机
+
+WHEN 校验与申诉流转,
+系统 SHALL 遵循 SUBMITTED→VERIFYING→PASSED/REJECTED 与 REJECTED→APPEALING→RE_PASSED/RE_CONFIRMED，且 SHALL 以乐观锁 `UPDATE ... WHERE status AND version` 保证并发安全。
+
+#### Scenario: 校验通过
+
+GIVEN 记录处于 VERIFYING 且判定 verdict=PASSED
+WHEN verify 回调
+THEN 状态迁至 PASSED
+AND 发 VERIFIED 事件
+
+#### Scenario: 校验拒绝
+
+GIVEN 记录处于 VERIFYING 且 verdict=REJECTED
+WHEN verify 回调
+THEN 状态迁至 REJECTED
+AND 发 REJECTED 事件并保存证据
+
+#### Scenario: 申诉提交
+
+GIVEN 记录处于 REJECTED
+WHEN 用户提交申诉
+THEN 状态迁至 APPEALING
+AND 建 appeal 单（record_id 唯一）
+
+#### Scenario: 终判改判
+
+GIVEN 记录处于 APPEALING 且 appeal 为 PENDING
+WHEN 管理员复核通过
+THEN 状态迁至 RE_PASSED
+AND 发 VERIFIED 事件
+
+#### Scenario: 终判维持拒绝
+
+GIVEN 记录处于 APPEALING 且 appeal 为 PENDING
+WHEN 管理员复核确认
+THEN 状态迁至 RE_CONFIRMED
+AND 发 REJECTED 事件
+
+#### Scenario: 并发冲突
+
+GIVEN 两个请求同时迁移同一记录
+WHEN 乐观锁 WHERE status AND version 执行
+THEN 仅一个影响行数为 1
+AND 另一个影响 0 行，报 3003 或重试
+
+### Requirement: 校验事件与幂等
+
+WHEN 校验流程产生状态变化,
+系统 SHALL 经 RocketMQ 发布 SUBMITTED/VERIFIED/REJECTED 事件，并 SHALL 以 eventId 去重保证消费幂等。
+
+#### Scenario: 触发校验事件
+
+GIVEN 记录提交进入 VERIFYING
+WHEN 状态迁移完成
+THEN 发布 SUBMITTED 事件（Tag 区分）
+AND verify 消费后拉轨迹执行判定并回调
+
+#### Scenario: 事件幂等消费
+
+GIVEN 相同 eventId 的事件重复投递
+WHEN 消费者处理
+THEN SETNX 去重
+AND 业务仅执行一次
+
+#### Scenario: 失败进死信
+
+GIVEN 消费失败达到重试阈值
+WHEN 消费者无法处理
+THEN 消息进入 record-verify-events-dlq
+AND 可人工排查
+
+### Requirement: 规则阈值可配置
+
+WHEN 规则链读取阈值,
+系统 SHALL 从 Nacos 配置 `verify.rules.*` 获取，且 SHALL 提供与审批版 §5.2 一致的默认值。
+
+#### Scenario: 默认阈值生效
+
+GIVEN Nacos 无覆盖配置
+WHEN 规则链初始化
+THEN 使用默认值 V_DRIFT=20、R1=5.5、R2=3、R3 段占比 40%、R4=3.0
+
+#### Scenario: 覆盖阈值生效
+
+GIVEN Nacos 配置 verify.rules.r1.speed=6.0
+WHEN 规则链读取
+THEN R1 阈值采用 6.0
+AND 其他阈值采用默认值
+
+## 好友
+
+### Requirement: 好友申请创建
+
+WHEN 用户向另一用户发起好友申请,
+系统 SHALL 创建 `status=PENDING` 的 friend_request 并返回申请单。
+
+#### Scenario: 申请成功
+
+GIVEN 用户 A(id=1001) 向用户 B(id=1002) 发起申请
+AND A、B 之间无任何 PENDING 申请或既有关系
+WHEN 提交 `POST /api/friends/requests {targetUserId:1002}`
+THEN 创建 PENDING 申请单
+AND 返回 `{id, fromUser:1001, toUser:1002, status:"PENDING"}`
+
+#### Scenario: 目标用户不存在
+
+GIVEN 目标用户 id 不存在
+WHEN 提交好友申请
+THEN 返回 2002（用户不存在）
+AND 不创建申请单
+
+### Requirement: 申请幂等去重
+
+WHEN 用户发起好友申请,
+系统 SHALL 识别同向重复申请、反向 PENDING 申请、既有关系，并 SHALL 返回 5001 或原申请单而非重复建单。
+
+#### Scenario: 同向重复申请
+
+GIVEN A→B 已存在 PENDING 申请
+WHEN A 再次向 B 发起申请
+THEN 返回 5001 或原申请单
+AND 不产生第二条 PENDING 单
+
+#### Scenario: 反向 PENDING 已存在
+
+GIVEN B→A 已存在 PENDING 申请
+WHEN A 向 B 发起申请
+THEN 返回 5001（重复申请或已存在关系）
+
+#### Scenario: 已存在关系
+
+GIVEN A、B 已是好友（friendship 存在）
+WHEN 任一方再次发起申请
+THEN 返回 5001
+AND 不创建申请单
+
+### Requirement: 申请状态机
+
+WHEN 好友申请发生流转,
+系统 SHALL 遵循 PENDING→ACCEPTED/REJECTED/CANCELLED，且 SHALL 仅允许 PENDING 状态的申请流转。
+
+#### Scenario: 同意申请
+
+GIVEN 申请处于 PENDING
+WHEN 目标用户执行 accept
+THEN 申请状态迁至 ACCEPTED
+AND 写入 friendship 关系
+
+#### Scenario: 拒绝申请
+
+GIVEN 申请处于 PENDING
+WHEN 目标用户执行 reject
+THEN 申请状态迁至 REJECTED
+AND 不写入 friendship
+
+#### Scenario: 非 PENDING 流转被拒
+
+GIVEN 申请已处于 ACCEPTED/REJECTED
+WHEN 再次执行 accept/reject
+THEN 流转失败
+AND 返回 5002（关系不存在）或业务异常
+
+### Requirement: 好友关系规范化存储
+
+WHEN 好友关系落库,
+系统 SHALL 以 `(user_low, user_high)` 存储且强制 `user_low < user_high`，主键唯一 + CHECK 约束 SHALL 从根上消除 A-B/B-A 重复行。
+
+#### Scenario: 关系归一化
+
+GIVEN 用户 1002 与 1001 建立好友关系
+WHEN 写入 friendship
+THEN 存储为 `(user_low=1001, user_high=1002)`
+AND 不出现 `(1002,1001)` 逆序行
+
+#### Scenario: 逆序重复被拦截
+
+GIVEN 已存在 `(1001,1002)` 关系行
+WHEN 尝试写入 `(1002,1001)`
+THEN 主键/CHECK 约束拒绝
+AND 不产生重复关系
+
+### Requirement: 并发互加唯一性
+
+WHEN 两个用户并发互发申请并最终建立关系,
+系统 SHALL 用 Redisson 可重入锁 `lock:friend:{low}_{high}` 串行化「检查-建单」，配合规范化存储，保证 SHALL 只产生一条 friendship。
+
+#### Scenario: 并发互加只产生一条关系
+
+GIVEN 用户 A 与 B 同时互发申请
+WHEN 双方申请与同意并发执行
+THEN 两个请求竞争同一把锁 `lock:friend:{min}_{max}`
+AND 最终 friendship 仅一条
+
+#### Scenario: 锁键归一一致
+
+GIVEN A 发起 A→B 申请，B 发起 B→A 申请
+WHEN 分别计算锁键
+THEN 两者得到相同锁键 `lock:friend:{low}_{high}`（min/max）
+AND 保证串行化
+
+### Requirement: 好友列表
+
+WHEN 用户查询好友列表,
+系统 SHALL 分页返回且 SHALL 仅包含 ACCEPTED 状态的好友。
+
+#### Scenario: 仅返回已接受好友
+
+GIVEN 用户 A 有 ACCEPTED、PENDING、REJECTED 三种关系的申请
+WHEN A 查询 `GET /api/friends?page=1&size=10`
+THEN 仅返回 ACCEPTED 关系对应的好友
+AND 排除 PENDING/REJECTED/CANCELLED
+
+#### Scenario: 分页正确
+
+GIVEN 用户好友数超过单页大小
+WHEN 分页查询
+THEN 返回当前页数据
+AND 含正确的总数/分页元信息
+
+## 点赞
+
+### Requirement: 点赞前置校验
+
+WHEN 用户对运动记录点赞,
+系统 SHALL 校验记录 `status=PASSED`，未通过校验的记录 SHALL 返回 6001 且不产生点赞。
+
+#### Scenario: 通过校验可赞
+
+GIVEN 记录 status=PASSED
+WHEN 用户提交点赞
+THEN 点赞成功
+AND 计数 +1
+
+#### Scenario: 未通过校验被拒
+
+GIVEN 记录 status=REJECTED/VERIFYING/SUBMITTED
+WHEN 用户提交点赞
+THEN 返回 6001（记录未通过校验不可点赞）
+AND 不产生点赞与计数变化
+
+### Requirement: 点赞幂等
+
+WHEN 同一用户对同一记录重复点赞,
+系统 SHALL 保证只计数一次，且 SHALL 落库仅一条 `(record_id,user_id)`。
+
+#### Scenario: 重复点赞只计一次
+
+GIVEN 用户 A 已对记录 R 点赞
+WHEN 用户 A 再次点赞记录 R
+THEN 计数保持不变（+1 仅发生一次）
+AND record_like 落库仅一条 `(record_id,user_id)`
+
+#### Scenario: 联合主键防重
+
+GIVEN record_like 已存在 (record_id,user_id) 行
+WHEN 异步落库尝试再次 INSERT 相同键
+THEN 联合主键冲突被跳过
+AND 不产生重复行
+
+### Requirement: 计数读热写冷
+
+WHEN 点赞/取消发生,
+系统 SHALL 用 Redis `INCR`/`DECR` 维护计数，读取 SHALL 优先走 Redis，缺失时 SHALL 兜底 DB `COUNT(*)` 并回填。
+
+#### Scenario: 计数走 Redis
+
+GIVEN 点赞发生
+WHEN 更新计数
+THEN `like:count:{recordId}` 原子 INCR
+AND 查询点赞数优先读该 Redis 值
+
+#### Scenario: 兜底回填
+
+GIVEN Redis 计数键缺失
+WHEN 查询点赞数
+THEN 兜底 DB COUNT(*) 得到真实值
+AND 回填 Redis 计数键
+
+### Requirement: 异步批量落库
+
+WHEN 点赞/取消产生,
+系统 SHALL 先记录 pending 操作，由定时任务 SHALL 批量持久化到 record_like，且 SHALL 用 Redisson 锁保证多实例仅一个执行。
+
+#### Scenario: 批量落库
+
+GIVEN 存在待 flush 的点赞/取消操作
+WHEN 定时任务触发
+THEN 批量写 record_like（点赞 INSERT、取消 DELETE）
+AND pending 操作被清理
+
+#### Scenario: 多实例防重
+
+GIVEN 多个服务实例同时触发 flush
+WHEN 竞争 `lock:like:flush` 锁
+THEN 仅一个实例执行 flush
+AND 其他实例跳过
+
+### Requirement: 取消点赞
+
+WHEN 用户取消点赞,
+系统 SHALL 使计数 -1 并 SHALL 异步删除对应 `(record_id,user_id)` 行，重复取消 SHALL 幂等。
+
+#### Scenario: 取消成功
+
+GIVEN 用户 A 已点赞记录 R
+WHEN 用户 A 取消点赞
+THEN 计数 -1
+AND 异步删除 record_like 对应行
+
+#### Scenario: 重复取消幂等
+
+GIVEN 用户 A 未点赞或已取消
+WHEN 用户 A 再次取消
+THEN 计数不再变化（下限 0）
+AND 无对应行可删
+
+### Requirement: 最终一致
+
+WHEN 计数与落库发生,
+系统 SHALL 保证两者最终一致，并 SHALL 提供对账兜底以 DB 行为准纠偏。
+
+#### Scenario: flush 后一致
+
+GIVEN 点赞与取消操作已 flush
+WHEN 对比 Redis 计数与 record_like 行数
+THEN 两者一致
+
+#### Scenario: 对账纠偏
+
+GIVEN 因进程重启导致计数漂移
+WHEN 对账任务执行
+THEN 以 DB record_like 行为准纠正 Redis 计数
+
+## 榜单
+
+### Requirement: 仅通过记录入榜
+
+WHEN 运动记录入榜,
+系统 SHALL 仅累积 `status=PASSED` 或 `RE_PASSED` 记录的里程，其他状态 SHALL 不入榜。
+
+#### Scenario: 通过记录入榜
+
+GIVEN 记录经校验或改判进入 PASSED/RE_PASSED
+WHEN 榜单刷新
+THEN 该记录里程计入用户累计 pass 里程
+
+#### Scenario: 未通过不入榜
+
+GIVEN 记录处于 SUBMITTED/VERIFYING/REJECTED/RE_CONFIRMED
+WHEN 榜单刷新
+THEN 该记录里程不计入榜单
+
+### Requirement: 事件驱动入榜
+
+WHEN 记录状态迁移触发事件,
+系统 SHALL 消费 VERIFIED 事件执行入榜，且 SHALL 以 eventId 去重保证消费幂等。
+
+#### Scenario: VERIFIED 入榜
+
+GIVEN 收到 VERIFIED 事件（recordId、userId、distance）
+WHEN 消费者处理
+THEN `ZINCRBY leaderboard:overall {distance} {userId}`
+AND 写入 leaderboard_contribution（record_id 主键，status=ACTIVE）
+
+#### Scenario: 事件幂等
+
+GIVEN 相同 eventId 重复投递
+WHEN 消费者处理
+THEN SETNX 去重
+AND 入榜与写贡献仅执行一次
+
+### Requirement: 改判回滚
+
+WHEN 已入榜记录被改判驳回,
+系统 SHALL 回滚其榜单贡献，且 SHALL 保证回滚幂等。
+
+#### Scenario: 回滚里程
+
+GIVEN 记录 R 已入榜（存在 ACTIVE 贡献）
+WHEN 消费到 REJECTED/REVERSED 事件（recordId=R）
+THEN `ZINCRBY leaderboard:overall {-distance} {userId}` 回滚
+AND contribution status 置 ROLLED_BACK
+
+#### Scenario: 回滚幂等
+
+GIVEN 记录 R 的贡献已 ROLLED_BACK
+WHEN 再次消费到回滚事件
+THEN 跳过，不重复回滚
+
+#### Scenario: 无贡献不回滚
+
+GIVEN 记录 R 从未入榜（无贡献行）
+WHEN 消费到回滚事件
+THEN 跳过，不产生负里程
+
+### Requirement: 回滚与入榜并发安全
+
+WHEN 回滚与入榜针对同一记录并发发生,
+系统 SHALL 用 Redisson 锁 `lock:rollback:{recordId}` 串行化，避免里程错乱。
+
+#### Scenario: 串行化
+
+GIVEN 记录 R 同时触发入榜与回滚
+WHEN 两者竞争锁
+THEN 依序执行，最终榜单与 contribution 状态一致
+
+### Requirement: 总榜查询
+
+WHEN 客户端查询总榜,
+系统 SHALL 按累计 pass 里程降序返回前 N 名，含排名、用户、里程。
+
+#### Scenario: 查询成功
+
+GIVEN 榜单 ZSet 存在成员
+WHEN 请求 `GET /api/leaderboard?type=overall`
+THEN 返回按里程降序的榜单
+AND 每项含 rank/userId/nickname/distance
+
+### Requirement: 好友榜查询
+
+WHEN 客户端查询好友榜,
+系统 SHALL 经 Feign 获取好友列表，ZSet 结果 SHALL 按好友过滤，只显示好友。
+
+#### Scenario: 只显示好友
+
+GIVEN 用户 A 有好友 B、C，非好友 D
+WHEN 请求 `GET /api/leaderboard?type=friend`
+THEN 结果仅含 B、C（若其有 pass 里程）
+AND 排除 D
+
+#### Scenario: 无好友或未上榜
+
+GIVEN 用户无好友，或好友均无 pass 里程
+WHEN 请求好友榜
+THEN 返回空榜或友好提示
+
+### Requirement: 快照结算防重
+
+WHEN 定时结算任务触发,
+系统 SHALL 用 Redisson 锁 `lock:scheduler:leaderboard` 保证多实例仅一个执行，并 SHALL 以 contribution 汇总为准纠偏 ZSet。
+
+#### Scenario: 多实例仅一个执行
+
+GIVEN 多个服务实例同时触发结算
+WHEN 竞争锁
+THEN 仅一个实例执行结算
+AND 其他实例跳过
+
+#### Scenario: 对账纠偏
+
+GIVEN ZSet 与 contribution 汇总漂移
+WHEN 结算任务执行
+THEN 以 contribution ACTIVE 汇总为准纠正 ZSet
+AND 标记 settled_at
+
+## 榜单服务
+
+### Requirement: 独立榜单服务
+
+WHEN 系统初始化服务,
+系统 SHALL 提供独立的 `leaderboard-service` 承载榜单读热与事件沉淀，与 record-service 的职责 SHALL 分离（record=记录读写，leaderboard=榜单）。
+
+#### Scenario: 服务注册
+
+GIVEN leaderboard-service 已启动
+WHEN 查看 Nacos 服务列表
+THEN 可见 leaderboard-service 独立实例
+AND 独立端口（默认 8084）
+
+#### Scenario: 路由可达
+
+GIVEN 网关已配置 /leaderboard/** 路由
+WHEN 客户端请求 /leaderboard/api/leaderboard?type=overall
+THEN 返回总榜
+AND 请求转发至 leaderboard-service
+
+### Requirement: 榜单事件订阅独立
+
+WHEN 校验产生 VERIFIED/REJECTED 事件,
+系统 SHALL 由 leaderboard-service 以独立消费组订阅并沉淀榜单，record-service 的榜单消费者 SHALL 下线，避免双写。
+
+#### Scenario: 独立消费组
+
+GIVEN 记录通过校验并发 VERIFIED 事件
+WHEN 事件被消费
+THEN 仅 leaderboard-service 入榜
+AND record-service 不再写入榜单
+
+#### Scenario: 回滚由榜单服务处理
+
+GIVEN 记录改判发 REJECTED 事件
+WHEN leaderboard-service 消费
+THEN 回滚榜单贡献
+AND 结果与迁移前 T8 验收一致
+
+### Requirement: 榜单数据依赖
+
+WHEN leaderboard-service 沉淀榜单,
+系统 SHALL 读取 `leaderboard_contribution` 表；该表默认复用 record_db，物理隔离到独立 leaderboard_db SHALL 列为可选。
+
+#### Scenario: 复用 record_db
+
+GIVEN 默认配置
+WHEN leaderboard-service 读写贡献表
+THEN 使用 record_db（与 record-service 共享该库中贡献表）
+AND 榜单查询功能正常
+
+#### Scenario: 独立 leaderboard_db（可选）
+
+GIVEN 选择物理隔离
+WHEN leaderboard-service 启动
+THEN 连接独立 leaderboard_db
+AND 贡献表迁入该库
+
+## 服务划分
+
+### Requirement: 服务划分
+
+系统 SHALL 由 5 个服务构成：gateway-service、user-service、record-service、verify-service、leaderboard-service；WHEN 系统部署, 榜单职责 SHALL 由 leaderboard-service 独立承载。
+
+> 变更说明：本需求由提案 add-leaderboard-service 的 MODIFIED「服务划分」追加而来。原主线无独立「服务划分」需求，此处作为新增记录；系统从 4 个服务（gateway-service、user-service、record-service、verify-service，榜单内聚于 record-service）演进到 5 个服务（追加 leaderboard-service，榜单职责独立承载），服务数 4→5。
+
+#### Scenario: 服务数
+
+GIVEN 系统完整部署
+WHEN 查看服务实例
+THEN 可见 5 个服务各自注册
+AND 榜单职责不在 record-service 内
+
+## 压测
+
+### Requirement: 并发压测方法
+
+WHEN 系统进行性能验证,
+系统 SHALL 对提交记录接口发起 100/500/1000 三档并发，并 SHALL 记录 P95、P99、QPS、错误率。
+
+#### Scenario: 三档并发执行
+
+GIVEN 压测脚本就绪，环境快照固定
+WHEN 依次以 100、500、1000 并发压测提交接口
+THEN 每档记录 P95/P99/QPS/错误率
+AND 原始数据留存供优化前后对比
+
+#### Scenario: 环境可复现
+
+GIVEN 压测结论被引用
+WHEN 复现压测
+THEN 脚本与文档可重复执行
+AND 记录环境快照（JDK/内存/中间件版本）保证可比
+
+### Requirement: 量化达标
+
+WHEN 系统以测试集（≥200 条，正负各半）验收,
+系统 SHALL 达到拦截率 ≥90%、真实通过率 ≥95%、校验 P95 <200ms。
+
+#### Scenario: 拦截率达标
+
+GIVEN 伪造样本集
+WHEN 运行校验引擎
+THEN 拦截率 ≥90%
+
+#### Scenario: 通过率达标
+
+GIVEN 真实样本集
+WHEN 运行校验引擎
+THEN 通过率 ≥95%
+
+#### Scenario: 延迟达标
+
+GIVEN 校验链路运行
+WHEN 统计响应时间
+THEN P95 <200ms
+
+#### Scenario: 未达标如实记录
+
+GIVEN 任一指标未达标
+WHEN 验收
+THEN 如实记录实测值
+AND 定位瓶颈并记录优化过程（不夸大）
+
+### Requirement: 瓶颈优化实录
+
+WHEN 压测暴露性能瓶颈,
+系统 SHALL 定位并优化，且 SHALL 产出至少 1 个 Explain 慢查询案例与 1 个 GC/连接池调优案例，并 SHALL 记录优化前后对比。
+
+#### Scenario: 慢查询案例
+
+GIVEN 压测发现慢 SQL
+WHEN 用 Explain 分析
+THEN 加索引或改写 SQL
+AND 记录优化前后 Explain 与耗时对比
+
+#### Scenario: GC/连接池案例
+
+GIVEN 压测发现 GC 停顿或连接池瓶颈
+WHEN 调优
+THEN 记录优化前后 GC 停顿或吞吐对比
+AND 形成因果可解释的调优案例
+
+### Requirement: 限流与熔断验证
+
+WHEN 系统面对高并发或依赖故障,
+系统 SHALL 由 Sentinel 在网关限流并对齐 5k QPS 目标，且 verify 不可用时 SHALL 熔断降级为「转人工」，主链路 SHALL 不挂。
+
+#### Scenario: 限流拦截
+
+GIVEN 请求超过限流阈值
+WHEN 网关处理
+THEN 超限请求被限流拦截
+AND 返回限流提示
+
+#### Scenario: 熔断降级转人工
+
+GIVEN verify-service 不可用
+WHEN record 侧调用校验
+THEN 熔断降级为「转人工」状态
+AND 提交主链路不挂（不因校验故障整体失败）
+
+### Requirement: 压测沉淀
+
+WHEN 压测与优化完成,
+系统 SHALL 产出压测报告与 ADR，将方案、数据、优化因果 SHALL 写入 README/ADR 可复现文档。
+
+#### Scenario: 报告产出
+
+GIVEN 压测与优化已执行
+WHEN 沉淀阶段
+THEN 产出 docs/perf/压测报告.md（方案/环境/数据/图表/对比/结论）
+AND 产出 ADR 记录优化因果
+AND README 补摘要与复现命令
+
+## 可观测性
+
+### Requirement: 指标暴露
+
+WHEN 任一服务运行,
+系统 SHALL 经 `/actuator/prometheus` 暴露 Micrometer 指标，涵盖 JVM（堆/GC/线程）、HTTP（QPS/P95/错误率）、数据源连接池与业务判定指标。
+
+#### Scenario: 端点可访问
+
+GIVEN 服务已启动且依赖 micrometer-registry-prometheus 就绪
+WHEN 请求 `/actuator/prometheus`
+THEN 返回 Prometheus 文本格式指标
+AND 包含 `jvm_` 与 `http_server_requests_` 前缀指标
+
+#### Scenario: 端点未开启即不可达
+
+GIVEN 服务未在 management 中暴露 prometheus 端点
+WHEN 请求 `/actuator/prometheus`
+THEN 返回 404 或隐藏
+AND 不泄漏额外指标
+
+### Requirement: 指标采集
+
+WHEN Prometheus 运行,
+系统 SHALL 按 prometheus.yml 静态配置抓取全部 5 个服务（gateway/user/record/verify + 未来 leaderboard）的指标端点。
+
+#### Scenario: 抓取成功
+
+GIVEN Prometheus 与服务均运行
+WHEN 查看 Prometheus targets
+THEN 各服务 target 状态为 UP
+AND 指标带 instance 标签区分
+
+#### Scenario: 实例下线可见
+
+GIVEN 某服务停止
+WHEN Prometheus 下一抓取周期
+THEN 该 target 标记 DOWN
+AND 触发对应告警
+
+### Requirement: 可视化面板
+
+WHEN 运维查看监控,
+系统 SHALL 提供一个 Grafana Dashboard 展示核心指标：服务可用性、HTTP P95/错误率、JVM 堆/GC、连接池。
+
+#### Scenario: 面板展示
+
+GIVEN Grafana 已配置 Prometheus datasource
+WHEN 打开预置 dashboard
+THEN 展示服务可用性、延迟、错误率、JVM 面板
+AND 数据来自 Prometheus
+
+### Requirement: 告警规则
+
+WHEN 指标越过阈值,
+系统 SHALL 触发告警，至少覆盖：实例下线、HTTP 错误率超阈值、校验 P95 >200ms（对齐审批版 §8.2）、JVM 堆使用率 >80%。
+
+#### Scenario: 延迟告警
+
+GIVEN 校验接口 P95 超过 200ms 持续一段时间
+WHEN Prometheus 评估告警规则
+THEN 触发 P95 告警（firing 状态）
+
+#### Scenario: 实例下线告警
+
+GIVEN 某服务实例停止
+WHEN Prometheus 检测 target DOWN
+THEN 触发实例下线告警
+
+## 规则灰度
+
+### Requirement: 规则版本化
+
+WHEN 管理员创建规则版本,
+系统 SHALL 将当前规则与阈值序列化为 `rules_json` 快照存入 rule_version，并 SHALL 维护版本状态（GRAY/ACTIVE/RETIRED）与 `gray_ratio`。
+
+#### Scenario: 创建灰度版本
+
+GIVEN 当前基线规则阈值
+WHEN 管理员创建新版本并设 gray_ratio=10
+THEN 快照 rules_json 落库
+AND 版本状态 GRAY
+AND 灰度比例 10
+
+#### Scenario: 版本状态约束
+
+GIVEN 已存在一个 ACTIVE 基线版本
+WHEN 新版本被标记为 ACTIVE
+THEN 旧版本置 RETIRED
+AND 同一时刻至多一个 ACTIVE 版本
+
+### Requirement: 灰度采样路由
+
+WHEN 校验引擎执行,
+系统 SHALL 按 `userId % 100 < gray_ratio` 决定使用灰度规则快照或基线规则，且 SHALL 保证同一用户始终同一分支。
+
+#### Scenario: 命中灰度
+
+GIVEN gray_ratio=10
+AND 用户 userId%100=5（<10）
+WHEN 该用户提交记录触发校验
+THEN 使用灰度规则快照执行
+
+#### Scenario: 未命中灰度
+
+GIVEN gray_ratio=10
+AND 用户 userId%100=50（≥10）
+WHEN 该用户提交记录触发校验
+THEN 使用基线规则执行
+
+#### Scenario: 采样稳定性
+
+GIVEN 同一用户重复提交
+WHEN 多次触发校验
+THEN 每次均命中同一分支（灰/基线）
+AND 不因请求时序抖动切换分支
+
+### Requirement: 规则快照隔离
+
+WHEN 灰度观察期执行规则,
+系统 SHALL 使用库内 `rules_json` 快照而非 Nacos 实时配置，避免灰度期间配置变更导致规则漂移。
+
+#### Scenario: 灰度用快照
+
+GIVEN 灰度版本观察中
+AND Nacos 实时阈值此时被修改
+WHEN 校验引擎取规则
+THEN 灰度分支仍用版本快照执行
+AND 不受 Nacos 瞬时变更影响
+
+### Requirement: 秒级回滚
+
+WHEN 灰度版本判定异常,
+系统 SHALL 支持将 `gray_ratio` 置 0 秒级回滚，新版本 SHALL 立即不再被采样，基线 SHALL 不受影响。
+
+#### Scenario: 回滚生效
+
+GIVEN 灰度版本 gray_ratio=10 且出现异常
+WHEN 管理员将 gray_ratio 置 0
+THEN 短 TTL 缓存失效后（≤60s）新版本不再采样
+AND 全部请求回归基线规则
+
+#### Scenario: 基线性不受影响
+
+GIVEN 灰度版本运行中
+WHEN 回滚 gray_ratio=0
+THEN 基线规则持续正常运行
+AND 无请求中断
+
+### Requirement: 全量发布
+
+WHEN 灰度版本稳定,
+系统 SHALL 支持将 gray_ratio 置 100 全量发布，并 SHALL 将旧版本置 RETIRED。
+
+#### Scenario: 全量生效
+
+GIVEN 灰度版本稳定运行满观察期
+WHEN 管理员执行全量发布
+THEN gray_ratio=100
+AND 全部用户使用新版本规则
+
+#### Scenario: 旧版本退役
+
+GIVEN 新版本已全量
+WHEN 发布完成
+THEN 旧 ACTIVE 版本置 RETIRED
+AND 不再被采样
+
+### Requirement: 版本管理接口
+
+WHEN 管理员管理规则,
+系统 SHALL 提供版本管理端点：创建版本、调整灰度比例、全量发布。
+
+#### Scenario: 创建与调灰度
+
+GIVEN 管理员调用管理端点
+WHEN 创建版本并调整 gray_ratio
+THEN 返回版本信息与最新灰度比例
+
+#### Scenario: 全量发布成功
+
+GIVEN 存在 GRAY 版本
+WHEN 调用全量发布端点
+THEN 版本置 ACTIVE
+AND 旧版本 RETIRED
+
+## 变更历史
+
+各提案 spec-delta 备注中有价值的上下文说明，融合记录如下：
+
+- **add-verify-engine**：实现「校验闭环」主线；榜单贡献快照、排行榜入榜、Nacos 灰度发布属后续独立变更（已分别落地）。状态机迁移矩阵与阈值默认值以审批版 §5.1/§5.2 为唯一依据。取消「仅 SOFT→REJECTED」的宽松开关时机由灰度变更决定（见「规则灰度」分组）。
+- **add-friend-module**：关系一旦 ACCEPTED 双方互见，存储层以 `(user_low,user_high)` 单向归一化承载双向关系。好友榜（经 UserApi 过滤）由「榜单」分组承接。状态机字段值与错误码（5001/5002/2002）以审批版 §4.1/§6.1/§4.8 为唯一依据。
+- **add-like-module**：点赞只对 PASSED 记录开放，与校验引擎状态机强耦合（落地顺序在其后）。计数权威源为 record_like 行，Redis 为读热写冷的加速层（Redis 原子计数 + 最终一致 + 异步批量）。错误码 6001 与 record_like 表结构以审批版 §4.6/§4.8/§6.2 为唯一依据。
+- **add-leaderboard-module**：榜单是校验闭环的收口，依赖校验引擎（事件）与好友模块（好友列表 Feign）。ZSet `leaderboard:overall`（member=userId，score=累计 pass 里程）为热读层；leaderboard_contribution 行为权威源与回滚锚点（Redis ZSet + 事件驱动最终一致 + 定时防重）。事件 Tag 与表结构以审批版 §4.5/§6.2/§7.1/§7.5 为唯一依据。
+- **add-leaderboard-service**：架构重构，不新增业务功能，把已实现的榜单从 record-service 平移至独立服务，服务数 4→5。「为什么 5 个服务」「榜单为什么独立」成为架构决策 ADR（数据热点隔离、读多写少独立扩缩容、独立降级面）。贡献表归属默认复用 record_db（最小改动），独立 leaderboard_db 为可选项。路由前缀 /record/api/leaderboard → /leaderboard/** 为破坏性变更，需兼容期过渡。
+- **add-load-test-report**：不新增业务功能，聚焦「真实数据 + 优化因果」沉淀。指标阈值（90%/95%/200ms）与压测并发档位（100/500/1000）以审批版 §8.2/§9 T12/§12.3 第 9 项/附录 A.3/A.4-A1 为唯一依据。已确认不购云服务器：压测在本地 Docker Compose 环境执行，结论按本地单机能力如实标注（诚实口径）。
+- **add-observability**：运维增强，不改变业务功能；指标口径对齐压测报告，形成「即时观测 + 历史实录」双层证据。/actuator/prometheus 本地演示直连；生产安全（网关不转发 actuator、内网抓取、最小权限）属「讲设计」范畴。监控栈选型（Prometheus+Grafana）理由随 ADR 记录。
+- **add-rule-grayscale**：把「阈值可配」升级为「版本化灰度发布」，落地审批版 §7.4 全部流程。rule_version 表已建（sql/03-verify-db.sql），本变更不迁移表结构。采样键 userId%100 与审批版 §7.4 一致；灰度观察期用库内快照避免与 Nacos 动态刷新竞态。

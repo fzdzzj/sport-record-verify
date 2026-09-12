@@ -1,0 +1,59 @@
+[
+  {
+    "number": 1,
+    "category": "阶段 1：指标暴露",
+    "task": "接入 Prometheus 指标端点",
+    "steps": [
+      { "step": "父 pom.xml dependencyManagement 加 micrometer-registry-prometheus（版本由 Boot BOM 管理）", "completed": false },
+      { "step": "4 服务 + gateway 的 pom 引入该依赖", "completed": false },
+      { "step": "各 application.yml 的 management.endpoints.web.exposure.include 加 prometheus,metrics", "completed": false },
+      { "step": "编译验证 /actuator/prometheus 有 jvm_/http_ 指标", "completed": false }
+    ],
+    "passes": false
+  },
+  {
+    "number": 2,
+    "category": "阶段 2：采集",
+    "task": "Prometheus 接入 docker-compose",
+    "steps": [
+      { "step": "编写 prometheus/prometheus.yml 静态配置 5 服务 job（gateway:8080,user:8081,record:8082,verify:8083）", "completed": false },
+      { "step": "docker-compose 追加 prometheus service（9090，挂载配置，精简 JVM）", "completed": false },
+      { "step": "验证 targets 全 UP", "completed": false }
+    ],
+    "passes": false
+  },
+  {
+    "number": 3,
+    "category": "阶段 3：可视化",
+    "task": "Grafana 接入 + 预置面板",
+    "steps": [
+      { "step": "docker-compose 追加 grafana service（3000，挂载 provisioning datasource）", "completed": false },
+      { "step": "编写 grafana provisioning（datasource 指向 Prometheus）", "completed": false },
+      { "step": "编写预置 dashboard JSON（可用性/HTTP P95/错误率/JVM 堆/连接池）", "completed": false },
+      { "step": "验证面板数据展示正常", "completed": false }
+    ],
+    "passes": false
+  },
+  {
+    "number": 4,
+    "category": "阶段 4：告警",
+    "task": "告警规则",
+    "steps": [
+      { "step": "编写 prometheus/alert-rules.yml（实例下线/错误率/P95>200ms/JVM>80%）", "completed": false },
+      { "step": "在 prometheus.yml 挂载 rule_files", "completed": false },
+      { "step": "验证告警规则可评估（至少 1 条能手动触发验证 firing）", "completed": false }
+    ],
+    "passes": false
+  },
+  {
+    "number": 5,
+    "category": "阶段 5：沉淀",
+    "task": "文档 + ADR",
+    "steps": [
+      { "step": "README/速览手册补监控栈访问方式与面板说明", "completed": false },
+      { "step": "ADR-0003 记录监控选型（Prometheus+Grafana 理由）", "completed": false },
+      { "step": "mvn clean install + docker compose up 全量验证通过", "completed": false }
+    ],
+    "passes": false
+  }
+]
