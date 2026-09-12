@@ -29,10 +29,16 @@
             <groupId>org.springframework.cloud</groupId>
             <artifactId>spring-cloud-starter-loadbalancer</artifactId>
         </dependency>
-        <!-- Sentinel 限流：本阶段仅引入依赖并默认关闭，网关限流规则随后续变更启用（见 ADR-0001） -->
+        <!-- Sentinel 限流（压测变更 spec「限流与熔断验证」）：
+             starter 提供 Sentinel 核心，sentinel-gateway 提供 SCG 路由级流控适配
+             （GatewayRuleManager + 429 fallback），规则见 SentinelGatewayRuleConfig -->
         <dependency>
             <groupId>com.alibaba.cloud</groupId>
             <artifactId>spring-cloud-starter-alibaba-sentinel</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>com.alibaba.cloud</groupId>
+            <artifactId>spring-cloud-alibaba-sentinel-gateway</artifactId>
         </dependency>
         <!-- 健康检查端点 -->
         <dependency>

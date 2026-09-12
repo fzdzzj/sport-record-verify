@@ -14,6 +14,19 @@
     <artifactId>sport-verify-record-service</artifactId>
     <name>sport-verify-record-service</name>
 
+    <!-- 覆盖 spring-boot-dependencies 的 snakeyaml 版本：
+         ShardingSphere 5.4.1 的 YamlEngine 依赖 snakeyaml 1.x 的 Representer() 无参构造
+         （2.x 已移除），故本模块统一降级 1.33（Spring Boot 3.2 的 YAML 解析兼容 1.x） -->
+    <dependencyManagement>
+        <dependencies>
+            <dependency>
+                <groupId>org.yaml</groupId>
+                <artifactId>snakeyaml</artifactId>
+                <version>1.33</version>
+            </dependency>
+        </dependencies>
+    </dependencyManagement>
+
     <dependencies>
         <!-- 内部模块 -->
         <dependency>
@@ -47,6 +60,13 @@
             <groupId>org.springframework.cloud</groupId>
             <artifactId>spring-cloud-starter-loadbalancer</artifactId>
         </dependency>
+        <!-- Resilience4j 熔断器：Feign 调 verify-service 的熔断降级（压测变更 spec「熔断降级转人工」）。
+             与网关 Sentinel 分工：Sentinel 管入口流量（限流），Resilience4j 管服务间依赖故障（熔断），
+             spring.cloud.openfeign.circuitbreaker.enabled 开启后 fallbackFactory 生效 -->
+        <dependency>
+            <groupId>org.springframework.cloud</groupId>
+            <artifactId>spring-cloud-starter-circuitbreaker-resilience4j</artifactId>
+        </dependency>
 
         <!-- 数据访问：MyBatis-Plus + MySQL（record_db） -->
         <dependency>
@@ -71,6 +91,13 @@
         <dependency>
             <groupId>org.apache.rocketmq</groupId>
             <artifactId>rocketmq-spring-boot-starter</artifactId>
+        </dependency>
+
+        <!-- 分布式锁 + Redis 客户端：Redisson（点赞定时 flush 防重 lock:like:flush / 对账防重，
+             与好友互加同款 30s 看门狗；starter 自带 spring-data-redis，StringRedisTemplate 计数/成员集/pending 队列复用） -->
+        <dependency>
+            <groupId>org.redisson</groupId>
+            <artifactId>redisson-spring-boot-starter</artifactId>
         </dependency>
 
         <!-- 本地缓存：Caffeine（二级缓存读侧） -->

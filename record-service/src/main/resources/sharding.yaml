@@ -1,0 +1,57 @@
+# ============================================================
+# ShardingSphere-JDBC 分片配置（track_point 按 user_id % 16 分片）
+# 由 ShardingDataSourceConfig 经 YamlShardingSphereDataSourceFactory 加载
+# 说明：
+#   - 逻辑表 track_point → 16 张物理表 track_point_0..15（建表见 sql/04-track-point-shards.sql）
+#   - sport_record 等未声明分片的表经 !SINGLE 声明，落默认数据源单表（规范「记录本身不分片」）
+#   - INLINE 算法基于 Groovy 表达式：user_id % 16 即分片编号
+# ============================================================
+
+mode:
+  type: Standalone
+  repository:
+    # 官方 Memory 仓储 SPI 未随 jdbc-core 5.4.1 分发（且 JDBC 仓储依赖 javax JAXB，
+    # JDK21 已移除），由本工程按官方 SPI 契约自实现（见
+    # config/shardingsphere/MemoryStandalonePersistRepository + META-INF/services）
+    type: Memory
+
+dataSources:
+  ds0:
+    dataSourceClassName: com.zaxxer.hikari.HikariDataSource
+    driverClassName: com.mysql.cj.jdbc.Driver
+    jdbcUrl: jdbc:mysql://127.0.0.1:${MYSQL_PORT:3306}/record_db?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai&useSSL=false&allowPublicKeyRetrieval=true
+    username: root
+    # 密码经环境变量注入（默认 root 与 docker-compose 一致；本地库不同密码时设 MYSQL_PASSWORD）
+    password: ${MYSQL_PASSWORD:root}
+    # 连接池参数（压测「连接池调优案例」观测量）：基线 maximumPoolSize=10；
+    # 优化后经 MYSQL_POOL_SIZE 注入调大 + 批量插入缩短连接占用（前后对比见压测报告/ADR-0002）
+    maximumPoolSize: ${MYSQL_POOL_SIZE:10}
+    connectionTimeout: 30000
+    # 连接池懒初始化：中间件未启动时服务仍可启动（首次访问才失败），与骨架容错策略一致
+    initializationFailTimeout: -1
+
+rules:
+  # 未分片表声明：全部落到默认（唯一）数据源 ds0 单表（数据节点须含数据源前缀）
+  - !SINGLE
+    tables:
+      - ds0.sport_record
+      - ds0.record_like
+      - ds0.leaderboard_contribution
+  - !SHARDING
+    tables:
+      track_point:
+        # 16 张物理分片表（$->{0..15} 为内联表达式）
+        actualDataNodes: ds0.track_point_$->{0..15}
+        tableStrategy:
+          standard:
+            shardingColumn: user_id
+            shardingAlgorithmName: track_point_inline
+    shardingAlgorithms:
+      track_point_inline:
+        type: INLINE
+        props:
+          algorithm-expression: track_point_$->{user_id % 16}
+
+props:
+  # 开发期打印实际路由到的物理表，便于验证「分片路由正确」
+  sql-show: true

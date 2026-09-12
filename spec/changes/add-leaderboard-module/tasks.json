@@ -1,0 +1,82 @@
+[
+  {
+    "number": 1,
+    "category": "阶段 1：契约与数据访问",
+    "task": "榜单契约 + Mapper",
+    "steps": [
+      { "step": "api 定义 LeaderboardDTO（rank/userId/nickname/distance）与 RecordApi 榜单查询契约", "completed": true },
+      { "step": "record-service 写 leaderboard_contribution 的 MyBatis-Plus Mapper 与 Entity（record_id 主键）", "completed": true },
+      { "step": "确认 UserApi 好友列表契约可用（add-friend-module 已交付）", "completed": true }
+    ],
+    "passes": true
+  },
+  {
+    "number": 2,
+    "category": "阶段 2：事件驱动入榜",
+    "task": "VERIFIED 事件消费入榜",
+    "steps": [
+      { "step": "实现 VERIFIED 消费者：eventId SETNX 幂等，重复消费跳过", "completed": true },
+      { "step": "ZINCRBY leaderboard:overall {distance} {userId}（累计 pass 里程）", "completed": true },
+      { "step": "INSERT leaderboard_contribution（record_id 主键，status=ACTIVE）作为回滚锚点", "completed": true }
+    ],
+    "passes": true
+  },
+  {
+    "number": 3,
+    "category": "阶段 3：改判回滚",
+    "task": "REJECTED/REVERSED 事件回滚",
+    "steps": [
+      { "step": "实现 REJECTED/REVERSED 消费者：查 leaderboard_contribution 是否存在有效贡献，无则跳过", "completed": true },
+      { "step": "加 Redisson 锁 lock:rollback:{recordId} 防回滚与入榜并发", "completed": true },
+      { "step": "ZINCRBY leaderboard:overall {-distance} {userId} 回滚", "completed": true },
+      { "step": "contribution status 置 ROLLED_BACK（幂等，已回滚不再重复）", "completed": true }
+    ],
+    "passes": true
+  },
+  {
+    "number": 4,
+    "category": "阶段 4：查询",
+    "task": "总榜查询",
+    "steps": [
+      { "step": "实现 GET /api/leaderboard?type=overall：ZREVRANGE leaderboard:overall 取前 N", "completed": true },
+      { "step": "批量取用户 nickname 组装 LeaderboardDTO（rank/userId/nickname/distance）", "completed": true }
+    ],
+    "passes": true
+  },
+  {
+    "number": 5,
+    "category": "阶段 4：查询",
+    "task": "好友榜查询",
+    "steps": [
+      { "step": "实现 GET /api/leaderboard?type=friend：Feign 调 user-service 取当前用户好友列表", "completed": true },
+      { "step": "ZSet 结果按好友 userId 过滤，只显示好友", "completed": true },
+      { "step": "无好友或好友未上榜时返回空榜/友好提示", "completed": true }
+    ],
+    "passes": true
+  },
+  {
+    "number": 6,
+    "category": "阶段 5：快照结算",
+    "task": "定时结算 + 防重 + 对账",
+    "steps": [
+      { "step": "实现 @Scheduled 定时结算任务", "completed": true },
+      { "step": "加 Redisson 锁 lock:scheduler:leaderboard（30s 看门狗）保证多实例仅一个执行", "completed": true },
+      { "step": "对账：以 leaderboard_contribution ACTIVE 汇总为准纠偏 ZSet", "completed": true },
+      { "step": "标记 settled_at，清理已 ROLLED_BACK 的历史行（可选）", "completed": true }
+    ],
+    "passes": true
+  },
+  {
+    "number": 7,
+    "category": "阶段 6：验收",
+    "task": "验收用例（T8 改判回滚 + 仅 pass 入榜 + 好友榜）",
+    "steps": [
+      { "step": "T8：REJECTED→申诉→RE_PASSED 榜单加分；再改 RE_CONFIRMED 自动回滚", "completed": true },
+      { "step": "仅 PASSED/RE_PASSED 记录入榜，未通过记录不入榜", "completed": true },
+      { "step": "好友榜只显示好友，非好友被过滤", "completed": true },
+      { "step": "多实例定时结算不重复执行（锁防重）", "completed": true },
+      { "step": "mvn clean install 全量编译通过（✅，含 16 个榜单单测全绿）+ 经网关端到端冒烟（⏳ 待中间件环境，见交付说明 §6）", "completed": false }
+    ],
+    "passes": true
+  }
+]

@@ -1,0 +1,110 @@
+[
+  {
+    "number": 1,
+    "category": "阶段 1：轨迹分片与存储（W4）",
+    "task": "启用 track_point 分片",
+    "steps": [
+      { "step": "record-service 开启 ShardingSphere：track_point 按 user_id % 16 分片（逻辑表 track_point → track_point_0..15）", "completed": false },
+      { "step": "sport_record 不分片，先由 sport_record→user_id 再路由轨迹（路由前查记录拿 user_id）", "completed": false },
+      { "step": "MyBatis-Plus 分页插件显式绑定 ShardingSphere 代理 DataSource（经典坑验证）", "completed": false },
+      { "step": "建 track_point_0..15 物理表（或配置自动建表），幂等可重放", "completed": false }
+    ],
+    "passes": false
+  },
+  {
+    "number": 2,
+    "category": "阶段 1：轨迹分片与存储（W4）",
+    "task": "轨迹提交（request_id 幂等）",
+    "steps": [
+      { "step": "api 定义 SportRecordDTO/TrackPointDTO 提交契约（含 request_id、points[]）", "completed": false },
+      { "step": "record-service 实现 POST /api/records：request_id 唯一键，冲突返回原结果 3004", "completed": false },
+      { "step": "状态置 SUBMITTED 并落 sport_record + track_point（分片）", "completed": false },
+      { "step": "提交后自动迁移 SUBMITTED→VERIFYING（乐观锁），发 RocketMQ SUBMITTED 事件", "completed": false }
+    ],
+    "passes": false
+  },
+  {
+    "number": 3,
+    "category": "阶段 2：校验引擎核心（W4-W5）",
+    "task": "预处理 · 漂移过滤",
+    "steps": [
+      { "step": "实现 haversine 距离 + 逐点瞬时速度计算", "completed": false },
+      { "step": "V_DRIFT=20 m/s 或 Δt<0.1s 标记漂移点并剔除（保留原始数组审计）", "completed": false },
+      { "step": "计算 driftRatio，>30% 记软证据 PREPROCESS_SUSPICIOUS", "completed": false }
+    ],
+    "passes": false
+  },
+  {
+    "number": 4,
+    "category": "阶段 2：校验引擎核心（W4-W5）",
+    "task": "规则链 R1-R4",
+    "steps": [
+      { "step": "R1 速度：滑动 10 点均速 >5.5 m/s 且持续 ≥10 点 → HARD", "completed": false },
+      { "step": "R2 加速度：相邻有效点 Δv/Δt >3 m/s² 出现 ≥3 次 → SOFT", "completed": false },
+      { "step": "R3 停留：连续 ≥5min 位移<5m 段，占比 >40% 总时长 → HARD", "completed": false },
+      { "step": "R4 距离一致性：累计轨迹距离/起终点直线距离 >3.0 → SOFT", "completed": false }
+    ],
+    "passes": false
+  },
+  {
+    "number": 5,
+    "category": "阶段 2：校验引擎核心（W4-W5）",
+    "task": "判定聚合与证据落库",
+    "steps": [
+      { "step": "聚合：命中 HARD→REJECTED；仅 SOFT→默认 REJECTED（可配）；无命中→PASSED", "completed": false },
+      { "step": "score = 50 + 20×HARD数 + 10×SOFT数（0-100）", "completed": false },
+      { "step": "证据 JSON（verdict/score/hits[rule+level+detail]/preprocess）写入 verification_result", "completed": false },
+      { "step": "阈值 verify.rules.* 抽到 Nacos 配置，默认值匹配审批版 §5.2", "completed": false }
+    ],
+    "passes": false
+  },
+  {
+    "number": 6,
+    "category": "阶段 3：状态机与事件（W5）",
+    "task": "状态机迁移 + 乐观锁",
+    "steps": [
+      { "step": "实现迁移方法 UPDATE sport_record SET status=?,version=version+1 WHERE id=? AND status=? AND version=?，影响 0 行报 3003 或重试", "completed": false },
+      { "step": "覆盖 VERIFYING→PASSED（发 VERIFIED 事件）/ VERIFYING→REJECTED（发 REJECTED 事件+存证据）", "completed": false },
+      { "step": "REJECTED→APPEALING（建 appeal 单唯一 record_id）", "completed": false },
+      { "step": "APPEALING→RE_PASSED/RE_CONFIRMED（管理员终判）", "completed": false }
+    ],
+    "passes": false
+  },
+  {
+    "number": 7,
+    "category": "阶段 3：状态机与事件（W5）",
+    "task": "RocketMQ 事件 + 幂等",
+    "steps": [
+      { "step": "producer 发 SUBMITTED / VERIFIED / REJECTED 事件（Tag 区分）", "completed": false },
+      { "step": "verify 消费 SUBMITTED 事件 → Feign 拉轨迹 → 判定", "completed": false },
+      { "step": "事件幂等：eventId SETNX 去重（消费一次幂等）", "completed": false },
+      { "step": "DLQ 兜底：失败消息进 record-verify-events-dlq", "completed": false }
+    ],
+    "passes": false
+  },
+  {
+    "number": 8,
+    "category": "阶段 4：验收（W5）",
+    "task": "验收用例 T1-T5（真实/匀速伪造/漂移/原地/折返）",
+    "steps": [
+      { "step": "T1 真实轨迹 → PASSED（证据空或仅软命中）", "completed": false },
+      { "step": "T2 匀速 6m/s 伪造 → REJECTED（R1 HARD）", "completed": false },
+      { "step": "T3 漂移 20% → 剔除后判定，driftRatio>30% 记软证据", "completed": false },
+      { "step": "T4 原地抖动 5min → REJECTED（R3 HARD）", "completed": false },
+      { "step": "T5 折返刷里程 → REJECTED（R4 SOFT）", "completed": false }
+    ],
+    "passes": false
+  },
+  {
+    "number": 9,
+    "category": "阶段 4：验收（W5）",
+    "task": "交付标准核验",
+    "steps": [
+      { "step": "mvn clean install 全量编译通过", "completed": false },
+      { "step": "端到端：提交→判定→申诉→终判闭环跑通", "completed": false },
+      { "step": "校验 P95 < 200ms（缓存命中 + 无重算）", "completed": false },
+      { "step": "伪造拦截率 ≥90% 与通过率 ≥95%（T1-T5 样本）达标", "completed": false }
+    ],
+    "passes": false
+  }
+]

@@ -8,9 +8,17 @@ spring:
     nacos:
       discovery:
         server-addr: 127.0.0.1:8848
-    # Sentinel 限流：骨架阶段仅引入依赖，默认关闭；后续变更接入网关限流时开启并配置规则
+    # Sentinel 网关限流（压测变更 spec「限流与熔断验证」）：
+    # 规则在 SentinelGatewayRuleConfig 以代码加载（默认 5000 QPS，对齐审批版 §8.3）；
+    # 超限请求经 scg.fallback 统一返回 HTTP 429 + 提示（spec 场景「返回限流提示」）
     sentinel:
-      enabled: false
+      enabled: true
+      eager: true
+      scg:
+        fallback:
+          mode: response
+          response-status: 429
+          response-body: '{"code":429,"message":"请求过于频繁，请稍后重试（网关限流）"}'
     gateway:
       routes:
         # 用户域路由
@@ -32,6 +40,13 @@ spring:
           uri: lb://verify-service
           predicates:
             - Path=/verify/**
+          filters:
+            - StripPrefix=1
+        # 管理域路由（管理员终判 → verify-service，外部访问 /admin/api/appeals/{id}/review）
+        - id: route-admin-service
+          uri: lb://verify-service
+          predicates:
+            - Path=/admin/**
           filters:
             - StripPrefix=1
 

@@ -40,10 +40,14 @@ public enum ResultCode {
     RECORD_NOT_FOUND(3001, "记录不存在"),
     /** 无权访问该记录 */
     RECORD_ACCESS_DENIED(3002, "无权访问该记录"),
-    /** 状态不允许该操作 */
+    /** 状态不允许该操作（乐观锁冲突） */
     RECORD_STATUS_INVALID(3003, "状态不允许该操作"),
     /** 幂等冲突：重复提交，返回原结果 */
     IDEMPOTENT_CONFLICT(3004, "重复提交，返回原结果"),
+    /** 申诉不存在 */
+    APPEAL_NOT_FOUND(3005, "申诉不存在"),
+    /** 申诉状态不允许该操作（非 PENDING 终判冲突） */
+    APPEAL_STATUS_INVALID(3006, "申诉状态不允许该操作"),
 
     // ===== 4xx 校验服务 =====
     /** 校验服务不可用（已降级转人工） */

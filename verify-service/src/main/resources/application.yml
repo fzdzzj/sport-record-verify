@@ -16,19 +16,45 @@ spring:
   # 数据源：独立 verify_db
   datasource:
     driver-class-name: com.mysql.cj.jdbc.Driver
-    url: jdbc:mysql://127.0.0.1:3306/verify_db?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai&useSSL=false&allowPublicKeyRetrieval=true
+    # 宿主机已有 MySQL 占用 3306 时，compose 侧设 MYSQL_PORT=3307，服务侧注入同名变量即可，默认仍 3306
+    url: jdbc:mysql://127.0.0.1:${MYSQL_PORT:3306}/verify_db?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai&useSSL=false&allowPublicKeyRetrieval=true
     username: root
     password: root
-    # 骨架阶段容错：中间件未启动时服务仍可启动（连接延迟到首次访问）；
-    # 生产环境建议移除并保持 fail-fast，让数据库故障在启动期暴露
+    # 骨架阶段容错：中间件未启动时服务仍可启动（连接延迟到首次访问）
     hikari:
       initialization-fail-timeout: -1
+  # Redisson：事件消费幂等 eventId SETNX 去重（规范「事件幂等消费」）
+  data:
+    redis:
+      host: 127.0.0.1
+      port: 6379
 
-# RocketMQ（骨架阶段仅接入 producer，校验结果事件随后续变更定义）
+# RocketMQ：消费 SUBMITTED 事件触发校验，发布 VERIFIED / REJECTED 事件
 rocketmq:
   name-server: 127.0.0.1:9876
   producer:
     group: verify-service-group
+
+# 校验规则阈值（默认值同审批版 §5.2，规范「规则阈值可配置」；
+# Nacos verify-service.yml 配置 verify.rules.* 优先级更高，改配置即生效）
+verify:
+  rules:
+    v-drift: 20            # 漂移速度阈值 m/s（GPS 跳变特征）
+    r1:
+      speed: 5.5           # 滑动窗口平均速度阈值 m/s
+      window-points: 10    # 滑动窗口点数
+      min-windows: 10      # 高均速持续窗口数下限（持续 ≥10 窗口）
+    r2:
+      accel: 3.0           # 加速度突变阈值 m/s²
+      min-count: 3         # 触发次数下限
+    r3:
+      min-minutes: 5       # 停留段最小时长（分钟）
+      max-meters: 5.0      # 停留段位移上限（米）
+      segment-ratio: 0.4   # 停留段总时长占比阈值（>40% 命中）
+    r4:
+      max-ratio: 3.0       # 累计轨迹距离 / 起终点直线距离 比值阈值
+  policy:
+    soft-only-reject: true # 仅 SOFT 命中默认 REJECTED（宽松开关属后续灰度变更，本变更仅提供配置项）
 
 mybatis-plus:
   configuration:

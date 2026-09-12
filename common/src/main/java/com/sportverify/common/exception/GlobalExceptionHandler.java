@@ -47,6 +47,17 @@ public class GlobalExceptionHandler {
     }
 
     /**
+     * 非法参数（业务侧主动校验失败，如好友自申请、必填缺失）：
+     * 返回 400 + 校验提示，与参数校验异常口径一致。
+     */
+    @ExceptionHandler(IllegalArgumentException.class)
+    @ResponseStatus(HttpStatus.BAD_REQUEST)
+    public Result<Void> handleIllegalArgument(IllegalArgumentException e) {
+        log.warn("非法参数：{}", e.getMessage());
+        return Result.failure(400, e.getMessage());
+    }
+
+    /**
      * 兜底异常：记录完整堆栈，对外仅返回通用错误码。
      */
     @ExceptionHandler(Exception.class)

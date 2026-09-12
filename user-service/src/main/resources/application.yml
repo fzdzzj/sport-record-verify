@@ -17,7 +17,8 @@ spring:
   # 数据源：独立 user_db
   datasource:
     driver-class-name: com.mysql.cj.jdbc.Driver
-    url: jdbc:mysql://127.0.0.1:3306/user_db?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai&useSSL=false&allowPublicKeyRetrieval=true
+    # 宿主机已有 MySQL 占用 3306 时，compose 侧设 MYSQL_PORT=3307，服务侧注入同名变量即可，默认仍 3306
+    url: jdbc:mysql://127.0.0.1:${MYSQL_PORT:3306}/user_db?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai&useSSL=false&allowPublicKeyRetrieval=true
     username: root
     password: root
     # 骨架阶段容错：中间件未启动时服务仍可启动（连接延迟到首次访问）；

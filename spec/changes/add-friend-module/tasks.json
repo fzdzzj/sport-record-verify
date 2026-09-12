@@ -1,0 +1,81 @@
+[
+  {
+    "number": 1,
+    "category": "阶段 1：契约与数据访问",
+    "task": "好友 Feign 契约 + Mapper",
+    "steps": [
+      { "step": "api 定义 FriendRequestDTO / FriendshipDTO（fromUser/toUser/status 等字段）", "completed": true },
+      { "step": "UserApi 补好友接口签名（申请/同意/拒绝/列表），供后续 record-service 好友榜过滤", "completed": true },
+      { "step": "user-service 写 friend_request / friendship 的 MyBatis-Plus Mapper 与 Entity", "completed": true }
+    ],
+    "passes": true
+  },
+  {
+    "number": 2,
+    "category": "阶段 2：申请与幂等",
+    "task": "发送好友申请 + 幂等去重",
+    "steps": [
+      { "step": "实现 POST /api/friends/requests：创建 status=PENDING 的 friend_request 单", "completed": true },
+      { "step": "幂等去重：同向 PENDING 重复 / 反向 PENDING 已存在 / 已存在关系 → 返回 5001 或原单", "completed": true },
+      { "step": "目标用户不存在 → 2002；自申请拦截", "completed": true }
+    ],
+    "passes": true
+  },
+  {
+    "number": 3,
+    "category": "阶段 2：申请与幂等",
+    "task": "申请状态机流转（accept/reject）",
+    "steps": [
+      { "step": "实现 POST /api/friends/requests/{id}/accept：仅 PENDING 可流转，ACCEPTED 落 friendship(user_low<user_high)", "completed": true },
+      { "step": "实现 POST /api/friends/requests/{id}/reject：PENDING→REJECTED", "completed": true },
+      { "step": "非 PENDING 流转拒绝（关系不存在/已处理 → 5002 或业务异常）", "completed": true },
+      { "step": "流转用乐观语义（UPDATE ... WHERE status=PENDING），影响 0 行报冲突", "completed": true }
+    ],
+    "passes": true
+  },
+  {
+    "number": 4,
+    "category": "阶段 3：并发与列表",
+    "task": "Redisson 锁保证并发互加唯一",
+    "steps": [
+      { "step": "申请/同意入口加 Redisson 可重入锁 lock:friend:{low}_{high}（10s），锁键用 min/max 归一", "completed": true },
+      { "step": "锁内「检查-建单」原子化：并发互加只产生一条 friendship（验收 T7）", "completed": true },
+      { "step": "验证 A-B 与 B-A 两方向拿到同一把锁键", "completed": true }
+    ],
+    "passes": true
+  },
+  {
+    "number": 5,
+    "category": "阶段 3：并发与列表",
+    "task": "好友列表",
+    "steps": [
+      { "step": "实现 GET /api/friends?page=&size=：分页查询，只返回 ACCEPTED 关系", "completed": true },
+      { "step": "列表项反规范化：由 (user_low,user_high) 还原对方 userId/nickname", "completed": true },
+      { "step": "排除 PENDING/REJECTED/CANCELLED", "completed": true }
+    ],
+    "passes": true
+  },
+  {
+    "number": 6,
+    "category": "阶段 4：验收",
+    "task": "验收用例（T7 并发互加 + 幂等 + 列表）",
+    "steps": [
+      { "step": "T7：A、B 同时互发申请 → 仅一条 friendship", "completed": true },
+      { "step": "重复申请同向 → 5001 或原单；已存在关系再申请 → 5001", "completed": true },
+      { "step": "反向 PENDING 已存在再申请 → 5001", "completed": true },
+      { "step": "好友列表只返回 ACCEPTED，分页正确", "completed": true }
+    ],
+    "passes": true
+  },
+  {
+    "number": 7,
+    "category": "阶段 4：验收",
+    "task": "交付标准核验",
+    "steps": [
+      { "step": "mvn clean install 全量编译通过", "completed": true },
+      { "step": "经网关端到端：申请→同意→双方列表互见", "completed": false },
+      { "step": "并发互加单测/集成验证通过（仅一条关系）", "completed": true }
+    ],
+    "passes": false
+  }
+]

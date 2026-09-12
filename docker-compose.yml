@@ -39,7 +39,8 @@ services:
       MYSQL_ROOT_PASSWORD: root
       TZ: Asia/Shanghai
     ports:
-      - "3306:3306"
+      # 宿主机端口可用 MYSQL_PORT 覆盖（默认 3306；宿主机已有 MySQL 时设 3307 即可，服务侧同步注入同名变量）
+      - "${MYSQL_PORT:-3306}:3306"
     command:
       - --character-set-server=utf8mb4
       - --collation-server=utf8mb4_unicode_ci
@@ -78,7 +79,8 @@ services:
     ports:
       - "9876:9876"   # NameServer 端口
     healthcheck:
-      test: ["CMD", "sh", "-c", "ss -lnt | grep -q 9876"]
+      # 镜像内无 ss/nc（iproute2 未装，会永远 unhealthy），用 bash /dev/tcp 探测端口
+      test: ["CMD", "bash", "-c", "echo > /dev/tcp/127.0.0.1/9876"]
       interval: 10s
       timeout: 5s
       retries: 12
@@ -90,12 +92,18 @@ services:
   rocketmq-broker:
     image: apache/rocketmq:5.2.0
     container_name: sport-verify-rocketmq-broker
-    command: sh mqbroker -n rocketmq-namesrv:9876
+    # -c 必须显式指向挂载的 broker.conf：否则 brokerIP1=127.0.0.1 不生效，
+    # broker 以容器内网 IP 注册路由 → 宿主机服务发送超时（sendDefaultImpl call timeout）
+    command: sh mqbroker -c /home/rocketmq/conf/broker.conf -n rocketmq-namesrv:9876
     depends_on:
       rocketmq-namesrv:
         condition: service_healthy
     environment:
       NAMESRV_ADDR: rocketmq-namesrv:9876
+      # Docker Desktop（WSL2 cgroup v2）下 JDK 已知 NPE：StoreUtil.<clinit> 经
+      # CgroupV2Subsystem 读物理内存失败 → long-poll 拉取全部报 CODE:11，消息无法消费；
+      # 关闭 JVM 容器感知绕开该路径（读 /proc/meminfo 兜底），见压测变更交付说明
+      JAVA_OPT_EXT: "-XX:-UseContainerSupport"
     ports:
       - "10911:10911"  # Broker 主端口
       - "10909:10909"  # 快速重连端口（vIP 通道）
@@ -103,7 +111,8 @@ services:
       # brokerIP1 指向宿主机回环地址：本机 Java 服务（宿主进程）直连 127.0.0.1 可通
       - ./rocketmq/broker.conf:/home/rocketmq/conf/broker.conf:ro
     healthcheck:
-      test: ["CMD", "sh", "-c", "ss -lnt | grep -q 10911"]
+      # 镜像内无 ss/nc（iproute2 未装，会永远 unhealthy），用 bash /dev/tcp 探测端口
+      test: ["CMD", "bash", "-c", "echo > /dev/tcp/127.0.0.1/10911"]
       interval: 10s
       timeout: 5s
       retries: 12

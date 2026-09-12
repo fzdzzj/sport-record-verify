@@ -1,0 +1,72 @@
+[
+  {
+    "number": 1,
+    "category": "阶段 1：契约与数据访问",
+    "task": "点赞 Feign 契约 + Mapper",
+    "steps": [
+      { "step": "api 定义 LikeDTO（recordId、likeCount、liked）与 RecordApi 点赞契约", "completed": true },
+      { "step": "record-service 写 record_like 的 MyBatis-Plus Mapper 与 Entity（联合主键 record_id,user_id）", "completed": true },
+      { "step": "记录详情 DTO 增加 likeCount 与 liked 字段", "completed": true }
+    ],
+    "passes": true
+  },
+  {
+    "number": 2,
+    "category": "阶段 2：点赞与幂等",
+    "task": "点赞端点 + 前置校验 + 幂等",
+    "steps": [
+      { "step": "实现 POST /api/records/{id}/like：校验记录 status=PASSED，否则返回 6001", "completed": true },
+      { "step": "Redis 成员集 SADD like:record:{recordId}:users {userId}，返回 0 视为已赞（幂等）", "completed": true },
+      { "step": "INCR like:count:{recordId}（仅 SADD 成功时）", "completed": true },
+      { "step": "产生 pending 点赞操作进异步队列，待批量落库", "completed": true }
+    ],
+    "passes": true
+  },
+  {
+    "number": 3,
+    "category": "阶段 2：点赞与幂等",
+    "task": "取消端点 + 幂等",
+    "steps": [
+      { "step": "实现 DELETE /api/records/{id}/like：SREM like:record:{recordId}:users {userId}，返回 0 视为未赞（幂等）", "completed": true },
+      { "step": "DECR like:count:{recordId}（仅 SREM 成功时，下限 0）", "completed": true },
+      { "step": "产生 pending 取消操作进异步队列", "completed": true }
+    ],
+    "passes": true
+  },
+  {
+    "number": 4,
+    "category": "阶段 3：计数读取",
+    "task": "点赞数读取（读热写冷）",
+    "steps": [
+      { "step": "查询点赞数优先读 Redis like:count:{recordId}", "completed": true },
+      { "step": "Redis 缺失时兜底 DB COUNT(*) 并回填 Redis", "completed": true },
+      { "step": "查询「是否已赞」走 Redis 成员集 SISMEMBER", "completed": true }
+    ],
+    "passes": true
+  },
+  {
+    "number": 5,
+    "category": "阶段 4：异步批量落库",
+    "task": "定时批量落库 + Redisson 防重",
+    "steps": [
+      { "step": "实现 @Scheduled 定时任务，批量消费 pending 点赞/取消操作", "completed": true },
+      { "step": "加 Redisson 锁 lock:like:flush（30s 看门狗）保证多实例仅一个执行", "completed": true },
+      { "step": "批量写 record_like：点赞 INSERT（联合主键冲突跳过）、取消 DELETE", "completed": true },
+      { "step": "对账任务兜底：定时以 DB 行为准纠偏 Redis 计数", "completed": true }
+    ],
+    "passes": true
+  },
+  {
+    "number": 6,
+    "category": "阶段 5：验收",
+    "task": "验收用例（T9 重复点赞 + 6001 + 最终一致）",
+    "steps": [
+      { "step": "T9：同人同记录点赞两次 → Redis 计数 +1，record_like 落库仅一条", "completed": true },
+      { "step": "未通过校验记录点赞 → 6001", "completed": true },
+      { "step": "取消点赞 → 计数 -1，异步删行，重复取消幂等", "completed": true },
+      { "step": "计数与落库最终一致（flush 后 + 对账兜底）", "completed": true },
+      { "step": "mvn clean install 全量编译通过 + 经网关端到端冒烟", "completed": true }
+    ],
+    "passes": true
+  }
+]
