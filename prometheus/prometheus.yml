@@ -1,0 +1,55 @@
+# ============================================================
+# Prometheus 抓取配置（可观测性变更，见 spec/changes/add-observability 与 ADR-0003）
+#
+# 挂载方式：docker-compose.yml 中 prometheus 服务将本文件挂到 /etc/prometheus/prometheus.yml
+# 控制台：http://127.0.0.1:9090（Status → Targets 查看抓取状态，Status → Rules 查看告警）
+# ============================================================
+
+global:
+  # 抓取与规则评估周期：15s 是 Prometheus 默认值，兼顾实时性与本地资源开销；
+  # 告警规则（alert-rules.yml）的 for 持续时间以此为最小评估单位
+  scrape_interval: 15s
+  evaluation_interval: 15s
+
+scrape_configs:
+  # ---------- 抓取地址说明（重要，勿盲目改成容器服务名） ----------
+  # 四个 Java 服务以宿主机进程（java -jar）方式运行，不在 compose 内，
+  # 因此 target 用 host.docker.internal 从容器内访问宿主机端口
+  # （Docker Desktop 原生支持；compose 侧 prometheus 服务已加
+  #   extra_hosts: host.docker.internal:host-gateway，Linux 宿主机同样可用）。
+  # 若日后把服务容器化并 join sport-verify-net，把 host.docker.internal
+  # 换成对应 compose 服务名（如 gateway-service:8080）即可。
+  # 指标路径必须是 /actuator/prometheus：Spring Boot Actuator 默认暴露在
+  # /actuator 前缀下，而非 Prometheus 惯用的 /metrics。
+
+  # ---------- 网关（宿主机 8080，WebFlux，含 Sentinel 限流指标上下文） ----------
+  - job_name: gateway-service
+    metrics_path: /actuator/prometheus
+    static_configs:
+      - targets: ['host.docker.internal:8080']
+
+  # ---------- 用户服务（宿主机 8081，user_db + Redis） ----------
+  - job_name: user-service
+    metrics_path: /actuator/prometheus
+    static_configs:
+      - targets: ['host.docker.internal:8081']
+
+  # ---------- 记录服务（宿主机 8082，record_db 分片 + RocketMQ + Redis） ----------
+  - job_name: record-service
+    metrics_path: /actuator/prometheus
+    static_configs:
+      - targets: ['host.docker.internal:8082']
+
+  # ---------- 校验服务（宿主机 8083，verify_db + RocketMQ） ----------
+  - job_name: verify-service
+    metrics_path: /actuator/prometheus
+    static_configs:
+      - targets: ['host.docker.internal:8083']
+
+  # ---------- 排行榜服务（预留空位，随 add-leaderboard-service 提案落地） ----------
+  # leaderboard-service（端口 8084）上线后取消注释即可纳入抓取；
+  # 同步动作：alert-rules.yml 中按 job 正则匹配的告警需把 leaderboard-service 加入列表
+  # - job_name: leaderboard-service
+  #   metrics_path: /actuator/prometheus
+  #   static_configs:
+  #     - targets: ['host.docker.internal:8084']
