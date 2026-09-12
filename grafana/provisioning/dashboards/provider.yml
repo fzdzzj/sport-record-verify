@@ -1,0 +1,23 @@
+# ============================================================
+# Grafana Dashboard 预置提供者（provisioning）
+#
+# 作用：声明从文件系统加载 dashboard JSON，与 datasources/ 下的数据源预置配合，
+#       实现「compose up 即有面板」的零手工配置体验
+# 挂载：grafana/provisioning/ 整目录 → /etc/grafana/provisioning/
+#       grafana/dashboards/   → /var/lib/grafana/dashboards（即下方 path）
+# ============================================================
+apiVersion: 1
+
+providers:
+  - name: sport-verify
+    orgId: 1
+    folder: ""
+    type: file
+    disableDeletion: false
+    # 目录内 JSON 变更后 30s 内自动加载/更新，改面板无需重启 Grafana
+    updateIntervalSeconds: 30
+    allowUiUpdates: true
+    options:
+      # 对应 compose 中 grafana/dashboards 的容器内挂载路径
+      path: /var/lib/grafana/dashboards
+      foldersFromFilesStructure: false

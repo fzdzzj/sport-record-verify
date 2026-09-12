@@ -1,0 +1,21 @@
+# ============================================================
+# Grafana 数据源预置（provisioning）
+#
+# 挂载：docker-compose.yml 中 grafana 服务把 grafana/provisioning/ 整个目录
+#       挂到 /etc/grafana/provisioning/，Grafana 启动时自动加载，无需手工在 UI 配置
+# ============================================================
+apiVersion: 1
+
+datasources:
+  - name: Prometheus
+    # 固定 uid：预置 dashboard JSON 以此引用数据源，之后在 UI 改名也不会断链
+    uid: prometheus
+    type: prometheus
+    access: proxy
+    # Grafana 容器经 compose 网络 sport-verify-net 直连 prometheus 服务（容器名即主机名）
+    url: http://prometheus:9090
+    isDefault: true
+    editable: true
+    jsonData:
+      # 与 prometheus.yml 的 scrape_interval 保持一致，避免面板查询请求不存在的粒度
+      timeInterval: 15s
