@@ -16,6 +16,7 @@ CREATE TABLE IF NOT EXISTS `user` (
     `phone`         VARCHAR(20)  NOT NULL COMMENT '手机号（登录账号，唯一）',
     `password_hash` VARCHAR(100) NOT NULL COMMENT 'BCrypt 密码哈希',
     `nickname`      VARCHAR(50)  DEFAULT NULL COMMENT '昵称',
+    `role`          VARCHAR(20)  NOT NULL DEFAULT 'USER' COMMENT '角色：USER 普通用户（默认）/ ADMIN 管理员（治理面接口准入，见 ADR-0007）',
     `status`        TINYINT      NOT NULL DEFAULT 1 COMMENT '状态：0 禁用，1 正常',
     `created_at`    DATETIME     NOT NULL COMMENT '创建时间',
     PRIMARY KEY (`id`),

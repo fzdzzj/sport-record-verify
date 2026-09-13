@@ -139,6 +139,35 @@ public class AuthService {
         return issueTokenPair(user.getId());
     }
 
+    // ==================== 角色授予（治理面 RBAC，add-admin-rbac 见 ADR-0007） ====================
+
+    /**
+     * 授予指定用户 ADMIN 角色（最小模型二态之一）：仅经内部接口（网内信任）调用。
+     *
+     * <p>治理面准入：/admin/** 与规则版本接口要求 role=ADMIN，普通用户被拒（403/1002）。
+     * 用户不存在 → 2002；幂等：已是 ADMIN 直接成功返回（角色本为集合语义，无重复问题）。
+     * 生效口径：<b>需重新登录</b>——角色在签发 token 时写入 role claim，重登拿新 token 才生效。</p>
+     */
+    public void grantAdmin(Long userId) {
+        if (userId == null) {
+            throw new IllegalArgumentException("目标用户ID不能为空");
+        }
+        // —— 校验目标用户存在（不存在不落库，权限授予不应对不存在的账号静默成功）
+        User user = userMapper.selectById(userId);
+        if (user == null) {
+            throw new BizException(ResultCode.USER_NOT_FOUND);
+        }
+        if (User.ROLE_ADMIN.equals(user.getRole())) {
+            log.info("admin 授予跳过（已是 ADMIN）：userId={}", userId);
+            return;
+        }
+        User update = new User();
+        update.setId(userId);
+        update.setRole(User.ROLE_ADMIN);
+        userMapper.updateById(update);
+        log.info("admin 授予成功：userId={}", userId);
+    }
+
     // ==================== refresh 轮换 ====================
 
     /**
