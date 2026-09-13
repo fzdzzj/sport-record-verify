@@ -130,6 +130,11 @@ public class AuthService {
                 || dto.getPassword() == null || dto.getPassword().isBlank()) {
             throw new IllegalArgumentException("手机号与密码不能为空");
         }
+        // —— 锁定前置检查：账号已临时锁定 → 直接拒绝（不校验密码、不 countFailure；防撞库 + 省 BCrypt）
+        if (lockEnabled && isLocked(dto.getPhone())) {
+            log.warn("登录被拒：账号已临时锁定 phone={}", maskPhone(dto.getPhone()));
+            throw new BizException(ResultCode.FORBIDDEN, "账号已临时锁定，请稍后重试");
+        }
         User user = userMapper.selectOne(new LambdaQueryWrapper<User>()
                 .eq(User::getPhone, dto.getPhone())
                 .last("LIMIT 1"));
@@ -206,6 +211,17 @@ public class AuthService {
     }
 
     // ==================== 失败计数（防爆破设计口径） ====================
+
+    /** 锁定状态检查：auth:lock:{phone} 存在即为已锁定；Redis 不可用降级为「不锁定」（不阻塞登录） */
+    private boolean isLocked(String phone) {
+        try {
+            return Boolean.TRUE.equals(stringRedisTemplate.hasKey(lockKey(phone)));
+        } catch (Exception e) {
+            // 锁定是安全增强非强一致必须：Redis 抖动时宁可放行也不因锁定检查失败阻断登录
+            log.warn("锁定检查降级（Redis 不可用）：phone={}, err={}", maskPhone(phone), e.getMessage());
+            return false;
+        }
+    }
 
     /** 登录失败计数：INCR + TTL 窗口；达到阈值记告警（锁定落地属后续变更） */
     private void countFailure(String phone) {
