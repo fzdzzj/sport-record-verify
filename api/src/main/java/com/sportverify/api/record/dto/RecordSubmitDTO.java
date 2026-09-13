@@ -24,7 +24,7 @@ public class RecordSubmitDTO implements Serializable {
     /** 所属用户 */
     private Long userId;
 
-    /** 运动类型：1 RUNNING，2 CYCLING ... */
+    /** 运动类型（SportType.code：1 RUNNING，2 CYCLING，3 WALKING；缺省回退 RUNNING，未知拒绝） */
     private Integer sportType;
 
     /** 开始时间 */

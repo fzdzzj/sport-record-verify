@@ -3,6 +3,7 @@ package com.sportverify.record.entity;
 import com.baomidou.mybatisplus.annotation.IdType;
 import com.baomidou.mybatisplus.annotation.TableId;
 import com.baomidou.mybatisplus.annotation.TableName;
+import com.sportverify.api.record.SportType;
 import lombok.Data;
 
 import java.math.BigDecimal;
@@ -28,8 +29,8 @@ public class SportRecord {
     /** 所属用户（轨迹分片路由键来源） */
     private Long userId;
 
-    /** 运动类型：1 RUNNING，2 CYCLING ... */
-    private Integer sportType;
+    /** 运动类型（SportType.code：1 RUNNING，2 CYCLING，3 WALKING；缺省回退 RUNNING） */
+    private Integer sportType = SportType.RUNNING.getCode();
 
     /** 开始时间 */
     private LocalDateTime startTime;

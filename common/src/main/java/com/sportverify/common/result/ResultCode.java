@@ -48,6 +48,8 @@ public enum ResultCode {
     APPEAL_NOT_FOUND(3005, "申诉不存在"),
     /** 申诉状态不允许该操作（非 PENDING 终判冲突） */
     APPEAL_STATUS_INVALID(3006, "申诉状态不允许该操作"),
+    /** 运动类型非法（枚举外取值，提交接口拒绝，规范「未知类型拒绝」） */
+    SPORT_TYPE_INVALID(3007, "运动类型非法"),
 
     // ===== 4xx 校验服务 =====
     /** 校验服务不可用（已降级转人工） */
