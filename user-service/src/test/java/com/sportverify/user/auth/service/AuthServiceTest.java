@@ -79,8 +79,8 @@ class AuthServiceTest {
         }).when(redis).delete(anyString());
         when(redis.expire(anyString(), anyLong(), any(TimeUnit.class))).thenReturn(Boolean.TRUE);
 
-        // JWT 签发打桩（登录成功/refresh 落键用；key 具体值不影响断言）
-        when(jwtUtil.issueAccessToken(anyLong())).thenReturn("access-token");
+        // JWT 签发打桩（登录成功/refresh 落键用；key 具体值不影响断言；role 参数为 add-admin-rbac 后签名）
+        when(jwtUtil.issueAccessToken(anyLong(), anyString())).thenReturn("access-token");
         when(jwtUtil.issueRefreshToken(anyLong())).thenReturn("refresh-token");
         when(jwtUtil.parseRefresh(anyString())).thenReturn(new JwtUtil.ParsedRefresh(1L, "test-jti"));
         when(jwtUtil.refreshTtlSeconds()).thenReturn(604800L);
@@ -107,7 +107,7 @@ class AuthServiceTest {
         BizException locked = assertThrows(BizException.class, () -> service.login(request(PHONE, GOOD_PASSWORD)));
         assertEquals(ResultCode.FORBIDDEN.getCode(), locked.getCode(), "锁定期内应返回 403");
         assertTrue(locked.getMessage().contains("临时锁定"));
-        verify(jwtUtil, never()).issueAccessToken(anyLong());
+        verify(jwtUtil, never()).issueAccessToken(anyLong(), anyString());
     }
 
     // ==================== 锁定期满恢复 ====================
