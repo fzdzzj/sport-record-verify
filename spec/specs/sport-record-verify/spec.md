@@ -1138,6 +1138,6 @@ AND 旧版本 RETIRED
 - **add-like-module**：点赞只对 PASSED 记录开放，与校验引擎状态机强耦合（落地顺序在其后）。计数权威源为 record_like 行，Redis 为读热写冷的加速层（Redis 原子计数 + 最终一致 + 异步批量）。错误码 6001 与 record_like 表结构以审批版 §4.6/§4.8/§6.2 为唯一依据。
 - **add-leaderboard-module**：榜单是校验闭环的收口，依赖校验引擎（事件）与好友模块（好友列表 Feign）。ZSet `leaderboard:overall`（member=userId，score=累计 pass 里程）为热读层；leaderboard_contribution 行为权威源与回滚锚点（Redis ZSet + 事件驱动最终一致 + 定时防重）。事件 Tag 与表结构以审批版 §4.5/§6.2/§7.1/§7.5 为唯一依据。
 - **add-leaderboard-service**：架构重构，不新增业务功能，把已实现的榜单从 record-service 平移至独立服务，服务数 4→5。「为什么 5 个服务」「榜单为什么独立」成为架构决策 ADR（数据热点隔离、读多写少独立扩缩容、独立降级面）。贡献表归属默认复用 record_db（最小改动），独立 leaderboard_db 为可选项。路由前缀 /record/api/leaderboard → /leaderboard/** 为破坏性变更，需兼容期过渡。
-- **add-load-test-report**：不新增业务功能，聚焦「真实数据 + 优化因果」沉淀。指标阈值（90%/95%/200ms）与压测并发档位（100/500/1000）以审批版 §8.2/§9 T12/§12.3 第 9 项/附录 A.3/A.4-A1 为唯一依据。已确认不购云服务器：压测在本地 Docker Compose 环境执行，结论按本地单机能力如实标注（诚实口径）。
+- **add-load-test-report**：不新增业务功能，聚焦「真实数据 + 优化因果」沉淀。指标阈值（90%/95%/200ms）与压测并发档位（100/500/1000）以审批版 §8.2/§9 T12/§12.3 第 9 项与 A1 项为唯一依据。已确认不购云服务器：压测在本地 Docker Compose 环境执行，结论按本地单机能力如实标注（诚实口径）。
 - **add-observability**：运维增强，不改变业务功能；指标口径对齐压测报告，形成「即时观测 + 历史实录」双层证据。/actuator/prometheus 本地演示直连；生产安全（网关不转发 actuator、内网抓取、最小权限）属「讲设计」范畴。监控栈选型（Prometheus+Grafana）理由随 ADR 记录。
 - **add-rule-grayscale**：把「阈值可配」升级为「版本化灰度发布」，落地审批版 §7.4 全部流程。rule_version 表已建（sql/03-verify-db.sql），本变更不迁移表结构。采样键 userId%100 与审批版 §7.4 一致；灰度观察期用库内快照避免与 Nacos 动态刷新竞态。
