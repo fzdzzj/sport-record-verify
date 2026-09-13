@@ -51,6 +51,9 @@
         <rocketmq-spring.version>2.3.1</rocketmq-spring.version>
         <caffeine.version>3.1.8</caffeine.version>
         <lombok.version>1.18.30</lombok.version>
+        <!-- JWT：jjwt 0.12.x（HS256 签发/校验，见 ADR-0007；api/impl/jackson 三段式，
+             只有 jjwt-api 参与编译，impl/jackson 运行时提供实现与 JSON 序列化） -->
+        <jjwt.version>0.12.6</jjwt.version>
         <!-- Micrometer：对齐 spring-boot-dependencies 3.2.4 内置的 micrometer.version（1.12.4），
              升级 Boot 时需同步；见 dependencyManagement 中 micrometer-registry-prometheus 的说明 -->
         <micrometer.version>1.12.4</micrometer.version>
@@ -134,6 +137,24 @@
                 <groupId>org.projectlombok</groupId>
                 <artifactId>lombok</artifactId>
                 <version>${lombok.version}</version>
+            </dependency>
+            <!-- ===== JWT（jjwt 0.12.x，认证鉴权闭环，见 ADR-0007） =====
+                 spring-security-crypto（BCrypt）版本由 spring-boot-dependencies 的
+                 spring-security-bom 传递管理，不在此显式声明；jjwt 无 BOM，三段式显式锁版本 -->
+            <dependency>
+                <groupId>io.jsonwebtoken</groupId>
+                <artifactId>jjwt-api</artifactId>
+                <version>${jjwt.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>io.jsonwebtoken</groupId>
+                <artifactId>jjwt-impl</artifactId>
+                <version>${jjwt.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>io.jsonwebtoken</groupId>
+                <artifactId>jjwt-jackson</artifactId>
+                <version>${jjwt.version}</version>
             </dependency>
 
             <!-- ===== 可观测性（Prometheus 指标导出，见 ADR-0003） =====
