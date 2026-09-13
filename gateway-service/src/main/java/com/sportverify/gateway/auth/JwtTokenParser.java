@@ -23,6 +23,8 @@ public class JwtTokenParser {
 
     /** token 类型声明键（与 user-service JwtUtil.CLAIM_TYPE 对齐） */
     private static final String CLAIM_TYPE = "type";
+    /** 角色声明键（与 user-service JwtUtil.CLAIM_ROLE 对齐；add-admin-rbac 见 ADR-0007） */
+    private static final String CLAIM_ROLE = "role";
     /** 合法类型：access（业务接口携带；refresh 仅供换新，网关一律拒绝） */
     private static final String TYPE_ACCESS = "ACCESS";
 
@@ -37,13 +39,19 @@ public class JwtTokenParser {
     }
 
     /**
-     * 校验签名/时效/type 并解析 userId；任一不符抛 {@link JwtException}，由过滤器统一映射 401（1001）。
+     * 校验签名/时效/type 并解析身份（userId + role）；任一不符抛 {@link JwtException}，
+     * 由过滤器统一映射 401（1001）。role 与 userId 均来自签发端签名的 token，下游不信任外部传入。
      */
-    public Long parseUserId(String token) {
+    public TokenIdentity parseIdentity(String token) {
         Claims claims = Jwts.parser().verifyWith(key).build().parseSignedClaims(token).getPayload();
         if (!TYPE_ACCESS.equals(claims.get(CLAIM_TYPE, String.class))) {
             throw new JwtException("token 类型错误：非 access token");
         }
-        return Long.valueOf(claims.getSubject());
+        String role = claims.get(CLAIM_ROLE, String.class);
+        return new TokenIdentity(Long.valueOf(claims.getSubject()), role != null ? role : "");
+    }
+
+    /** 网关解析出的身份（userId + role）：role 用于治理面 /admin/** 准入判定（add-admin-rbac 见 ADR-0007） */
+    public record TokenIdentity(Long userId, String role) {
     }
 }

@@ -72,6 +72,13 @@
             <artifactId>lombok</artifactId>
             <scope>provided</scope>
         </dependency>
+        <!-- 网关鉴权单测（治理面 401/403/放行，add-admin-rbac 见 ADR-0007）：
+             spring-test 提供 MockServerWebExchange/MockServerHttpResponse 做无服务器过滤链测试 -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-test</artifactId>
+            <scope>test</scope>
+        </dependency>
     </dependencies>
 
     <build>

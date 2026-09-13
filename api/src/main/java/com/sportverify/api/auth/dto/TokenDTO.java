@@ -21,6 +21,9 @@ public class TokenDTO implements Serializable {
     /** refresh token（换新 access 用，轮换制：每次刷新后旧 refresh 作废） */
     private String refreshToken;
 
+    /** 角色（USER / ADMIN，add-admin-rbac 见 ADR-0007）：签发端从库中读入，前端据此判断是否可进管理端 */
+    private String role;
+
     /** token 类型（Bearer，固定） */
     private String tokenType;
 

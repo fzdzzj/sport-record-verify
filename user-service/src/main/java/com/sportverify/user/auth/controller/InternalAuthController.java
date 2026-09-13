@@ -1,5 +1,6 @@
 package com.sportverify.user.auth.controller;
 
+import com.sportverify.api.auth.dto.AdminGrantRequestDTO;
 import com.sportverify.api.auth.dto.LoginRequestDTO;
 import com.sportverify.api.auth.dto.RefreshRequestDTO;
 import com.sportverify.api.auth.dto.RegisterRequestDTO;
@@ -42,5 +43,17 @@ public class InternalAuthController {
     @PostMapping("/refresh")
     public Result<TokenDTO> refresh(@RequestBody RefreshRequestDTO dto) {
         return Result.success(authService.refresh(dto.getRefreshToken()));
+    }
+
+    /**
+     * 授予指定用户 ADMIN 角色（add-admin-rbac，治理面准入，见 ADR-0007）。
+     *
+     * <p>网内信任：走 /internal/**（不对公网暴露）；角色由签发端落库并写入后续登录签发的
+     * role claim，网关据此判定 /admin/** 与规则版本接口准入。生效需目标用户重新登录。</p>
+     */
+    @PostMapping("/grant-admin")
+    public Result<Void> grantAdmin(@RequestBody AdminGrantRequestDTO dto) {
+        authService.grantAdmin(dto.getUserId());
+        return Result.success();
     }
 }

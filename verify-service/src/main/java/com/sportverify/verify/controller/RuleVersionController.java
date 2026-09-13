@@ -16,9 +16,9 @@ import org.springframework.web.bind.annotation.RestController;
 /**
  * 规则版本管理接口（管理端，Swagger 级；规范「版本管理接口」，审批版 §7.4）。
  *
- * <p>网关 /verify/** → verify-service（StripPrefix=1）→ 本控制器，
- * 外部访问路径形如 {@code /verify/rules/versions}（与项目「文档路径=网关外部路径」
- * 约定一致）；服务直连路径为 {@code /rules/versions}。暂不接鉴权（项目骨架无 JWT）。
+ * <p>本控制器属治理面（add-admin-rbac，见 ADR-0007）：外部路径 {@code /verify/rules/**}
+ * 已从网关白名单移除并纳入角色校验，仅 <b>ADMIN 角色</b> token 可访问（普通用户 403/1002、
+ * 未登录 401/1001）；鉴权只依赖网关过滤（本服务不自行校验 token，角色由网关注入 X-Role）。
  * 三端点覆盖灰度发布全流程：创建（快照落库 + GRAY）→ 调灰度（0 = 秒级回滚）
  * → 全量（100 + ACTIVE + 旧版本退役），返回体均携带最新版本信息与灰度比例。</p>
  */

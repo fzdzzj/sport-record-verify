@@ -35,6 +35,9 @@ public class JwtUtil {
     /** token 类型声明键（区分 access / refresh 用途） */
     private static final String CLAIM_TYPE = "type";
 
+    /** 角色声明键（access token 携带；add-admin-rbac，见 ADR-0007）：网关据此判定 /admin/** 准入 */
+    private static final String CLAIM_ROLE = "role";
+
     /** HS256 密钥（>=32 字节；本地默认仅演示，生产必须覆盖，见 ADR-0007） */
     private final SecretKey key;
     /** access token 时效（毫秒） */
@@ -57,14 +60,19 @@ public class JwtUtil {
     /** token 类型：access 供业务接口；refresh 仅供换新（轮换，见 ADR-0007） */
     public enum TokenType { ACCESS, REFRESH }
 
-    /** 签发 access token（短时效） */
-    public String issueAccessToken(Long userId) {
-        return issue(userId, TokenType.ACCESS, accessTtlMillis);
+    /**
+     * 签发 access token（短时效；携带 role claim）。
+     *
+     * <p>role 由签发端从库中读取传入（add-admin-rbac 见 ADR-0007），token 签名背书，
+     * 网关据此判定管理端接口准入——下游/网关不信任外部传入的角色。</p>
+     */
+    public String issueAccessToken(Long userId, String role) {
+        return issue(userId, role, TokenType.ACCESS, accessTtlMillis);
     }
 
-    /** 签发 refresh token（长时效；jti 由调用方按需持久化到 Redis 做存活校验） */
+    /** 签发 refresh token（长时效；jti 由调用方按需持久化到 Redis 做存活校验，不携带 role——仅供换新） */
     public String issueRefreshToken(Long userId) {
-        return issue(userId, TokenType.REFRESH, refreshTtlMillis);
+        return issue(userId, null, TokenType.REFRESH, refreshTtlMillis);
     }
 
     /** access token 时效（秒），供登录/刷新响应体下发（客户端可据此提前刷新） */
@@ -94,17 +102,20 @@ public class JwtUtil {
         return new ParsedRefresh(Long.valueOf(claims.getSubject()), claims.getId());
     }
 
-    /** 签发（sub=userId；jti 唯一，refresh 存活键用它） */
-    private String issue(Long userId, TokenType type, long ttlMillis) {
+    /** 签发（sub=userId；jti 唯一，refresh 存活键用它；role 仅 access 携带，refresh 传 null 不写） */
+    private String issue(Long userId, String role, TokenType type, long ttlMillis) {
         Date now = new Date();
-        return Jwts.builder()
+        var builder = Jwts.builder()
                 .subject(String.valueOf(userId))
                 .claim(CLAIM_TYPE, type.name())
                 .id(UUID.randomUUID().toString())
                 .issuedAt(now)
                 .expiration(new Date(now.getTime() + ttlMillis))
-                .signWith(key, Jwts.SIG.HS256)
-                .compact();
+                .signWith(key, Jwts.SIG.HS256);
+        if (role != null) {
+            builder.claim(CLAIM_ROLE, role);
+        }
+        return builder.compact();
     }
 
     /** refresh token 解析结果（userId + jti） */

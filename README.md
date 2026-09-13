@@ -29,8 +29,8 @@
 | --- | --- |
 | `common` | 统一 `Result<T>`、错误码枚举、`BizException`、全局异常处理器 |
 | `api` | 服务间 Feign 契约（record-api / verify-api / user-api / leaderboard-api / mapmatch-api / auth-api），接口与实现分离 |
-| `gateway-service` | 统一入口，路由 `/api/auth/**` `/user/**` `/record/**` `/verify/**` `/leaderboard/**` `/mapmatch/**` 到对应服务；鉴权 GlobalFilter（校验 Bearer → 注入 X-User-Id 透传下游，见 ADR-0007） |
-| `user-service` | 好友申请/同意/拒绝/列表（user_db 三表 + Redisson 锁防并发互加）+ **认证域**（注册/登录/刷新，BCrypt + HS256 双 token，refresh 轮换存 Redis，见 ADR-0007） |
+| `gateway-service` | 统一入口，路由 `/api/auth/**` `/user/**` `/record/**` `/verify/**` `/leaderboard/**` `/mapmatch/**` 到对应服务；鉴权 GlobalFilter（校验 Bearer → 注入 X-User-Id/`X-Role` 透传下游，`/admin/**` 与规则版本接口要求 ADMIN 角色，见 ADR-0007） |
+| `user-service` | 好友申请/同意/拒绝/列表（user_db 三表 + Redisson 锁防并发互加）+ **认证域**（注册/登录/刷新，BCrypt + HS256 双 token，refresh 轮换存 Redis；最小角色模型 USER/ADMIN + 内部授予接口，见 ADR-0007） |
 | `record-service` | 记录提交/查询/申诉 + 点赞/取消/计数（record_db 分片存储 + Redis 计数；榜单职责已拆出，见 ADR-0005） |
 | `verify-service` | 校验引擎/申诉（判定/终判 + 规则灰度发布 + verify_db + RocketMQ 事件发布）；R5 离路规则远程调 mapmatch 做空间真实性判定（见 ADR-0006） |
 | `leaderboard-service` | 榜单读热 + 事件沉淀：总榜/好友榜（Redis ZSet 秒级）+ VERIFIED/REJECTED 消费入榜/回滚 + 定时快照结算防重（复用 record_db 贡献表，见 ADR-0005） |
@@ -85,8 +85,13 @@ java -jar mapmatch-service/target/sport-verify-mapmatch-service-0.1.0-SNAPSHOT.j
 
 - **签发端**（user-service）：`POST /api/auth/register`（BCrypt 哈希 + 手机号唯一 → 2001）、
   `POST /api/auth/login`（错密码 → 401 + 计失败）、`POST /api/auth/refresh`（refresh 换新 + 轮换作废旧 refresh）。
+  登录签发 access 时从库读 `role` 写入 role claim 并随响应返回（前端据此判断是否可进管理端）。
 - **校验端**（gateway）：GlobalFilter 校验 `Authorization: Bearer`（失败 401/1001），解析 userId 注入
-  `X-User-Id` 头透传下游（覆盖外部伪造同名头）；白名单 `/api/auth/**` `/internal/**` `/actuator/**` `/admin/**` 放行。
+  `X-User-Id`、role 注入 `X-Role` 透传下游（覆盖外部伪造同名头）；白名单 `/api/auth/**` `/internal/**` `/actuator/**` 放行。
+- **治理面 RBAC**（add-admin-rbac）：最小角色模型 USER/ADMIN 二态，注册默认 USER、仅经
+  `POST /internal/auth/grant-admin` 显式授予 ADMIN；`/admin/**` 与规则版本接口（`/verify/rules/**`）
+  从白名单移除并纳入角色校验——未登录 401（1001）、普通用户 403（1002）、ADMIN 放行；
+  开关 `app.auth.admin.enabled`（默认 true）保留灰度。
 - **数据隔离**（record/user/leaderboard）：业务 controller 的 userId 已改从 `X-User-Id` 读取，
   显式携带值不一致 → 403（1002 越权）。
 - **refresh 轮换**：refresh 存 Redis（`auth:refresh:{userId}:{jti}`，TTL=7d），刷新时 GETDEL 原子作废旧 jti → 防重放。
@@ -139,7 +144,7 @@ JVM 堆已用/上限、GC 暂停速率、HikariCP 连接池、JVM 线程数；�
 上界 60s TTL 收敛）；稳定后全量发布，旧版本自动 RETIRED。灰度期间执行库内快照而非 Nacos 实时配置，
 消除观察期配置漂移；同一用户采样键恒定，分支不抖动。
 
-| 操作 | 接口（经网关，管理端暂无鉴权） | 说明 |
+| 操作 | 接口（经网关，需 ADMIN 角色 token） | 说明 |
 | --- | --- | --- |
 | 创建版本 | `POST /verify/rules/versions` | body 可带 `rules`（新阈值快照）与初始 `grayRatio`；缺省快照当前基线 |
 | 调灰度比例 | `PATCH /verify/rules/versions/{id}/gray` | 0-100；**0 = 秒级回滚** |
@@ -208,6 +213,7 @@ bash scripts/perf/run-perf.sh quality base && bash scripts/perf/run-perf.sh load
 - 服务划分 4→5：榜单读热/事件沉淀独立为 leaderboard-service（数据热点隔离、读写分离、独立降级面），贡献表复用 record_db，对记录域只读防双写（[ADR-0005](docs/adr/0005-服务划分.md)）。
 - 服务划分 5→6 + 空间真实性：道路拓扑匹配独立为 mapmatch-service（PostGIS 真实 OSM 路网 + 最近边投影，HMM 进阶），R5 远程规则接入既有规则链，熔断降级不命中不阻断校验（[ADR-0006](docs/adr/0006-空间匹配.md)）。
 - 鉴权闭环：网关统一鉴权（唯一入口 = 唯一信任边界，注入 X-User-Id 且覆盖伪造同名头）+ 双 token（access 15min / refresh 7d）+ refresh 轮换存 Redis（GETDEL 原子作废防重放）+ BCrypt 密码哈希（独立 spring-security-crypto，不拉全家桶）+ auth.enabled 降级开关（默认 false 兼容压测，见 [ADR-0007](docs/adr/0007-鉴权设计.md)）。
+- 治理面 RBAC：最小角色模型 USER/ADMIN（刻意最简，不用 Spring Security ACL）+ access token 携带 role claim（签发端背书，网关解析）+ `/admin/**` 与规则版本接口仅 ADMIN 可访问（普通用户 403/1002）+ 内网授予接口显式授予 + `app.auth.admin.enabled` 灰度开关（默认 true 关门，见 [ADR-0007](docs/adr/0007-鉴权设计.md) add-admin-rbac）。
 - 所有 JSON 接口统一 `{"code":0,"message":"success","data":...}` 结构（错误码表见审批版 §4.8）。
 
 ## 目录约定
@@ -228,7 +234,7 @@ grafana/        数据源/面板 provider 预置（provisioning/）与预置面�
 校验引擎（`add-verify-engine`）、好友（`add-friend-module`）、点赞（`add-like-module`）、
 排行榜（`add-leaderboard-module`）、压测与优化实录（`add-load-test-report`）、可观测性（`add-observability`）、
 规则灰度发布（`add-rule-grayscale`）、榜单独立服务（`add-leaderboard-service`）、
-道路拓扑匹配（`add-mapmatch-service`）、JWT 鉴权闭环（`add-jwt-auth`，注册/登录 + 网关统一鉴权 + 数据隔离，见 ADR-0007）均以独立 openspec 变更交付，交付说明见各目录下 `交付说明.md`。
+道路拓扑匹配（`add-mapmatch-service`）、JWT 鉴权闭环（`add-jwt-auth`，注册/登录 + 网关统一鉴权 + 数据隔离，见 ADR-0007）、治理面 RBAC（`add-admin-rbac`，User role 字段 + access role claim + 网关 `/admin/**` 与规则版本接口角色校验 + 内部授予接口）均以独立 openspec 变更交付，交付说明见各目录下 `交付说明.md`。
 
 ## 后续变更（待办）
 
