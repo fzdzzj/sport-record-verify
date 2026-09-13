@@ -48,24 +48,56 @@ rocketmq:
   producer:
     group: verify-service-group
 
-# 校验规则阈值（默认值同审批版 §5.2，规范「规则阈值可配置」；
-# Nacos verify-service.yml 配置 verify.rules.* 优先级更高，改配置即生效）
+# 校验规则阈值（默认值同审批版 §5.2，规范「规则阈值可配置」「阈值按类型分维度」；
+# Nacos verify-service.yml 配置 verify.rules.* 优先级更高，改配置即生效。
+# R1-R4 按运动类型分维度：RUNNING 沿用 5.5，CYCLING 速度上限放宽至 15（骑行正常 6~8 m/s 不误判），
+# WALKING 降低至 3.5；缺省/未配类型回退 RUNNING）
 verify:
   rules:
-    v-drift: 20            # 漂移速度阈值 m/s（GPS 跳变特征）
-    r1:
-      speed: 5.5           # 滑动窗口平均速度阈值 m/s
-      window-points: 10    # 滑动窗口点数
-      min-windows: 10      # 高均速持续窗口数下限（持续 ≥10 窗口）
-    r2:
-      accel: 3.0           # 加速度突变阈值 m/s²
-      min-count: 3         # 触发次数下限
-    r3:
-      min-minutes: 5       # 停留段最小时长（分钟）
-      max-meters: 5.0      # 停留段位移上限（米）
-      segment-ratio: 0.4   # 停留段总时长占比阈值（>40% 命中）
-    r4:
-      max-ratio: 3.0       # 累计轨迹距离 / 起终点直线距离 比值阈值
+    v-drift: 20            # 漂移速度阈值 m/s（GPS 跳变特征，各类型共用）
+    by-sport-type:
+      RUNNING:
+        r1:
+          speed: 5.5           # 滑动窗口平均速度阈值 m/s
+          window-points: 10    # 滑动窗口点数
+          min-windows: 10      # 高均速持续窗口数下限（持续 ≥10 窗口）
+        r2:
+          accel: 3.0           # 加速度突变阈值 m/s²
+          min-count: 3         # 触发次数下限
+        r3:
+          min-minutes: 5       # 停留段最小时长（分钟）
+          max-meters: 5.0      # 停留段位移上限（米）
+          segment-ratio: 0.4   # 停留段总时长占比阈值（>40% 命中）
+        r4:
+          max-ratio: 3.0       # 累计轨迹距离 / 起终点直线距离 比值阈值
+      CYCLING:
+        r1:
+          speed: 15.0          # 骑行速度上限：正常骑行 6~8 m/s 不再被 R1 误判（规范「骑行不误杀」）
+          window-points: 10
+          min-windows: 10
+        r2:
+          accel: 3.0
+          min-count: 3
+        r3:
+          min-minutes: 5
+          max-meters: 5.0
+          segment-ratio: 0.4
+        r4:
+          max-ratio: 3.0
+      WALKING:
+        r1:
+          speed: 3.5           # 步行速度上限低于跑步
+          window-points: 10
+          min-windows: 10
+        r2:
+          accel: 3.0
+          min-count: 3
+        r3:
+          min-minutes: 5
+          max-meters: 5.0
+          segment-ratio: 0.4
+        r4:
+          max-ratio: 3.0
     r5:
       # 离路规则（空间真实性，R5 经 Feign 调 mapmatch-service 匹配 OSM 路网，见 ADR-0006）
       off-road-ratio: 0.5  # SOFT 阈值：离路点占比 >50% 记软证据（真实沿路轨迹实测≈0，50% 给弱路网场景留余量）
