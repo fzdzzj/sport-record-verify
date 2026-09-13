@@ -154,6 +154,15 @@ JVM 堆已用/上限、GC 暂停速率、HikariCP 连接池、JVM 线程数；�
 userId=105（%100=5）PASSED、userId=150 REJECTED；回滚置 0 后 105 立即 REJECTED；全量后 150 也 PASSED。
 完整实录见 [交付说明](spec/changes/add-rule-grayscale/交付说明.md)。
 
+## 运动类型阈值分级（骑行误拦治理，规范「阈值按类型分维度」，见 [ADR-0004](docs/adr/0004-规则灰度发布.md) §5）
+
+R1-R4 阈值不再全运动类型共用一套：`verify.rules.by-sport-type.<TYPE>.*` 按类型独立标定，
+RUNNING 沿用 5.5 m/s，CYCLING 速度上限放宽至 15 m/s（正常骑行 6~8 m/s 不再被 R1 误判），
+WALKING 取 3.5 m/s。判定时引擎按记录的 sportType 取对应阈值集；提交接口缺省回退 RUNNING、
+枚举外取值拒绝（3007）。快照（rules_json）同步升级为按类型嵌套，旧扁平结构自动回退单套阈值
+（灰度既有数据不越界）。灰度（userId%100 选版本）与类型维度正交：先取版本，版本内再按类型取阈值。
+压测样本已支持多类型：骑行画像（sportType=CYCLING，6~8 m/s）进入正样本集不再被误杀。
+
 ## 榜单独立服务（服务数 4→5，选型理由见 [ADR-0005](docs/adr/0005-服务划分.md)）
 
 榜单读热与事件沉淀拆为独立 `leaderboard-service`（8084）：record-service 保留记录分片 + 点赞，
@@ -234,9 +243,9 @@ grafana/        数据源/面板 provider 预置（provisioning/）与预置面�
 校验引擎（`add-verify-engine`）、好友（`add-friend-module`）、点赞（`add-like-module`）、
 排行榜（`add-leaderboard-module`）、压测与优化实录（`add-load-test-report`）、可观测性（`add-observability`）、
 规则灰度发布（`add-rule-grayscale`）、榜单独立服务（`add-leaderboard-service`）、
-道路拓扑匹配（`add-mapmatch-service`）、JWT 鉴权闭环（`add-jwt-auth`，注册/登录 + 网关统一鉴权 + 数据隔离，见 ADR-0007）、治理面 RBAC（`add-admin-rbac`，User role 字段 + access role claim + 网关 `/admin/**` 与规则版本接口角色校验 + 内部授予接口）均以独立 openspec 变更交付，交付说明见各目录下 `交付说明.md`。
+道路拓扑匹配（`add-mapmatch-service`）、JWT 鉴权闭环（`add-jwt-auth`，注册/登录 + 网关统一鉴权 + 数据隔离，见 ADR-0007）、治理面 RBAC（`add-admin-rbac`，User role 字段 + access role claim + 网关 `/admin/**` 与规则版本接口角色校验 + 内部授予接口）、运动类型阈值分级（`add-sport-type-threshold`，SportType 枚举 + 阈值按类型分维度 + 引擎按类型判定 + 快照嵌套兼容）均以独立 openspec 变更交付，交付说明见各目录下 `交付说明.md`。
 
 ## 后续变更（待办）
 
-运动类型阈值分级（骑行误拦治理）、Sentinel 规则 Nacos 动态化、突发场景消费调优——
+Sentinel 规则 Nacos 动态化、突发场景消费调优——
 均以独立 openspec 变更落地，见 `spec/changes/`。

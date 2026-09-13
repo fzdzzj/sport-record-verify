@@ -5,6 +5,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.github.benmanes.caffeine.cache.Cache;
 import com.sportverify.api.record.RecordApi;
 import com.sportverify.api.record.RecordStatus;
+import com.sportverify.api.record.SportType;
 import com.sportverify.api.record.dto.SportRecordDTO;
 import com.sportverify.api.record.dto.StatusCallbackDTO;
 import com.sportverify.api.record.dto.TrackPointDTO;
@@ -90,9 +91,12 @@ public class VerifyService {
         List<TrackPointDTO> points = recordApi.listPoints(recordId).getData();
 
         // 引擎判定：规则集经灰度路由——floorMod(userId,100)<gray_ratio 用 rule_version 库内
-        // 灰度快照（不受 Nacos 瞬时变更影响），未命中走基线（ACTIVE 快照/Nacos 实时配置）
+        // 灰度快照（不受 Nacos 瞬时变更影响），未命中走基线（ACTIVE 快照/Nacos 实时配置）；
+        // 阈值维度与灰度正交：命中版本后按记录的 sportType 取对应 R1-R4 阈值（缺省回退 RUNNING）
+        SportType sportType = SportType.fromCode(record.getSportType());
         VerdictResult result = verifyEngine.verify(points == null ? List.of() : points,
-                ruleVersionService.getActiveRulesForUser(record.getUserId()));
+                ruleVersionService.getActiveRulesForUser(record.getUserId()),
+                sportType == null ? SportType.RUNNING : sportType);
         result.setRecordId(recordId);
 
         // 证据落库（record_id 主键 upsert；重复判定只覆盖不新增）

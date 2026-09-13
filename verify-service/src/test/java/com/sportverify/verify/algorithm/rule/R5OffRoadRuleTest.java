@@ -60,23 +60,28 @@ class R5OffRoadRuleTest {
         return new VerifyProperties().getRules();
     }
 
+    /** R1-R4 类型阈值（R5 用不到，传缺省 RUNNING 集即可） */
+    private static VerifyProperties.Rules.RuleThreshold threshold() {
+        return new VerifyProperties().getRules().threshold(com.sportverify.api.record.SportType.RUNNING);
+    }
+
     @Test
     void 点数不足minPoints_跳过R5() {
         R5OffRoadRule rule = new R5OffRoadRule(stubApi(0.9, null));
-        RuleHit hit = rule.evaluate(toEnginePoints(trackPoints(4)), rules());
+        RuleHit hit = rule.evaluate(toEnginePoints(trackPoints(4)), rules(), threshold());
         assertThat(hit).isNull();
     }
 
     @Test
     void 真实轨迹_低离路比例_不命中() {
         R5OffRoadRule rule = new R5OffRoadRule(stubApi(0.05, null));
-        assertThat(rule.evaluate(toEnginePoints(trackPoints(20)), rules())).isNull();
+        assertThat(rule.evaluate(toEnginePoints(trackPoints(20)), rules(), threshold())).isNull();
     }
 
     @Test
     void 中度离路_超SOFT阈值_软证据() {
         R5OffRoadRule rule = new R5OffRoadRule(stubApi(0.6, null));
-        RuleHit hit = rule.evaluate(toEnginePoints(trackPoints(20)), rules());
+        RuleHit hit = rule.evaluate(toEnginePoints(trackPoints(20)), rules(), threshold());
         assertThat(hit).isNotNull();
         assertThat(hit.getRule()).isEqualTo("R5_OFFROAD");
         assertThat(hit.getLevel()).isEqualTo(RuleLevel.SOFT);
@@ -86,7 +91,7 @@ class R5OffRoadRuleTest {
     @Test
     void 极端离路_超HARD阈值_升级硬证据() {
         R5OffRoadRule rule = new R5OffRoadRule(stubApi(0.85, null));
-        RuleHit hit = rule.evaluate(toEnginePoints(trackPoints(20)), rules());
+        RuleHit hit = rule.evaluate(toEnginePoints(trackPoints(20)), rules(), threshold());
         assertThat(hit).isNotNull();
         assertThat(hit.getLevel()).isEqualTo(RuleLevel.HARD);
     }
@@ -94,7 +99,7 @@ class R5OffRoadRuleTest {
     @Test
     void mapmatch不可用_降级不命中_不抛异常() {
         R5OffRoadRule rule = new R5OffRoadRule(stubApi(0, new RuntimeException("匹配服务熔断降级")));
-        assertThat(rule.evaluate(toEnginePoints(trackPoints(20)), rules())).isNull();
+        assertThat(rule.evaluate(toEnginePoints(trackPoints(20)), rules(), threshold())).isNull();
     }
 
     @Test

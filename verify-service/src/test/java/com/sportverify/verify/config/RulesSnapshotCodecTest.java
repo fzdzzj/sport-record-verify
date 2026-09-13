@@ -1,5 +1,6 @@
 package com.sportverify.verify.config;
 
+import com.sportverify.api.record.SportType;
 import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -53,6 +54,36 @@ class RulesSnapshotCodecTest {
         VerifyProperties parsed = RulesSnapshotCodec.fromJson(
                 "{\"rules\":{\"r1\":{\"speed\":6.0,\"futureField\":1}},\"legacy\":true}");
         assertEquals(6.0, parsed.getRules().getR1().getSpeed());
+    }
+
+    /** 新结构·类型嵌套：bySportType 各类型独立往返，互不影响（规范「类型独立阈值」） */
+    @Test
+    void roundTrip_bySportTypeNested_independent() {
+        VerifyProperties props = new VerifyProperties();
+        VerifyProperties.Rules.RuleThreshold running = props.getRules().threshold(SportType.RUNNING);
+        running.getR1().setSpeed(5.5);
+        VerifyProperties.Rules.RuleThreshold cycling = props.getRules().threshold(SportType.RUNNING);
+        cycling.getR1().setSpeed(15.0);
+        props.getRules().getBySportType().put(SportType.RUNNING.name(), running);
+        props.getRules().getBySportType().put(SportType.CYCLING.name(), cycling);
+
+        VerifyProperties parsed = RulesSnapshotCodec.fromJson(RulesSnapshotCodec.toJson(props));
+        assertEquals(5.5, parsed.getRules().threshold(SportType.RUNNING).getR1().getSpeed());
+        assertEquals(15.0, parsed.getRules().threshold(SportType.CYCLING).getR1().getSpeed());
+    }
+
+    /** 兼容·旧结构回退：扁平 r1/r2/r3/r4 无类型维度 → 任意类型取同一套阈值（灰度既有数据不越界） */
+    @Test
+    void legacyFlatStructure_fallsBackToSingleThreshold() {
+        VerifyProperties parsed = RulesSnapshotCodec.fromJson(
+                "{\"rules\":{\"vDrift\":20,\"r1\":{\"speed\":6.6},\"r2\":{\"accel\":4.0},"
+                        + "\"r3\":{\"segmentRatio\":0.5},\"r4\":{\"maxRatio\":2.5}}}");
+        // 无论 RUNNING 还是 CYCLING，都回退单套阈值——与历史行为一致
+        assertEquals(6.6, parsed.getRules().threshold(SportType.RUNNING).getR1().getSpeed());
+        assertEquals(6.6, parsed.getRules().threshold(SportType.CYCLING).getR1().getSpeed());
+        assertEquals(4.0, parsed.getRules().threshold(SportType.RUNNING).getR2().getAccel());
+        assertEquals(0.5, parsed.getRules().threshold(SportType.RUNNING).getR3().getSegmentRatio());
+        assertEquals(2.5, parsed.getRules().threshold(SportType.RUNNING).getR4().getMaxRatio());
     }
 
     /** 非法快照显式抛出：由路由服务记日志并降级 Nacos 实时配置 */

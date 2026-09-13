@@ -2,6 +2,7 @@ package com.sportverify.verify.algorithm;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.sportverify.api.record.SportType;
 import com.sportverify.api.record.dto.TrackPointDTO;
 import com.sportverify.api.verify.Verdict;
 import com.sportverify.verify.algorithm.model.VerdictResult;
@@ -145,6 +146,51 @@ class VerifyEngineTest {
         VerdictResult r = engine.verify(points, overridden);
         assertEquals(Verdict.PASSED, r.getVerdict());
         assertFalse(r.getHits().stream().anyMatch(h -> "R1_SPEED".equals(h.getRule())));
+    }
+
+    /** 类型维度·骑行不误杀（规范场景）：6.5 m/s 匀速轨迹，RUNNING 阈值(5.5)命中 R1，
+     *  按 CYCLING 阈值(15)判定则通过——消除「骑行正常速度被 R1 误判」缺陷 */
+    @Test
+    void cyclingNormalSpeed_notRejectedByR1() {
+        List<TrackPointDTO> points = track(0, 0, 200, 32.5, 5.0, 0.1); // 32.5m/5s = 6.5 m/s
+        // 对照：无类型配置（单套 5.5）下 6.5 m/s 命中 R1
+        assertEquals(Verdict.REJECTED,
+                engine.verify(points, new VerifyProperties(), SportType.CYCLING).getVerdict());
+        // CYCLING 阈值上限 15：骑行正常速度不触发 R1 误判
+        VerifyProperties cycling = new VerifyProperties();
+        VerifyProperties.Rules.RuleThreshold cyclingThreshold =
+                cycling.getRules().threshold(SportType.RUNNING);
+        cyclingThreshold.getR1().setSpeed(15.0);
+        cycling.getRules().getBySportType().put(SportType.CYCLING.name(), cyclingThreshold);
+        VerdictResult r = engine.verify(points, cycling, SportType.CYCLING);
+        assertEquals(Verdict.PASSED, r.getVerdict());
+        assertFalse(r.getHits().stream().anyMatch(h -> "R1_SPEED".equals(h.getRule())));
+    }
+
+    /** 类型维度·跑步沿用（规范场景）：RUNNING 阈值沿用 5.5，行为与历史一致 */
+    @Test
+    void runningUsesLegacyThreshold() {
+        List<TrackPointDTO> points = track(0, 0, 200, 29.0, 5.0, 0.1); // 5.8 m/s
+        VerdictResult r = engine.verify(points, new VerifyProperties(), SportType.RUNNING);
+        assertEquals(Verdict.REJECTED, r.getVerdict());
+        assertTrue(r.getHits().stream().anyMatch(
+                h -> "R1_SPEED".equals(h.getRule()) && h.getLevel() == RuleLevel.HARD));
+    }
+
+    /** 类型维度·独立（规范场景）：RUNNING 与 CYCLING 两套阈值互不影响——同轨迹同一版本内
+     *  按类型各取各的阈值（模拟快照含多类型维度） */
+    @Test
+    void thresholdBySportType_independent() {
+        List<TrackPointDTO> points = track(0, 0, 200, 32.5, 5.0, 0.1); // 6.5 m/s
+        VerifyProperties props = new VerifyProperties();
+        VerifyProperties.Rules.RuleThreshold running = props.getRules().threshold(SportType.RUNNING);
+        VerifyProperties.Rules.RuleThreshold cycling = props.getRules().threshold(SportType.RUNNING);
+        cycling.getR1().setSpeed(15.0);
+        props.getRules().getBySportType().put(SportType.RUNNING.name(), running);
+        props.getRules().getBySportType().put(SportType.CYCLING.name(), cycling);
+
+        assertEquals(Verdict.REJECTED, engine.verify(points, props, SportType.RUNNING).getVerdict());
+        assertEquals(Verdict.PASSED, engine.verify(points, props, SportType.CYCLING).getVerdict());
     }
 
     /** 证据 JSON 完整（规范「证据 JSON 完整」）：verdict/score/hits[rule+level+detail]/preprocess */

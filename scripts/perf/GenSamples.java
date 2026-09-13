@@ -21,21 +21,24 @@ import java.util.concurrent.ThreadLocalRandom;
  *
  * <p>产出三类文件：</p>
  * <ul>
- *   <li>{@code quality-real.jsonl}    正样本 ×100：真实运动轨迹（慢跑/快走交替，2.5~4.5 m/s，
- *       单向路线，预期全部 PASSED——构造避开 R1 速度/R3 停留/R4 折返阈值）；</li>
+ *   <li>{@code quality-real.jsonl}    正样本 ×100：真实运动轨迹（慢跑/快走/变速跑/骑行四画像轮转，
+ *       跑步 2.2~4.5 m/s、骑行 6.4~7.6 m/s，均单向路线，预期全部 PASSED——构造避开 R1 速度/
+ *       R3 停留/R4 折返阈值）；</li>
  *   <li>{@code quality-forged.jsonl}  负样本 ×100：五类伪造模式轮转（匀速刷里程 R1、折返刷里程 R4、
  *       停留刷时长 R3、GPS 漂移污染、加速度突变 R2），预期全部 REJECTED；</li>
  *   <li>{@code load-template.json}    并发压测请求体模板：300 点真实轨迹，{@code {requestId}} 与
  *       {@code {userId}} 占位符由 LoadTest 按请求替换。</li>
  * </ul>
  *
- * <p>判定规则口径（审批版 §5.2 默认阈值）：R1 窗口均速>5.5m/s 持续≥10 窗口（HARD）、
- * R2 加速度>3m/s² ≥3 次（HARD）、R3 停留占比>40%（HARD）、R4 路径/直线比>3（SOFT，
- * 默认 soft-only-reject=true 也拒绝）、预处理漂移占比>30%（SOFT）。
+ * <p>判定规则口径（审批版 §5.2 默认阈值）：R1 窗口均速&gt;5.5m/s 持续≥10 窗口（HARD）、
+ * R2 加速度&gt;3m/s² ≥3 次（HARD）、R3 停留占比&gt;40%（HARD）、R4 路径/直线比&gt;3（SOFT，
+ * 默认 soft-only-reject=true 也拒绝）、预处理漂移占比&gt;30%（SOFT）。
  * 注意两点构造约束（报告「已知边界」一节同步说明）：</p>
  * <ul>
  *   <li>真实样本不能是环形/折返路线——R4 对起点≈终点直接判无穷大，真实闭环跑会被误拦；</li>
- *   <li>骑行速度（6~8 m/s）超 R1 阈值，正样本集只取跑步/快走口径（引擎阈值暂不分运动类型）。</li>
+ *   <li>骑行画像（6~8 m/s）按 sportType=CYCLING 提交：引擎阈值已按运动类型分维度
+ *       （CYCLING 速度上限 15，见 ADR-0004 §5），骑行正常速度不再被 R1 误杀——
+ *       此前引擎阈值不分类型，正样本集被迫只取跑步/快走口径（本变更已消除该局限）。</li>
  * </ul>
  */
 public class GenSamples {
@@ -56,16 +59,24 @@ public class GenSamples {
         int realCount = qualityCount / 2;
         int forgedCount = qualityCount - realCount;
 
-        // ===== 正样本：真实轨迹（三种速度画像轮转，均单向路线）=====
+        // ===== 正样本：真实轨迹（四画像轮转，均单向路线，带运动类型）=====
         List<String> real = new ArrayList<>(realCount);
         for (int i = 0; i < realCount; i++) {
-            // 画像：0=慢跑 3.2m/s，1=快走 1.6m/s，2=变速跑 2.2~4.5m/s（平滑渐变，不超 5.5）
-            Track t = switch (i % 3) {
+            // 画像：0=慢跑 3.2m/s、1=快走 1.6m/s、2=变速跑 2.2~4.5m/s（平滑渐变，不超 5.5）、
+            //       3=骑行 7.0m/s（平滑渐变 6.4~7.6，按 CYCLING 类型提交——阈值上限 15 不误杀）
+            // 类型映射：0/2 RUNNING，1 WALKING，3 CYCLING
+            int sportType = switch (i % 4) {
+                case 1 -> 3;      // WALKING
+                case 3 -> 2;      // CYCLING
+                default -> 1;     // RUNNING
+            };
+            Track t = switch (i % 4) {
                 case 0 -> realTrack(points, 3.2, 0.35, seedBase + i);
                 case 1 -> realTrack(points, 1.6, 0.20, seedBase + i);
-                default -> realTrack(points, 3.3, 1.10, seedBase + i);
+                case 2 -> realTrack(points, 3.3, 1.10, seedBase + i);
+                default -> realTrack(points, 7.0, 0.60, seedBase + i); // 骑行
             };
-            real.add(toSubmitJson(t, "qual-r-" + (seedBase % 100000) + "-" + i, 1 + (i % 16)));
+            real.add(toSubmitJson(t, "qual-r-" + (seedBase % 100000) + "-" + i, 1 + (i % 16), sportType));
         }
         writeLines(outDir.resolve("quality-real.jsonl"), real);
 
@@ -81,13 +92,13 @@ public class GenSamples {
                 case "PRE_DRIFT"      -> forgedDrift(points, seedBase + i);
                 default               -> forgedAccel(points, seedBase + i);
             };
-            forged.add(toSubmitJson(t, "qual-f-" + (seedBase % 100000) + "-" + i, 1 + (i % 16)));
+            forged.add(toSubmitJson(t, "qual-f-" + (seedBase % 100000) + "-" + i, 1 + (i % 16), 1));
         }
         writeLines(outDir.resolve("quality-forged.jsonl"), forged);
 
-        // ===== 并发压测请求体模板（真实轨迹 + requestId/userId 占位符）=====
+        // ===== 并发压测请求体模板（真实轨迹 + requestId/userId 占位符，RUNNING 口径）=====
         Track t = realTrack(points, 3.2, 0.35, seedBase);
-        String template = toSubmitJson(t, "{requestId}", "{userId}");
+        String template = toSubmitJson(t, "{requestId}", "{userId}", 1);
         Files.writeString(outDir.resolve("load-template.json"), template, StandardCharsets.UTF_8);
 
         System.out.printf(Locale.ROOT,
@@ -237,14 +248,14 @@ public class GenSamples {
         return new double[]{lat + dLat, lng + dLng};
     }
 
-    /** 提交体 JSON（字段与 RecordSubmitDTO 对齐；LocalDateTime 用本地时区格式） */
-    private static String toSubmitJson(Track t, String requestId, Object userId) {
+    /** 提交体 JSON（字段与 RecordSubmitDTO 对齐；LocalDateTime 用本地时区格式；sportType 按画像带类型） */
+    private static String toSubmitJson(Track t, String requestId, Object userId, int sportType) {
         LocalDateTime start = LocalDateTime.ofInstant(Instant.ofEpochMilli(t.firstTs), ZoneOffset.UTC);
         LocalDateTime end = LocalDateTime.ofInstant(Instant.ofEpochMilli(t.lastTs), ZoneOffset.UTC);
         StringBuilder sb = new StringBuilder(64 + t.size * 96);
         sb.append("{\"requestId\":\"").append(requestId).append('"')
           .append(",\"userId\":").append(userId)
-          .append(",\"sportType\":1")
+          .append(",\"sportType\":").append(sportType)
           .append(",\"startTime\":\"").append(TS_FMT.format(start)).append('"')
           .append(",\"endTime\":\"").append(TS_FMT.format(end)).append('"')
           .append(",\"distance\":").append(BigDecimal.valueOf(t.pathKm).setScale(2, RoundingMode.HALF_UP))

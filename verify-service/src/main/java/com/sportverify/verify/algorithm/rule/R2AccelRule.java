@@ -29,9 +29,10 @@ public class R2AccelRule implements Rule {
     }
 
     @Override
-    public RuleHit evaluate(List<Point> points, VerifyProperties.Rules rules) {
-        double threshold = rules.getR2().getAccel();   // 默认 3.0 m/s²
-        int minCount = rules.getR2().getMinCount();    // 默认 3 次
+    public RuleHit evaluate(List<Point> points, VerifyProperties.Rules rules,
+                            VerifyProperties.Rules.RuleThreshold typeThreshold) {
+        double threshold = typeThreshold.getR2().getAccel();   // 默认 3.0 m/s²
+        int minCount = typeThreshold.getR2().getMinCount();    // 默认 3 次
         if (points.size() < 2) {
             return null;
         }

@@ -4,6 +4,7 @@ import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.toolkit.IdWorker;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.sportverify.api.record.RecordStatus;
+import com.sportverify.api.record.SportType;
 import com.sportverify.api.record.dto.RecordSubmitDTO;
 import com.sportverify.api.record.dto.RecordSubmitResultDTO;
 import com.sportverify.api.record.dto.SportRecordDTO;
@@ -76,11 +77,14 @@ public class SportRecordService {
                     existing.getStatus(), true, "重复提交，返回原结果");
         }
 
+        // 1.1 运动类型解析：缺省回退 RUNNING（历史默认）；枚举外取值拒绝（规范「未知类型拒绝」）
+        Integer sportType = resolveSportType(dto.getSportType());
+
         // 2. 落 sport_record 主表（单表，SUBMITTED 初始态）
         SportRecord record = new SportRecord();
         record.setRequestId(dto.getRequestId());
         record.setUserId(dto.getUserId());
-        record.setSportType(dto.getSportType());
+        record.setSportType(sportType);
         record.setStartTime(dto.getStartTime());
         record.setEndTime(dto.getEndTime());
         record.setDistance(dto.getDistance());
@@ -264,6 +268,21 @@ public class SportRecordService {
     }
 
     // ==================== 内部工具 ====================
+
+    /**
+     * 解析提交的运动类型：缺省（null）回退 RUNNING（历史默认），
+     * 枚举外取值抛 3007 拒绝（规范「未知类型拒绝」）。
+     */
+    private Integer resolveSportType(Integer code) {
+        if (code == null) {
+            return SportType.RUNNING.getCode();
+        }
+        SportType type = SportType.fromCode(code);
+        if (type == null) {
+            throw new BizException(ResultCode.SPORT_TYPE_INVALID, "未知运动类型：" + code);
+        }
+        return type.getCode();
+    }
 
     /** 轨迹批量写入开关（压测「连接池调优案例」优化侧；默认关闭保留基线行为，对比复现后生产置 true） */
     @Value("${record.track.batch-insert-enabled:false}")

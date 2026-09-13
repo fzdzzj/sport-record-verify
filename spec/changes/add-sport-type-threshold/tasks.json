@@ -1,0 +1,47 @@
+[
+  {
+    "number": 1,
+    "category": "阶段 1：记录类型",
+    "task": "SportRecord +sportType",
+    "steps": [
+      { "step": "sport_record 表 / 实体加 sportType 字段（默认 RUNNING）", "completed": false },
+      { "step": "SportRecordDTO +sportType、新增 SportType 枚举", "completed": false },
+      { "step": "提交接口接收 sportType（缺省回退 RUNNING，未知拒绝）", "completed": false },
+      { "step": "数据库迁移脚本（ALTER TABLE 加 sportType）", "completed": false }
+    ],
+    "passes": false
+  },
+  {
+    "number": 2,
+    "category": "阶段 2：阈值分维度",
+    "task": "阈值结构按类型分维度",
+    "steps": [
+      { "step": "VerifyProperties.Rules 或快照 JSON 改为 Map<sportType, RuleThreshold>", "completed": false },
+      { "step": "rules_json 结构升级（嵌套类型）+ 旧结构回退兼容", "completed": false },
+      { "step": "Nacos 配置按类型组织（每类型 R1-R4）", "completed": false }
+    ],
+    "passes": false
+  },
+  {
+    "number": 3,
+    "category": "阶段 3：按类型判定",
+    "task": "VerifyEngine 按类型取阈值",
+    "steps": [
+      { "step": "verify() 根据 sportType 选阈值集（未知兜底可配保守拒绝）", "completed": false },
+      { "step": "RUNNING 沿用现有 5.5，CYCLING 设合理上限（如 15）", "completed": false }
+    ],
+    "passes": false
+  },
+  {
+    "number": 4,
+    "category": "阶段 4：验收",
+    "task": "端到端验证",
+    "steps": [
+      { "step": "mvn clean install 编译通过", "completed": false },
+      { "step": "真实骑行轨迹不再被 R1 误杀；跑步行为不变", "completed": false },
+      { "step": "灰度与类型叠加仍正交（命中灰度取版本后按类型取阈值）", "completed": false },
+      { "step": "更新 GenSamples 支持多类型样本 + README/ADR-0004 补类型维度", "completed": false }
+    ],
+    "passes": false
+  }
+]

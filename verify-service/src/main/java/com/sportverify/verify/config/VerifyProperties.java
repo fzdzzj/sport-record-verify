@@ -1,21 +1,26 @@
 package com.sportverify.verify.config;
 
+import com.sportverify.api.record.SportType;
 import lombok.Data;
 import org.springframework.boot.context.properties.ConfigurationProperties;
 
+import java.util.LinkedHashMap;
+import java.util.Map;
+
 /**
- * 校验规则阈值配置（规范「规则阈值可配置」）。
+ * 校验规则阈值配置（规范「规则阈值可配置」+「阈值按类型分维度」，见 ADR-0004 §5）。
  *
  * <p>默认值与审批版 §5.2 一致（V_DRIFT=20、R1=5.5、R2=3、R3 段占比 40%、R4=3.0）；
- * Nacos 配置 {@code verify.rules.*} 优先级高于本地 application.yml（spring.config.import
- * 导入的远程配置源排在本地文件之前），改配置即生效——引擎每次判定实时读取，
- * 无需 @RefreshScope 重绑（配合 Caffeine 缓存 TTL 实现 60s 内灰度生效）。</p>
+ * 自类型分维度后，R1-R4 阈值按运动类型组织在 {@code verify.rules.by-sport-type.<TYPE>.*}，
+ * RUNNING 沿用 5.5，CYCLING 速度上限放宽至 15（骑行正常 6~8 m/s 不再误判，见规范场景「骑行不误杀」）。
+ * 读取优先级：Nacos 配置 &gt; application.yml（spring.config.import 导入的远程配置源排在
+ * 本地文件之前）。阈值解析经 {@link Rules#threshold(SportType)}：缺省/未知类型回退 RUNNING，不越界。</p>
  */
 @Data
 @ConfigurationProperties(prefix = "verify")
 public class VerifyProperties {
 
-    /** 规则阈值（verify.rules.*） */
+    /** 规则阈值（verify.rules.*）：R1-R4 按运动类型分维度；R5 通用不随类型变化 */
     private Rules rules = new Rules();
 
     /** 判定策略（verify.policy.*） */
@@ -23,18 +28,80 @@ public class VerifyProperties {
 
     @Data
     public static class Rules {
-        /** 漂移速度阈值 m/s（GPS 跳变特征） */
+        /** 漂移速度阈值 m/s（GPS 跳变特征，各类型共用） */
         private double vDrift = 20.0;
-        /** R1 速度规则 */
+        /**
+         * 各运动类型 R1-R4 阈值表（key=SportType.name）。结构从「单一套阈值」升级为
+         * 「按类型分维度」：同一校验逻辑、不同类型各自独立标定，互不影响。
+         * 缺 key（如旧配置未配该类型）时回退 RUNNING（历史默认）。
+         */
+        private Map<String, RuleThreshold> bySportType = new LinkedHashMap<>();
+        /**
+         * 旧结构单套阈值（兼容层，勿直接改）：早期 rules_json / 配置为扁平 {@code r1.speed} 等
+         * 单套结构、无类型维度；保留字段使旧快照反序列化仍可读，阈缺失类型维度时回退此单套值
+         * （{@code legacyThresholdOrElse(RUNNING)}），保证灰度数据可回滚、不越界。
+         */
         private R1 r1 = new R1();
-        /** R2 加速度规则 */
+        /** 见 {@link #r1}（旧结构单套阈值兼容） */
         private R2 r2 = new R2();
-        /** R3 停留规则 */
+        /** 见 {@link #r1}（旧结构单套阈值兼容） */
         private R3 r3 = new R3();
-        /** R4 距离一致性规则 */
+        /** 见 {@link #r1}（旧结构单套阈值兼容） */
         private R4 r4 = new R4();
-        /** R5 离路规则（空间真实性，远程调 mapmatch-service，见 ADR-0006） */
+        /** R5 离路规则（空间真实性，远程调 mapmatch-service，见 ADR-0006；与运动类型弱相关，暂维持通用） */
         private R5 r5 = new R5();
+
+        /** 单类型 R1-R4 阈值集 */
+        @Data
+        public static class RuleThreshold {
+            /** R1 速度规则 */
+            private R1 r1 = new R1();
+            /** R2 加速度规则 */
+            private R2 r2 = new R2();
+            /** R3 停留规则 */
+            private R3 r3 = new R3();
+            /** R4 距离一致性规则 */
+            private R4 r4 = new R4();
+        }
+
+        /**
+         * 按运动类型取阈值集（判定入口每次调用）：
+         * <ol>
+         *   <li>耗时命中 {@code by-sport-type} 内该类型配置 → 用类型专属阈值；</li>
+         *   <li>否则回退单套阈值（旧结构/未配类型的缺省，默认为 RUNNING=5.5）。</li>
+         * </ol>
+         * 保证缺 key 的类型（如旧配置只配了 RUNNING）仍以默认阈值判定，不越界不放宽。
+         */
+        public RuleThreshold threshold(SportType type) {
+            String key = type == null ? SportType.RUNNING.name() : type.name();
+            RuleThreshold t = bySportType.get(key);
+            if (t != null) {
+                return t;
+            }
+            return legacyThreshold();
+        }
+
+        /** 组装旧结构单套阈值（兼容层）：从扁平 r1-r4 字段深拷贝成独立条目，
+         *  避免多类型共享同一可变对象（改其一影响全部） */
+        private RuleThreshold legacyThreshold() {
+            RuleThreshold t = new RuleThreshold();
+            t.setR1(copy(r1, R1.class));
+            t.setR2(copy(r2, R2.class));
+            t.setR3(copy(r3, R3.class));
+            t.setR4(copy(r4, R4.class));
+            return t;
+        }
+
+        /** 深拷贝单个阈值对象（字段少，手写 setter 足够清晰，不引入反射工具） */
+        private static <T> T copy(T src, Class<T> type) {
+            try {
+                T dst = type.getDeclaredConstructor().newInstance();
+                org.springframework.beans.BeanUtils.copyProperties(src, dst);
+                return dst;
+            } catch (ReflectiveOperationException e) {
+                throw new IllegalStateException("阈值对象拷贝失败：" + type.getSimpleName(), e);
+            }
+        }
     }
 
     @Data
