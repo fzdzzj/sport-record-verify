@@ -1,0 +1,54 @@
+[
+  {
+    "number": 1,
+    "category": "阶段 1：锁定状态",
+    "task": "lock 配置与锁定键",
+    "steps": [
+      { "step": "application.yml 加 app.auth.lock.*（enabled/threshold/window-minutes/lock-minutes）默认 5/15/15", "completed": false },
+      { "step": "AuthService 加 LOCK_KEY_PREFIX = auth:lock: 常量与 lockKey(phone)", "completed": false },
+      { "step": "定义锁定语义（复用 1002 FORBIDDEN 或新增专用码，写清注释理由）", "completed": false }
+    ],
+    "passes": false
+  },
+  {
+    "number": 2,
+    "category": "阶段 2：登录前置检查",
+    "task": "登录入口查锁定",
+    "steps": [
+      { "step": "login() 入口先查 auth:lock:{phone}，存在 → 直接抛「账号已临时锁定」", "completed": false },
+      { "step": "锁定拒绝时不校验密码、不 countFailure", "completed": false },
+      { "step": "确认锁定期满（TTL 到期）自动恢复", "completed": false }
+    ],
+    "passes": false
+  },
+  {
+    "number": 3,
+    "category": "阶段 2：登录前置检查",
+    "task": "失败触发锁定",
+    "steps": [
+      { "step": "countFailure 达阈值时写 auth:lock:{phone}（TTL=lock-minutes）+ 记录锁定日志", "completed": false },
+      { "step": "Redis 异常降级为仅告警不阻断（try/catch 包裹）", "completed": false }
+    ],
+    "passes": false
+  },
+  {
+    "number": 4,
+    "category": "阶段 3：成功清零",
+    "task": "登录成功清锁定",
+    "steps": [
+      { "step": "login 成功时删除计数键 + 锁定键（现有已删计数键，补删锁定键）", "completed": false }
+    ],
+    "passes": false
+  },
+  {
+    "number": 5,
+    "category": "阶段 4：验收",
+    "task": "单测 + 文档",
+    "steps": [
+      { "step": "AuthService 单测：连续 5 次失败 → 第 6 次锁定拒绝；锁定期满恢复；成功清零", "completed": false },
+      { "step": "mvn clean install 编译通过", "completed": false },
+      { "step": "ADR-0007 补锁定闭环说明（或新增 ADR）", "completed": false }
+    ],
+    "passes": false
+  }
+]
