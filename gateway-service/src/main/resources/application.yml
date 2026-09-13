@@ -74,8 +74,8 @@ spring:
             - StripPrefix=1
 
 # ===== 认证鉴权（add-jwt-auth，见 ADR-0007）=====
-# 网关是唯一外部入口：enabled=true 时强制校验 Bearer token，解析 userId 注入 X-User-Id 透传下游；
-# 白名单端点（/api/auth 发 token / /internal 服务间 Feign / /actuator 探针 / /admin 管理端暂不接鉴权）放行。
+# 网关是唯一外部入口：enabled=true 时强制校验 Bearer token，解析 userId 注入 X-User-Id、role 注入 X-Role 透传下游；
+# 白名单端点（/api/auth 发 token / /internal 服务间 Feign / /actuator 探针）放行；管理端与规则版本接口走角色校验。
 app:
   auth:
     # 鉴权降级开关：false=旧行为（透传不校验，显式携带 userId），true=强制鉴权 + 数据隔离
@@ -85,9 +85,15 @@ app:
       # HS256 对称密钥（>=32 字节）：与 user-service 配置必须一致（本网关按同一密钥校验并注入 X-User-Id）
       # 本地默认值仅演示；生产必须经环境变量 JWT_SECRET 或配置中心统一注入
       secret: ${JWT_SECRET:sport-verify-hs256-secret-key-0123456789abcdef}
-    # 白名单：/api/auth/**（注册/登录/刷新）、/internal/**（Feign 内部契约）、
-    # /actuator/**（健康探针）、/admin/**（管理端暂不接鉴权，保持现状，后续变更接管理员鉴权）
-    whitelist: /api/auth/**,/internal/**,/actuator/**,/admin/**
+    # 白名单：/api/auth/**（注册/登录/刷新）、/internal/**（Feign 内部契约）、/actuator/**（健康探针）。
+    # /admin/** 与 /verify/rules/** 已移除裸放行——进入过滤链后按 admin 配置做角色校验（add-admin-rbac）
+    whitelist: /api/auth/**,/internal/**,/actuator/**
+    admin:
+      # 治理面角色校验开关：true=管理端/规则版本接口要求 role=ADMIN（普通用户 403/1002、未登录 401/1001）
+      # 默认 true 关门；false=降级为裸放行（灰度观察，不建议生产）
+      enabled: true
+      # 治理面路径前缀：命中即要求 role=ADMIN；/verify/rules/** 即 verify-service RuleVersionController 外部路径
+      paths: /admin/**,/verify/rules/**
 
 # 健康检查端点（K8s/监控探针可用）
 management:
