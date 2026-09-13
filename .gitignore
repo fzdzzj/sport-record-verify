@@ -59,3 +59,6 @@ docs/project-task-prompt-v3.2.md
 
 # ===== Agent 工作记忆（不入公开仓库） =====
 .workbuddy/
+
+# ===== 内部文档（面试策略 / AI 编排提示词 / 内部指导，不公开）=====
+docs/internal/
