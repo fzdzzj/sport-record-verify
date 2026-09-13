@@ -65,16 +65,16 @@ public class AuthService {
     // ===== 登录失败锁定配置（app.auth.lock.*，见 ADR-0007；field 默认值保证非 Spring 直造也可用） =====
     /** 锁定开关：false=仅计数告警不真正锁定（灰度兼容旧行为） */
     @Value("${app.auth.lock.enabled:true}")
-    private boolean lockEnabled = true;
+    boolean lockEnabled = true;
     /** 失败阈值：窗口内连续失败达此数触发锁定（对齐原 FAIL_THRESHOLD=5） */
     @Value("${app.auth.lock.threshold:5}")
-    private int lockThreshold = 5;
+    int lockThreshold = 5;
     /** 失败计数窗口（分钟）：滑动窗口，窗口内持续 INCR */
     @Value("${app.auth.lock.window-minutes:15}")
-    private long lockWindowMinutes = 15;
+    long lockWindowMinutes = 15;
     /** 锁定时长（分钟）：auth:lock:{phone} 的 TTL，到期自然解锁 */
     @Value("${app.auth.lock.lock-minutes:15}")
-    private long lockMinutes = 15;
+    long lockMinutes = 15;
 
     /**
      * 原子「取走并删除」Lua 脚本（刷新轮换的核心原语）。
