@@ -209,8 +209,13 @@ public class AuthService {
 
     /** 签发 access + refresh 双 token，并把 refresh 持久化到 Redis（存活校验 + 轮换作废的基础） */
     private TokenDTO issueTokenPair(Long userId) {
+        // —— role 从库中读取（add-admin-rbac 见 ADR-0007）：角色由签发端落库决定，写入 access role claim
+        //    与响应体（供前端判断「是否可进管理端」）；库查不到则回退默认 USER（安全默认，最小权限）
+        User user = userMapper.selectById(userId);
+        String role = (user != null && user.getRole() != null) ? user.getRole() : User.ROLE_USER;
         TokenDTO dto = new TokenDTO();
-        dto.setAccessToken(jwtUtil.issueAccessToken(userId));
+        dto.setAccessToken(jwtUtil.issueAccessToken(userId, role));
+        dto.setRole(role);
         String refreshToken = jwtUtil.issueRefreshToken(userId);
         dto.setRefreshToken(refreshToken);
         // 存活键：key=auth:refresh:{userId}:{jti}，TTL 与 refresh 时效一致（到点自然失效，无需主动清理）

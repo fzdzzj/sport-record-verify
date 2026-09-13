@@ -28,10 +28,11 @@ class JwtUtilTest {
     @Test
     void issueAccessAndParseBack() {
         JwtUtil jwtUtil = new JwtUtil(SECRET, 15, 7);
-        String token = jwtUtil.issueAccessToken(42L);
+        String token = jwtUtil.issueAccessToken(42L, "USER");
         Claims claims = jwtUtil.parse(token);
         assertEquals("42", claims.getSubject());
         assertEquals("ACCESS", claims.get("type"));
+        assertEquals("USER", claims.get("role"));
         assertNotNull(claims.getId());
     }
 
@@ -39,7 +40,7 @@ class JwtUtilTest {
     void refreshTokenTypeEnforced() {
         JwtUtil jwtUtil = new JwtUtil(SECRET, 15, 7);
         // access token 拿去换新必须被拒（type=ACCESS，非 refresh）
-        String access = jwtUtil.issueAccessToken(1L);
+        String access = jwtUtil.issueAccessToken(1L, "USER");
         assertThrows(JwtException.class, () -> jwtUtil.parseRefresh(access));
         // refresh token 解析出 userId 与 jti（jti 是 Redis 存活键的组成部分）
         String refresh = jwtUtil.issueRefreshToken(1L);
