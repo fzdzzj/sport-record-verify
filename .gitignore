@@ -56,3 +56,6 @@ docs/运动健康助手*.docx
 docs/运动健康助手*.pdf
 docs/运动健康助手*.md
 docs/project-task-prompt-v3.2.md
+
+# ===== Agent 工作记忆（不入公开仓库） =====
+.workbuddy/
