@@ -1,8 +1,10 @@
 package com.sportverify.verify.service;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.github.benmanes.caffeine.cache.Caffeine;
 import com.sportverify.common.exception.BizException;
 import com.sportverify.verify.config.RulesSnapshotCodec;
+import com.sportverify.verify.config.TwoLevelCacheProperties;
 import com.sportverify.verify.config.VerifyProperties;
 import com.sportverify.verify.dto.RuleVersionCreateRequest;
 import com.sportverify.verify.entity.RuleVersion;
@@ -12,6 +14,8 @@ import org.junit.jupiter.api.Test;
 import org.redisson.api.RTopic;
 import org.redisson.api.RedissonClient;
 import org.springframework.dao.DuplicateKeyException;
+import org.springframework.data.redis.core.StringRedisTemplate;
+import org.springframework.data.redis.core.ValueOperations;
 
 import java.time.Duration;
 import java.util.List;
@@ -33,7 +37,8 @@ import static org.mockito.Mockito.when;
  * 「规则快照隔离」「秒级回滚」「全量发布」）。
  *
  * <p>基线=Nacos 实时配置（R1 速度 5.5），灰度快照=R1 速度 6.6，二者可区分以验证分支来源。
- * Mapper 打桩模拟 DB 状态，Caffeine 用真实实例验证缓存失效时机。</p>
+ * Mapper 打桩模拟 DB 状态；读路径走真实 {@link RuleCacheService}（真实 Caffeine +
+ * 打桩 Redis/Redisson，两级均 miss 时回源 Mapper），以此同时验证二级读路径与失效时机。</p>
  */
 class RuleVersionServiceTest {
 
@@ -42,9 +47,19 @@ class RuleVersionServiceTest {
     private final RuleVersionMapper mapper = mock(RuleVersionMapper.class);
     /** Redis 广播代身：getTopic 打桩到 mock topic，验证生命周期操作发出失效广播 */
     private final RTopic topic = mock(RTopic.class);
-    private final RuleVersionService service = new RuleVersionService(mapper,
-            Caffeine.newBuilder().expireAfterWrite(Duration.ofMinutes(1)).build(), live,
-            stubRedisson());
+    private final RuleVersionService service = new RuleVersionService(mapper, live,
+            stubRedisson(), new RuleCacheService(
+                    Caffeine.newBuilder().expireAfterWrite(Duration.ofMinutes(1)).build(),
+                    stubRedis(), mock(RedissonClient.class), new ObjectMapper(),
+                    new TwoLevelCacheProperties()));
+
+    /** StringRedisTemplate 打桩：opsForValue() 返回可用的 ValueOperations（get 默认按 miss 处理） */
+    @SuppressWarnings("unchecked")
+    private StringRedisTemplate stubRedis() {
+        StringRedisTemplate redis = mock(StringRedisTemplate.class);
+        when(redis.opsForValue()).thenReturn(mock(ValueOperations.class));
+        return redis;
+    }
 
     /** RedissonClient 打桩：任意 topic 名都返回同一 mock，便于 verify(publish) */
     private RedissonClient stubRedisson() {

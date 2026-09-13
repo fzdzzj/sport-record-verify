@@ -1,5 +1,6 @@
 package com.sportverify.verify;
 
+import com.sportverify.verify.config.TwoLevelCacheProperties;
 import com.sportverify.verify.config.VerifyProperties;
 import org.mybatis.spring.annotation.MapperScan;
 import org.springframework.boot.SpringApplication;
@@ -17,7 +18,7 @@ import org.springframework.cloud.openfeign.EnableFeignClients;
  */
 @SpringBootApplication(scanBasePackages = "com.sportverify")
 @EnableFeignClients(basePackages = "com.sportverify.api")
-@EnableConfigurationProperties(VerifyProperties.class)
+@EnableConfigurationProperties({VerifyProperties.class, TwoLevelCacheProperties.class})
 @MapperScan("com.sportverify.verify.mapper")
 public class VerifyApplication {
 
