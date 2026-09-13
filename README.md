@@ -97,6 +97,9 @@ java -jar mapmatch-service/target/sport-verify-mapmatch-service-0.1.0-SNAPSHOT.j
 - **refresh 轮换**：refresh 存 Redis（`auth:refresh:{userId}:{jti}`，TTL=7d），刷新时 GETDEL 原子作废旧 jti → 防重放。
 - **降级开关**：`app.auth.enabled`（默认 false）= 旧行为（显式携带 userId，压测脚本不破坏）；
   切 true 强制鉴权 + 数据隔离（需同步更新压测脚本带 token）。
+- **登录失败锁定**（add-login-lockout）：窗口（15min）内连续登录失败达阈值（5）→ 写 `auth:lock:{phone}`
+  （Redis，TTL=锁定时长），登录入口前置检查直接拒绝（403/1002「账号已临时锁定」，不校验密码、防撞库 + 省 BCrypt）；
+  到期自动解锁、登录成功清零计数与锁定；`app.auth.lock.*` 可配，`enabled=false` 回退仅计数告警，Redis 故障降级仅告警不阻断登录（见 ADR-0007）。
 
 冒烟验证（默认开关关闭时）：先登录拿 token，再带 token 调业务接口。
 
@@ -222,6 +225,7 @@ bash scripts/perf/run-perf.sh quality base && bash scripts/perf/run-perf.sh load
 - 服务划分 4→5：榜单读热/事件沉淀独立为 leaderboard-service（数据热点隔离、读写分离、独立降级面），贡献表复用 record_db，对记录域只读防双写（[ADR-0005](docs/adr/0005-服务划分.md)）。
 - 服务划分 5→6 + 空间真实性：道路拓扑匹配独立为 mapmatch-service（PostGIS 真实 OSM 路网 + 最近边投影，HMM 进阶），R5 远程规则接入既有规则链，熔断降级不命中不阻断校验（[ADR-0006](docs/adr/0006-空间匹配.md)）。
 - 鉴权闭环：网关统一鉴权（唯一入口 = 唯一信任边界，注入 X-User-Id 且覆盖伪造同名头）+ 双 token（access 15min / refresh 7d）+ refresh 轮换存 Redis（GETDEL 原子作废防重放）+ BCrypt 密码哈希（独立 spring-security-crypto，不拉全家桶）+ auth.enabled 降级开关（默认 false 兼容压测，见 [ADR-0007](docs/adr/0007-鉴权设计.md)）。
+- 登录爆破防护：窗口内失败达阈值写 `auth:lock:{phone}` 临时锁定，登录入口前置检查直接拒绝（不校验密码、不消耗 BCrypt）、锁定期满自动解锁、成功登录清零（见 [ADR-0007](docs/adr/0007-鉴权设计.md) add-login-lockout）。
 - 治理面 RBAC：最小角色模型 USER/ADMIN（刻意最简，不用 Spring Security ACL）+ access token 携带 role claim（签发端背书，网关解析）+ `/admin/**` 与规则版本接口仅 ADMIN 可访问（普通用户 403/1002）+ 内网授予接口显式授予 + `app.auth.admin.enabled` 灰度开关（默认 true 关门，见 [ADR-0007](docs/adr/0007-鉴权设计.md) add-admin-rbac）。
 - 所有 JSON 接口统一 `{"code":0,"message":"success","data":...}` 结构（错误码表见审批版 §4.8）。
 

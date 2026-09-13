@@ -51,6 +51,18 @@ app:
       # refresh token 存活键前缀（Redis，key=auth:refresh:{userId}:{jti}，TTL 与 refresh 时效一致；
       # 轮换时原子作废旧 jti，防重放，见 ADR-0007；值含冒号须加引号，否则 snakeyaml 报 mapping 错误）
       redis-prefix: "auth:refresh:"
+    # 登录失败锁定（add-login-lockout，见 ADR-0007）：
+    # 同一窗口内连续失败达阈值 → 写 auth:lock:{phone}（TTL=lock-minutes），期间登录入口直接拒绝
+    # （不校验密码、不计数，防撞库 + 省 BCrypt）。灰度期 enabled=false 即回到「只计数告警」旧行为。
+    lock:
+      # 锁定开关：false=仅计数告警不真正锁定（兼容旧行为）
+      enabled: true
+      # 失败阈值：窗口内连续失败达此数触发锁定（对齐 AuthService 原 FAIL_THRESHOLD）
+      threshold: 5
+      # 失败计数窗口（分钟）：窗口滑动，窗口内持续 INCR
+      window-minutes: 15
+      # 锁定时长（分钟）：到达锁定时长后 auth:lock:{phone} TTL 到期自然解锁
+      lock-minutes: 15
 
 # MyBatis-Plus 基础配置（无 Mapper 骨架阶段仅占位）
 mybatis-plus:
