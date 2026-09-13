@@ -5,12 +5,15 @@ import com.github.benmanes.caffeine.cache.Cache;
 import com.sportverify.verify.config.TwoLevelCacheProperties;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.redisson.api.RLock;
 import org.redisson.api.RedissonClient;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Service;
 
 import java.time.Duration;
 import java.util.Optional;
+import java.util.concurrent.ThreadLocalRandom;
+import java.util.concurrent.TimeUnit;
 import java.util.function.Supplier;
 
 /**
@@ -123,19 +126,56 @@ public class RuleCacheService {
         return toOptional(type, loaded);
     }
 
-    /** 两级未命中回源 DB 并回填，为进入互斥重建留的钩子 */
+    /**
+     * 回源 DB 并回填两级；缓存失效并发重建同一 key 时用 Redisson 锁互斥（防击穿）——
+     * 仅持锁实例真正查库，其余线程等待后 Double-check Redis 复用重建结果，避免打爆 DB。
+     */
     private <T> Optional<T> rebuildFromDb(String cacheKey, Class<T> type, Supplier<T> dbLoader) {
-        return loadAndBackfill(cacheKey, type, dbLoader);
+        String lockKey = LOCK_PREFIX + redisKey(cacheKey);
+        RLock lock = null;
+        boolean locked = false;
+        try {
+            lock = redissonClient.getLock(lockKey);
+            if (lock != null) {
+                locked = lock.tryLock(props.getLockWait().toMillis(), props.getLockLease().toMillis(),
+                        TimeUnit.MILLISECONDS);
+            }
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            log.warn("互斥重建锁等待被中断，降级无锁回源：lockKey={}", lockKey, e);
+        } catch (Exception e) {
+            log.warn("互斥重建锁获取异常（Redis 不可用），降级无锁回源：lockKey={}", lockKey, e);
+        }
+
+        if (locked) {
+            try {
+                // Double-check Redis：锁竞争期间可能其他实例已完成重建，直接复用避免二次查库
+                Object redis = readRedis(cacheKey, type);
+                if (redis != null && redis != EMPTY) {
+                    caffeineCache.put(cacheKey, redis);
+                    return Optional.of(type.cast(redis));
+                }
+                return loadAndBackfill(cacheKey, type, dbLoader);
+            } finally {
+                try {
+                    lock.unlock();
+                } catch (Exception ignored) {
+                    // 租期兜底释放，忽略
+                }
+            }
+        }
+        // 未拿到锁：其他实例正在重建——本地降级读一次（概率低），不阻塞校验主链路
+        return readThroughLocal(cacheKey, type, dbLoader);
     }
 
-    /** 查库回填两级：DB 有值回填两级，无值回填空值哨兵（防穿透） */
+    /** 查库回填两级：DB 有值回填两级（Redis 用带抖动的 TTL 防雪崩），无值回填空值哨兵（防穿透） */
     private <T> Optional<T> loadAndBackfill(String cacheKey, Class<T> type, Supplier<T> dbLoader) {
         T loaded = dbLoader.get();
         // 先回填本地（即使 Redis 写失败，本实例后续也能命中）
         caffeineCache.put(cacheKey, loaded != null ? loaded : EMPTY);
         try {
             String json = loaded != null ? objectMapper.writeValueAsString(loaded) : EMPTY_JSON;
-            stringRedisTemplate.opsForValue().set(redisKey(cacheKey), json, baseTtl(type, loaded));
+            stringRedisTemplate.opsForValue().set(redisKey(cacheKey), json, cacheTtl(loaded));
         } catch (Exception e) {
             log.warn("Redis 回填失败，仅本地缓存生效：key={}", cacheKey, e);
         }
@@ -160,9 +200,15 @@ public class RuleCacheService {
         }
     }
 
-    /** Redis 过期时间：DB 有值用基础 TTL（防雪崩抖动在阶段二叠加），空值用短 TTL 防穿透 */
-    private Duration baseTtl(Class<?> type, Object loaded) {
-        return loaded == null ? props.getEmptyTtl() : props.getTtl();
+    /** Redis 过期时间：DB 有值 = 基础 TTL + 随机抖动（防雪崩，批量错峰过期）；空值 = 短 TTL（防穿透） */
+    private Duration cacheTtl(Object loaded) {
+        if (loaded == null) {
+            return props.getEmptyTtl();
+        }
+        long base = props.getTtl().toSeconds();
+        long amp = props.getJitter().toSeconds();
+        long delta = amp <= 0 ? 0 : ThreadLocalRandom.current().nextLong(-amp, amp + 1);
+        return Duration.ofSeconds(Math.max(1, base + delta));
     }
 
     private <T> Optional<T> toOptional(Class<T> type, T loaded) {
