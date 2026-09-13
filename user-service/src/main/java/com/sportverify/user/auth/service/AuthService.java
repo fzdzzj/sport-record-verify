@@ -54,14 +54,26 @@ public class AuthService {
 
     /** 登录失败计数键前缀（Redis，窗口内累计） */
     private static final String FAIL_KEY_PREFIX = "auth:fail:";
-    /** 失败计数窗口（分钟）：窗口滑动重置，防爆破的设计口径 */
-    private static final long FAIL_COOLDOWN_MINUTES = 15;
-    /** 失败次数阈值（设计口径：达到阈值建议锁定账号；本实现先计数告警，锁定落地见注释） */
-    private static final int FAIL_THRESHOLD = 5;
+    /** 登录锁定键前缀（Redis，达阈值后写入，TTL=锁定时长，存在即拒绝登录） */
+    private static final String LOCK_KEY_PREFIX = "auth:lock:";
 
     /** refresh token 存活键前缀（key=auth:refresh:{userId}:{jti}，TTL 与 refresh 时效一致） */
     @Value("${app.auth.refresh.redis-prefix:auth:refresh:}")
     private String refreshPrefix;
+
+    // ===== 登录失败锁定配置（app.auth.lock.*，见 ADR-0007；field 默认值保证非 Spring 直造也可用） =====
+    /** 锁定开关：false=仅计数告警不真正锁定（灰度兼容旧行为） */
+    @Value("${app.auth.lock.enabled:true}")
+    private boolean lockEnabled = true;
+    /** 失败阈值：窗口内连续失败达此数触发锁定（对齐原 FAIL_THRESHOLD=5） */
+    @Value("${app.auth.lock.threshold:5}")
+    private int lockThreshold = 5;
+    /** 失败计数窗口（分钟）：滑动窗口，窗口内持续 INCR */
+    @Value("${app.auth.lock.window-minutes:15}")
+    private long lockWindowMinutes = 15;
+    /** 锁定时长（分钟）：auth:lock:{phone} 的 TTL，到期自然解锁 */
+    @Value("${app.auth.lock.lock-minutes:15}")
+    private long lockMinutes = 15;
 
     /**
      * 原子「取走并删除」Lua 脚本（刷新轮换的核心原语）。
@@ -212,6 +224,11 @@ public class AuthService {
 
     private String failKey(String phone) {
         return FAIL_KEY_PREFIX + phone;
+    }
+
+    /** 锁定键：auth:lock:{phone}（存在即表示账号处于临时锁定状态） */
+    private String lockKey(String phone) {
+        return LOCK_KEY_PREFIX + phone;
     }
 
     /** refresh 存活键：按 (userId, jti) 唯一（同一用户的多个 refresh 互不干扰） */
