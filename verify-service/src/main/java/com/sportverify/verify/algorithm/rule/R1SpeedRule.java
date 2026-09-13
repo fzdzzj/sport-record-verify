@@ -12,7 +12,8 @@ import java.util.List;
 /**
  * R1 速度合理性（HARD，匀速刷里程特征，规范「匀速刷里程触发 R1」）。
  *
- * <p>滑动窗口（默认 10 点）平均速度 &gt; 5.5 m/s，且该高均速状态持续 ≥10 个窗口
+ * <p>滑动窗口（默认 10 点）平均速度 &gt; 阈值（RUNNING 默认 5.5 m/s，按运动类型分维度，
+ * CYCLING 15 m/s，见 ADR-0004 §5），且该高均速状态持续 ≥10 个窗口
  * （≈ 连续 19 点以上）→ 命中；证据含窗口均值与起止点序号。</p>
  */
 @Component
@@ -30,10 +31,11 @@ public class R1SpeedRule implements Rule {
     }
 
     @Override
-    public RuleHit evaluate(List<Point> points, VerifyProperties.Rules rules) {
-        int window = rules.getR1().getWindowPoints();     // 默认 10 点
-        int minWindows = rules.getR1().getMinWindows();   // 持续窗口数下限（默认 10）
-        double threshold = rules.getR1().getSpeed();      // 默认 5.5 m/s
+    public RuleHit evaluate(List<Point> points, VerifyProperties.Rules rules,
+                            VerifyProperties.Rules.RuleThreshold typeThreshold) {
+        int window = typeThreshold.getR1().getWindowPoints();     // 默认 10 点
+        int minWindows = typeThreshold.getR1().getMinWindows();   // 持续窗口数下限（默认 10）
+        double threshold = typeThreshold.getR1().getSpeed();      // 按类型：RUNNING 5.5 / CYCLING 15
         if (points.size() < window) {
             return null;
         }

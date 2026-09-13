@@ -32,7 +32,8 @@ public class R3StayRule implements Rule {
     }
 
     @Override
-    public RuleHit evaluate(List<Point> points, VerifyProperties.Rules rules) {
+    public RuleHit evaluate(List<Point> points, VerifyProperties.Rules rules,
+                            VerifyProperties.Rules.RuleThreshold typeThreshold) {
         if (points.size() < 2) {
             return null;
         }
@@ -40,8 +41,8 @@ public class R3StayRule implements Rule {
         if (totalMs <= 0) {
             return null;
         }
-        long minStayMs = rules.getR3().getMinMinutes() * 60_000L; // 默认 5min
-        double maxMeters = rules.getR3().getMaxMeters();          // 默认 5m
+        long minStayMs = typeThreshold.getR3().getMinMinutes() * 60_000L; // 默认 5min
+        double maxMeters = typeThreshold.getR3().getMaxMeters();          // 默认 5m
 
         // 扫描「位移 <5m」的连续段：以段起点为基准，落在 5m 内的点归入当前段
         List<long[]> staySegments = new ArrayList<>(); // {时长ms, 起始seq, 结束seq}
@@ -58,7 +59,7 @@ public class R3StayRule implements Rule {
 
         long staySum = staySegments.stream().mapToLong(s -> s[0]).sum();
         double ratio = (double) staySum / totalMs;
-        if (ratio <= rules.getR3().getSegmentRatio()) {
+        if (ratio <= typeThreshold.getR3().getSegmentRatio()) {
             return null;
         }
         long maxStayMs = staySegments.stream().mapToLong(s -> s[0]).max().orElse(0);

@@ -31,11 +31,12 @@ public class R4DistanceRule implements Rule {
     }
 
     @Override
-    public RuleHit evaluate(List<Point> points, VerifyProperties.Rules rules) {
+    public RuleHit evaluate(List<Point> points, VerifyProperties.Rules rules,
+                            VerifyProperties.Rules.RuleThreshold typeThreshold) {
         if (points.size() < 2) {
             return null;
         }
-        double threshold = rules.getR4().getMaxRatio(); // 默认 3.0
+        double threshold = typeThreshold.getR4().getMaxRatio(); // 默认 3.0
 
         // 累计轨迹距离（逐段 haversine 累加）
         double cumulative = 0;

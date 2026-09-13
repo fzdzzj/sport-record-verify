@@ -81,14 +81,26 @@ public class VerifyProperties {
             return legacyThreshold();
         }
 
-        /** 组装旧结构单套阈值（兼容层）：复用扁平 r1-r4 字段，缺省即 RUNNING 默认值 */
+        /** 组装旧结构单套阈值（兼容层）：从扁平 r1-r4 字段深拷贝成独立条目，
+         *  避免多类型共享同一可变对象（改其一影响全部） */
         private RuleThreshold legacyThreshold() {
             RuleThreshold t = new RuleThreshold();
-            t.setR1(r1);
-            t.setR2(r2);
-            t.setR3(r3);
-            t.setR4(r4);
+            t.setR1(copy(r1, R1.class));
+            t.setR2(copy(r2, R2.class));
+            t.setR3(copy(r3, R3.class));
+            t.setR4(copy(r4, R4.class));
             return t;
+        }
+
+        /** 深拷贝单个阈值对象（字段少，手写 setter 足够清晰，不引入反射工具） */
+        private static <T> T copy(T src, Class<T> type) {
+            try {
+                T dst = type.getDeclaredConstructor().newInstance();
+                org.springframework.beans.BeanUtils.copyProperties(src, dst);
+                return dst;
+            } catch (ReflectiveOperationException e) {
+                throw new IllegalStateException("阈值对象拷贝失败：" + type.getSimpleName(), e);
+            }
         }
     }
 

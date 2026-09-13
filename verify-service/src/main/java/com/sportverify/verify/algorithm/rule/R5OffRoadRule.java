@@ -50,7 +50,9 @@ public class R5OffRoadRule implements Rule {
     }
 
     @Override
-    public RuleHit evaluate(List<Point> points, VerifyProperties.Rules rules) {
+    public RuleHit evaluate(List<Point> points, VerifyProperties.Rules rules,
+                            VerifyProperties.Rules.RuleThreshold typeThreshold) {
+        // R5 与运动类型弱相关，维持通用：阈值取全局 rules（含 R5 配置），typeThreshold 忽略
         VerifyProperties.R5 r5 = rules.getR5();
         // 点数不足不匹配：短轨迹无统计意义，且避免提交远端调用的无谓开销
         if (points == null || points.size() < r5.getMinPoints()) {
