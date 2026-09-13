@@ -103,5 +103,5 @@ THEN 以 DB record_like 行为准纠正 Redis 计数
 ## 备注
 
 - 点赞只对 PASSED 记录开放，与校验引擎（add-verify-engine）的状态机强耦合，落地顺序在前者之后。
-- 计数权威源为 record_like 行，Redis 为读热写冷的加速层（弹药：Redis 原子计数 + 最终一致 + 异步批量）。
+- 计数权威源为 record_like 行，Redis 为读热写冷的加速层（Redis 原子计数 + 最终一致 + 异步批量）。
 - 错误码 6001 与 record_like 表结构以审批版 §4.6/§4.8/§6.2 为唯一依据。

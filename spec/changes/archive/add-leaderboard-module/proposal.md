@@ -2,7 +2,7 @@
 
 ## Why
 
-点赞落地后，用户行为有了「记录通过校验」这一可信数据源，但缺一个把它沉淀为**公平榜单**的收口——总榜 + 好友榜。本变更落地排行榜：仅 PASSED 里程入榜、Redis ZSet 秒级查询、`leaderboard_contribution` 贡献快照作为回滚锚点、改判自动回滚，形成「提交→校验→判定→申诉→榜单沉淀」闭环的最后一环，也是面试弹药（ZSet 有序集合、事件驱动最终一致、定时任务防重）的代码载体。
+点赞落地后，用户行为有了「记录通过校验」这一可信数据源，但缺一个把它沉淀为**公平榜单**的收口——总榜 + 好友榜。本变更落地排行榜：仅 PASSED 里程入榜、Redis ZSet 秒级查询、`leaderboard_contribution` 贡献快照作为回滚锚点、改判自动回滚，形成「提交→校验→判定→申诉→榜单沉淀」闭环的最后一环，也是 ZSet 有序集合、事件驱动最终一致、定时任务防重的代码载体。
 
 **背景**：
 - 审批版 §4.5 已定接口与约束，§6.2 已定 `leaderboard_contribution` 表（record_id 主键=回滚锚点），§7.1 已定 VERIFIED/REJECTED/REVERSED 事件与榜单刷新消费者，§7.5 已定 `lock:scheduler:leaderboard` 与 `lock:rollback:{recordId}`。

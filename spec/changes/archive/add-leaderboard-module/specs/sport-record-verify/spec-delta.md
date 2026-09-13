@@ -109,5 +109,5 @@ AND 标记 settled_at
 ## 备注
 
 - 榜单是校验闭环的收口，依赖 add-verify-engine（事件）、add-friend-module（好友列表 Feign）；落地顺序在其后。
-- ZSet `leaderboard:overall`（member=userId，score=累计 pass 里程）为热读层；leaderboard_contribution 行为权威源与回滚锚点（弹药：Redis ZSet + 事件驱动最终一致 + 定时防重）。
+- ZSet `leaderboard:overall`（member=userId，score=累计 pass 里程）为热读层；leaderboard_contribution 行为权威源与回滚锚点（Redis ZSet + 事件驱动最终一致 + 定时防重）。
 - 事件 Tag 与表结构以审批版 §4.5/§6.2/§7.1/§7.5 为唯一依据。

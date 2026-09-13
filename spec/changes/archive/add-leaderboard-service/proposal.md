@@ -2,9 +2,9 @@
 
 ## Why
 
-榜单当前沉淀在 record-service 里（`LeaderboardService`/`LeaderboardController`/`LeaderboardEventConsumer` 等一整套），与「记录分片存储」「点赞」耦合在同一服务。执行计划 P2 明确列出「第 5 个榜单服务」为可选深化项。拆出独立 `leaderboard-service` 后：① 服务职责更单一（record=记录读写，leaderboard=榜单读热+事件沉淀）；② 榜单读多写少、可独立扩缩容（读流量不再挤占 record 服务的 DB 连接池/CPU）；③ 面试弹药升级——「为什么 5 个服务」「榜单为什么独立」变成可讲的架构决策（数据热点隔离、读写分离、独立降级面）。
+榜单当前沉淀在 record-service 里（`LeaderboardService`/`LeaderboardController`/`LeaderboardEventConsumer` 等一整套），与「记录分片存储」「点赞」耦合在同一服务。执行计划 P2 明确列出「第 5 个榜单服务」为可选深化项。拆出独立 `leaderboard-service` 后：① 服务职责更单一（record=记录读写，leaderboard=榜单读热+事件沉淀）；② 榜单读多写少、可独立扩缩容（读流量不再挤占 record 服务的 DB 连接池/CPU）；③ 「为什么 5 个服务」「榜单为什么独立」成为可讲的架构决策（数据热点隔离、读写分离、独立降级面）。
 
-这是纯「架构重构」型深化，不新增业务能力，但对面试说服力提升最大，也让「为什么微服务」的回答更有依据。
+这是纯「架构重构」型深化，不新增业务能力，但对架构说服力提升最大，也让「为什么微服务」的回答更有依据。
 
 **背景**：
 - 审批版 §2.2 服务划分原为 4 服务（leaderboard-service 设计-only）；执行计划 P2「第 5 个榜单服务」列为可选。
