@@ -16,6 +16,7 @@
 - add-jwt-auth（鉴权）
 - add-mapmatch-service（空间匹配）
 - add-admin-rbac（治理面鉴权）
+- add-sport-type-threshold（阈值分类型）
 
 各提案的 spec-delta 中 ADDED 需求已全部合并进本规范，MODIFIED 需求按规则处理（见「服务划分」分组与「变更历史」）。
 
@@ -1410,6 +1411,76 @@ THEN 熔断降级为不命中
 AND 校验主链路正常完成
 AND 记录 warn 日志
 
+## 阈值分类型
+
+### Requirement: 记录携带运动类型
+
+WHEN 用户提交运动记录,
+系统 SHALL 接收 sportType 字段，缺省 SHALL 回退为 RUNNING（向后兼容），未知类型 SHALL 拒绝。
+
+#### Scenario: 提交带类型
+
+GIVEN 用户提交记录并指定 sportType=CYCLING
+WHEN 记录入库
+THEN sportType 字段正确保存
+
+#### Scenario: 缺省回退
+
+GIVEN 提交记录未指定 sportType
+WHEN 记录入库
+THEN sportType 回退为 RUNNING
+AND 校验行为与现有 RUNNING 一致
+
+#### Scenario: 未知类型拒绝
+
+GIVEN 提交记录 sportType 为枚举外取值
+WHEN 记录提交接口处理
+THEN 返回非法参数错误
+
+### Requirement: 阈值按类型分维度
+
+WHEN 系统配置规则阈值,
+系统 SHALL 按运动类型分维度（每类型一套 R1-R4 阈值），而非全类型共用一套。
+
+#### Scenario: 类型独立阈值
+
+GIVEN 规则快照含 RUNNING 与 CYCLING 两套阈值
+WHEN 读取阈值
+THEN RUNNING 与 CYCLING 各自独立
+AND 互不影响
+
+### Requirement: 按类型判定
+
+WHEN 校验引擎判定记录,
+系统 SHALL 依据记录的 sportType 取对应阈值集执行 R1-R4，未知类型 SHALL 保守处理（回退默认或保守拒绝，可配）。
+
+#### Scenario: 骑行不误杀
+
+GIVEN 一条真实骑行轨迹 sportType=CYCLING
+WHEN 引擎判定
+THEN 取 CYCLING 阈值（速度上限高于跑步）
+AND 不触发 R1 误判
+
+#### Scenario: 跑步沿用原阈值
+
+GIVEN 一条跑步轨迹 sportType=RUNNING
+WHEN 引擎判定
+THEN 取 RUNNING 阈值（沿用现有 5.5）
+AND 行为与历史一致
+
+### Requirement: 灰度与类型维度正交
+
+WHEN 灰度路由与类型阈值叠加,
+系统 SHALL 保持两维度正交：userId%100 决定使用哪个规则版本，sportType 决定版本内用哪套阈值，SHALL 不改动现有灰度路由逻辑。
+
+#### Scenario: 正交叠加
+
+GIVEN 某版本快照含多类型阈值
+AND 用户命中灰度
+WHEN 判定
+THEN 先按灰度取版本，再按 sportType 取阈值
+AND 灰度路由逻辑不变
+
 ## 变更历史
 
 各提案 spec-delta 备注中有价值的上下文说明，融合记录如下：
@@ -1425,3 +1496,4 @@ AND 记录 warn 日志
 - **add-jwt-auth**：收口「骨架无认证」技术债，建立鉴权能力域。双 token + refresh rotation（Redis `GETDEL` 原子消费防重放，access 15min / refresh 7d）；网关统一鉴权（身份由网关以 X-User-Id 唯一认定，下游不信任调用方自报）；用户数据隔离（越权访问他人资源 → 403/1002）；auth.enabled 降级开关（默认关闭降级为显式携带 userId 的旧行为，迁移成本可控）。引用 docs/adr/0007。
 - **add-mapmatch-service**：新增独立 mapmatch-service（第 6 服务），把道路拓扑匹配从「讲设计」升级为实锤（执行计划 P2 天花板项），服务数 4→5→6。R5 是首个依赖外部服务的规则（verify 侧 `R5OffRoadRule` 实现 Rule 接口 + Feign 调 mapmatch，Rule 接口可扩展性首获远程规则红利，聚合框架零改动）；真实 OSM 单城市切片 + PostGIS（GIST+R 树）承载路网；R5 默认 SOFT、极端偏离升级 HARD，mapmatch 不可用时熔断降级为「不命中」不阻断校验主链路。引用 docs/adr/0006。
 - **add-admin-rbac**：治理面鉴权，与 add-jwt-auth 分工：jwt 管业务面「认身份」，本变更管治理面「授权」（能改规则、能翻案）。USER/ADMIN 最小角色模型（注册默认 USER，ADMIN 仅内部接口显式授予）；access token 携带 role claim（由签发端背书，不信任外部传入）；`/admin/**` 与规则版本接口（RuleVersionController）仅 ADMIN 可达（普通用户 403/1002、未登录 401/1001）；白名单从「裸放行」改为「进链校验角色」；app.auth.admin.enabled 默认启用。引用 docs/adr/0007。
+- **add-sport-type-threshold**：引擎从单一运动类型走向多运动类型阈值（消除 GenSamples 已知局限）。语义要点：未知/缺失类型保守回退 RUNNING，与历史行为一致；阈值分类型与灰度路由正交（灰度按 userId%100 路由版本，版本快照内部再按类型分维度，不改灰度逻辑）；rules_json 嵌套升级向后兼容（旧快照缺类型维度时回退单套阈值，仍可解析）。「规则链判定（R1-R4）」本身未改动，仅为其叠加类型维度。
