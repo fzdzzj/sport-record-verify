@@ -14,6 +14,7 @@
 - add-rule-grayscale（规则灰度）
 - add-leaderboard-service（独立榜单服务）
 - add-jwt-auth（鉴权）
+- add-mapmatch-service（空间匹配）
 
 各提案的 spec-delta 中 ADDED 需求已全部合并进本规范，MODIFIED 需求按规则处理（见「服务划分」分组与「变更历史」）。
 
@@ -831,16 +832,16 @@ AND 贡献表迁入该库
 
 ### Requirement: 服务划分
 
-系统 SHALL 由 5 个服务构成：gateway-service、user-service、record-service、verify-service、leaderboard-service；WHEN 系统部署, 榜单职责 SHALL 由 leaderboard-service 独立承载。
+系统 SHALL 由 6 个服务构成：gateway-service、user-service、record-service、verify-service、leaderboard-service、mapmatch-service；WHEN 系统部署, 榜单职责 SHALL 由 leaderboard-service 独立承载，道路拓扑匹配 SHALL 由 mapmatch-service 独立承载，离路判定 R5 SHALL 内聚于 verify-service 并远程调用匹配服务。
 
-> 变更说明：本需求由提案 add-leaderboard-service 的 MODIFIED「服务划分」追加而来。原主线无独立「服务划分」需求，此处作为新增记录；系统从 4 个服务（gateway-service、user-service、record-service、verify-service，榜单内聚于 record-service）演进到 5 个服务（追加 leaderboard-service，榜单职责独立承载），服务数 4→5。
+> 变更说明：本需求由提案 add-leaderboard-service 与 add-mapmatch-service 两次 MODIFIED「服务划分」演进而来。系统从 4 个服务（gateway-service、user-service、record-service、verify-service，榜单内聚于 record-service）演进到 5 个服务（追加 leaderboard-service，榜单职责独立承载），再到 6 个服务（追加 mapmatch-service，道路拓扑匹配职责独立承载），服务数 4→5→6。
 
 #### Scenario: 服务数
 
 GIVEN 系统完整部署
 WHEN 查看服务实例
-THEN 可见 5 个服务各自注册
-AND 榜单职责不在 record-service 内
+THEN 可见 6 个服务各自注册
+AND 空间匹配职责在 mapmatch-service 不在 verify-service
 
 ## 压测
 
@@ -1250,6 +1251,95 @@ GIVEN auth.enabled=true
 WHEN 请求受保护接口
 THEN 强制走网关鉴权与数据隔离
 
+## 空间匹配
+
+### Requirement: 独立路网匹配服务
+
+WHEN 校验需要空间真实性判定,
+系统 SHALL 提供独立的 `mapmatch-service` 承载路网数据与匹配算法，暴露匹配接口，与 verify-service 的规则链 SHALL 解耦。
+
+#### Scenario: 服务注册
+
+GIVEN mapmatch-service 已启动
+WHEN 查看 Nacos 服务列表
+THEN 可见 mapmatch-service 独立实例
+AND 独立端口（默认 8085）
+
+#### Scenario: 匹配接口返回
+
+GIVEN 路网数据已加载
+WHEN 调用 POST /mapmatch/match 提交轨迹点
+THEN 返回匹配结果（matchedRatio / avgOffRoadDistance / offRoadRatio 等）
+
+### Requirement: 真实路网数据
+
+WHEN 路网服务初始化,
+系统 SHALL 加载真实 OSM 路网数据（而非手工假数据），并提供幂等可重跑的导入流程。
+
+#### Scenario: 路网导入成功
+
+GIVEN 已下载指定城市 OSM 路网
+WHEN 执行导入脚本
+THEN 路网表写入空间库
+AND 导入脚本幂等可重跑
+
+#### Scenario: 数据可查询
+
+GIVEN 路网已导入
+WHEN 匹配算法查询最近道路
+THEN 基于空间索引返回候选道路
+AND 查询命中实际路网
+
+### Requirement: R5 离路规则
+
+WHEN 校验引擎执行规则链,
+系统 SHALL 新增 R5 离路规则，通过路网匹配计算轨迹偏离真实道路的比例，偏离超阈值 SHALL 产生 SOFT/HARD 证据。
+
+#### Scenario: 悬浮轨迹命中 R5
+
+GIVEN 轨迹整体不在任何真实道路上（如海面/楼顶）
+WHEN R5 执行路网匹配
+THEN offRoadRatio 超过阈值
+AND 命中 R5_OFFROAD 证据
+
+#### Scenario: 真实轨迹不命中
+
+GIVEN 真实骑行/跑步轨迹沿道路
+WHEN R5 执行路网匹配
+THEN offRoadRatio 低于阈值
+AND 不产生 R5 命中
+
+### Requirement: 判定聚合兼容
+
+WHEN R5 产生证据,
+系统 SHALL 将 R5 命中并入既有 hits 列表，走现有「HARD 即拒 / SOFT 计分」聚合，SHALL 不改变 R1-R4 既有行为。
+
+#### Scenario: R5 软证据参与评分
+
+GIVEN R5 命中 SOFT
+WHEN 判定聚合
+THEN score 计入 10×SOFT 项
+AND 仅 SOFT 时遵循 soft-only-reject 策略
+
+#### Scenario: R5 硬证据即拒
+
+GIVEN R5 命中 HARD（极端偏离）
+WHEN 判定聚合
+THEN verdict=REJECTED
+
+### Requirement: 匹配降级
+
+WHEN mapmatch-service 不可用,
+系统 SHALL 使 R5 降级为「不命中」，不阻断校验主链路，并 SHALL 记录告警。
+
+#### Scenario: 服务不可用降级
+
+GIVEN mapmatch-service 停机
+WHEN R5 调用匹配接口失败
+THEN 熔断降级为不命中
+AND 校验主链路正常完成
+AND 记录 warn 日志
+
 ## 变更历史
 
 各提案 spec-delta 备注中有价值的上下文说明，融合记录如下：
@@ -1263,3 +1353,4 @@ THEN 强制走网关鉴权与数据隔离
 - **add-observability**：运维增强，不改变业务功能；指标口径对齐压测报告，形成「即时观测 + 历史实录」双层证据。/actuator/prometheus 本地演示直连；生产安全（网关不转发 actuator、内网抓取、最小权限）属「讲设计」范畴。监控栈选型（Prometheus+Grafana）理由随 ADR 记录。
 - **add-rule-grayscale**：把「阈值可配」升级为「版本化灰度发布」，落地审批版 §7.4 全部流程。rule_version 表已建（sql/03-verify-db.sql），本变更不迁移表结构。采样键 userId%100 与审批版 §7.4 一致；灰度观察期用库内快照避免与 Nacos 动态刷新竞态。
 - **add-jwt-auth**：收口「骨架无认证」技术债，建立鉴权能力域。双 token + refresh rotation（Redis `GETDEL` 原子消费防重放，access 15min / refresh 7d）；网关统一鉴权（身份由网关以 X-User-Id 唯一认定，下游不信任调用方自报）；用户数据隔离（越权访问他人资源 → 403/1002）；auth.enabled 降级开关（默认关闭降级为显式携带 userId 的旧行为，迁移成本可控）。引用 docs/adr/0007。
+- **add-mapmatch-service**：新增独立 mapmatch-service（第 6 服务），把道路拓扑匹配从「讲设计」升级为实锤（执行计划 P2 天花板项），服务数 4→5→6。R5 是首个依赖外部服务的规则（verify 侧 `R5OffRoadRule` 实现 Rule 接口 + Feign 调 mapmatch，Rule 接口可扩展性首获远程规则红利，聚合框架零改动）；真实 OSM 单城市切片 + PostGIS（GIST+R 树）承载路网；R5 默认 SOFT、极端偏离升级 HARD，mapmatch 不可用时熔断降级为「不命中」不阻断校验主链路。引用 docs/adr/0006。
