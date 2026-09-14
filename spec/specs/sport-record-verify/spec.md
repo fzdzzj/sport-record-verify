@@ -80,6 +80,19 @@ WHEN 全局异常处理器拦截
 THEN 返回对应错误码与可读信息
 AND 不泄漏堆栈细节
 
+#### Scenario: 入参校验失败
+
+GIVEN 客户端提交非法入参（DTO 校验违规 / 畸形 JSON / 参数类型不匹配 / 缺必填查询参数）
+WHEN 控制器层触发校验
+THEN 返回 HTTP 400 与结构化错误体 `{code:400, message:<字段名 + 提示>}`
+AND 不落入服务端 500
+
+#### Scenario: 路径与方法契约
+
+GIVEN 请求路径存在但方法不符，或路径不存在
+WHEN 全局异常处理器拦截
+THEN 分别返回 HTTP 405 与 404 及结构化错误体
+
 ### Requirement: 服务间 Feign 契约
 
 WHEN 服务间发生调用,
@@ -1640,3 +1653,4 @@ AND 下次读取回源到最新值
 - **add-sport-type-threshold**：引擎从单一运动类型走向多运动类型阈值（消除 GenSamples 已知局限）。语义要点：未知/缺失类型保守回退 RUNNING，与历史行为一致；阈值分类型与灰度路由正交（灰度按 userId%100 路由版本，版本快照内部再按类型分维度，不改灰度逻辑）；rules_json 嵌套升级向后兼容（旧快照缺类型维度时回退单套阈值，仍可解析）。「规则链判定（R1-R4）」本身未改动，仅为其叠加类型维度。
 - **add-login-lockout**：账号锁定能力域。口径更正说明：本需求此前长期处于「讲设计」状态（审批版列为能力项、实现只到计数+告警），本次由 add-login-lockout 在代码与规范两侧同时收口，这正是勘误 3 要解决的口径矛盾。实现事实：同一手机号在窗口期（默认 15min）内连续失败达阈值（默认 5 次）→ 写 `auth:lock:{phone}`（Redis + TTL 锁定时长 15min）；达阈值后拒绝登录，不校验密码、不消耗 BCrypt、不更新失败计数；锁定期满 TTL 到期自动解锁；登录成功清除失败计数与锁定键；锁定时「用户不存在」与「密码错误」统一返回（防撞库探测）。
 - **add-two-level-cache**：规则二级缓存能力域，落地审批版 §7.3。为什么两级：Caffeine 本地低延迟（热路径不访问 Redis/DB）+ Redis 跨实例共享（本实例 miss 可命中他实例已回填副本，减少打库）。三防护各自手段：穿透=空值哨兵（短 TTL 5s，DB 查不到也缓存「确认无数据」）；击穿=Redisson `lock:rule-rebuild:{key}` 互斥重建（仅持锁实例查库，锁等待 3s 短超时）；雪崩=Redis TTL 随机抖动（60s ± 10s，批量写入错峰过期）。失效策略取舍：Nacos/版本变更监听精准失效 Caffeine invalidate + Redis DEL，TTL 只做兜底上界（回滚 ≤60s 收敛）；广播不可用时降级为 TTL 收敛，不产生新故障面。Redis 不可用一律降级「只走 Caffeine + DB」不报错不阻断校验主链路。二级缓存仅覆盖规则快照/灰度路由读路径；判定结果缓存维持单层 Caffeine（有状态机幂等兜底）。引用 docs/adr/0008。
+- **add-request-validation**：入参校验与 HTTP 错误契约。此前 DTO 无校验注解、@Valid 是死代码，畸形 JSON/参数类型不匹配/缺参落入 Exception 兜底返回 500（把调用方入参问题误呈现为服务端故障）。本变更：DTO 声明式校验注解（auth 手机号/密码、record requestId/sportType/轨迹点上限 20000、规则比例 0-100 等）+ 写接口统一 @Valid；GlobalExceptionHandler 补 HttpMessageNotReadableException / MethodArgumentTypeMismatchException / MissingServletRequestParameterException → 400、NoHandlerFoundException → 404、HttpRequestMethodNotSupportedException → 405；service 层仅删与注解重复的判空，业务规则（状态机/幂等/枚举语义）保留；错误码总表沉淀至 docs/错误码表.md。引用变更 spec/changes/add-request-validation/。

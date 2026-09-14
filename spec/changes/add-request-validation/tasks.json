@@ -1,0 +1,65 @@
+[
+  {
+    "number": 1,
+    "category": "阶段 1：DTO 校验注解",
+    "task": "api 模块 DTO 补 jakarta.validation 注解",
+    "steps": [
+      { "step": "auth DTO：phone @NotBlank+@Pattern、password @NotBlank+@Size(6,64)", "completed": true },
+      { "step": "record DTO：requestId/sportType/轨迹点列表 @NotEmpty+@Size(20000)+级联 @Valid", "completed": true },
+      { "step": "verify/user/mapmatch DTO 按语义补 @NotNull/@Size/@Min/@Max/@DecimalMin", "completed": true },
+      { "step": "verify-service 本地 DTO（RuleVersionCreate/GrayRequest）补比例范围校验", "completed": true },
+      { "step": "api 模块 pom 加 jakarta.validation-api，4 服务模块加 spring-boot-starter-validation", "completed": true }
+    ],
+    "passes": true
+  },
+  {
+    "number": 2,
+    "category": "阶段 2：控制器 @Valid 接入",
+    "task": "写接口 @RequestBody 统一加 @Valid",
+    "steps": [
+      { "step": "user-service：AuthController/InternalAuthController/FriendController/InternalFriendController", "completed": true },
+      { "step": "record-service：RecordController/InternalRecordController/LikeController", "completed": true },
+      { "step": "verify-service：VerifyController/InternalVerifyController/RuleVersionController", "completed": true },
+      { "step": "mapmatch-service：MapMatchController", "completed": true },
+      { "step": "查询接口按需，不强制加 @Valid", "completed": true }
+    ],
+    "passes": true
+  },
+  {
+    "number": 3,
+    "category": "阶段 3：异常契约",
+    "task": "GlobalExceptionHandler 补齐 400/404/405 映射",
+    "steps": [
+      { "step": "HttpMessageNotReadableException → 400（畸形 JSON 不再 500）", "completed": true },
+      { "step": "MethodArgumentTypeMismatchException → 400", "completed": true },
+      { "step": "MissingServletRequestParameterException → 400", "completed": true },
+      { "step": "NoHandlerFoundException → 404、HttpRequestMethodNotSupportedException → 405", "completed": true }
+    ],
+    "passes": true
+  },
+  {
+    "number": 4,
+    "category": "阶段 4：service 去重",
+    "task": "去掉与注解重复的判空，保留业务规则",
+    "steps": [
+      { "step": "AuthService：去除 phone/password 判空，保留锁定/唯一/状态校验", "completed": true },
+      { "step": "SportRecordService：去除 requestId 判空，保留幂等/状态机/枚举语义校验", "completed": true },
+      { "step": "全局核对：只删与注解语义完全重复的判空", "completed": true }
+    ],
+    "passes": true
+  },
+  {
+    "number": 5,
+    "category": "阶段 5：测试与文档",
+    "task": "单元测试 + 错误码表 + openspec 变更目录",
+    "steps": [
+      { "step": "GlobalExceptionHandlerTest：畸形 JSON/类型不匹配/缺参 → 400、404/405、既有行为不回归", "completed": true },
+      { "step": "AuthRequestDtoValidationTest：超长 phone/畸形 phone/短密码 → 约束违规含字段名", "completed": true },
+      { "step": "RecordSubmitDtoValidationTest：非法 sportType/空轨迹点/超长 requestId/级联经纬度范围", "completed": true },
+      { "step": "docs/错误码表.md：全量 BizException 错误码 + HTTP 映射 + 触发场景", "completed": true },
+      { "step": "spec/changes/add-request-validation/{proposal.md,tasks.json}", "completed": true },
+      { "step": "全量 mvn verify 全绿 + 公开文档口径自检零命中", "completed": true }
+    ],
+    "passes": true
+  }
+]
