@@ -66,10 +66,8 @@ public class SportRecordService {
      */
     @Transactional(rollbackFor = Exception.class)
     public RecordSubmitResultDTO submit(RecordSubmitDTO dto) {
-        if (dto.getRequestId() == null || dto.getRequestId().isBlank()) {
-            throw new BizException(ResultCode.IDEMPOTENT_CONFLICT, "requestId 不能为空");
-        }
-        // 1. 幂等前置校验（唯一键冲突的兜底在 insert 捕获）
+        // 1. 幂等前置校验（唯一键冲突的兜底在 insert 捕获）；
+        //    requestId 必填校验由控制器层 @Valid + DTO 注解承担，此处不再重复判空
         SportRecord existing = sportRecordMapper.selectByRequestId(dto.getRequestId());
         if (existing != null) {
             log.info("重复提交幂等返回：requestId={}, recordId={}", dto.getRequestId(), existing.getId());

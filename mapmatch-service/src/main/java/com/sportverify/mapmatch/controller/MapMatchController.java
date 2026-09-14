@@ -4,6 +4,7 @@ import com.sportverify.api.mapmatch.dto.MapMatchRequestDTO;
 import com.sportverify.api.mapmatch.dto.MapMatchResultDTO;
 import com.sportverify.common.result.Result;
 import com.sportverify.mapmatch.service.MapMatchService;
+import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
@@ -24,7 +25,7 @@ public class MapMatchController {
 
     /** 提交轨迹点 → 返回偏离路网指标（matchedRatio/offRoadRatio/avg/max） */
     @PostMapping("/match")
-    public Result<MapMatchResultDTO> match(@RequestBody MapMatchRequestDTO request) {
+    public Result<MapMatchResultDTO> match(@Valid @RequestBody MapMatchRequestDTO request) {
         return Result.success(mapMatchService.match(request));
     }
 }

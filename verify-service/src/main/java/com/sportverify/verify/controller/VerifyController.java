@@ -4,6 +4,7 @@ import com.sportverify.api.verify.dto.AppealDTO;
 import com.sportverify.api.verify.dto.AppealReviewDTO;
 import com.sportverify.common.result.Result;
 import com.sportverify.verify.service.VerifyService;
+import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -29,7 +30,7 @@ public class VerifyController {
      * pass=false 维持拒绝（RE_CONFIRMED + REJECTED 事件）。
      */
     @PostMapping("/{id}/review")
-    public Result<AppealDTO> review(@PathVariable("id") Long id, @RequestBody AppealReviewDTO dto) {
+    public Result<AppealDTO> review(@PathVariable("id") Long id, @Valid @RequestBody AppealReviewDTO dto) {
         return Result.success(verifyService.reviewAppeal(id, dto));
     }
 }

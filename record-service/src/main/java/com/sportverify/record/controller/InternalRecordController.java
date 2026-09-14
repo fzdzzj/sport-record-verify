@@ -8,6 +8,7 @@ import com.sportverify.api.record.dto.TrackPointDTO;
 import com.sportverify.common.result.Result;
 import com.sportverify.record.service.RecordLikeService;
 import com.sportverify.record.service.SportRecordService;
+import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -51,7 +52,7 @@ public class InternalRecordController {
     /** 状态回调（乐观锁迁移，冲突 3003） */
     @PostMapping("/records/{recordId}/status-callback")
     public Result<Void> statusCallback(@PathVariable("recordId") Long recordId,
-                                       @RequestBody StatusCallbackDTO dto) {
+                                       @Valid @RequestBody StatusCallbackDTO dto) {
         sportRecordService.statusCallback(dto);
         return Result.success();
     }
@@ -59,7 +60,7 @@ public class InternalRecordController {
     /** 点赞（Feign 契约实现，审批版 §4.6；仅 PASSED / RE_PASSED 可赞，否则 6001） */
     @PostMapping("/records/{recordId}/like")
     public Result<LikeDTO> likeRecord(@PathVariable("recordId") Long recordId,
-                                      @RequestBody LikeRequestDTO dto) {
+                                      @Valid @RequestBody LikeRequestDTO dto) {
         return Result.success(recordLikeService.like(recordId, dto.getUserId()));
     }
 

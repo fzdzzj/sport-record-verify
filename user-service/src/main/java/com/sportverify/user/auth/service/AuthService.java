@@ -93,11 +93,8 @@ public class AuthService {
      * 注册（规范「用户注册」）：手机号唯一，重复 → 2001 且不建用户。
      */
     public void register(RegisterRequestDTO dto) {
-        if (dto.getPhone() == null || dto.getPhone().isBlank()
-                || dto.getPassword() == null || dto.getPassword().isBlank()) {
-            throw new IllegalArgumentException("手机号与密码不能为空");
-        }
         // —— 前置唯一性查询（常规路径直接拦截，避免白白哈希一次密码）
+        //    字段必填/格式校验由控制器层 @Valid + DTO 注解承担，此处不再重复判空
         User existing = userMapper.selectOne(new LambdaQueryWrapper<User>()
                 .eq(User::getPhone, dto.getPhone())
                 .last("LIMIT 1"));
@@ -127,10 +124,7 @@ public class AuthService {
      * 登录（规范「用户登录」）：校验密码，成功签发双 token；失败 → 401（1001）并计失败次数。
      */
     public TokenDTO login(LoginRequestDTO dto) {
-        if (dto.getPhone() == null || dto.getPhone().isBlank()
-                || dto.getPassword() == null || dto.getPassword().isBlank()) {
-            throw new IllegalArgumentException("手机号与密码不能为空");
-        }
+        // 字段必填/格式校验由控制器层 @Valid + DTO 注解承担，此处不再重复判空
         // —— 锁定前置检查：账号已临时锁定 → 直接拒绝（不校验密码、不 countFailure；防撞库 + 省 BCrypt）
         if (lockEnabled && isLocked(dto.getPhone())) {
             log.warn("登录被拒：账号已临时锁定 phone={}", maskPhone(dto.getPhone()));
@@ -206,9 +200,7 @@ public class AuthService {
      * </ol>
      */
     public TokenDTO refresh(String refreshToken) {
-        if (refreshToken == null || refreshToken.isBlank()) {
-            throw new BizException(ResultCode.UNAUTHORIZED, "refresh token 不能为空");
-        }
+        // 必填校验由控制器层 @Valid + RefreshRequestDTO 注解承担；空 token 落到 JWT 解析失败同样 401
         JwtUtil.ParsedRefresh parsed;
         try {
             parsed = jwtUtil.parseRefresh(refreshToken);

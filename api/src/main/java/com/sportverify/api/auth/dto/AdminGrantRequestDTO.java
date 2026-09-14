@@ -1,5 +1,6 @@
 package com.sportverify.api.auth.dto;
 
+import jakarta.validation.constraints.NotNull;
 import lombok.Data;
 
 import java.io.Serializable;
@@ -16,6 +17,7 @@ public class AdminGrantRequestDTO implements Serializable {
 
     private static final long serialVersionUID = 1L;
 
-    /** 待授予 ADMIN 的目标用户ID */
+    /** 待授予 ADMIN 的目标用户ID（必填） */
+    @NotNull(message = "目标用户ID不能为空")
     private Long userId;
 }

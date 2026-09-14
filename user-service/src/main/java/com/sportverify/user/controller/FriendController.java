@@ -10,6 +10,7 @@ import com.sportverify.common.result.ResultCode;
 import com.sportverify.user.service.FriendService;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
+import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
@@ -52,7 +53,7 @@ public class FriendController {
      * 目标用户不存在 → 2002。
      */
     @PostMapping("/requests")
-    public Result<FriendRequestDTO> createRequest(@RequestBody FriendRequestCreateDTO dto,
+    public Result<FriendRequestDTO> createRequest(@Valid @RequestBody FriendRequestCreateDTO dto,
                                                   HttpServletRequest request) {
         return Result.success(friendService.createRequest(
                 resolveUserId(request, dto.getUserId()), dto.getTargetUserId()));

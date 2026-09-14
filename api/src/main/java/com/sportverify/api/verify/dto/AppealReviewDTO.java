@@ -1,5 +1,7 @@
 package com.sportverify.api.verify.dto;
 
+import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.Size;
 import lombok.Data;
 
 import java.io.Serializable;
@@ -15,12 +17,15 @@ public class AppealReviewDTO implements Serializable {
 
     private static final long serialVersionUID = 1L;
 
-    /** 复核操作人 */
+    /** 复核操作人（必填，上限 64） */
+    @NotBlank(message = "复核操作人不能为空")
+    @Size(max = 64, message = "复核操作人长度不能超过 64")
     private String operator;
 
     /** 是否改判通过 */
     private boolean pass;
 
-    /** 复核结论（详细，可选） */
+    /** 复核结论（详细，可选，上限 500） */
+    @Size(max = 500, message = "复核结论长度不能超过 500")
     private String recheckResult;
 }

@@ -5,6 +5,7 @@ import com.sportverify.verify.dto.RuleVersionCreateRequest;
 import com.sportverify.verify.dto.RuleVersionGrayRequest;
 import com.sportverify.verify.entity.RuleVersion;
 import com.sportverify.verify.service.RuleVersionService;
+import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -31,14 +32,14 @@ public class RuleVersionController {
 
     /** 创建规则版本：快照 rules_json 落库，状态 GRAY（可带初始灰度比例直接开始采样） */
     @PostMapping("/versions")
-    public Result<RuleVersion> create(@RequestBody RuleVersionCreateRequest request) {
+    public Result<RuleVersion> create(@Valid @RequestBody RuleVersionCreateRequest request) {
         return Result.success(ruleVersionService.createVersion(request));
     }
 
     /** 调整灰度比例 0-100：置 0 即秒级回滚（新版本不再被采样，基线不受影响） */
     @PatchMapping("/versions/{id}/gray")
     public Result<RuleVersion> gray(@PathVariable("id") Long id,
-                                    @RequestBody RuleVersionGrayRequest request) {
+                                    @Valid @RequestBody RuleVersionGrayRequest request) {
         return Result.success(ruleVersionService.updateGrayRatio(id, request.getGrayRatio()));
     }
 

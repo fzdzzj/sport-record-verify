@@ -6,6 +6,7 @@ import com.sportverify.api.user.dto.FriendRequestCreateDTO;
 import com.sportverify.api.user.dto.FriendRequestDTO;
 import com.sportverify.common.result.Result;
 import com.sportverify.user.service.FriendService;
+import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -30,7 +31,7 @@ public class InternalFriendController {
 
     /** 发起好友申请 */
     @PostMapping("/requests")
-    public Result<FriendRequestDTO> createRequest(@RequestBody FriendRequestCreateDTO dto) {
+    public Result<FriendRequestDTO> createRequest(@Valid @RequestBody FriendRequestCreateDTO dto) {
         return Result.success(friendService.createRequest(dto.getUserId(), dto.getTargetUserId()));
     }
 

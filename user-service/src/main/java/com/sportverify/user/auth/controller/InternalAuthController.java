@@ -7,6 +7,7 @@ import com.sportverify.api.auth.dto.RegisterRequestDTO;
 import com.sportverify.api.auth.dto.TokenDTO;
 import com.sportverify.common.result.Result;
 import com.sportverify.user.auth.service.AuthService;
+import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
@@ -28,20 +29,20 @@ public class InternalAuthController {
 
     /** 注册（手机号唯一，重复 → 2001） */
     @PostMapping("/register")
-    public Result<Void> register(@RequestBody RegisterRequestDTO dto) {
+    public Result<Void> register(@Valid @RequestBody RegisterRequestDTO dto) {
         authService.register(dto);
         return Result.success();
     }
 
     /** 登录（成功签发 access + refresh；失败 → 401 + 计失败次数） */
     @PostMapping("/login")
-    public Result<TokenDTO> login(@RequestBody LoginRequestDTO dto) {
+    public Result<TokenDTO> login(@Valid @RequestBody LoginRequestDTO dto) {
         return Result.success(authService.login(dto));
     }
 
     /** 刷新（refresh 换新 + 轮换作废旧 refresh；已作废/过期 → 401） */
     @PostMapping("/refresh")
-    public Result<TokenDTO> refresh(@RequestBody RefreshRequestDTO dto) {
+    public Result<TokenDTO> refresh(@Valid @RequestBody RefreshRequestDTO dto) {
         return Result.success(authService.refresh(dto.getRefreshToken()));
     }
 
@@ -52,7 +53,7 @@ public class InternalAuthController {
      * role claim，网关据此判定 /admin/** 与规则版本接口准入。生效需目标用户重新登录。</p>
      */
     @PostMapping("/grant-admin")
-    public Result<Void> grantAdmin(@RequestBody AdminGrantRequestDTO dto) {
+    public Result<Void> grantAdmin(@Valid @RequestBody AdminGrantRequestDTO dto) {
         authService.grantAdmin(dto.getUserId());
         return Result.success();
     }

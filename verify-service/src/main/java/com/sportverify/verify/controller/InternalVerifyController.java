@@ -5,6 +5,7 @@ import com.sportverify.api.verify.dto.AppealDTO;
 import com.sportverify.api.verify.dto.VerificationResultDTO;
 import com.sportverify.common.result.Result;
 import com.sportverify.verify.service.VerifyService;
+import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -33,7 +34,7 @@ public class InternalVerifyController {
 
     /** 创建申诉单（record_id 唯一，重复创建幂等返回既有申诉单） */
     @PostMapping("/appeals")
-    public Result<AppealDTO> createAppeal(@RequestBody AppealCreateDTO dto) {
+    public Result<AppealDTO> createAppeal(@Valid @RequestBody AppealCreateDTO dto) {
         return Result.success(verifyService.createAppeal(dto));
     }
 

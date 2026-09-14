@@ -8,6 +8,7 @@ import com.sportverify.common.result.ResultCode;
 import com.sportverify.record.service.RecordLikeService;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
+import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
@@ -51,7 +52,7 @@ public class LikeController {
      */
     @PostMapping("/{id}/like")
     public Result<LikeDTO> like(@PathVariable("id") Long id,
-                                @RequestBody LikeRequestDTO dto,
+                                @Valid @RequestBody LikeRequestDTO dto,
                                 HttpServletRequest request) {
         return Result.success(recordLikeService.like(id, resolveUserId(request, dto.getUserId())));
     }

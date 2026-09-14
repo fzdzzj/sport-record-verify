@@ -13,6 +13,7 @@ import com.sportverify.common.result.ResultCode;
 import com.sportverify.record.service.SportRecordService;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
+import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
@@ -54,7 +55,7 @@ public class RecordController {
      * 重复提交返回 3004 并携带原结果（记录ID + 当前状态）。
      */
     @PostMapping
-    public Result<RecordSubmitResultDTO> submit(@RequestBody RecordSubmitDTO dto,
+    public Result<RecordSubmitResultDTO> submit(@Valid @RequestBody RecordSubmitDTO dto,
                                                 HttpServletRequest request) {
         // 身份认定：true 时以 X-User-Id 覆盖 dto.userId（越权不一致 → 403）
         dto.setUserId(resolveUserId(request, dto.getUserId()));
@@ -78,7 +79,7 @@ public class RecordController {
      */
     @PostMapping("/{id}/appeal")
     public Result<AppealDTO> appeal(@PathVariable("id") Long id,
-                                    @RequestBody AppealCreateDTO dto,
+                                    @Valid @RequestBody AppealCreateDTO dto,
                                     HttpServletRequest request) {
         return Result.success(sportRecordService.appeal(id, resolveUserId(request, dto.getUserId()), dto.getReason()));
     }

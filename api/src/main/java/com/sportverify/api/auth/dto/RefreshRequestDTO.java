@@ -1,5 +1,6 @@
 package com.sportverify.api.auth.dto;
 
+import jakarta.validation.constraints.NotBlank;
 import lombok.Data;
 
 import java.io.Serializable;
@@ -15,6 +16,7 @@ public class RefreshRequestDTO implements Serializable {
 
     private static final long serialVersionUID = 1L;
 
-    /** refresh token（登录/上次刷新时签发，7 天时效） */
+    /** refresh token（登录/上次刷新时签发，7 天时效；必填） */
+    @NotBlank(message = "refresh token 不能为空")
     private String refreshToken;
 }

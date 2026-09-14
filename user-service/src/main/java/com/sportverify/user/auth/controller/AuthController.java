@@ -9,6 +9,7 @@ import com.sportverify.common.result.Result;
 import com.sportverify.common.result.ResultCode;
 import com.sportverify.user.auth.service.AuthService;
 import jakarta.servlet.http.HttpServletResponse;
+import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpStatus;
@@ -36,7 +37,7 @@ public class AuthController {
      * 注册（规范「用户注册」）：手机号唯一，重复 → 2001；密码 BCrypt 哈希落库。
      */
     @PostMapping("/register")
-    public Result<Void> register(@RequestBody RegisterRequestDTO dto) {
+    public Result<Void> register(@Valid @RequestBody RegisterRequestDTO dto) {
         authService.register(dto);
         return Result.success();
     }
@@ -45,7 +46,7 @@ public class AuthController {
      * 登录（规范「用户登录」）：成功签发 access + refresh；失败 → 401 并计失败次数。
      */
     @PostMapping("/login")
-    public Result<TokenDTO> login(@RequestBody LoginRequestDTO dto) {
+    public Result<TokenDTO> login(@Valid @RequestBody LoginRequestDTO dto) {
         return Result.success(authService.login(dto));
     }
 
@@ -54,7 +55,7 @@ public class AuthController {
      * 旧 refresh 原子作废（重放 → 401），已作废/过期 → 401（1001）。
      */
     @PostMapping("/refresh")
-    public Result<TokenDTO> refresh(@RequestBody RefreshRequestDTO dto) {
+    public Result<TokenDTO> refresh(@Valid @RequestBody RefreshRequestDTO dto) {
         return Result.success(authService.refresh(dto.getRefreshToken()));
     }
 
