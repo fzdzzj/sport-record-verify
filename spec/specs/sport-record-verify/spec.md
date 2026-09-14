@@ -17,6 +17,7 @@
 - add-mapmatch-service（空间匹配）
 - add-admin-rbac（治理面鉴权）
 - add-sport-type-threshold（阈值分类型）
+- add-login-lockout（账号锁定）
 
 各提案的 spec-delta 中 ADDED 需求已全部合并进本规范，MODIFIED 需求按规则处理（见「服务划分」分组与「变更历史」）。
 
@@ -1481,6 +1482,67 @@ WHEN 判定
 THEN 先按灰度取版本，再按 sportType 取阈值
 AND 灰度路由逻辑不变
 
+## 账号锁定
+
+### Requirement: 登录失败锁定
+
+WHEN 同一手机号在窗口期内连续登录失败达阈值,
+系统 SHALL 锁定该账号，锁定期间 SHALL 拒绝登录且不校验密码，锁定期满 SHALL 自动解锁。
+
+#### Scenario: 达阈值触发锁定
+
+GIVEN 手机号在 15 分钟窗口内已失败 5 次
+WHEN 再次登录（第 6 次）
+THEN 系统拒绝登录
+AND 不校验密码（直接返回锁定）
+AND 锁定开始计时
+
+#### Scenario: 锁定期间拒绝
+
+GIVEN 账号处于锁定状态
+WHEN 用户提交任意密码登录
+THEN 返回「账号已临时锁定」
+AND 不消耗 BCrypt 校验
+AND 不更新失败计数
+
+#### Scenario: 锁定期满自动解锁
+
+GIVEN 账号锁定已达到锁定时长
+WHEN 用户登录
+THEN 锁定键过期（TTL 到期）
+AND 恢复校验密码
+
+### Requirement: 登录成功清零
+
+WHEN 用户登录成功,
+系统 SHALL 清除该手机号的失败计数与锁定状态，防止「试错后纠正」导致的计数残留。
+
+#### Scenario: 成功清零
+
+GIVEN 手机号有若干失败计数（未达阈值）
+WHEN 该用户登录成功
+THEN 失败计数清零
+AND 若存在锁定键则一并清除
+
+### Requirement: 防爆破与降级
+
+WHEN 系统实施锁定,
+系统 SHALL 不区分「用户不存在」与「密码错误」（统一返回，防撞库探测），且 Redis 不可用时 SHALL 降级为「继续计数告警但不阻断登录」。
+
+#### Scenario: 防撞库探测
+
+GIVEN 登录失败
+WHEN 返回错误
+THEN 用户不存在与密码错误返回同一语义
+AND 不泄露账号是否存在
+
+#### Scenario: Redis 不可用降级
+
+GIVEN Redis 不可用
+WHEN 执行登录失败计数与锁定
+THEN 降级为仅告警不阻断
+AND 登录流程不因 Redis 故障失败
+
 ## 变更历史
 
 各提案 spec-delta 备注中有价值的上下文说明，融合记录如下：
@@ -1497,3 +1559,4 @@ AND 灰度路由逻辑不变
 - **add-mapmatch-service**：新增独立 mapmatch-service（第 6 服务），把道路拓扑匹配从「讲设计」升级为实锤（执行计划 P2 天花板项），服务数 4→5→6。R5 是首个依赖外部服务的规则（verify 侧 `R5OffRoadRule` 实现 Rule 接口 + Feign 调 mapmatch，Rule 接口可扩展性首获远程规则红利，聚合框架零改动）；真实 OSM 单城市切片 + PostGIS（GIST+R 树）承载路网；R5 默认 SOFT、极端偏离升级 HARD，mapmatch 不可用时熔断降级为「不命中」不阻断校验主链路。引用 docs/adr/0006。
 - **add-admin-rbac**：治理面鉴权，与 add-jwt-auth 分工：jwt 管业务面「认身份」，本变更管治理面「授权」（能改规则、能翻案）。USER/ADMIN 最小角色模型（注册默认 USER，ADMIN 仅内部接口显式授予）；access token 携带 role claim（由签发端背书，不信任外部传入）；`/admin/**` 与规则版本接口（RuleVersionController）仅 ADMIN 可达（普通用户 403/1002、未登录 401/1001）；白名单从「裸放行」改为「进链校验角色」；app.auth.admin.enabled 默认启用。引用 docs/adr/0007。
 - **add-sport-type-threshold**：引擎从单一运动类型走向多运动类型阈值（消除 GenSamples 已知局限）。语义要点：未知/缺失类型保守回退 RUNNING，与历史行为一致；阈值分类型与灰度路由正交（灰度按 userId%100 路由版本，版本快照内部再按类型分维度，不改灰度逻辑）；rules_json 嵌套升级向后兼容（旧快照缺类型维度时回退单套阈值，仍可解析）。「规则链判定（R1-R4）」本身未改动，仅为其叠加类型维度。
+- **add-login-lockout**：账号锁定能力域。口径更正说明：本需求此前长期处于「讲设计」状态（审批版列为能力项、实现只到计数+告警），本次由 add-login-lockout 在代码与规范两侧同时收口，这正是勘误 3 要解决的口径矛盾。实现事实：同一手机号在窗口期（默认 15min）内连续失败达阈值（默认 5 次）→ 写 `auth:lock:{phone}`（Redis + TTL 锁定时长 15min）；达阈值后拒绝登录，不校验密码、不消耗 BCrypt、不更新失败计数；锁定期满 TTL 到期自动解锁；登录成功清除失败计数与锁定键；锁定时「用户不存在」与「密码错误」统一返回（防撞库探测）。
