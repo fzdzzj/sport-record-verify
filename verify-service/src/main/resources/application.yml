@@ -47,6 +47,14 @@ rocketmq:
   name-server: 127.0.0.1:9876
   producer:
     group: verify-service-group
+  # 消费端调度参数（突发 P95 调优，压测报告 §4.2/§10 最终档）：
+  # 原默认 20 线程下单批由 broker 长轮询推送，200 条 0.3s 突发时尾部等待批次调度 ~0.5s；
+  # 调大消费线程到 40 + 单批限 8，把突发在多个并发消费线程间摊开。参数运行时注入即可生效。
+  consumer:
+    consume-thread-min: 32
+    consume-thread-max: 40
+    consume-message-batch-max-size: 8
+    pull-interval-ms: 0        # 0 = 由 broker 推送（默认长轮询）
 
 # 校验规则阈值（默认值同审批版 §5.2，规范「规则阈值可配置」「阈值按类型分维度」；
 # Nacos verify-service.yml 配置 verify.rules.* 优先级更高，改配置即生效。

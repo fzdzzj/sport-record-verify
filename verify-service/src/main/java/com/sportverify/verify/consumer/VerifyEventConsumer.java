@@ -64,6 +64,20 @@ public class VerifyEventConsumer {
     @Value("${rocketmq.consumer.group:verify-consumer-group}")
     private String consumerGroup;
 
+    // ---- 消费端调度参数（突发 P95 调优，压测报告 §4.2/§10；库默认：22/20/1/0） ----
+    /** 消费线程池最小线程数 */
+    @Value("${rocketmq.consumer.consume-thread-min:20}")
+    private int consumeThreadMin;
+    /** 消费线程池最大线程数：突发下太小会使尾部消息排队等待批次调度 */
+    @Value("${rocketmq.consumer.consume-thread-max:20}")
+    private int consumeThreadMax;
+    /** 单批消费最大条数：批次偏大会放大尾部等待 */
+    @Value("${rocketmq.consumer.consume-message-batch-max-size:1}")
+    private int consumeMessageBatchMaxSize;
+    /** 拉取长轮询间隔（毫秒），0=由 broker 推送（默认行为） */
+    @Value("${rocketmq.consumer.pull-interval-ms:0}")
+    private long pullIntervalMs;
+
     private DefaultMQPushConsumer consumer;
     private ScheduledExecutorService reconnectScheduler;
 
@@ -106,6 +120,11 @@ public class VerifyEventConsumer {
     private void startConsumer(String ns) throws Exception {
         DefaultMQPushConsumer c = new DefaultMQPushConsumer(consumerGroup);
         c.setNamesrvAddr(ns);
+        // 消费端调度参数（突发 P95 调优，压测报告 §4.2/§10）：改配置即生效，无需改业务逻辑
+        c.setConsumeThreadMin(consumeThreadMin);
+        c.setConsumeThreadMax(consumeThreadMax);
+        c.setConsumeMessageBatchMaxSize(consumeMessageBatchMaxSize);
+        c.setPullInterval(pullIntervalMs);
         c.setConsumeFromWhere(ConsumeFromWhere.CONSUME_FROM_FIRST_OFFSET);
         c.subscribe(RecordVerifyEvents.TOPIC, RecordVerifyEvents.TAG_SUBMITTED);
         c.registerMessageListener(new MessageListenerConcurrently() {
@@ -125,8 +144,10 @@ public class VerifyEventConsumer {
         });
         c.start();
         this.consumer = c;
-        log.info("SUBMITTED 事件消费者已启动：topic={}, tag={}, group={}, namesrv={}",
-                RecordVerifyEvents.TOPIC, RecordVerifyEvents.TAG_SUBMITTED, consumerGroup, ns);
+        log.info("SUBMITTED 事件消费者已启动：topic={}, tag={}, group={}, namesrv={}, " +
+                        "consumeThread={}/{} batchMaxSize={} pullIntervalMs={}",
+                RecordVerifyEvents.TOPIC, RecordVerifyEvents.TAG_SUBMITTED, consumerGroup, ns,
+                consumeThreadMin, consumeThreadMax, consumeMessageBatchMaxSize, pullIntervalMs);
     }
 
     /** 关闭消费者与重连调度器（服务停机释放连接） */

@@ -61,12 +61,14 @@ case "$cmd" in
     ;;
 
   quality)
-    PHASE="${1:-run}"
-    echo "== 量化验收实测（拦截率/通过率/端到端 P95）：phase=$PHASE =="
+    PHASE="${1:-run}"; RATE="${2:-0}"
+    RATE_ARGS=()
+    if [ "$RATE" -gt 0 ] 2>/dev/null; then RATE_ARGS=(--rate "$RATE"); fi
+    echo "== 量化验收实测（拦截率/通过率/端到端 P95）：phase=$PHASE rate=$RATE 条/秒（0=瞬时） =="
     "$JAVA_BIN" scripts/perf/SubmitSamples.java \
       --real "$DATA_DIR/quality-real.jsonl" --forged "$DATA_DIR/quality-forged.jsonl" \
       --gateway "$GATEWAY" --submit-concurrency 8 --timeout 120 \
-      --out-prefix "$DATA_DIR/quality-${PHASE}"
+      --out-prefix "$DATA_DIR/quality-${PHASE}" "${RATE_ARGS[@]}"
     ;;
 
   explain)
@@ -96,6 +98,23 @@ case "$cmd" in
       --record.track.batch-insert-enabled=true > logs/record.log 2>&1 &
     sleep 22
     curl -s -m 3 http://127.0.0.1:8082/actuator/health | head -c 120; echo
+    ;;
+
+  # ---- 突发 P95 调优侧一键切换（压测「消费调度尾部」：consumeThreadMax / batchMaxSize / 拉取间隔）----
+  # 用法：bash scripts/perf/run-perf.sh verify-consumer 40 8 0
+  #       参数：consume-thread-max  consume-message-batch-max-size  拉取间隔ms(0=推送)
+  verify-consumer)
+    TX="${1:?consume-thread-max}"; BZ="${2:?batch-max-size}"; PL="${3:-0}"
+    echo "== 停止 verify-service =="
+    powershell -NoProfile -Command "Get-CimInstance Win32_Process -Filter \"Name='java.exe'\" | Where-Object { \$_.CommandLine -match 'sport-verify-verify-service' } | ForEach-Object { Stop-Process -Id \$_.ProcessId -Force }"
+    sleep 2
+    echo "== 以消费者参数重启 verify-service（threadMax=$TX batchMax=$BZ pullInterval=$PL ms）=="
+    nohup "$JAVA_BIN" -jar verify-service/target/sport-verify-verify-service-0.1.0-SNAPSHOT.jar \
+      --rocketmq.consumer.consume-thread-max="$TX" \
+      --rocketmq.consumer.consume-message-batch-max-size="$BZ" \
+      --rocketmq.consumer.pull-interval-ms="$PL" > logs/verify.log 2>&1 &
+    sleep 20
+    curl -s -m 3 http://127.0.0.1:8083/actuator/health | head -c 80; echo
     ;;
 
   # ---- 服务启停（起栈供压测；独立小节见交付说明）----

@@ -37,6 +37,9 @@ import java.util.regex.Pattern;
  * </ul>
  *
  * <p>提交阶段以小并发（默认 8）压入，避免把「验收集」跑成压力集；结果输出摘要 JSON + 逐样本 CSV。</p>
+ *
+ * <p>受控速率：默认瞬时压入（与报告基线口径一致）；可传 {@code --rate <perSec>} 把提交摊开到
+ * 每秒 perSec 条，用于隔离「突发灌入 → 消费批次排队」导致的尾部延迟（压测报告 §4.2 记录了两口径）。</p>
  */
 public class SubmitSamples {
 
@@ -61,6 +64,8 @@ public class SubmitSamples {
         String outPrefix = arg(args, "--out-prefix", "docs/perf/data/quality-run");
         int submitConcurrency = Integer.parseInt(arg(args, "--submit-concurrency", "8"));
         int timeoutSec = Integer.parseInt(arg(args, "--timeout", "120"));
+        // 受控速率（条/秒）：<=0 表示瞬时压入（基线口径）；>0 时把 200 条摊开提交，观察消费调度影响
+        double ratePerSec = Double.parseDouble(arg(args, "--rate", "0"));
 
         List<String> real = Files.readAllLines(realFile, StandardCharsets.UTF_8).stream()
                 .filter(l -> !l.isBlank()).toList();
@@ -94,12 +99,27 @@ public class SubmitSamples {
         ExecutorService pool = Executors.newFixedThreadPool(submitConcurrency);
         CountDownLatch submitted = new CountDownLatch(allBodies.size());
         long submitStart = System.nanoTime();
+        final long rateStartNano = submitStart;
         for (int w = 0; w < submitConcurrency; w++) {
             pool.submit(() -> {
                 while (true) {
                     int i = cursor.getAndIncrement();
                     if (i >= allBodies.size()) {
                         return;
+                    }
+                    // 受控速率：第 i 条（0 基）提交不得早于 (i+1)/rate 秒（仅 rate>0 时匀速摊开）
+                    if (ratePerSec > 0) {
+                        double targetSec = (i + 1) / ratePerSec;
+                        long elapsedSec = System.nanoTime() - rateStartNano;
+                        long sleepNanos = (long) ((targetSec * 1e9) - elapsedSec);
+                        if (sleepNanos > 0) {
+                            try {
+                                Thread.sleep(sleepNanos / 1_000_000, (int) (sleepNanos % 1_000_000));
+                            } catch (InterruptedException ie) {
+                                Thread.currentThread().interrupt();
+                                return;
+                            }
+                        }
                     }
                     long t0 = System.nanoTime();
                     int code = -1;
@@ -132,7 +152,8 @@ public class SubmitSamples {
                 submitFailed++;
             }
         }
-        System.out.printf(Locale.ROOT, "提交完成：%.2fs（提交失败 %d 条）%n", submitWallSec, submitFailed);
+        System.out.printf(Locale.ROOT, "提交完成：%.2fs（提交失败 %d 条）%s%n", submitWallSec, submitFailed,
+                ratePerSec > 0 ? String.format(Locale.ROOT, "，受控速率 %.0f 条/秒", ratePerSec) : "，瞬时压入（基线口径）");
 
         // ===== 阶段 2：轮询终判（校验异步：SUBMITTED 事件 → 引擎 → 回调） =====
         ConcurrentLinkedQueue<SampleResult> results = new ConcurrentLinkedQueue<>();
