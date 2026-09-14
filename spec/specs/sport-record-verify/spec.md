@@ -15,6 +15,7 @@
 - add-leaderboard-service（独立榜单服务）
 - add-jwt-auth（鉴权）
 - add-mapmatch-service（空间匹配）
+- add-admin-rbac（治理面鉴权）
 
 各提案的 spec-delta 中 ADDED 需求已全部合并进本规范，MODIFIED 需求按规则处理（见「服务划分」分组与「变更历史」）。
 
@@ -1251,6 +1252,75 @@ GIVEN auth.enabled=true
 WHEN 请求受保护接口
 THEN 强制走网关鉴权与数据隔离
 
+### Requirement: 用户角色模型
+
+WHEN 用户注册,
+系统 SHALL 默认赋予 USER 角色，且 SHALL 提供内部接口授予 ADMIN 角色（最小权限，默认非管理员）。
+
+#### Scenario: 注册默认 USER
+
+GIVEN 新用户注册成功
+WHEN 查询其角色
+THEN 角色为 USER
+
+#### Scenario: 内部授予 ADMIN
+
+GIVEN 内部管理流程
+WHEN 调用授予接口
+THEN 指定用户角色变更为 ADMIN
+
+### Requirement: 令牌携带角色
+
+WHEN 登录签发令牌,
+系统 SHALL 在 token 中写入 role claim，且 role SHALL 由签发端决定，SHALL 不被下游信任外部传入。
+
+#### Scenario: token 含角色
+
+GIVEN 用户登录成功
+WHEN 解析 access token
+THEN 可读取出 role claim 与 userId
+
+### Requirement: 治理面鉴权
+
+WHEN 请求访问管理端接口（/admin/** 或规则版本接口）,
+系统 SHALL 要求 role=ADMIN，普通用户 SHALL 返回 403（1002），未登录 SHALL 返回 401（1001）。
+
+#### Scenario: 管理员访问放行
+
+GIVEN 请求携带 ADMIN 角色的有效 token
+WHEN 访问管理端接口
+THEN 放行至下游
+
+#### Scenario: 普通用户被拒
+
+GIVEN 请求携带 USER 角色的有效 token
+WHEN 访问管理端接口
+THEN 返回 403（1002）
+
+#### Scenario: 未登录被拒
+
+GIVEN 请求无有效 token
+WHEN 访问管理端接口
+THEN 返回 401（1001）
+
+### Requirement: 白名单收紧
+
+WHEN 网关过滤请求,
+系统 SHALL 不为管理端接口提供匿名放行，且 SHALL 保持内部接口（/internal/**）网内信任边界。
+
+#### Scenario: 管理端不匿名放行
+
+GIVEN 请求路径为 /admin/**
+WHEN 网关过滤
+THEN 进入鉴权校验（不跳过）
+AND 依角色判定放行或拒绝
+
+#### Scenario: 内部接口维持网内
+
+GIVEN 请求路径为 /internal/**
+WHEN 网关过滤
+THEN 维持网内信任（不对公网暴露）
+
 ## 空间匹配
 
 ### Requirement: 独立路网匹配服务
@@ -1354,3 +1424,4 @@ AND 记录 warn 日志
 - **add-rule-grayscale**：把「阈值可配」升级为「版本化灰度发布」，落地审批版 §7.4 全部流程。rule_version 表已建（sql/03-verify-db.sql），本变更不迁移表结构。采样键 userId%100 与审批版 §7.4 一致；灰度观察期用库内快照避免与 Nacos 动态刷新竞态。
 - **add-jwt-auth**：收口「骨架无认证」技术债，建立鉴权能力域。双 token + refresh rotation（Redis `GETDEL` 原子消费防重放，access 15min / refresh 7d）；网关统一鉴权（身份由网关以 X-User-Id 唯一认定，下游不信任调用方自报）；用户数据隔离（越权访问他人资源 → 403/1002）；auth.enabled 降级开关（默认关闭降级为显式携带 userId 的旧行为，迁移成本可控）。引用 docs/adr/0007。
 - **add-mapmatch-service**：新增独立 mapmatch-service（第 6 服务），把道路拓扑匹配从「讲设计」升级为实锤（执行计划 P2 天花板项），服务数 4→5→6。R5 是首个依赖外部服务的规则（verify 侧 `R5OffRoadRule` 实现 Rule 接口 + Feign 调 mapmatch，Rule 接口可扩展性首获远程规则红利，聚合框架零改动）；真实 OSM 单城市切片 + PostGIS（GIST+R 树）承载路网；R5 默认 SOFT、极端偏离升级 HARD，mapmatch 不可用时熔断降级为「不命中」不阻断校验主链路。引用 docs/adr/0006。
+- **add-admin-rbac**：治理面鉴权，与 add-jwt-auth 分工：jwt 管业务面「认身份」，本变更管治理面「授权」（能改规则、能翻案）。USER/ADMIN 最小角色模型（注册默认 USER，ADMIN 仅内部接口显式授予）；access token 携带 role claim（由签发端背书，不信任外部传入）；`/admin/**` 与规则版本接口（RuleVersionController）仅 ADMIN 可达（普通用户 403/1002、未登录 401/1001）；白名单从「裸放行」改为「进链校验角色」；app.auth.admin.enabled 默认启用。引用 docs/adr/0007。
