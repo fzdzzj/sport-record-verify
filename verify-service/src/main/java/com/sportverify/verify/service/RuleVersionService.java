@@ -1,6 +1,5 @@
 package com.sportverify.verify.service;
 
-import com.github.benmanes.caffeine.cache.Cache;
 import com.sportverify.common.exception.BizException;
 import com.sportverify.common.result.ResultCode;
 import com.sportverify.verify.config.RulesSnapshotCodec;
@@ -31,10 +30,10 @@ import java.util.function.Supplier;
  * 否则走基线（ACTIVE 版本快照，尚无版本时回退 Nacos 实时配置）。
  * 同一 userId 的采样键恒定，分支不随请求时序/实例抖动。</p>
  *
- * <p>读路径全部经 Caffeine（写入 1 分钟过期，即规范「≤60s」上限）：
- * 路由行两把 key（灰度/基线）+ 每版本快照 key（{@code verify:rules:v{version}}），
- * 命中即不查库。版本生命周期操作（调比例/全量）负责失效路由 key——本实例立即生效，
- * 其余实例经 Redis 广播即时失效（广播不可用时退化为 TTL 收敛）。</p>
+ * <p>读路径经 {@link RuleCacheService} 二级缓存（Caffeine → Redis → DB 回填两级，
+ * 含空值/互斥/抖动的三防护）取灰度路由行与版本快照，命中即不查库。版本生命周期操作
+ * （调比例/全量）负责失效路由 key——本实例立即生效，其余实例经 Redis 广播即时失效
+ * （广播不可用时退化为 TTL 收敛）。判定结果缓存不在此范围（维持单层 Caffeine，见 CacheConfig）。</p>
  */
 @Slf4j
 @Service
@@ -57,13 +56,10 @@ public class RuleVersionService {
     /** 版本快照缓存 key 前缀：key 含版本号（rules:v{version}），版本间快照互不混淆 */
     private static final String KEY_SNAPSHOT_PREFIX = "verify:rules:v";
 
-    /** 「无路由」哨兵：Cache 不缓存 null，空结果放哨兵，避免无版本阶段每次判定都查库 */
-    private static final String NO_ROUTE = "-";
-
     private final RuleVersionMapper ruleVersionMapper;
-    private final Cache<String, Object> caffeineCache;
     private final VerifyProperties verifyProperties;
     private final RedissonClient redissonClient;
+    private final RuleCacheService ruleCacheService;
 
     /**
      * 取 userId 当前应用的规则集（校验入口每次判定调用）：
@@ -183,20 +179,17 @@ public class RuleVersionService {
     }
 
     /**
-     * 版本快照 → 规则执行对象。缓存 key 含 version：快照落库后不可变，
-     * 命中即不查库、不重复反序列化。快照损坏不阻断校验主流程：
-     * 记错误日志（可观测告警点）并降级 Nacos 实时配置。
+     * 版本快照 → 规则执行对象。经二级缓存读：缓存 key 含 version，快照落库后不可变，
+     * 命中即不查库、不重复反序列化。快照损坏不阻断校验主流程：记错误日志
+     * （可观测告警点）并降级 Nacos 实时配置。
      */
     private VerifyProperties snapshotRules(RuleVersion version) {
         String key = KEY_SNAPSHOT_PREFIX + version.getVersion();
-        Object cached = caffeineCache.getIfPresent(key);
-        if (cached instanceof VerifyProperties props) {
-            return props;
-        }
         try {
-            VerifyProperties props = RulesSnapshotCodec.fromJson(version.getRulesJson());
-            caffeineCache.put(key, props);
-            return props;
+            // 快照源是已查库的 version 行（rule_version.rules_json）：二级未命中才反序列化
+            return ruleCacheService.get(key, VerifyProperties.class,
+                            () -> RulesSnapshotCodec.fromJson(version.getRulesJson()))
+                    .orElse(verifyProperties);
         } catch (Exception e) {
             log.error("规则快照解析失败，降级 Nacos 实时配置：version={}", version.getVersion(), e);
             return verifyProperties;
@@ -213,8 +206,10 @@ public class RuleVersionService {
      * （与 record-service「事务提交后发事件」同一手法）；非事务路径直接发。</p>
      */
     private void invalidateRouteCache(Long versionId) {
-        caffeineCache.invalidate(KEY_GRAY_ROUTE);
-        caffeineCache.invalidate(KEY_ACTIVE_ROUTE);
+        // 精准失效两级缓存（本地 Caffeine + 跨实例 Redis DEL）：变更后下次读取回源最新值。
+        // 版本快照 key 不失效——快照落库后不可变。
+        ruleCacheService.invalidate(KEY_GRAY_ROUTE);
+        ruleCacheService.invalidate(KEY_ACTIVE_ROUTE);
         if (TransactionSynchronizationManager.isSynchronizationActive()) {
             TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
                 @Override
@@ -256,20 +251,12 @@ public class RuleVersionService {
     }
 
     /**
-     * 路由行缓存读取（灰度/基线各一把 key）：miss 查库回填，空结果放 NO_ROUTE 哨兵。
-     * 注意缓存的行含 gray_ratio 快照——生命周期操作改库后必须失效对应 key，
-     * 否则本实例在 TTL 内仍按旧比例采样。
+     * 路由行缓存读取（灰度/基线各一把 key）：经二级缓存——本地/Redis 命中即返回，
+     * 两级 miss 才回源 DB（loader）并在两级回填；DB 无此路由（如回滚后无采样灰度）
+     * 返回 null（RuleCacheService 内部以空值哨兵防穿透）。改库后必须失效对应 key，
+     * 否则本实例/他实例在 TTL 内仍按旧比例采样。
      */
     private RuleVersion cachedRoute(String key, Supplier<RuleVersion> loader) {
-        Object cached = caffeineCache.getIfPresent(key);
-        if (cached instanceof RuleVersion rv) {
-            return rv;
-        }
-        if (cached != null) {
-            return null; // NO_ROUTE 哨兵：确认无路由
-        }
-        RuleVersion loaded = loader.get();
-        caffeineCache.put(key, loaded != null ? loaded : NO_ROUTE);
-        return loaded;
+        return ruleCacheService.get(key, RuleVersion.class, loader).orElse(null);
     }
 }

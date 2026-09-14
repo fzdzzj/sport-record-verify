@@ -106,6 +106,19 @@ verify:
   policy:
     soft-only-reject: true # 仅 SOFT 命中默认 REJECTED（宽松开关属后续灰度变更，本变更仅提供配置项）
 
+# 规则读取二级缓存（Caffeine → Redis → DB 回填两级，审批版 §7.3 弹药 I，规范「二级缓存读路径」）：
+# 只覆盖「规则快照/灰度路由」低频变更读路径，判定结果缓存维持单层 Caffeine（有状态机幂等兜底）。
+# TTL 只做兜底上界，秒级一致靠变更监听精准失效（invalidate + Redis DEL）；Redis 异常自动降级 Caffeine+DB。
+cache:
+  two-level:
+    enabled: true          # 总开关（关 = 退化为单层 Caffeine+DB，Redis 层整体跳过）
+    ttl: 60s               # Redis 基础 TTL：兜底收敛上界，与「回滚 ≤60s」一致
+    jitter: 10s            # TTL 随机抖动幅度 ±10s：防雪崩，批量写入错峰过期
+    empty-ttl: 5s          # DB 未命中空值哨兵 TTL：防穿透
+    lock-wait: 3s          # 互斥重建锁等待超时：防击穿，避免阻塞校验主链路
+    lock-lease: 10s        # 互斥重建锁租期：持锁回源最久耗时，超时自动释放防死锁
+    key-prefix: "verify:rule:cache:"   # Redis key 前缀（记录层区分业务域）
+
 mybatis-plus:
   configuration:
     map-underscore-to-camel-case: true
