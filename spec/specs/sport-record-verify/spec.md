@@ -18,6 +18,7 @@
 - add-admin-rbac（治理面鉴权）
 - add-sport-type-threshold（阈值分类型）
 - add-login-lockout（账号锁定）
+- add-two-level-cache（规则二级缓存）
 
 各提案的 spec-delta 中 ADDED 需求已全部合并进本规范，MODIFIED 需求按规则处理（见「服务划分」分组与「变更历史」）。
 
@@ -1543,6 +1544,84 @@ WHEN 执行登录失败计数与锁定
 THEN 降级为仅告警不阻断
 AND 登录流程不因 Redis 故障失败
 
+## 规则二级缓存
+
+### Requirement: 二级缓存读路径
+
+WHEN 读取规则或灰度路由,
+系统 SHALL 按「Caffeine 本地 → Redis → DB → 回填两级」顺序读取，缓存缺失时 SHALL 查库并回填两级。
+
+#### Scenario: 本地命中
+
+GIVEN 规则快照在 Caffeine 中且未过期
+WHEN 读取规则
+THEN 直接返回本地值
+AND 不访问 Redis 与 DB
+
+#### Scenario: 本地未命中 Redis 命中
+
+GIVEN Caffeine 未命中但 Redis 有值
+WHEN 读取规则
+THEN 返回 Redis 值
+AND 回填 Caffeine
+
+#### Scenario: 两级未命中回源
+
+GIVEN Caffeine 与 Redis 均无
+WHEN 读取规则
+THEN 查库（Nacos 配置落库/rule_version）
+AND 回填 Redis 与 Caffeine 两级
+
+### Requirement: 空值缓存防穿透
+
+WHEN 查询不存在的规则或版本,
+系统 SHALL 缓存空值哨兵（短 TTL），避免重复穿透到 DB。
+
+#### Scenario: 空值缓存
+
+GIVEN 查询的灰度版本号在 DB 不存在
+WHEN 首次查询
+THEN 缓存空值哨兵（短 TTL）
+AND 后续相同查询不再打库
+
+### Requirement: 互斥重建防击穿
+
+WHEN 缓存失效且多实例并发重建同一 key,
+系统 SHALL 用 Redisson 锁保证仅一个实例查库重建，其余 SHALL 等待或短退避。
+
+#### Scenario: 单实例重建
+
+GIVEN 某规则缓存已失效
+AND 多个服务实例并发请求该规则
+WHEN 触发重建
+THEN 仅一个实例持有 lock:rule-rebuild:{key} 查库重建
+AND 其余等待或复用重建结果
+
+### Requirement: 随机 TTL 防雪崩
+
+WHEN 设置缓存过期时间,
+系统 SHALL 在基础 TTL 上叠加随机抖动，避免批量同时过期打库。
+
+#### Scenario: TTL 抖动
+
+GIVEN 基础缓存 TTL 60s
+WHEN 写入缓存
+THEN 实际 TTL 在 60s ± 随机抖动范围内
+AND 不出现大批量同刻过期
+
+### Requirement: Nacos 变更精准失效
+
+WHEN 规则配置或版本变更,
+系统 SHALL 精准失效对应 Caffeine 与 Redis 缓存（而非仅靠 TTL 兜底），并 SHALL 保留 TTL 兜底。
+
+#### Scenario: 变更即失效
+
+GIVEN 规则灰度比例或版本变更
+WHEN 变更监听触发
+THEN invalidate 对应 Caffeine key
+AND DEL 对应 Redis key
+AND 下次读取回源到最新值
+
 ## 变更历史
 
 各提案 spec-delta 备注中有价值的上下文说明，融合记录如下：
@@ -1560,3 +1639,4 @@ AND 登录流程不因 Redis 故障失败
 - **add-admin-rbac**：治理面鉴权，与 add-jwt-auth 分工：jwt 管业务面「认身份」，本变更管治理面「授权」（能改规则、能翻案）。USER/ADMIN 最小角色模型（注册默认 USER，ADMIN 仅内部接口显式授予）；access token 携带 role claim（由签发端背书，不信任外部传入）；`/admin/**` 与规则版本接口（RuleVersionController）仅 ADMIN 可达（普通用户 403/1002、未登录 401/1001）；白名单从「裸放行」改为「进链校验角色」；app.auth.admin.enabled 默认启用。引用 docs/adr/0007。
 - **add-sport-type-threshold**：引擎从单一运动类型走向多运动类型阈值（消除 GenSamples 已知局限）。语义要点：未知/缺失类型保守回退 RUNNING，与历史行为一致；阈值分类型与灰度路由正交（灰度按 userId%100 路由版本，版本快照内部再按类型分维度，不改灰度逻辑）；rules_json 嵌套升级向后兼容（旧快照缺类型维度时回退单套阈值，仍可解析）。「规则链判定（R1-R4）」本身未改动，仅为其叠加类型维度。
 - **add-login-lockout**：账号锁定能力域。口径更正说明：本需求此前长期处于「讲设计」状态（审批版列为能力项、实现只到计数+告警），本次由 add-login-lockout 在代码与规范两侧同时收口，这正是勘误 3 要解决的口径矛盾。实现事实：同一手机号在窗口期（默认 15min）内连续失败达阈值（默认 5 次）→ 写 `auth:lock:{phone}`（Redis + TTL 锁定时长 15min）；达阈值后拒绝登录，不校验密码、不消耗 BCrypt、不更新失败计数；锁定期满 TTL 到期自动解锁；登录成功清除失败计数与锁定键；锁定时「用户不存在」与「密码错误」统一返回（防撞库探测）。
+- **add-two-level-cache**：规则二级缓存能力域，落地审批版 §7.3 弹药 I。为什么两级：Caffeine 本地低延迟（热路径不访问 Redis/DB）+ Redis 跨实例共享（本实例 miss 可命中他实例已回填副本，减少打库）。三防护各自手段：穿透=空值哨兵（短 TTL 5s，DB 查不到也缓存「确认无数据」）；击穿=Redisson `lock:rule-rebuild:{key}` 互斥重建（仅持锁实例查库，锁等待 3s 短超时）；雪崩=Redis TTL 随机抖动（60s ± 10s，批量写入错峰过期）。失效策略取舍：Nacos/版本变更监听精准失效 Caffeine invalidate + Redis DEL，TTL 只做兜底上界（回滚 ≤60s 收敛）；广播不可用时降级为 TTL 收敛，不产生新故障面。Redis 不可用一律降级「只走 Caffeine + DB」不报错不阻断校验主链路。二级缓存仅覆盖规则快照/灰度路由读路径；判定结果缓存维持单层 Caffeine（有状态机幂等兜底）。引用 docs/adr/0008。
