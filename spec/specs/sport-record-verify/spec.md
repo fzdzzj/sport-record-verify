@@ -13,6 +13,7 @@
 - add-observability（可观测性）
 - add-rule-grayscale（规则灰度）
 - add-leaderboard-service（独立榜单服务）
+- add-jwt-auth（鉴权）
 
 各提案的 spec-delta 中 ADDED 需求已全部合并进本规范，MODIFIED 需求按规则处理（见「服务划分」分组与「变更历史」）。
 
@@ -1129,6 +1130,126 @@ WHEN 调用全量发布端点
 THEN 版本置 ACTIVE
 AND 旧版本 RETIRED
 
+## 鉴权
+
+### Requirement: 用户注册
+
+WHEN 用户提交注册,
+系统 SHALL 校验手机号唯一并 SHALL 使用 BCrypt 哈希存储密码，重复手机号 SHALL 返回 2001。
+
+#### Scenario: 注册成功
+
+GIVEN 用户提交新手机号与密码
+WHEN 注册接口处理
+THEN 创建用户（密码 BCrypt 哈希）
+AND 返回注册成功
+
+#### Scenario: 手机号重复
+
+GIVEN 手机号已存在注册用户
+WHEN 再次注册同一手机号
+THEN 返回 2001（手机号已注册）
+AND 不创建新用户
+
+### Requirement: 用户登录
+
+WHEN 用户提交凭据,
+系统 SHALL 校验密码，成功 SHALL 签发 access token 与 refresh token，失败 SHALL 返回 401 并计失败次数。
+
+#### Scenario: 登录成功
+
+GIVEN 手机号与密码正确
+WHEN 登录接口处理
+THEN 返回 access token 与 refresh token
+AND access 短时效、refresh 长时效
+
+#### Scenario: 密码错误
+
+GIVEN 密码错误
+WHEN 登录接口处理
+THEN 返回 401
+AND 计失败次数（超过阈值锁定的设计口径）
+
+### Requirement: Token 刷新与轮换
+
+WHEN access token 过期,
+系统 SHALL 凭 refresh token 刷新，且 SHALL 轮换（旧 refresh 作废，新 refresh 下发）。
+
+#### Scenario: 刷新成功
+
+GIVEN refresh token 有效且未作废
+WHEN 调用刷新接口
+THEN 返回新 access 与新 refresh
+AND 旧 refresh 作废
+
+#### Scenario: refresh 已作废
+
+GIVEN refresh token 已轮换过或过期
+WHEN 调用刷新接口
+THEN 返回 401（1001）
+
+### Requirement: 网关统一鉴权
+
+WHEN 请求进入网关,
+系统 SHALL 校验 Authorization 头中的 token，失败 SHALL 返回 401（1001），成功 SHALL 解析 userId 并注入请求头透传下游。
+
+#### Scenario: 有效 token 放行
+
+GIVEN 请求携带有效 Bearer token
+WHEN 网关过滤器处理
+THEN 解析出 userId
+AND 注入 X-User-Id 头透传下游
+
+#### Scenario: 无效 token 拒绝
+
+GIVEN 请求无 token 或 token 无效/过期
+WHEN 网关过滤器处理
+THEN 返回 401（1001）
+AND 不放行至下游
+
+#### Scenario: 白名单放行
+
+GIVEN 请求路径属白名单（/api/auth、/internal、/actuator）
+WHEN 网关过滤器处理
+THEN 跳过鉴权直接放行
+
+### Requirement: 用户数据隔离
+
+WHEN 业务接口处理用户请求,
+系统 SHALL 从网关注入的 userId 认定身份，而非信任调用方传入的 userId，越权访问他人资源 SHALL 返回 403（1002）。
+
+#### Scenario: 正常访问本人数据
+
+GIVEN 用户 A 携带自己的 token
+WHEN 访问本人记录/点赞/好友
+THEN 以 token 中 userId 为准处理
+AND 返回正常结果
+
+#### Scenario: 越权访问他人被拒
+
+GIVEN 用户 A 尝试访问用户 B 的资源
+WHEN 业务判定 userId 不一致
+THEN 返回 403（1002）
+AND 不泄露 B 的数据
+
+### Requirement: 鉴权降级开关
+
+WHEN 本地调试或压测需要,
+系统 SHALL 提供 auth.enabled 开关，关闭时 SHALL 降级为显式携带 userId 的旧行为，默认关闭以降低迁移成本。
+
+#### Scenario: 开关默认关闭
+
+GIVEN auth.enabled=false（默认）
+WHEN 请求受保护接口
+THEN 沿用显式携带 userId 的旧行为
+AND 不启用网关鉴权
+
+#### Scenario: 开关启用
+
+GIVEN auth.enabled=true
+WHEN 请求受保护接口
+THEN 强制走网关鉴权与数据隔离
+
 ## 变更历史
 
 各提案 spec-delta 备注中有价值的上下文说明，融合记录如下：
@@ -1141,3 +1262,4 @@ AND 旧版本 RETIRED
 - **add-load-test-report**：不新增业务功能，聚焦「真实数据 + 优化因果」沉淀。指标阈值（90%/95%/200ms）与压测并发档位（100/500/1000）以审批版 §8.2/§9 T12/§12.3 第 9 项与 A1 项为唯一依据。已确认不购云服务器：压测在本地 Docker Compose 环境执行，结论按本地单机能力如实标注（诚实口径）。
 - **add-observability**：运维增强，不改变业务功能；指标口径对齐压测报告，形成「即时观测 + 历史实录」双层证据。/actuator/prometheus 本地演示直连；生产安全（网关不转发 actuator、内网抓取、最小权限）属「讲设计」范畴。监控栈选型（Prometheus+Grafana）理由随 ADR 记录。
 - **add-rule-grayscale**：把「阈值可配」升级为「版本化灰度发布」，落地审批版 §7.4 全部流程。rule_version 表已建（sql/03-verify-db.sql），本变更不迁移表结构。采样键 userId%100 与审批版 §7.4 一致；灰度观察期用库内快照避免与 Nacos 动态刷新竞态。
+- **add-jwt-auth**：收口「骨架无认证」技术债，建立鉴权能力域。双 token + refresh rotation（Redis `GETDEL` 原子消费防重放，access 15min / refresh 7d）；网关统一鉴权（身份由网关以 X-User-Id 唯一认定，下游不信任调用方自报）；用户数据隔离（越权访问他人资源 → 403/1002）；auth.enabled 降级开关（默认关闭降级为显式携带 userId 的旧行为，迁移成本可控）。引用 docs/adr/0007。
