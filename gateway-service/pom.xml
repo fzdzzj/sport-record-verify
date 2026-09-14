@@ -40,6 +40,20 @@
             <groupId>com.alibaba.cloud</groupId>
             <artifactId>spring-cloud-alibaba-sentinel-gateway</artifactId>
         </dependency>
+        <!-- Sentinel 规则动态数据源（变更 add-sentinel-dynamic-rules）：
+             sentinel-datasource-nacos 从 Nacos 拉取网关流控规则 JSON，改阈值不重启即生效
+             （GatewayRuleManager.register2Property 绑定）；extension 提供 Converter/DataSource SPI。
+             版本锁 1.8.6，与 SCA 2023.0.1.0 自带 sentinel-core 同版本避免匹配冲突（勿升） -->
+        <dependency>
+            <groupId>com.alibaba.csp</groupId>
+            <artifactId>sentinel-datasource-nacos</artifactId>
+            <version>1.8.6</version>
+        </dependency>
+        <dependency>
+            <groupId>com.alibaba.csp</groupId>
+            <artifactId>sentinel-datasource-extension</artifactId>
+            <version>1.8.6</version>
+        </dependency>
         <!-- 健康检查端点 -->
         <dependency>
             <groupId>org.springframework.boot</groupId>

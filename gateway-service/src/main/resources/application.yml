@@ -8,8 +8,9 @@ spring:
     nacos:
       discovery:
         server-addr: 127.0.0.1:8848
-    # Sentinel 网关限流（压测变更 spec「限流与熔断验证」）：
-    # 规则在 SentinelGatewayRuleConfig 以代码加载（默认 5000 QPS，对齐审批版 §8.3）；
+    # Sentinel 网关限流（压测变更 spec「限流与熔断验证」+ add-sentinel-dynamic-rules）：
+    # SentinelGatewayRuleConfig 启动会注册 Nacos 动态规则源（app.sentinel.nacos.data-id=gateway-flow-rules），
+    # 改 Nacos 里 count 不重启即生效；Nacos 无规则时回退代码默认 5000 QPS（对齐审批版 §8.3）；
     # 超限请求经 scg.fallback 统一返回 HTTP 429 + 提示（spec 场景「返回限流提示」）
     sentinel:
       enabled: true
@@ -94,6 +95,14 @@ app:
       enabled: true
       # 治理面路径前缀：命中即要求 role=ADMIN；/verify/rules/** 即 verify-service RuleVersionController 外部路径
       paths: /admin/**,/verify/rules/**
+    sentinel:
+      # 网关流控规则 Nacos 数据源（add-sentinel-dynamic-rules）：SentinelGatewayRuleConfig 注册的
+      # NacosDataSource 指向该 dataId；Nacos 里规则 JSON 数组（每个元素为 GatewayFlowRule：resource/count/intervalSec/grade），
+      # 改 count 即推送更新、不重启生效。dataId 归属 DEFAULT_GROUP。配合已有 Nacos 8848。
+      nacos:
+        server-addr: 127.0.0.1:8848
+        group-id: DEFAULT_GROUP
+        data-id: gateway-flow-rules
 
 # 健康检查端点（K8s/监控探针可用）
 management:

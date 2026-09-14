@@ -1,0 +1,60 @@
+[
+  {
+    "number": 1,
+    "category": "阶段 1：依赖与数据源",
+    "task": "引入 Nacos 动态数据源依赖",
+    "steps": [
+      { "step": "pom.xml 新增 sentinel-datasource-nacos / -extension（版本锁 1.8.6）", "completed": true },
+      { "step": "校验与 SCA 自带 sentinel-core 版本匹配（1.8.6 对齐）", "completed": true },
+      { "step": "gateway 模块 verify 编译通过", "completed": true }
+    ],
+    "passes": true
+  },
+  {
+    "number": 2,
+    "category": "阶段 2：配置",
+    "task": "SentinelGatewayRuleConfig 注册 Nacos 动态规则源",
+    "steps": [
+      { "step": "@Value 读取 app.sentinel.nacos.server-addr/group-id/data-id", "completed": true },
+      { "step": "启动先 loadRules(defaultRules()) 兜底默认 5000 QPS", "completed": true },
+      { "step": "register2Property 绑定 NacosDataSource，改值即推送更新不重启生效", "completed": true },
+      { "step": "converter 解析失败返回 null 保持上一版规则", "completed": true }
+    ],
+    "passes": true
+  },
+  {
+    "number": 3,
+    "category": "阶段 3：配置项",
+    "task": "application.yml 新增 nacos 数据源配置",
+    "steps": [
+      { "step": "新增 app.sentinel.nacos.server-addr=127.0.0.1:8848", "completed": true },
+      { "step": "新增 app.sentinel.nacos.group-id=DEFAULT_GROUP", "completed": true },
+      { "step": "新增 app.sentinel.nacos.data-id=gateway-flow-rules", "completed": true },
+      { "step": "配置 key 与代码 @Value 一致", "completed": true }
+    ],
+    "passes": true
+  },
+  {
+    "number": 4,
+    "category": "阶段 4：复测脚本",
+    "task": "ratelimit-test.sh 改为动态生效复测",
+    "steps": [
+      { "step": "脚本支持发布低/高两档 Nacos 规则且网关不重启", "completed": true },
+      { "step": "拦截档（低阈值高并发）大量 429 验证", "completed": true },
+      { "step": "基线档（高阈值低并发）放行 200，验证同进程 429→0", "completed": true }
+    ],
+    "passes": true
+  },
+  {
+    "number": 5,
+    "category": "阶段 5：规范与验收",
+    "task": "openspec 变更目录 + 全量构建",
+    "steps": [
+      { "step": "补齐 spec/changes/add-sentinel-dynamic-rules/proposal.md", "completed": true },
+      { "step": "补齐 tasks.json", "completed": true },
+      { "step": "补齐 specs/sport-record-verify/spec-delta.md（ADDED 动态规则源）", "completed": true },
+      { "step": "全量 verify 全绿", "completed": true }
+    ],
+    "passes": true
+  }
+]
