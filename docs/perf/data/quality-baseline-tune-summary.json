@@ -1,0 +1,15 @@
+{
+  "realTotal": 100,
+  "realPassed": 100,
+  "realNotPassed": 0,
+  "passRate": 100.00,
+  "forgedTotal": 100,
+  "forgedRejected": 100,
+  "forgedNotRejected": 0,
+  "interceptRate": 100.00,
+  "e2eCount": 200,
+  "e2eP50ms": 49.96,
+  "e2eP95ms": 558.68,
+  "e2eP99ms": 559.38,
+  "e2eMaxMs": 559.90
+}
