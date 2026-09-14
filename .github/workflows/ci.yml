@@ -1,0 +1,55 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 21 (Temurin)
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      # 缓存 ~/.m2 加速：key 按依赖定义（parent + 各模块 pom）哈希变化自动失效
+      - name: Cache Maven repository
+        uses: actions/cache@v4
+        with:
+          path: ~/.m2/repository
+          key: m2-${{ hashFiles('**/pom.xml') }}
+          restore-keys: m2-
+
+      # 本仓 125 个 @Test 均为纯 Mockito 单元测试，不依赖 MySQL/Redis/Nacos 等中间件，
+      # 故 CI 不启动任何 services 容器，直接跑 mvn clean verify。
+      - name: Build and test
+        run: mvn -B clean verify
+
+      # 公开文档口径自检：命中求职禁用词即失败（详见 README / docs 口径约定）
+      - name: Public docs wording self-check
+        run: |
+          if git grep -n -iE "面试|弹药|大厂|八股|简历|求职|突击|附录 ?A" -- '*.md' ':!spec/changes/archive/**' ':!docs/internal/**'; then
+            echo "::error::公开文档出现禁用求职口径词汇，请改用工程表述"
+            exit 1
+          fi
+
+      # 各模块 JaCoCo 覆盖率报告上传为 artifact 供下载查看
+      - name: Upload JaCoCo reports
+        uses: actions/upload-artifact@v4
+        with:
+          name: jacoco-reports
+          path: |
+            **/target/site/jacoco/jacoco.csv
+            **/target/site/jacoco/jacoco.xml
+            **/target/site/jacoco/index.html
+          if-no-files-found: warn

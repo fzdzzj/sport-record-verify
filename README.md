@@ -1,5 +1,7 @@
 # 运动记录真实性校验系统（sport-verify）
 
+![CI](https://github.com/fzdzzj/sport-record-verify/actions/workflows/ci.yml/badge.svg)
+
 基于审批版需求（[《运动记录校验系统需求文档（审批版）》](docs/运动记录校验系统需求文档（审批版）.md)）的微服务工程基线。
 本仓库由 openspec 规范驱动，首个变更 `spec/changes/add-microservice-skeleton/` 只交付**可编译、可一键启动的空壳骨架**，
 校验引擎、好友、点赞、排行榜等业务需求在后续变更中逐周叠加。
@@ -83,6 +85,27 @@ java -jar mapmatch-service/target/sport-verify-mapmatch-service-0.1.0-SNAPSHOT.j
 规则灰度发布全链路（创建版本 → 采样判定 → 秒级回滚 → 全量发布）的可复现冒烟脚本见
 [scripts/smoke/README.md](scripts/smoke/README.md)：含前置条件、执行顺序、预期输出与失败判定标准；
 一次实跑的断言/结果/关键输出见 [docs/验收证据.md](docs/验收证据.md)。
+
+## 测试
+
+本仓现有 **15 个测试类、125 个 `@Test`**，全部为纯 Mockito 单元测试（不依赖 MySQL/Redis/Nacos 中间件），
+因此本地与 CI 均可在无中间件环境下运行。JaCoCo 覆盖率报告随构建集成，只报告不做强制门槛。
+
+**本地跑法**（需 JDK 21）：
+
+```bash
+# 全量编译 + 跑全部单测 + 产出各模块覆盖率报告（target/site/jacoco/index.html）
+mvn clean test
+# 与 CI 一致的口径（含 verify 阶段，产出完整 JaCoCo 报告）
+mvn -B clean verify
+```
+
+**CI 跑法**（`.github/workflows/ci.yml`，见 [Actions](https://github.com/fzdzzj/sport-record-verify/actions)）：
+
+- 触发：push 到 `main` + pull_request，JDK 21（Temurin）。
+- 步骤：`mvn -B clean verify`；同时用 `actions/cache` 缓存 `~/.m2/repository` 加速。
+- 各模块覆盖率报告以 `jacoco-reports` artifact 上传，可在一次运行的 Artifacts 面板下载。
+- 附一条「公开文档口径自检」step，命中禁用词口径即 CI 失败。
 
 ## JWT 鉴权闭环（注册/登录 + 网关统一鉴权 + 数据隔离，选型理由见 [ADR-0007](docs/adr/0007-鉴权设计.md)）
 

@@ -61,6 +61,8 @@
         <!-- ===== 插件版本 ===== -->
         <maven-compiler-plugin.version>3.12.1</maven-compiler-plugin.version>
         <maven-enforcer-plugin.version>3.4.1</maven-enforcer-plugin.version>
+        <!-- JaCoCo 覆盖率（0.8.12 支持 Java 21；CI 与本地 shared 复用同一配置） -->
+        <jacoco.version>0.8.12</jacoco.version>
     </properties>
 
     <dependencyManagement>
@@ -218,5 +220,31 @@
                 </plugin>
             </plugins>
         </pluginManagement>
+
+        <!-- 统一集成 JaCoCo 覆盖率（父 pom 配置，所有子模块继承）：
+             prepare-agent 绑定初始化阶段注入 agent，report 在 verify 阶段产出 target/site/jacoco/。
+             只上报不做强制门槛——覆盖率数字如实呈现，避免为抬数字而去删测试或设假阈值。 -->
+        <plugins>
+            <plugin>
+                <groupId>org.jacoco</groupId>
+                <artifactId>jacoco-maven-plugin</artifactId>
+                <version>${jacoco.version}</version>
+                <executions>
+                    <execution>
+                        <id>prepare-agent</id>
+                        <goals>
+                            <goal>prepare-agent</goal>
+                        </goals>
+                    </execution>
+                    <execution>
+                        <id>report</id>
+                        <phase>verify</phase>
+                        <goals>
+                            <goal>report</goal>
+                        </goals>
+                    </execution>
+                </executions>
+            </plugin>
+        </plugins>
     </build>
 </project>
