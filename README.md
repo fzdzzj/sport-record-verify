@@ -78,6 +78,12 @@ java -jar mapmatch-service/target/sport-verify-mapmatch-service-0.1.0-SNAPSHOT.j
 > 宿主机 3306 被本机 MySQL 占用时：仓库根目录建 `.env` 写入 `MYSQL_PORT=3307`（compose 与四个服务
 > 的数据源端口均已参数化，默认仍 3306），服务侧同名变量见 `scripts/perf/run-perf.sh`。
 
+## 验证
+
+规则灰度发布全链路（创建版本 → 采样判定 → 秒级回滚 → 全量发布）的可复现冒烟脚本见
+[scripts/smoke/README.md](scripts/smoke/README.md)：含前置条件、执行顺序、预期输出与失败判定标准；
+一次实跑的断言/结果/关键输出见 [docs/验收证据.md](docs/验收证据.md)。
+
 ## JWT 鉴权闭环（注册/登录 + 网关统一鉴权 + 数据隔离，选型理由见 [ADR-0007](docs/adr/0007-鉴权设计.md)）
 
 **从「调用方自报家门」升级为「网关统一认定身份」**：全项目 6+ 处「骨架无认证、userId 显式携带」
