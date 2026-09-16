@@ -164,6 +164,21 @@ class SportRecordServiceTest {
         verify(trackPointMapper).insertBatch(any());
     }
 
+    /** 轨迹点写入失败 → 事务回滚路径：不注册 afterCommit，不发 MQ（ADR-0009） */
+    @Test
+    void submit_trackInsertFails_doesNotPublishSubmitted() {
+        when(sportRecordMapper.selectByRequestId("req-1")).thenReturn(null);
+        stubInsertReturnsId();
+        when(trackPointMapper.insert(any(TrackPoint.class)))
+                .thenThrow(new RuntimeException("track insert failed"));
+
+        inTx(() -> assertThrows(RuntimeException.class, () -> service.submit(dto(2, 1))), false);
+
+        // 异常抛出前不会走到 registerSynchronization；即便 flush afterCommit 也不会有回调
+        verify(recordEventProducer, never()).publishSubmitted(anyLong(), anyLong());
+        verify(verifyApi, never()).triggerVerify(anyLong());
+    }
+
     // ==================== 幂等 ====================
 
     /** 幂等前置命中：requestId 已有记录 → 直接返回原结果，不再落库 */
