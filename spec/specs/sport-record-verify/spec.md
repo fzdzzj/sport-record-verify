@@ -1,6 +1,6 @@
 # 规范：运动记录真实性校验系统（sport-record-verify）
 
-> 首个能力域规范基线，由变更提案 `spec/changes/add-microservice-skeleton/` 落地生成。
+> 首个能力域规范基线，由变更提案 `spec/changes/archive/add-microservice-skeleton/` 落地生成。
 > 校验引擎、好友、点赞、排行榜等业务需求在后续变更中分别以 ADDED 需求补充。
 
 ## 本规范已归档以下提案
@@ -19,6 +19,10 @@
 - add-sport-type-threshold（阈值分类型）
 - add-login-lockout（账号锁定）
 - add-two-level-cache（规则二级缓存）
+- add-request-validation（入参校验与 HTTP 错误契约）
+- add-sentinel-dynamic-rules（网关流控动态数据源）
+- add-resilience-hardening（Feign 容错与内部接口凭证）
+- add-request-tracing（请求贯穿标识）
 
 各提案的 spec-delta 中 ADDED 需求已全部合并进本规范，MODIFIED 需求按规则处理（见「服务划分」分组与「变更历史」）。
 
@@ -111,6 +115,50 @@ GIVEN api 模块 DTO 字段与实现不一致
 WHEN 编译或运行时反序列化
 THEN 编译失败或反序列化报错
 AND 提示契约不一致
+
+### Requirement: Feign 统一默认超时
+
+WHEN 服务经 OpenFeign 发起跨服务调用,
+系统 SHALL 使用全局默认连接超时 1000ms 与读超时 3000ms，且允许按客户端名覆盖；SHALL NOT 依赖 Feign 默认 10s/60s 作为未配置服务的超时。
+
+#### Scenario: 默认超时生效
+
+GIVEN 消费方未为某 Feign 客户端单独配置超时
+WHEN 发起该客户端调用
+THEN 使用 default connect-timeout=1000 与 read-timeout=3000
+
+#### Scenario: 可按服务覆盖
+
+GIVEN 已为某客户端配置更短或更长超时
+WHEN 发起该客户端调用
+THEN 以该客户端覆盖值为准
+
+### Requirement: Feign 降级决策显式化
+
+WHEN 被依赖服务不可用（连接拒绝 / 超时 / 熔断 OPEN）,
+系统 SHALL 按契约语义给出明确业务错误或约定降级结果，且 SHALL NOT 以未处理异常对外返回 500 堆栈；对不可软降级的契约 SHALL 抛出业务异常以驱动重试或 DLQ，禁止假装成功。
+
+#### Scenario: 好友榜 user-service 不可用返回空榜
+
+GIVEN leaderboard 查询 type=friend 且 user-service 不可用
+WHEN 拉取好友列表失败
+THEN 返回空榜（不把总榜非好友当作好友展示）
+AND 记录降级 warn 日志
+
+#### Scenario: verify 拉轨迹 record-service 不可用
+
+GIVEN verify 判定需要 RecordApi.getRecord/listPoints
+WHEN record-service 不可用
+THEN 抛出 RECORD_SERVICE_UNAVAILABLE（4007）
+AND 不写入成功判定
+AND 消息消费可重试或进入 DLQ
+
+#### Scenario: AuthApi 不可软降级
+
+GIVEN 经 AuthApi 注册/登录/刷新
+WHEN user-service 不可用
+THEN 抛出 USER_SERVICE_UNAVAILABLE（4006）
+AND 不返回伪造 token 或伪造成功
 
 ### Requirement: 服务注册与配置中心
 
@@ -949,6 +997,39 @@ WHEN record 侧调用校验
 THEN 熔断降级为「转人工」状态
 AND 提交主链路不挂（不因校验故障整体失败）
 
+### Requirement: 网关流控规则动态数据源
+
+WHEN 网关加载流控规则,
+系统 SHALL 从 Nacos 动态数据源加载网关流控规则（dataId=`gateway-flow-rules`，DEFAULT_GROUP），规则改动经 Nacos 推送就地生效而无需重启，且 SHALL 在无规则/解析失败时回退代码默认 5000 QPS 基线保证限流不缺省。
+
+#### Scenario: 规则动态拉取并生效
+
+GIVEN 网关已启动并注册 Nacos 动态规则源
+WHEN 在 Nacos 中修改 `gateway-flow-rules` 的 count
+THEN 网关不重启即收到推送并就地更新规则
+AND 后续请求按新阈值判定
+
+#### Scenario: 无规则时兜底默认
+
+GIVEN Nacos 中尚无 `gateway-flow-rules` 或该 dataId 为空
+WHEN 网关启动加载规则
+THEN 使用代码默认 5000 QPS 基线
+AND 限流行为不缺省
+
+#### Scenario: 解析失败保持上版
+
+GIVEN Nacos 推送了一份无法解析的规则 JSON
+WHEN 网关处理该推送
+THEN 保留上一版有效规则执行
+AND 不因瞬时坏配置抖断限流
+
+#### Scenario: 超限仍按 429 拦截
+
+GIVEN 动态规则阈值已生效
+WHEN 请求超过当前阈值
+THEN 超限请求被限流拦截
+AND 返回限流提示（HTTP 429）
+
 ### Requirement: 压测沉淀
 
 WHEN 压测与优化完成,
@@ -1030,6 +1111,59 @@ THEN 触发 P95 告警（firing 状态）
 GIVEN 某服务实例停止
 WHEN Prometheus 检测 target DOWN
 THEN 触发实例下线告警
+
+### Requirement: HTTP 请求贯穿标识
+
+WHEN 外部请求经网关进入系统,
+系统 SHALL 保证存在 `X-Request-Id`：若请求已携带则沿用，否则生成 UUID；SHALL 写入响应头并透传至下游服务。
+
+#### Scenario: 无入站 ID 时自动生成
+
+GIVEN 客户端未携带 X-Request-Id
+WHEN 请求经过 gateway-service
+THEN 响应头包含非空 X-Request-Id
+AND 下游服务请求头可见同一 X-Request-Id
+
+#### Scenario: 客户端指定 ID 时沿用
+
+GIVEN 客户端携带 X-Request-Id: client-fixed-id
+WHEN 请求经过 gateway-service
+THEN 响应头与下游透传头均为 client-fixed-id
+
+### Requirement: 服务内日志 MDC
+
+WHEN 业务服务（Servlet MVC）处理 HTTP 请求,
+系统 SHALL 将 X-Request-Id 写入 MDC 键 `traceId`，并在请求结束时清理；日志 pattern SHALL 输出 `[%X{traceId}]`。
+
+#### Scenario: 访问日志含 traceId
+
+GIVEN 服务已配置统一 logging.pattern.console
+WHEN 处理带 X-Request-Id 的请求并打业务日志
+THEN 日志行包含该 traceId
+
+### Requirement: MQ 跨服务透传
+
+WHEN 生产者发布记录/校验事件,
+系统 SHALL 将当前 traceId 写入消息 userProperty（键 X-Request-Id）；
+WHEN 消费者处理消息,
+系统 SHALL 读取该属性并还原到 MDC，处理结束后清理。
+
+#### Scenario: 提交记录全链路同一 traceId
+
+GIVEN 经网关提交一条运动记录且 MQ 链路正常
+WHEN record 发 SUBMITTED、verify 消费并判定、verify 发 VERIFIED/REJECTED、leaderboard 消费入榜
+THEN 上述各阶段业务日志可用同一 traceId 检索对齐
+
+### Requirement: 不引入分布式追踪全家桶
+
+WHEN 评估链路追踪方案,
+系统 SHALL 保持 ADR-0003 决策：以 MDC 最小实现满足日志串联，不引入 SkyWalking / Zipkin / Sleuth。
+
+#### Scenario: 依赖面无追踪中间件
+
+GIVEN 本变更交付完成
+WHEN 检查服务依赖与配置
+THEN 无 SkyWalking / Zipkin / spring-cloud-sleuth 强制依赖
 
 ## 规则灰度
 
@@ -1322,7 +1456,7 @@ THEN 返回 401（1001）
 ### Requirement: 白名单收紧
 
 WHEN 网关过滤请求,
-系统 SHALL 不为管理端接口提供匿名放行，且 SHALL 保持内部接口（/internal/**）网内信任边界。
+系统 SHALL 不为管理端接口提供匿名放行；内部接口（`/internal/**`）SHALL 不对公网经网关路由暴露，且网关白名单 SHALL NOT 包含无对应路由的 `/internal/**` 死配置（避免未来误加 internal 路由时安全边界塌陷为可自提权）。Actuator 指标端点本地演示可经白名单暴露，生产 profile SHALL 收敛暴露面（收窄 include，或管理端口/内网抓取隔离）。
 
 #### Scenario: 管理端不匿名放行
 
@@ -1336,6 +1470,47 @@ AND 依角色判定放行或拒绝
 GIVEN 请求路径为 /internal/**
 WHEN 网关过滤
 THEN 维持网内信任（不对公网暴露）
+AND 服务本地仍须通过共享密钥校验（见「内部接口共享密钥校验」）
+
+#### Scenario: 白名单无 /internal/**
+
+GIVEN 网关应用配置已加载
+WHEN 读取 app.auth.whitelist
+THEN 列表不含 `/internal/**`
+AND 仍包含发 token 与探针所需前缀（如 `/api/auth/**`、`/actuator/**`）
+
+#### Scenario: 生产 actuator 收敛口径已文档化
+
+GIVEN 运维阅读 README 或 ADR-0007/0003
+WHEN 部署生产 profile
+THEN 文档要求收敛 actuator 暴露（收窄 include 或管理端口隔离）
+AND 不将本地演示的 prometheus/metrics 公网可读配置直接用于生产
+
+### Requirement: 内部接口共享密钥校验
+
+WHEN 请求命中服务本地 `/internal/**` 路径,
+系统 SHALL 校验请求头 `X-Internal-Token` 与配置密钥一致；密钥经环境变量 `INTERNAL_API_TOKEN` 注入，本地可有演示默认值。不一致时 SHALL 拒绝（403/1002），不得仅依赖网络拓扑防护。服务间经 Feign 调用 `/internal/**` 时 SHALL 由出站拦截器自动携带同一密钥。
+
+#### Scenario: 无密钥直连 grant-admin 被拒
+
+GIVEN user-service 监听 8081
+WHEN 不带正确 `X-Internal-Token` 调用 `POST /internal/auth/grant-admin`
+THEN 请求被拒绝（403/1002）
+AND 不授予 ADMIN
+
+#### Scenario: Feign 内部调用自动携带密钥
+
+GIVEN 服务间经 Feign 调用 `/internal/**`
+WHEN 请求发出
+THEN 自动携带与服务端一致的 `X-Internal-Token`
+AND 校验通过后正常处理
+
+#### Scenario: 密钥默认值不得用于生产
+
+GIVEN 部署生产环境
+WHEN 未注入 `INTERNAL_API_TOKEN`
+THEN 使用演示默认值属于不安全配置
+AND README/ADR-0007 明示生产必须注入
 
 ## 空间匹配
 
@@ -1653,4 +1828,7 @@ AND 下次读取回源到最新值
 - **add-sport-type-threshold**：引擎从单一运动类型走向多运动类型阈值（消除 GenSamples 已知局限）。语义要点：未知/缺失类型保守回退 RUNNING，与历史行为一致；阈值分类型与灰度路由正交（灰度按 userId%100 路由版本，版本快照内部再按类型分维度，不改灰度逻辑）；rules_json 嵌套升级向后兼容（旧快照缺类型维度时回退单套阈值，仍可解析）。「规则链判定（R1-R4）」本身未改动，仅为其叠加类型维度。
 - **add-login-lockout**：账号锁定能力域。口径更正说明：本需求此前长期处于「讲设计」状态（审批版列为能力项、实现只到计数+告警），本次由 add-login-lockout 在代码与规范两侧同时收口，这正是勘误 3 要解决的口径矛盾。实现事实：同一手机号在窗口期（默认 15min）内连续失败达阈值（默认 5 次）→ 写 `auth:lock:{phone}`（Redis + TTL 锁定时长 15min）；达阈值后拒绝登录，不校验密码、不消耗 BCrypt、不更新失败计数；锁定期满 TTL 到期自动解锁；登录成功清除失败计数与锁定键；锁定时「用户不存在」与「密码错误」统一返回（防撞库探测）。
 - **add-two-level-cache**：规则二级缓存能力域，落地审批版 §7.3。为什么两级：Caffeine 本地低延迟（热路径不访问 Redis/DB）+ Redis 跨实例共享（本实例 miss 可命中他实例已回填副本，减少打库）。三防护各自手段：穿透=空值哨兵（短 TTL 5s，DB 查不到也缓存「确认无数据」）；击穿=Redisson `lock:rule-rebuild:{key}` 互斥重建（仅持锁实例查库，锁等待 3s 短超时）；雪崩=Redis TTL 随机抖动（60s ± 10s，批量写入错峰过期）。失效策略取舍：Nacos/版本变更监听精准失效 Caffeine invalidate + Redis DEL，TTL 只做兜底上界（回滚 ≤60s 收敛）；广播不可用时降级为 TTL 收敛，不产生新故障面。Redis 不可用一律降级「只走 Caffeine + DB」不报错不阻断校验主链路。二级缓存仅覆盖规则快照/灰度路由读路径；判定结果缓存维持单层 Caffeine（有状态机幂等兜底）。引用 docs/adr/0008。
-- **add-request-validation**：入参校验与 HTTP 错误契约。此前 DTO 无校验注解、@Valid 是死代码，畸形 JSON/参数类型不匹配/缺参落入 Exception 兜底返回 500（把调用方入参问题误呈现为服务端故障）。本变更：DTO 声明式校验注解（auth 手机号/密码、record requestId/sportType/轨迹点上限 20000、规则比例 0-100 等）+ 写接口统一 @Valid；GlobalExceptionHandler 补 HttpMessageNotReadableException / MethodArgumentTypeMismatchException / MissingServletRequestParameterException → 400、NoHandlerFoundException → 404、HttpRequestMethodNotSupportedException → 405；service 层仅删与注解重复的判空，业务规则（状态机/幂等/枚举语义）保留；错误码总表沉淀至 docs/错误码表.md。引用变更 spec/changes/add-request-validation/。
+- **add-request-validation**：入参校验与 HTTP 错误契约。此前 DTO 无校验注解、@Valid 是死代码，畸形 JSON/参数类型不匹配/缺参落入 Exception 兜底返回 500（把调用方入参问题误呈现为服务端故障）。本变更：DTO 声明式校验注解（auth 手机号/密码、record requestId/sportType/轨迹点上限 20000、规则比例 0-100 等）+ 写接口统一 @Valid；GlobalExceptionHandler 补 HttpMessageNotReadableException / MethodArgumentTypeMismatchException / MissingServletRequestParameterException → 400、NoHandlerFoundException → 404、HttpRequestMethodNotSupportedException → 405；service 层仅删与注解重复的判空，业务规则（状态机/幂等/枚举语义）保留；错误码总表沉淀至 docs/错误码表.md。引用变更 spec/changes/archive/add-request-validation/。
+- **add-sentinel-dynamic-rules**：把网关流控从「代码加载、重启生效」升级为「Nacos 动态数据源、改阈值不重启即生效」。规则对象为 `GatewayFlowRule`（resource/count/intervalSec/grade），粒度与 `SentinelGatewayRuleConfig` 中的路由 ID 一致；dataId `gateway-flow-rules`（DEFAULT_GROUP）。两条兜底口径：无规则时回退代码默认 5000 QPS 基线（限流不缺省），推送坏 JSON 时保留上一版有效规则（不因瞬时坏配置抖断限流）。Sentinel 本身仍是本地 Caffeine 之外的独立组件，不参与规则二级缓存路径。
+- **add-resilience-hardening**：Feign 容错标准化 + 内部接口凭证硬化。全局默认超时 connect 1000ms / read 3000ms（此前未配置的客户端走 Feign 默认 10s/60s，慢依赖可拖死整条链路）；每个 Feign 契约要么有 fallbackFactory、要么显式标注「不可软降级」——降级决策是产品语义而非实现细节：好友榜选**空榜**（反对「不过滤」，否则总榜非好友会泄露进好友榜）、RecordApi/AuthApi **不可软降级**（无轨迹无法判定、不可伪造 token/成功，fallback 只把故障转成 4007/4006 驱动重试或 DLQ）。内部接口从「仅网内拓扑信任」升级为「共享密钥校验」：服务本地 `/internal/**` 校验 `X-Internal-Token`（`app.internal.token` / 环境变量 `INTERNAL_API_TOKEN`，默认值仅本地演示），Feign 出站拦截器自动注入；网关白名单删除无路由的 `/internal/**` 死配置（原本不是漏洞，但未来误加 internal 路由会塌陷为可自提权）。新增错误码 4006-4008。引用 docs/adr/0007。
+- **add-request-tracing**：请求贯穿标识，以 MDC 最小实现满足「一次请求可检索对齐」，保持 ADR-0003 决策不引入 SkyWalking/Zipkin/Sleuth。三层：① 网关 `RequestIdGlobalFilter` 保证存在 `X-Request-Id`（已有则沿用，否则生成 UUID），写响应头并透传下游（WebFlux 过滤器是 `GlobalFilter` 而非 Servlet Filter）；② 各业务服务 `TraceIdFilter` 写入 MDC 键 `traceId` 并在请求结束清理，统一日志 pattern `[%X{traceId}]`（record-service 经 properties 的 `logging.pattern.console`，故六服务口径一致）；③ MQ 侧 Producer 把 traceId 写入消息 userProperty（键 `X-Request-Id`）、Consumer 还原到 MDC 并在处理后清理，使 record→verify→leaderboard 跨服务异步链路共用同一 traceId。已知残余：verify→record 的 Feign 状态回调用例在 record 侧日志会生成新 traceId（MQ 主链路已串通）；traceId 刻意不打 Micrometer tag（高基数）。引用变更 spec/changes/archive/add-request-tracing/。
