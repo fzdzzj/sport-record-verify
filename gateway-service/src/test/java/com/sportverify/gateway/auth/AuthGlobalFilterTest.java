@@ -38,7 +38,7 @@ class AuthGlobalFilterTest {
         filter = new AuthGlobalFilter(parser);
         ReflectionTestUtils.setField(filter, "authEnabled", true);
         ReflectionTestUtils.setField(filter, "whitelist",
-                List.of("/api/auth/**", "/internal/**", "/actuator/**"));
+                List.of("/api/auth/**", "/actuator/**"));
         ReflectionTestUtils.setField(filter, "adminPaths", List.of("/admin/**", "/verify/rules/**"));
         ReflectionTestUtils.setField(filter, "adminRoleCheckEnabled", true);
     }

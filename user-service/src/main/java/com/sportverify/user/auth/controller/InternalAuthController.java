@@ -49,8 +49,9 @@ public class InternalAuthController {
     /**
      * 授予指定用户 ADMIN 角色（add-admin-rbac，治理面准入，见 ADR-0007）。
      *
-     * <p>网内信任：走 /internal/**（不对公网暴露）；角色由签发端落库并写入后续登录签发的
-     * role claim，网关据此判定 /admin/** 与规则版本接口准入。生效需目标用户重新登录。</p>
+     * <p>硬化（add-resilience-hardening / ADR-0007）：路径仍属服务本地 /internal/**
+     * （网关无对应路由），并须携带 {@code X-Internal-Token} 共享密钥；不再仅靠网内拓扑。
+     * 角色由签发端落库并写入后续登录签发的 role claim。生效需目标用户重新登录。</p>
      */
     @PostMapping("/grant-admin")
     public Result<Void> grantAdmin(@Valid @RequestBody AdminGrantRequestDTO dto) {

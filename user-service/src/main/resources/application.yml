@@ -35,6 +35,10 @@ spring:
 # 认证域是本服务的签发端：注册/登录/刷新签发 HS256 双 token；
 # 业务接口的 token 校验统一由网关 GlobalFilter 承担（本服务不自行校验 token）。
 app:
+  internal:
+    # 内部接口共享密钥（add-resilience-hardening，见 ADR-0007）：生产必须注入 INTERNAL_API_TOKEN
+    auth-enabled: true
+    token: ${INTERNAL_API_TOKEN:local-demo-internal-token}
   auth:
     # 鉴权降级开关：false=旧行为（业务接口显式携带 userId），true=网关强制鉴权 + 数据隔离（X-User-Id）
     # 默认 false 兼容本地调试与压测脚本；切换 true 前先验证 7 个 commit 的验收项，并更新压测脚本带 token

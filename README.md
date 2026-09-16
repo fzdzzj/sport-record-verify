@@ -72,7 +72,7 @@ java -jar mapmatch-service/target/sport-verify-mapmatch-service-0.1.0-SNAPSHOT.j
 | --- | --- | --- |
 | 中间件健康 | `docker compose ps` | 6 个容器 `healthy`（含 postgis） |
 | 注册可见 | 浏览器打开 `http://127.0.0.1:8848/nacos` 服务列表 | 6 个服务各 1 实例 |
-| 网关路由 | `curl http://127.0.0.1:8080/user/internal/health` | `{"code":0,"message":"success","data":"user-service is alive"}` |
+| 网关路由 | `curl -H "X-Internal-Token: local-demo-internal-token" http://127.0.0.1:8080/user/internal/health` | `{"code":0,"message":"success","data":"user-service is alive"}` |
 | Feign 探活 | `curl http://127.0.0.1:8080/verify/internal/probe/record` | `"record-service is alive"`（verify→record 跨服务调用） |
 | 榜单查询 | `curl http://127.0.0.1:8080/leaderboard/api/leaderboard?type=overall` | `{"code":0,...,"data":[...]}`（总榜；`type=friend&userId=` 查好友榜） |
 | 路网匹配 | `curl -X POST http://127.0.0.1:8080/mapmatch/match -H 'Content-Type: application/json' -d '{"points":[{"seq":0,"lat":31.23,"lng":121.4626,"ts":1700000000000},{"seq":1,"lat":31.2293,"lng":121.4627,"ts":1700000165000},{"seq":2,"lat":31.2287,"lng":121.4628,"ts":1700000428000}]}'` | `data.offRoadRatio≈0`（点位在南北高架路上，悬浮点位如黄浦江江心则 ≈1） |
@@ -116,7 +116,7 @@ mvn -B clean verify
   `POST /api/auth/login`（错密码 → 401 + 计失败）、`POST /api/auth/refresh`（refresh 换新 + 轮换作废旧 refresh）。
   登录签发 access 时从库读 `role` 写入 role claim 并随响应返回（前端据此判断是否可进管理端）。
 - **校验端**（gateway）：GlobalFilter 校验 `Authorization: Bearer`（失败 401/1001），解析 userId 注入
-  `X-User-Id`、role 注入 `X-Role` 透传下游（覆盖外部伪造同名头）；白名单 `/api/auth/**` `/internal/**` `/actuator/**` 放行。
+  `X-User-Id`、role 注入 `X-Role` 透传下游（覆盖外部伪造同名头）；白名单 `/api/auth/**` `/actuator/**` 放行（已删除无路由的 `/internal/**` 死配置）。服务本地 `/internal/**` 须带 `X-Internal-Token`。
 - **治理面 RBAC**（add-admin-rbac）：最小角色模型 USER/ADMIN 二态，注册默认 USER、仅经
   `POST /internal/auth/grant-admin` 显式授予 ADMIN；`/admin/**` 与规则版本接口（`/verify/rules/**`）
   从白名单移除并纳入角色校验——未登录 401（1001）、普通用户 403（1002）、ADMIN 放行；
@@ -150,6 +150,7 @@ curl http://127.0.0.1:8080/user/api/friends?page=1\&size=20 \
 `docker compose up -d` 已包含监控栈（prometheus:9090 / grafana:3000），无需额外命令。各服务经
 `/actuator/prometheus` 暴露 Micrometer 指标（JVM / HTTP / 连接池），Prometheus 抓取宿主机
 `host.docker.internal:8080-8085`（服务以宿主机进程运行；容器化后改 target 为服务名即可，见 prometheus.yml 注释）。
+**生产 profile 应收敛 actuator**：收窄 include（或管理端口隔离 + 内网抓取），网关不转发 actuator；本地演示的 prometheus/metrics 公网可读配置不可直接用于生产（见 ADR-0007 §10）。
 
 | 访问入口 | 地址 | 说明 |
 | --- | --- | --- |
