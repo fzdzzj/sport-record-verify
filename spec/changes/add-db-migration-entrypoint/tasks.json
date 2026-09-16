@@ -23,9 +23,9 @@
     "task": "README / 速览补已有库升级",
     "steps": [
       { "step": "根 README「快速开始」在 docker compose up -d 之后增加 bash scripts/db/migrate.sh，写明 initdb.d 仅首次生效；「冒烟验证」表增加登录探测行（通过=401+1001，硬失败=500/9999，403/503 不得写成缺列）", "completed": true },
-      { "step": "docs/项目速览手册.md 目录树/sql 口径改为建表脚本 + migrations 存量升级入口", "completed": false }
+      { "step": "docs/项目速览手册.md 目录树/sql 口径改为建表脚本 + migrations 存量升级入口", "completed": true }
     ],
-    "passes": false
+    "passes": true
   },
   {
     "number": 4,
