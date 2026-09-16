@@ -130,26 +130,33 @@ public class SportRecordService {
         record.setStatus(RecordStatus.VERIFYING.getCode());
         record.setVersion(1);
 
-        // 5. 事务提交后发 SUBMITTED 事件进入校验流程（避免事务回滚导致孤儿事件）；
-        //    发布失败降级为 Feign 直调触发校验（熔断保护，VerifyApiFallback 抛 4001）；
+        // 5. 事务提交后异步发 SUBMITTED 事件进入校验流程（避免事务回滚导致孤儿事件）；
+        //    不在请求线程 syncSend；失败回调里降级 Feign 直调（熔断保护，VerifyApiFallback 抛 4001）；
         //    直调仍失败 → 熔断降级转人工（MANUAL_REVIEW 终态），提交主链路不挂
         TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
             @Override
             public void afterCommit() {
-                boolean sent = recordEventProducer.publishSubmitted(record.getId(), record.getUserId());
-                if (!sent) {
-                    log.warn("MQ 发布失败，降级 Feign 直调触发校验：recordId={}", record.getId());
-                    try {
-                        verifyApi.triggerVerify(record.getId());
-                    } catch (Exception ex) {
-                        // verify 不可用（熔断 OPEN/连接拒绝，4001）：转人工，不再无限 VERIFYING
-                        verifyDegradeService.degradeToManualReview(record.getId(), ex);
-                    }
-                }
+                Long recordId = record.getId();
+                recordEventProducer.publishSubmitted(recordId, record.getUserId(),
+                        () -> fallbackTriggerVerify(recordId));
             }
         });
         return RecordSubmitResultDTO.of(record.getId(), record.getRequestId(),
                 record.getStatus(), false, "提交成功，进入校验");
+    }
+
+    /**
+     * MQ 异步发送失败后的降级：Feign 直调触发校验；直调仍失败则转人工。
+     * 供 afterCommit 失败回调调用（可能在 RocketMQ 回调线程执行）。
+     */
+    void fallbackTriggerVerify(Long recordId) {
+        log.warn("MQ 发布失败，降级 Feign 直调触发校验：recordId={}", recordId);
+        try {
+            verifyApi.triggerVerify(recordId);
+        } catch (Exception ex) {
+            // verify 不可用（熔断 OPEN/连接拒绝，4001）：转人工，不再无限 VERIFYING
+            verifyDegradeService.degradeToManualReview(recordId, ex);
+        }
     }
 
     /**
