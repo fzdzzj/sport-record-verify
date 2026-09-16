@@ -1,0 +1,30 @@
+[
+  {
+    "number": 1,
+    "category": "阶段 1：可选 overlay",
+    "task": "演示压测才放宽刷盘",
+    "steps": [
+      { "step": "新增 docker-compose.perf.yml（或等价）：仅覆盖 mysql command，增加 innodb-flush-log-at-trx-commit=2；不改主 compose", "completed": false }
+    ],
+    "passes": false
+  },
+  {
+    "number": 2,
+    "category": "阶段 2：文档",
+    "task": "写清耐久性取舍",
+    "steps": [
+      { "step": "README 或压测报告复现指南增加：docker compose -f docker-compose.yml -f docker-compose.perf.yml；默认 up 不启用", "completed": false },
+      { "step": "ADR-0002 后续项 2 改为：演示 overlay 可选，默认仍 1，生产禁止", "completed": false }
+    ],
+    "passes": false
+  },
+  {
+    "number": 3,
+    "category": "阶段 3：验收",
+    "task": "主 compose 未被改刷盘",
+    "steps": [
+      { "step": "确认 docker-compose.yml 无 innodb_flush_log_at_trx_commit；口径自检；tasks.json 打勾", "completed": false }
+    ],
+    "passes": false
+  }
+]
