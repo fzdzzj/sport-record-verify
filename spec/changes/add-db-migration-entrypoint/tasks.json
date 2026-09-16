@@ -13,9 +13,9 @@
     "category": "阶段 2：迁移约定",
     "task": "写明新建库 vs 存量库两条路径",
     "steps": [
-      { "step": "新增 sql/migrations/README.md：新建库走 sql/0*.sql（initdb.d 仅首次）；存量库必须跑 migrate.sh；禁止把 migrations 挂进 initdb.d；说明 add-idx-record-seq 与无索引压测基线的关系", "completed": false }
+      { "step": "新增 sql/migrations/README.md：新建库走 sql/0*.sql（initdb.d 仅首次）；存量库必须跑 migrate.sh；禁止把 migrations 挂进 initdb.d；说明 add-idx-record-seq 与无索引压测基线的关系", "completed": true }
     ],
-    "passes": false
+    "passes": true
   },
   {
     "number": 3,
