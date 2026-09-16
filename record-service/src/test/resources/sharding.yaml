@@ -1,0 +1,10 @@
+# 测试专用 sharding.yaml（覆盖 main 同名资源）
+# 目的：确定性验证 ShardingDataSourceConfig.loadShardingYaml 的 ${VAR:default} 与 ${VAR} 占位符替换。
+# sentinel 变量名（SPORTVERIFY_TEST_*）极不可能被 CI/本机环境设置，故分支走向确定：
+#   - ${VAR:default} 未设 → 取冒号后默认值（12.34.56.78）
+#   - ${VAR} 无默认值未设 → 替换为空串
+dataSources:
+  ds0:
+    jdbcUrl: jdbc:mysql://${SPORTVERIFY_TEST_DEFAULT_HOST_9F3E:12.34.56.78}:3306/record_db
+    password: ${SPORTVERIFY_TEST_NODEFAULT_9F3E}
+    host: pre-${SPORTVERIFY_TEST_NODEFAULT_9F3E}-post
