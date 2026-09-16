@@ -46,6 +46,9 @@
 # 1. 一键拉起中间件（Nacos / MySQL×3库 / Redis / RocketMQ / PostGIS 路网库，含健康检查与依赖顺序）
 docker compose up -d
 
+# 1.1 存量库结构升级（新建卷由 initdb.d 仅在首次初始化执行 sql/0*.sql；已有数据卷不会自动补列/索引）
+bash scripts/db/migrate.sh
+
 # 2. 导入 OSM 路网（首次执行：Overpass 下载上海切片 → PostGIS 建表 + GIST 索引，幂等可重跑；
 #    PATH 上是 JDK8 时需指定 JAVA_BIN，如 JAVA_BIN="D:\develop1\jdk21\bin\java"）
 bash scripts/mapmatch/import-road-network.sh
@@ -71,6 +74,7 @@ java -jar mapmatch-service/target/sport-verify-mapmatch-service-0.1.0-SNAPSHOT.j
 | 验证项 | 命令 | 期望 |
 | --- | --- | --- |
 | 中间件健康 | `docker compose ps` | 6 个容器 `healthy`（含 postgis） |
+| 登录 schema 探测 | `bash scripts/smoke/smoke-schema.sh` | **通过**：HTTP 401 且 `code=1001`（错误凭据，说明登录 SELECT 已跑通）；**硬失败**：HTTP 500 或 `code=9999`（schema/系统错误）。HTTP 403/`1002` 为账号锁定、502/503 或连接失败为服务未就绪——二者都不是缺列，须换号或先起网关与 user-service |
 | 注册可见 | 浏览器打开 `http://127.0.0.1:8848/nacos` 服务列表 | 6 个服务各 1 实例 |
 | 网关路由 | `curl -H "X-Internal-Token: local-demo-internal-token" http://127.0.0.1:8080/user/internal/health` | `{"code":0,"message":"success","data":"user-service is alive"}` |
 | Feign 探活 | `curl -H "X-Internal-Token: local-demo-internal-token" http://127.0.0.1:8080/verify/internal/probe/record` | `"record-service is alive"`（verify→record 跨服务调用） |
