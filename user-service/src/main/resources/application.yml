@@ -93,3 +93,8 @@ management:
   endpoint:
     health:
       show-details: always
+
+# 请求贯穿：MDC traceId（add-request-tracing）
+logging:
+  pattern:
+    console: "%d{yyyy-MM-dd HH:mm:ss.SSS} [%thread] [%X{traceId}] %-5level %logger{36} - %msg%n"

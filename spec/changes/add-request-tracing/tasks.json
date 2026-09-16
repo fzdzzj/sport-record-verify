@@ -1,0 +1,29 @@
+[
+  {
+    "number": 1,
+    "category": "阶段 1：HTTP 贯穿",
+    "task": "网关生成/透传 X-Request-Id + 各服务 MDC Filter + 统一日志 pattern",
+    "steps": [
+      { "step": "openspec：proposal + spec-delta + tasks", "completed": true },
+      { "step": "common：TraceIds + TraceIdFilter + 单测", "completed": true },
+      { "step": "gateway：RequestIdGlobalFilter + 单测", "completed": true },
+      { "step": "api：Feign TraceId 透传拦截器", "completed": true },
+      { "step": "各服务 logging.pattern.console 含 [%X{traceId}]", "completed": true },
+      { "step": "commit 1：feat(tracing) HTTP/MDC", "completed": true }
+    ],
+    "passes": true
+  },
+  {
+    "number": 2,
+    "category": "阶段 2：MQ 透传",
+    "task": "Producer/Consumer 透传 traceId 并验收全链路日志",
+    "steps": [
+      { "step": "RecordEventProducer / VerifyEventProducer 写 userProperty", "completed": false },
+      { "step": "VerifyEventConsumer / LeaderboardEventConsumer 还原 MDC", "completed": false },
+      { "step": "统一 VerifyEventConsumer 启动日志占位符；更新相关单测", "completed": false },
+      { "step": "commit 2：feat(tracing) MQ + 日志", "completed": false },
+      { "step": "真实提交链路日志证据（同一 traceId）", "completed": false }
+    ],
+    "passes": false
+  }
+]
