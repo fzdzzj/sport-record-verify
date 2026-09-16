@@ -37,6 +37,17 @@ public class RecordEventProducer {
      * @param userId    所属用户（冗余分片键）
      * @param onFailure 发送失败回调（在 RocketMQ 回调线程执行，已恢复 traceId）；成功不调用
      */
+    /**
+     * 兼容补偿扫描等调用方：异步提交发送。
+     * @return 是否成功向 Producer 提交发送（非 Broker ACK）；提交阶段失败返回 false
+     */
+    public boolean publishSubmitted(Long recordId, Long userId) {
+        boolean[] accepted = {true};
+        publishSubmitted(recordId, userId, () -> accepted[0] = false);
+        // 仅能观测到同步提交失败（序列化/提交发送）；Broker 异步失败由调用方下一轮补偿重试
+        return accepted[0];
+    }
+
     public void publishSubmitted(Long recordId, Long userId, Runnable onFailure) {
         // eventId 全局唯一：消费者 SETNX 去重，保证重复投递只消费一次
         VerifyEventDTO event = new VerifyEventDTO(
