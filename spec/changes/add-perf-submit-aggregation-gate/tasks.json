@@ -1,0 +1,21 @@
+[
+  {
+    "number": 1,
+    "category": "阶段 1：闸门文档",
+    "task": "把跨请求聚合从「待做优化」改成「未开门」",
+    "steps": [
+      { "step": "ADR-0002 后续项：跨请求聚合前置为默认批量 INSERT + 100 并发复测；本变更不实现聚合器", "completed": false },
+      { "step": "压测报告 §10 第 2 条拆开：刷盘见独立变更；聚合未开门", "completed": false }
+    ],
+    "passes": false
+  },
+  {
+    "number": 2,
+    "category": "阶段 2：验收",
+    "task": "确认无业务代码",
+    "steps": [
+      { "step": "git diff 不含 SportRecordService 行为改动；tasks.json 打勾；口径自检", "completed": false }
+    ],
+    "passes": false
+  }
+]
