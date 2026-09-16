@@ -4,28 +4,43 @@
     "category": "阶段 1：异步发送",
     "task": "SUBMITTED 改为异步发送并保留失败降级",
     "steps": [
-      { "step": "RecordEventProducer：异步发送 SUBMITTED，发送前捕获 traceId；接口仍返回是否提交发送（或改为回调）", "completed": false },
-      { "step": "SportRecordService.afterCommit：失败回调走既有 Feign 直调与转人工，不在请求线程 syncSend", "completed": false }
+      {
+        "step": "RecordEventProducer：异步发送 SUBMITTED，发送前捕获 traceId；接口仍返回是否提交发送（或改为回调）",
+        "completed": true
+      },
+      {
+        "step": "SportRecordService.afterCommit：失败回调走既有 Feign 直调与转人工，不在请求线程 syncSend",
+        "completed": true
+      }
     ],
-    "passes": false
+    "passes": true
   },
   {
     "number": 2,
     "category": "阶段 2：测试",
     "task": "锁定成功不降级、失败仍降级",
     "steps": [
-      { "step": "单测：发送成功不触发 Feign；发送失败触发既有降级。不引入真 MQ", "completed": false }
+      {
+        "step": "单测：发送成功不触发 Feign；发送失败触发既有降级。不引入真 MQ",
+        "completed": true
+      }
     ],
-    "passes": false
+    "passes": true
   },
   {
     "number": 3,
     "category": "阶段 3：文档与验收",
     "task": "ADR 一句 + 模块测试",
     "steps": [
-      { "step": "ADR-0002 补一句：提交侧发送异步，不改消费线程参数，不声称新 QPS", "completed": false },
-      { "step": "JDK21 跑 record-service 测试；服务在跑则 skip repackage；tasks.json 打勾", "completed": false }
+      {
+        "step": "ADR-0002 补一句：提交侧发送异步，不改消费线程参数，不声称新 QPS",
+        "completed": true
+      },
+      {
+        "step": "JDK21 跑 record-service 测试；服务在跑则 skip repackage；tasks.json 打勾",
+        "completed": true
+      }
     ],
-    "passes": false
+    "passes": true
   }
 ]
