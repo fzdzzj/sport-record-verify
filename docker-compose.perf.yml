@@ -1,0 +1,13 @@
+# 演示/压测专用 overlay：放宽 InnoDB 刷盘（非生产）
+#
+# 用法（必须叠加主文件，勿单独 up）：
+#   docker compose -f docker-compose.yml -f docker-compose.perf.yml up -d mysql
+#
+# 取舍：innodb_flush_log_at_trx_commit=2 → 每秒刷 redo，崩溃时最多约 1 秒已提交事务可能丢失。
+# 默认 docker compose up 不启用本文件；生产禁止。
+services:
+  mysql:
+    command:
+      - --character-set-server=utf8mb4
+      - --collation-server=utf8mb4_unicode_ci
+      - --innodb-flush-log-at-trx-commit=2
