@@ -63,6 +63,9 @@ public class SportRecordService {
      *
      * <p>幂等：uk_request_id 唯一键，重复提交捕获 DuplicateKeyException 后
      * 返回原记录（接口层映射为 3004 + 原结果，规范「重复提交幂等」）。</p>
+     *
+     * <p>本地事务边界（ADR-0009）：{@code @Transactional} 覆盖主记录 + 轨迹点 + 状态迁移；
+     * MQ/Feign 仅在 {@code afterCommit} 触发，轨迹写入失败不得发出校验事件。</p>
      */
     @Transactional(rollbackFor = Exception.class)
     public RecordSubmitResultDTO submit(RecordSubmitDTO dto) {

@@ -97,6 +97,9 @@ public class LeaderboardService {
      *       命中 0 行 = 已有锚点，看其状态：ROLLED_BACK（驳回后再改判通过）→ 重激活并补加分，
      *       ACTIVE（重复事件/重放）→ 幂等跳过。</li>
      * </ol>
+     *
+     * <p>无本地事务（ADR-0009）：贡献表一行 + Redis ZSet 是跨存储写，Spring 事务管不了 ZSet；
+     * 禁止把排行集合纳入本地事务。短暂不一致由结算任务以贡献表为准纠偏。</p>
      */
     public void applyVerified(Long recordId) {
         SportRecordSnapshot record = sportRecordMapper.selectById(recordId);
@@ -155,6 +158,9 @@ public class LeaderboardService {
      *       （以锚点为权威值，不信任事件体重放值；同一把 {@code lock:rollback:{recordId}}
      *       与入榜串行化）。</li>
      * </ol>
+     *
+     * <p>无本地事务（ADR-0009）：同 {@link #applyVerified}，DB 锚点迁移与 ZSet 扣分刻意最终一致，
+     * 禁止用本地事务假装 Redis 与 DB 一起原子提交。</p>
      */
     public void rollbackOnRejected(Long recordId) {
         RLock lock = rollbackLock(recordId);

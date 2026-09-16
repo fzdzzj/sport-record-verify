@@ -72,6 +72,9 @@ public class VerifyService {
      *   <li>结果已终判但 record 仍 VERIFYING（历史回调失败）→ 仅补偿回调；</li>
      *   <li>未终判 → 初始化占位 → 拉轨迹 → 引擎判定 → 落库 → 发事件 → 回调迁移。</li>
      * </ol>
+     *
+     * <p>无本地长事务（ADR-0009）：路径含 Feign 拉轨迹、MQ 发事件、回调 record 状态，
+     * 禁止把远程调用/消息发送包进本地事务，也不因此引入分布式事务框架。幂等占位 + 补偿回调保证最终一致。</p>
      */
     public VerdictResult verify(Long recordId) {
         VerdictResult cached = readCachedResult(recordId);
@@ -193,6 +196,9 @@ public class VerifyService {
      * 管理员终判（规范「终判改判」「终判维持拒绝」）：
      * appeal PENDING → RE_PASSED/RE_CONFIRMED（乐观锁）→
      * 回调 record 迁移 APPEALING → RE_PASSED/RE_CONFIRMED → 发 VERIFIED/REJECTED 事件。
+     *
+     * <p>无本地长事务（ADR-0009）：申诉行更新后仍有 Feign 回调与 MQ；跨服务窗口为已知残余，
+     * 本路径不用本地事务假装远程一起原子，也不上 Seata。依赖幂等回调与事件重放收敛。</p>
      */
     public AppealDTO reviewAppeal(Long appealId, AppealReviewDTO dto) {
         Appeal appeal = appealMapper.selectById(appealId);

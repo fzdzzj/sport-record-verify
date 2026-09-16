@@ -109,6 +109,9 @@ public class RecordLikeService {
      *   <li>成员集 {@code SADD}：返回 1 = 首次点赞 → 计数 INCR + push pending；
      *       返回 0 = 已赞 → <b>幂等</b>，计数不变、不重复产生 pending（T9：计数 +1 仅一次，落库仅一条）；</li>
      * </ol>
+     *
+     * <p>无本地事务（ADR-0009）：热路径只写 Redis 成员集/计数/pending 队列，刻意最终一致；
+     * Spring 事务管不了 Redis。DB 落库由 flush 批量完成，禁止在此开启覆盖 Redis+DB 的本地事务。</p>
      */
     public LikeDTO like(Long recordId, Long userId) {
         if (userId == null) {
@@ -143,6 +146,8 @@ public class RecordLikeService {
      * 成员集 {@code SREM} 返回 1 = 确实点过赞 → 计数 DECR（下限 0）+ push pending 删除；
      * 返回 0 = 未赞 → 幂等，计数不变、无行可删。取消不校验 PASSED
      * （记录事后被驳回也应允许收回点赞）。
+     *
+     * <p>无本地事务（ADR-0009）：同 {@link #like}，仅 Redis 热写 + pending；DB 删除由 flush 事务批处理。</p>
      */
     public LikeDTO unlike(Long recordId, Long userId) {
         if (userId == null) {

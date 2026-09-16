@@ -91,6 +91,10 @@ public class AuthService {
 
     /**
      * 注册（规范「用户注册」）：手机号唯一，重复 → 2001 且不建用户。
+     *
+     * <p>无本地事务（ADR-0009）：仅一次 {@code user} 行 insert；{@code role} 同表默认 USER
+     * （实体默认值 + 列 DEFAULT），不存在「插入用户 + 初始化角色表」两写。单行 + uk_phone 幂等即可，
+     * 禁止为形式补 {@code @Transactional}。</p>
      */
     public void register(RegisterRequestDTO dto) {
         // —— 前置唯一性查询（常规路径直接拦截，避免白白哈希一次密码）
