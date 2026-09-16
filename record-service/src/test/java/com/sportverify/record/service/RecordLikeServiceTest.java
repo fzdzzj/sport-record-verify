@@ -273,6 +273,26 @@ class RecordLikeServiceTest {
         verify(listOps, never()).trim(anyString(), anyLong(), anyLong());
     }
 
+    /** 删除写入失败 → 事务回滚且不 LTRIM；插入与删除经同一事务模板（ADR-0009） */
+    @Test
+    void flush_batchDeleteFails_doesNotTrimPending() {
+        List<String> ops = List.of(
+                "{\"recordId\":1,\"userId\":100,\"action\":\"LIKE\"}",
+                "{\"recordId\":1,\"userId\":101,\"action\":\"UNLIKE\"}");
+        when(listOps.range(RecordLikeService.PENDING_QUEUE_KEY, 0, 199)).thenReturn(ops);
+        when(recordLikeMapper.batchInsertIgnore(any())).thenReturn(1);
+        when(recordLikeMapper.batchDelete(any())).thenThrow(new RuntimeException("delete failed"));
+
+        assertThrows(RuntimeException.class, () -> service.flushPendingLikes());
+
+        // 两写都进入同一事务回调；delete 抛错后不得裁剪队列
+        verify(recordLikeMapper).batchInsertIgnore(any());
+        verify(recordLikeMapper).batchDelete(any());
+        verify(listOps, never()).trim(anyString(), anyLong(), anyLong());
+        // 事务模板会触发 rollback
+        verify(transactionManager).rollback(any(TransactionStatus.class));
+    }
+
     // ==================== 对账纠偏（最终一致） ====================
 
     /** 规范差异「对账纠偏」：以 DB 行为准覆盖 Redis 计数 + 重建成员集 */
