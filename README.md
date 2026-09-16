@@ -238,7 +238,7 @@ WALKING 取 3.5 m/s。判定时引擎按记录的 sportType 取对应阈值集�
 | Sentinel 网关限流 | 5k QPS 配置基线 | 100 QPS 档实测 **99.35% 超限 429 拦截**（网关侧拒绝 P50 2.2ms） |
 | 熔断降级转人工 | verify 挂→转人工，主链路不挂 | 故障期 30/30 提交成功；熔断器 OPEN 实证；恢复后 30/30 自愈收敛 |
 
-优化动作（前后对比与因果）：轨迹逐条 INSERT→单分片批量 INSERT（开关可回退）+ 连接池 10→30；
+优化动作（前后对比与因果）：轨迹逐条 INSERT→单分片批量 INSERT（**现默认批量**，复现基线显式 `record.track.batch-insert-enabled=false`）+ 连接池 10→30；
 组合索引 `idx_record_seq` 消除轨迹查询 filesort（EXPLAIN 实测 3.71→1.85ms，Sort 节点消失）。
 
 ```bash
