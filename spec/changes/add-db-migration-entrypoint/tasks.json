@@ -4,9 +4,9 @@
     "category": "阶段 1：迁移入口",
     "task": "新增存量库迁移执行脚本",
     "steps": [
-      { "step": "新增 scripts/db/migrate.sh：只遍历 sql/migrations/*.sql（禁止 sql/0*.sql），按文件名顺序 docker exec -i 注入；环境变量 MYSQL_CONTAINER/MYSQL_USER/MYSQL_PASSWORD 默认 sport-verify-mysql/root/root；容器不存在或不健康则非 0 退出并提示先 docker compose up -d；失败即停并打印每个文件结果", "completed": false }
+      { "step": "新增 scripts/db/migrate.sh：只遍历 sql/migrations/*.sql（禁止 sql/0*.sql），按文件名顺序 docker exec -i 注入；环境变量 MYSQL_CONTAINER/MYSQL_USER/MYSQL_PASSWORD 默认 sport-verify-mysql/root/root；容器不存在或不健康则非 0 退出并提示先 docker compose up -d；失败即停并打印每个文件结果", "completed": true }
     ],
-    "passes": false
+    "passes": true
   },
   {
     "number": 2,
