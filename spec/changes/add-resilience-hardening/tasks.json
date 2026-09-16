@@ -74,10 +74,12 @@
     "category": "阶段 7：验收",
     "task": "全量 mvn verify 与提交",
     "steps": [
-      { "step": "mvn -B verify 全绿", "completed": false },
-      { "step": "commit1 feat(resilience): Feign 统一超时与降级决策对齐", "completed": false },
-      { "step": "commit2 fix(security): 内部接口加凭证校验并裁剪白名单", "completed": false }
+      { "step": "mvn -B verify 全绿", "completed": true },
+      { "step": "commit1 feat(resilience): Feign 统一超时与降级决策对齐", "completed": true },
+      { "step": "commit2 fix(security): 内部接口加凭证校验并裁剪白名单", "completed": true },
+      { "step": "运行时验收：直连内部接口无/错 token 拒绝、网关无 internal 路由", "completed": true },
+      { "step": "运行时验收：停 user-service 好友榜降级为空榜且依赖恢复后自愈", "completed": true }
     ],
-    "passes": false
+    "passes": true
   }
 ]
