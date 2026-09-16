@@ -46,6 +46,10 @@
 # 1. 一键拉起中间件（Nacos / MySQL×3库 / Redis / RocketMQ / PostGIS 路网库，含健康检查与依赖顺序）
 docker compose up -d
 
+# （可选，仅演示压测）放宽 MySQL 刷盘：叠加 docker-compose.perf.yml
+# 取舍：崩溃最多约 1 秒已提交事务可能丢失；默认 up 不启用；生产禁止
+# docker compose -f docker-compose.yml -f docker-compose.perf.yml up -d
+
 # 1.1 存量库结构升级（新建卷由 initdb.d 仅在首次初始化执行 sql/0*.sql；已有数据卷不会自动补列/索引）
 bash scripts/db/migrate.sh
 
@@ -239,6 +243,7 @@ WALKING 取 3.5 m/s。判定时引擎按记录的 sportType 取对应阈值集�
 | 熔断降级转人工 | verify 挂→转人工，主链路不挂 | 故障期 30/30 提交成功；熔断器 OPEN 实证；恢复后 30/30 自愈收敛 |
 
 优化动作（前后对比与因果）：轨迹逐条 INSERT→单分片批量 INSERT（**现默认批量**，复现基线显式 `record.track.batch-insert-enabled=false`）+ 连接池 10→30；
+演示吞吐天花板可选叠加 `docker-compose.perf.yml`（`innodb_flush_log_at_trx_commit=2`：崩溃最多约 1 秒已提交丢失；默认 compose 不启用；**生产禁止**）；
 组合索引 `idx_record_seq` 消除轨迹查询 filesort（EXPLAIN 实测 3.71→1.85ms，Sort 节点消失）。
 
 ```bash
