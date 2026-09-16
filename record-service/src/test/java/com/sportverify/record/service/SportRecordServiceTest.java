@@ -69,7 +69,8 @@ class SportRecordServiceTest {
         verifyDegradeService = mock(VerifyDegradeService.class);
         service = new SportRecordService(sportRecordMapper, trackPointMapper,
                 recordEventProducer, verifyApi, verifyDegradeService);
-        ReflectionTestUtils.setField(service, "batchInsertEnabled", false);
+        // 无 Spring：@Value 不生效；setField 模拟产品默认 true（与 properties/@Value 缺省一致）
+        ReflectionTestUtils.setField(service, "batchInsertEnabled", true);
     }
 
     /** 在事务同步上下文中执行 body，可选触发 afterCommit（提交后发事件分支） */
@@ -120,9 +121,10 @@ class SportRecordServiceTest {
 
     // ==================== 提交主路径 ====================
 
-    /** 提交主路径（批量关闭 → 逐条 INSERT）：落主表 → 逐条写轨迹 → 状态迁移 VERIFYING → 发事件 */
+    /** 显式 false → 逐条 INSERT：落主表 → 逐条写轨迹 → 状态迁移 VERIFYING → 发事件 */
     @Test
     void submit_happyPath_batchDisabled_writesPointsAndTransitions() {
+        ReflectionTestUtils.setField(service, "batchInsertEnabled", false);
         when(sportRecordMapper.selectByRequestId("req-1")).thenReturn(null);
         when(sportRecordMapper.updateStatus(100L, RecordStatus.SUBMITTED.getCode(),
                 RecordStatus.VERIFYING.getCode(), 0)).thenReturn(1);
@@ -145,7 +147,7 @@ class SportRecordServiceTest {
         verify(recordEventProducer).publishSubmitted(100L, 100L);
     }
 
-    /** 批量插入开关打开 → 走多值 insertBatch，不再逐条 insert */
+    /** 默认/true → 走多值 insertBatch，不再逐条 insert */
     @Test
     void submit_empty_sportTypeDefaultsToRunning_andBatchEnabled_usesBatchInsert() {
         ReflectionTestUtils.setField(service, "batchInsertEnabled", true);
@@ -167,6 +169,7 @@ class SportRecordServiceTest {
     /** 轨迹点写入失败 → 事务回滚路径：不注册 afterCommit，不发 MQ（ADR-0009） */
     @Test
     void submit_trackInsertFails_doesNotPublishSubmitted() {
+        ReflectionTestUtils.setField(service, "batchInsertEnabled", false);
         when(sportRecordMapper.selectByRequestId("req-1")).thenReturn(null);
         stubInsertReturnsId();
         when(trackPointMapper.insert(any(TrackPoint.class)))
