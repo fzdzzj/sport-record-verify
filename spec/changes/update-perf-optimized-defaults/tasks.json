@@ -1,0 +1,41 @@
+[
+  {
+    "number": 1,
+    "category": "阶段 1：默认值",
+    "task": "提交路径默认开启已验证的批量插入",
+    "steps": [
+      { "step": "record-service application.properties 将 record.track.batch-insert-enabled 改为 true，并注释：日常默认优化路径，复现基线显式 false", "completed": false },
+      { "step": "SportRecordService 的 @Value 缺省从 false 改为 true，与配置文件一致", "completed": false }
+    ],
+    "passes": false
+  },
+  {
+    "number": 2,
+    "category": "阶段 2：测试锁定开关",
+    "task": "true 走 insertBatch，false 走逐条 insert",
+    "steps": [
+      { "step": "SportRecordServiceTest：默认或 true 断言 insertBatch；显式 false 断言逐条 insert。不引入真库", "completed": false }
+    ],
+    "passes": false
+  },
+  {
+    "number": 3,
+    "category": "阶段 3：文档",
+    "task": "默认优化 / 显式复现基线写进公开文档",
+    "steps": [
+      { "step": "ADR-0002 补一句：优化路径现为默认，复现逐条基线须关闭开关；不改历史前后快照数字", "completed": false },
+      { "step": "docs/perf/压测报告.md 复现步骤改为显式 false；README 若提到提交性能，与默认 true 对齐", "completed": false }
+    ],
+    "passes": false
+  },
+  {
+    "number": 4,
+    "category": "阶段 4：验收",
+    "task": "模块测试与口径",
+    "steps": [
+      { "step": "JDK21 跑 record-service 测试；服务在跑则 spring-boot.repackage.skip。不改 MYSQL_POOL_SIZE 默认 10，不改 InnoDB/GC", "completed": false },
+      { "step": "公开 md 口径自检走 ci.yml 已有 step；tasks.json 打勾", "completed": false }
+    ],
+    "passes": false
+  }
+]
