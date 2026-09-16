@@ -143,7 +143,10 @@ public class FriendService {
      * 同意申请（规范差异「申请状态机」）：PENDING → ACCEPTED，并落 friendship 关系。
      *
      * <p>落 friendship 用规范化键 {@code (user_low,user_high)}；若并发下关系已被另一方向写入，
-     * 主键冲突抛 DuplicateKeyException → 幂等成功（规范化存储从根上消除重复行，面试弹药 G）。</p>
+     * 主键冲突抛 DuplicateKeyException → 幂等成功（规范化存储从根上消除重复行）。</p>
+     *
+     * <p>本地事务边界（ADR-0009）：{@code @Transactional} 覆盖「申请状态更新 + friendship 插入」两写，
+     * 中间失败同进退，避免申请已 ACCEPTED 却无好友行。锁在方法内获取（锁与事务嵌套顺序为已知权衡，不借机重构）。</p>
      */
     @Transactional(rollbackFor = Exception.class)
     public FriendRequestDTO accept(Long requestId) {

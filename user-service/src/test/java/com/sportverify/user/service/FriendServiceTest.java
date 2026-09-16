@@ -13,6 +13,9 @@ import com.sportverify.user.mapper.FriendRequestMapper;
 import com.sportverify.user.mapper.FriendshipMapper;
 import com.sportverify.user.mapper.UserMapper;
 import org.junit.jupiter.api.BeforeEach;
+import org.springframework.transaction.annotation.Transactional;
+
+import java.lang.reflect.Method;
 import org.junit.jupiter.api.Test;
 import org.redisson.api.RLock;
 import org.redisson.api.RedissonClient;
@@ -37,6 +40,8 @@ import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.mockito.Mockito.inOrder;
 import org.mockito.ArgumentCaptor;
 import org.mockito.ArgumentMatchers;
 
@@ -211,6 +216,30 @@ class FriendServiceTest {
         FriendRequestDTO dto = service.accept(5L);
 
         assertEquals("ACCEPTED", dto.getStatus());
+    }
+
+    /**
+     * 锁定 accept 两写同事务（ADR-0009）：方法带 {@code @Transactional}，
+     * 申请状态更新与 friendship 插入均在该方法体内顺序执行；不引入真库。
+     */
+    @Test
+    void accept_twoWritesShareTransactionalMethod() throws Exception {
+        Method m = FriendService.class.getMethod("accept", Long.class);
+        Transactional tx = m.getAnnotation(Transactional.class);
+        assertNotNull(tx, "accept 必须标注 @Transactional，保证申请状态与好友行同进退");
+        assertTrue(tx.rollbackFor().length > 0, "rollbackFor 须显式声明");
+
+        when(requestMapper.selectById(5L)).thenReturn(pendingRequest(5L, 1001L, 1002L));
+        when(requestMapper.updateStatus(eq(5L), eq(0), eq(1), any())).thenReturn(1);
+        when(friendshipMapper.insert(any(Friendship.class))).thenReturn(1);
+
+        FriendRequestDTO dto = service.accept(5L);
+
+        assertEquals("ACCEPTED", dto.getStatus());
+        // 同一 accept 调用内完成两写（Mockito 单测无法验证真库回滚，用注解+调用序锁定契约）
+        var inOrder = inOrder(requestMapper, friendshipMapper);
+        inOrder.verify(requestMapper).updateStatus(eq(5L), eq(0), eq(1), any());
+        inOrder.verify(friendshipMapper).insert(any(Friendship.class));
     }
 
     /** 规范差异「拒绝申请」：PENDING→REJECTED，不落 friendship */
