@@ -4,26 +4,26 @@
     "category": "阶段 1：启动参数",
     "task": "可选 G1 停顿目标，禁止固定堆",
     "steps": [
-      { "step": "logs/start-trace-e2e.ps1 或 README 启动段增加可选 JAVA_OPTS=-XX:MaxGCPauseMillis=50；注释禁止 -Xms1g/-Xmx1g", "completed": false }
+      { "step": "logs/start-trace-e2e.ps1 或 README 启动段增加可选 JAVA_OPTS=-XX:MaxGCPauseMillis=50；注释禁止 -Xms1g/-Xmx1g", "completed": true }
     ],
-    "passes": false
+    "passes": true
   },
   {
     "number": 2,
     "category": "阶段 2：文档",
     "task": "ADR 对齐",
     "steps": [
-      { "step": "ADR-0002 GC 节：推荐停顿目标 50ms，固定堆仍不采纳；不改历史 GC 次数数字", "completed": false }
+      { "step": "ADR-0002 GC 节：推荐停顿目标 50ms，固定堆仍不采纳；不改历史 GC 次数数字", "completed": true }
     ],
-    "passes": false
+    "passes": true
   },
   {
     "number": 3,
     "category": "阶段 3：验收",
     "task": "未把固定堆加回去",
     "steps": [
-      { "step": "确认启动脚本无 -Xms1g/-Xmx1g；口径自检；tasks.json 打勾", "completed": false }
+      { "step": "确认启动脚本无 -Xms1g/-Xmx1g；口径自检；tasks.json 打勾", "completed": true }
     ],
-    "passes": false
+    "passes": true
   }
 ]
