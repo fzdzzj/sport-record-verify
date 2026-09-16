@@ -3,7 +3,7 @@
 ![CI](https://github.com/fzdzzj/sport-record-verify/actions/workflows/ci.yml/badge.svg)
 
 基于审批版需求（[《运动记录校验系统需求文档（审批版）》](docs/运动记录校验系统需求文档（审批版）.md)）的微服务工程基线。
-本仓库由 openspec 规范驱动，首个变更 `spec/changes/add-microservice-skeleton/` 只交付**可编译、可一键启动的空壳骨架**，
+本仓库由 openspec 规范驱动，首个变更 `spec/changes/archive/add-microservice-skeleton/` 只交付**可编译、可一键启动的空壳骨架**，
 校验引擎、好友、点赞、排行榜等业务需求在后续变更中逐周叠加。
 
 ## 架构总览
@@ -73,7 +73,7 @@ java -jar mapmatch-service/target/sport-verify-mapmatch-service-0.1.0-SNAPSHOT.j
 | 中间件健康 | `docker compose ps` | 6 个容器 `healthy`（含 postgis） |
 | 注册可见 | 浏览器打开 `http://127.0.0.1:8848/nacos` 服务列表 | 6 个服务各 1 实例 |
 | 网关路由 | `curl -H "X-Internal-Token: local-demo-internal-token" http://127.0.0.1:8080/user/internal/health` | `{"code":0,"message":"success","data":"user-service is alive"}` |
-| Feign 探活 | `curl http://127.0.0.1:8080/verify/internal/probe/record` | `"record-service is alive"`（verify→record 跨服务调用） |
+| Feign 探活 | `curl -H "X-Internal-Token: local-demo-internal-token" http://127.0.0.1:8080/verify/internal/probe/record` | `"record-service is alive"`（verify→record 跨服务调用） |
 | 榜单查询 | `curl http://127.0.0.1:8080/leaderboard/api/leaderboard?type=overall` | `{"code":0,...,"data":[...]}`（总榜；`type=friend&userId=` 查好友榜） |
 | 路网匹配 | `curl -X POST http://127.0.0.1:8080/mapmatch/match -H 'Content-Type: application/json' -d '{"points":[{"seq":0,"lat":31.23,"lng":121.4626,"ts":1700000000000},{"seq":1,"lat":31.2293,"lng":121.4627,"ts":1700000165000},{"seq":2,"lat":31.2287,"lng":121.4628,"ts":1700000428000}]}'` | `data.offRoadRatio≈0`（点位在南北高架路上，悬浮点位如黄浦江江心则 ≈1） |
 
@@ -185,7 +185,7 @@ JVM 堆已用/上限、GC 暂停速率、HikariCP 连接池、JVM 线程数；�
 
 冒烟实录（同一 5.8 m/s 轨迹，基线阈值 5.5 / 灰度快照 6.6，走 提交→MQ→校验 真实链路）：灰度 10% 时
 userId=105（%100=5）PASSED、userId=150 REJECTED；回滚置 0 后 105 立即 REJECTED；全量后 150 也 PASSED。
-完整实录见 [交付说明](spec/changes/add-rule-grayscale/交付说明.md)。
+完整实录见 [交付说明](spec/changes/archive/add-rule-grayscale/交付说明.md)。
 
 ## 运动类型阈值分级（骑行误拦治理，规范「阈值按类型分维度」，见 [ADR-0004](docs/adr/0004-规则灰度发布.md) §5）
 
