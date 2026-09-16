@@ -49,7 +49,7 @@ import static org.mockito.Mockito.when;
  * <p>纯 Mockito：Mapper / RecordEventProducer / VerifyApi / VerifyDegradeService 全部 mock；
  * 不依赖 MySQL / Redis / RocketMQ。由于 {code submit} 内部调用
  * TransactionSynchronizationManager.registerSynchronization，测试需先 initSynchronization
- * 并手动触发 afterCommit，以覆盖提交成功后的「发事件 → 成功 / Feign 直调 / 熔断转人工」分支。</p>
+ * 并手动触发 afterCommit，以覆盖提交成功后的「异步发事件 → 成功不降级 / 失败回调 Feign 直调 / 熔断转人工」分支。</p>
  */
 class SportRecordServiceTest {
 
@@ -97,6 +97,21 @@ class SportRecordServiceTest {
         }).when(sportRecordMapper).insert(any(SportRecord.class));
     }
 
+    /** MQ 异步发送成功：不调用 onFailure */
+    private void stubPublishSuccess() {
+        doAnswer(inv -> null).when(recordEventProducer)
+                .publishSubmitted(anyLong(), anyLong(), any());
+    }
+
+    /** MQ 异步发送失败：立即执行 onFailure（单测不引入真 MQ） */
+    private void stubPublishFailure() {
+        doAnswer(inv -> {
+            Runnable onFailure = inv.getArgument(2);
+            onFailure.run();
+            return null;
+        }).when(recordEventProducer).publishSubmitted(anyLong(), anyLong(), any());
+    }
+
     private RecordSubmitDTO dto(int sz, Integer sportType) {
         RecordSubmitDTO dto = new RecordSubmitDTO();
         dto.setRequestId("req-1");
@@ -128,7 +143,7 @@ class SportRecordServiceTest {
         when(sportRecordMapper.selectByRequestId("req-1")).thenReturn(null);
         when(sportRecordMapper.updateStatus(100L, RecordStatus.SUBMITTED.getCode(),
                 RecordStatus.VERIFYING.getCode(), 0)).thenReturn(1);
-        when(recordEventProducer.publishSubmitted(100L, 100L)).thenReturn(true);
+        stubPublishSuccess();
         stubInsertReturnsId();
 
         inTx(() -> {
@@ -144,7 +159,7 @@ class SportRecordServiceTest {
         verify(trackPointMapper, times(2)).insert(any(TrackPoint.class));
         verify(sportRecordMapper).updateStatus(100L, RecordStatus.SUBMITTED.getCode(),
                 RecordStatus.VERIFYING.getCode(), 0);
-        verify(recordEventProducer).publishSubmitted(100L, 100L);
+        verify(recordEventProducer).publishSubmitted(eq(100L), eq(100L), any());
     }
 
     /** 默认/true → 走多值 insertBatch，不再逐条 insert */
@@ -154,7 +169,7 @@ class SportRecordServiceTest {
         when(sportRecordMapper.selectByRequestId("req-1")).thenReturn(null);
         when(sportRecordMapper.updateStatus(100L, RecordStatus.SUBMITTED.getCode(),
                 RecordStatus.VERIFYING.getCode(), 0)).thenReturn(1);
-        when(recordEventProducer.publishSubmitted(100L, 100L)).thenReturn(true);
+        stubPublishSuccess();
         stubInsertReturnsId();
 
         inTx(() -> {
@@ -178,7 +193,7 @@ class SportRecordServiceTest {
         inTx(() -> assertThrows(RuntimeException.class, () -> service.submit(dto(2, 1))), false);
 
         // 异常抛出前不会走到 registerSynchronization；即便 flush afterCommit 也不会有回调
-        verify(recordEventProducer, never()).publishSubmitted(anyLong(), anyLong());
+        verify(recordEventProducer, never()).publishSubmitted(anyLong(), anyLong(), any());
         verify(verifyApi, never()).triggerVerify(anyLong());
     }
 
@@ -251,7 +266,7 @@ class SportRecordServiceTest {
         when(sportRecordMapper.selectByRequestId("req-1")).thenReturn(null);
         when(sportRecordMapper.updateStatus(100L, RecordStatus.SUBMITTED.getCode(),
                 RecordStatus.VERIFYING.getCode(), 0)).thenReturn(1);
-        when(recordEventProducer.publishSubmitted(100L, 100L)).thenReturn(false);
+        stubPublishFailure();
         stubInsertReturnsId();
 
         inTx(() -> service.submit(dto(0, 1)), true);
@@ -266,7 +281,7 @@ class SportRecordServiceTest {
         when(sportRecordMapper.selectByRequestId("req-1")).thenReturn(null);
         when(sportRecordMapper.updateStatus(100L, RecordStatus.SUBMITTED.getCode(),
                 RecordStatus.VERIFYING.getCode(), 0)).thenReturn(1);
-        when(recordEventProducer.publishSubmitted(100L, 100L)).thenReturn(false);
+        stubPublishFailure();
         when(verifyApi.triggerVerify(100L)).thenThrow(new RuntimeException("verify 熔断 OPEN"));
         stubInsertReturnsId();
 
