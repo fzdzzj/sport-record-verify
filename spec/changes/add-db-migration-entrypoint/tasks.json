@@ -42,9 +42,9 @@
     "category": "阶段 5：验收",
     "task": "幂等重跑与公开文档口径自检",
     "steps": [
-      { "step": "对已有库执行 migrate.sh 两次：第二次仍 0 退出且不破坏既有结构", "completed": false },
-      { "step": "按 .github/workflows/ci.yml 的 Public docs wording self-check 跑一遍，本次改动的 md 零命中；不要把禁用词写进任何 md", "completed": false }
+      { "step": "对已有库执行 migrate.sh 两次：第二次仍 0 退出且不破坏既有结构", "completed": true },
+      { "step": "按 .github/workflows/ci.yml 的 Public docs wording self-check 跑一遍，本次改动的 md 零命中；不要把禁用词写进任何 md", "completed": true }
     ],
-    "passes": false
+    "passes": true
   }
 ]
