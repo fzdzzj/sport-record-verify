@@ -32,7 +32,7 @@
     "category": "阶段 4：冒烟断言",
     "task": "用登录探测拦住 schema 漂移",
     "steps": [
-      { "step": "新增 scripts/smoke/smoke-schema.sh：经网关 POST /api/auth/login 错误凭据；硬失败 500/9999；通过 401+1001；502/503 提示服务未就绪；403/1002 提示账号锁定。不要依赖 jq，不要加内部凭证头", "completed": false },
+      { "step": "新增 scripts/smoke/smoke-schema.sh：经网关 POST /api/auth/login 错误凭据；硬失败 500/9999；通过 401+1001；502/503 提示服务未就绪；403/1002 提示账号锁定。不要依赖 jq，不要加内部凭证头", "completed": true },
       { "step": "scripts/smoke/README.md 把 smoke-schema.sh 列为执行顺序第 0 步（前置，不依赖灰度版本号），写清上述四分判据", "completed": false }
     ],
     "passes": false
