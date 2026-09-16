@@ -17,6 +17,8 @@ import org.redisson.api.RedissonClient;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.PlatformTransactionManager;
+import org.springframework.transaction.support.TransactionTemplate;
 
 import java.time.LocalDateTime;
 import java.util.ArrayList;
@@ -56,6 +58,8 @@ public class RecordLikeService {
     private final StringRedisTemplate stringRedisTemplate;
     private final RedissonClient redissonClient;
     private final ObjectMapper objectMapper;
+    /** 仅用于 flush 两写同进退；热路径 like/unlike 不走事务（见 ADR-0009） */
+    private final PlatformTransactionManager transactionManager;
 
     // ==================== Redis 键与常量 ====================
 
@@ -185,8 +189,11 @@ public class RecordLikeService {
      *       与好友互加/榜单定时任务同款）→ 多实例仅一个执行，其余跳过本轮；</li>
      *   <li>LRANGE 取一批 pending → 按 (record_id,user_id) 去重取<b>末次动作</b>
      *       （同批内 like→unlike 净删、unlike→like 净插）→ 批量 INSERT IGNORE / DELETE；</li>
-     *   <li><b>落库成功才 LTRIM</b> 消费掉这批：DB 失败则整批保留，下一轮重放
-     *       （flush 幂等：INSERT IGNORE 撞主键跳过、DELETE 无行可删）；</li>
+     *   <li>同一批 {@code batchInsertIgnore} + {@code batchDelete} 经 {@link TransactionTemplate}
+     *       同一本地事务同进退（ADR-0009 唯一补点）；</li>
+     *   <li><b>事务成功返回之后才 LTRIM</b> 消费队列：DB 任一侧失败则整批回滚且不裁剪，
+     *       下一轮重放（flush 幂等：INSERT IGNORE 撞主键跳过、DELETE 无行可删）。
+     *       禁止把含 trim 的方法直接标 {@code @Transactional}，以免裁剪发生在 commit 前；</li>
      * </ul>
      */
     @Scheduled(fixedDelay = FLUSH_FIXED_DELAY_MS, initialDelay = FLUSH_INITIAL_DELAY_MS)
@@ -220,13 +227,17 @@ public class RecordLikeService {
                 l.setCreatedAt(now);
                 (op.action() == Action.LIKE ? likes : unlikes).add(l);
             }
-            if (!likes.isEmpty()) {
-                recordLikeMapper.batchInsertIgnore(likes);   // 联合主键冲突自动跳过（幂等）
-            }
-            if (!unlikes.isEmpty()) {
-                recordLikeMapper.batchDelete(unlikes);       // 无行可删天然幂等
-            }
-            // —— 落库成功才消费队列；失败抛异常 → 整批保留重试
+            // —— 两 DB 写同一本地事务；trim 必须在事务成功返回之后（ADR-0009）
+            TransactionTemplate tx = new TransactionTemplate(transactionManager);
+            tx.executeWithoutResult(status -> {
+                if (!likes.isEmpty()) {
+                    recordLikeMapper.batchInsertIgnore(likes);   // 联合主键冲突自动跳过（幂等）
+                }
+                if (!unlikes.isEmpty()) {
+                    recordLikeMapper.batchDelete(unlikes);       // 无行可删天然幂等
+                }
+            });
+            // 事务已成功提交，才裁剪 pending；失败抛异常 → 不 trim、整批保留重试
             trimConsumed(raw.size());
             log.info("flush 落库完成：点赞 {} 条、取消 {} 条", likes.size(), unlikes.size());
         } finally {

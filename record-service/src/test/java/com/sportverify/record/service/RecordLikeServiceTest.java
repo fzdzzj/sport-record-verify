@@ -17,6 +17,10 @@ import org.springframework.data.redis.core.ListOperations;
 import org.springframework.data.redis.core.SetOperations;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.data.redis.core.ValueOperations;
+import org.springframework.transaction.PlatformTransactionManager;
+import org.springframework.transaction.TransactionDefinition;
+import org.springframework.transaction.TransactionStatus;
+import org.springframework.transaction.support.SimpleTransactionStatus;
 
 import java.util.List;
 import java.util.concurrent.TimeUnit;
@@ -50,6 +54,7 @@ class RecordLikeServiceTest {
     private ListOperations<String, String> listOps;
     private RedissonClient redissonClient;
     private RLock lock;
+    private PlatformTransactionManager transactionManager;
     private RecordLikeService service;
 
     @BeforeEach
@@ -71,7 +76,13 @@ class RecordLikeServiceTest {
         doReturn(true).when(lock).tryLock(anyLong(), anyLong(), any(TimeUnit.class));
         when(redissonClient.getLock(anyString())).thenReturn(lock);
 
-        service = new RecordLikeService(sportRecordMapper, recordLikeMapper, redis, redissonClient, new ObjectMapper());
+        // stub 本地事务：execute 同步跑回调并 commit（不启真库，见 ADR-0009）
+        transactionManager = mock(PlatformTransactionManager.class);
+        when(transactionManager.getTransaction(any(TransactionDefinition.class)))
+                .thenAnswer(inv -> new SimpleTransactionStatus());
+
+        service = new RecordLikeService(sportRecordMapper, recordLikeMapper, redis, redissonClient,
+                new ObjectMapper(), transactionManager);
     }
 
     // ==================== 点赞（前置校验 + 幂等 T9） ====================
