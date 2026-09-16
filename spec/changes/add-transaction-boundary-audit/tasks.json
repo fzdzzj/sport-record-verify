@@ -1,0 +1,50 @@
+[
+  {
+    "number": 1,
+    "category": "阶段 1：ADR",
+    "task": "落盘 ADR-0009 分类表",
+    "steps": [
+      { "step": "新增 docs/adr/0009-事务边界.md：按提案分类表对照代码复核后落盘；写明禁止事项与 reviewAppeal 残余；编号以文件 0009 为准", "completed": false }
+    ],
+    "passes": false
+  },
+  {
+    "number": 2,
+    "category": "阶段 2：唯一代码改动",
+    "task": "flush 两写同一本地事务，队列裁剪在成功之后",
+    "steps": [
+      { "step": "RecordLikeService.flushPendingLikes：用 TransactionTemplate（或等价代理）只包裹 batchInsertIgnore 与 batchDelete；trimConsumed 必须在事务成功返回之后。禁止把含 trim 的方法直接标事务注解", "completed": false }
+    ],
+    "passes": false
+  },
+  {
+    "number": 3,
+    "category": "阶段 3：回滚向测试",
+    "task": "锁住该原子 / 不该原子的行为",
+    "steps": [
+      { "step": "SportRecordServiceTest：轨迹点 insert 抛错时不走 afterCommit 发 MQ", "completed": false },
+      { "step": "RecordLikeServiceTest：batchDelete 抛错则不裁剪队列；插入与删除经由事务模板同进退（mock 抛错即可）", "completed": false },
+      { "step": "FriendServiceTest 或注释锁定 accept 两写在同一事务方法内；不引入真库", "completed": false }
+    ],
+    "passes": false
+  },
+  {
+    "number": 4,
+    "category": "阶段 4：禁止项注释",
+    "task": "在热路径写清为什么没有本地事务",
+    "steps": [
+      { "step": "AuthService.register、RecordLikeService.like/unlike、LeaderboardService.applyVerified/rollbackOnRejected、VerifyService.verify/reviewAppeal 补中文注释，指向 ADR-0009。不改行为", "completed": false }
+    ],
+    "passes": false
+  },
+  {
+    "number": 5,
+    "category": "阶段 5：文档与验收",
+    "task": "速览同步 + 编译测试",
+    "steps": [
+      { "step": "docs/项目速览手册.md 补一句：本地事务只覆盖必须原子的多行 DB 写，点赞/榜单/跨服务保持最终一致（见 ADR-0009）", "completed": false },
+      { "step": "JDK21 跑受影响模块测试；服务在跑则加 spring-boot.repackage.skip。公开 md 口径自检走 ci.yml 已有 step，不要把禁用词写进 md", "completed": false }
+    ],
+    "passes": false
+  }
+]
