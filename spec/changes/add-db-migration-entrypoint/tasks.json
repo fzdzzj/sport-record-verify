@@ -1,0 +1,50 @@
+[
+  {
+    "number": 1,
+    "category": "阶段 1：迁移入口",
+    "task": "新增存量库迁移执行脚本",
+    "steps": [
+      { "step": "新增 scripts/db/migrate.sh：只遍历 sql/migrations/*.sql（禁止 sql/0*.sql），按文件名顺序 docker exec -i 注入；环境变量 MYSQL_CONTAINER/MYSQL_USER/MYSQL_PASSWORD 默认 sport-verify-mysql/root/root；容器不存在或不健康则非 0 退出并提示先 docker compose up -d；失败即停并打印每个文件结果", "completed": false }
+    ],
+    "passes": false
+  },
+  {
+    "number": 2,
+    "category": "阶段 2：迁移约定",
+    "task": "写明新建库 vs 存量库两条路径",
+    "steps": [
+      { "step": "新增 sql/migrations/README.md：新建库走 sql/0*.sql（initdb.d 仅首次）；存量库必须跑 migrate.sh；禁止把 migrations 挂进 initdb.d；说明 add-idx-record-seq 与无索引压测基线的关系", "completed": false }
+    ],
+    "passes": false
+  },
+  {
+    "number": 3,
+    "category": "阶段 3：文档入口",
+    "task": "README / 速览补已有库升级",
+    "steps": [
+      { "step": "根 README「快速开始」在 docker compose up -d 之后增加 bash scripts/db/migrate.sh，写明 initdb.d 仅首次生效；「冒烟验证」表增加登录探测行（通过=401+1001，硬失败=500/9999，403/503 不得写成缺列）", "completed": false },
+      { "step": "docs/项目速览手册.md 目录树/sql 口径改为建表脚本 + migrations 存量升级入口", "completed": false }
+    ],
+    "passes": false
+  },
+  {
+    "number": 4,
+    "category": "阶段 4：冒烟断言",
+    "task": "用登录探测拦住 schema 漂移",
+    "steps": [
+      { "step": "新增 scripts/smoke/smoke-schema.sh：经网关 POST /api/auth/login 错误凭据；硬失败 500/9999；通过 401+1001；502/503 提示服务未就绪；403/1002 提示账号锁定。不要依赖 jq，不要加内部凭证头", "completed": false },
+      { "step": "scripts/smoke/README.md 把 smoke-schema.sh 列为执行顺序第 0 步（前置，不依赖灰度版本号），写清上述四分判据", "completed": false }
+    ],
+    "passes": false
+  },
+  {
+    "number": 5,
+    "category": "阶段 5：验收",
+    "task": "幂等重跑与公开文档口径自检",
+    "steps": [
+      { "step": "对已有库执行 migrate.sh 两次：第二次仍 0 退出且不破坏既有结构", "completed": false },
+      { "step": "按 .github/workflows/ci.yml 的 Public docs wording self-check 跑一遍，本次改动的 md 零命中；不要把禁用词写进任何 md", "completed": false }
+    ],
+    "passes": false
+  }
+]
