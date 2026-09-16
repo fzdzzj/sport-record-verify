@@ -285,8 +285,8 @@ public class SportRecordService {
         return type.getCode();
     }
 
-    /** 轨迹批量写入开关（压测「连接池调优案例」优化侧；默认关闭保留基线行为，对比复现后生产置 true） */
-    @Value("${record.track.batch-insert-enabled:false}")
+    /** 轨迹批量写入开关（ADR-0002 已验证优化路径；缺省 true 与 application.properties 一致，复现基线显式 false） */
+    @Value("${record.track.batch-insert-enabled:true}")
     private boolean batchInsertEnabled;
 
     /** 单批上限：一条多值 INSERT 至少 500 点，超长轨迹分批防止单语句过大 */
