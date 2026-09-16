@@ -18,12 +18,12 @@
     "category": "阶段 2：MQ 透传",
     "task": "Producer/Consumer 透传 traceId 并验收全链路日志",
     "steps": [
-      { "step": "RecordEventProducer / VerifyEventProducer 写 userProperty", "completed": false },
-      { "step": "VerifyEventConsumer / LeaderboardEventConsumer 还原 MDC", "completed": false },
-      { "step": "统一 VerifyEventConsumer 启动日志占位符；更新相关单测", "completed": false },
-      { "step": "commit 2：feat(tracing) MQ + 日志", "completed": false },
-      { "step": "真实提交链路日志证据（同一 traceId）", "completed": false }
+      { "step": "RecordEventProducer / VerifyEventProducer 写 userProperty", "completed": true },
+      { "step": "VerifyEventConsumer / LeaderboardEventConsumer 还原 MDC", "completed": true },
+      { "step": "统一 VerifyEventConsumer 启动日志占位符；更新相关单测", "completed": true },
+      { "step": "commit 2：feat(tracing) MQ + 日志", "completed": true },
+      { "step": "真实提交链路日志证据（同一 traceId）", "completed": true }
     ],
-    "passes": false
+    "passes": true
   }
 ]

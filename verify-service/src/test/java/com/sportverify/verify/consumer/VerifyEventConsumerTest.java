@@ -67,6 +67,7 @@ class VerifyEventConsumerTest {
         MessageExt msg = mock(MessageExt.class);
         when(msg.getBody()).thenReturn(body.getBytes(StandardCharsets.UTF_8));
         when(msg.getMsgId()).thenReturn("msg-1");
+        when(msg.getUserProperty(anyString())).thenReturn(null);
         return msg;
     }
 
@@ -95,6 +96,7 @@ class VerifyEventConsumerTest {
     void handleMessage_unparseableBody_discards() throws Exception {
         MessageExt msg = mock(MessageExt.class);
         when(msg.getBody()).thenReturn("not-json".getBytes(StandardCharsets.UTF_8));
+        when(msg.getUserProperty(anyString())).thenReturn(null);
 
         ReflectionTestUtils.invokeMethod(consumer, "handleMessage", msg);
 

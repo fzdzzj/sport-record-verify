@@ -3,6 +3,7 @@ package com.sportverify.leaderboard.mq;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.sportverify.api.event.RecordVerifyEvents;
 import com.sportverify.api.event.VerifyEventDTO;
+import com.sportverify.common.trace.TraceIds;
 import com.sportverify.leaderboard.service.LeaderboardService;
 import jakarta.annotation.PostConstruct;
 import jakarta.annotation.PreDestroy;
@@ -145,42 +146,50 @@ public class LeaderboardEventConsumer {
         }
     }
 
-    /** 单条消息处理：解析 → 去重 → 按事件类型分发；失败时按重试计数决定重投或进 DLQ */
+    /** 单条消息处理：还原 traceId → 解析 → 去重 → 按事件类型分发；失败时按重试计数决定重投或进 DLQ */
     private void handleMessage(MessageExt message) throws Exception {
-        String body = new String(message.getBody(), StandardCharsets.UTF_8);
-        VerifyEventDTO event;
+        String traceId = TraceIds.resolveOrCreate(message.getUserProperty(TraceIds.HEADER));
+        TraceIds.put(traceId);
         try {
-            event = objectMapper.readValue(body, VerifyEventDTO.class);
-        } catch (Exception e) {
-            // 无法解析的消息直接 ack 丢弃并告警（避免无限重试）
-            log.error("榜单事件体解析失败，丢弃：{}", body, e);
-            return;
-        }
-        try {
-            // 1) 事件幂等：eventId SETNX，重复投递直接跳过（规范差异「事件幂等」）
-            RBucket<String> bucket = redissonClient.getBucket(dedupKey(event.getEventId()));
-            boolean first = bucket.trySet("1", DEDUP_TTL_HOURS, TimeUnit.HOURS);
-            if (!first) {
-                log.info("重复榜单事件已消费过，跳过：eventId={}", event.getEventId());
+            String body = new String(message.getBody(), StandardCharsets.UTF_8);
+            VerifyEventDTO event;
+            try {
+                event = objectMapper.readValue(body, VerifyEventDTO.class);
+            } catch (Exception e) {
+                // 无法解析的消息直接 ack 丢弃并告警（避免无限重试）
+                log.error("榜单事件体解析失败，丢弃：{}", body, e);
                 return;
             }
-            // 2) 按 eventType 分发：VERIFIED 入榜 / REJECTED 回滚（锚点行状态机兜底幂等）
-            if (RecordVerifyEvents.EVENT_VERIFIED.equals(event.getEventType())) {
-                leaderboardService.applyVerified(event.getRecordId());
-            } else if (RecordVerifyEvents.EVENT_REJECTED.equals(event.getEventType())) {
-                leaderboardService.rollbackOnRejected(event.getRecordId());
-            } else {
-                log.warn("未知榜单事件类型，跳过：eventId={}, eventType={}",
-                        event.getEventId(), event.getEventType());
+            try {
+                // 1) 事件幂等：eventId SETNX，重复投递直接跳过（规范差异「事件幂等」）
+                RBucket<String> bucket = redissonClient.getBucket(dedupKey(event.getEventId()));
+                boolean first = bucket.trySet("1", DEDUP_TTL_HOURS, TimeUnit.HOURS);
+                if (!first) {
+                    log.info("重复榜单事件已消费过，跳过：eventId={}", event.getEventId());
+                    return;
+                }
+                // 2) 按 eventType 分发：VERIFIED 入榜 / REJECTED 回滚（锚点行状态机兜底幂等）
+                log.info("消费榜单事件：eventType={}, eventId={}, recordId={}, traceId={}",
+                        event.getEventType(), event.getEventId(), event.getRecordId(), traceId);
+                if (RecordVerifyEvents.EVENT_VERIFIED.equals(event.getEventType())) {
+                    leaderboardService.applyVerified(event.getRecordId());
+                } else if (RecordVerifyEvents.EVENT_REJECTED.equals(event.getEventType())) {
+                    leaderboardService.rollbackOnRejected(event.getRecordId());
+                } else {
+                    log.warn("未知榜单事件类型，跳过：eventId={}, eventType={}",
+                            event.getEventId(), event.getEventType());
+                }
+            } catch (Exception e) {
+                // 3) 失败处理：删除去重键放行重投；超阈值投递死信队列（规范「失败进死信」）
+                deleteDedupKey(event.getEventId());
+                if (markRetryAndExceed(event.getEventId())) {
+                    sendToDlq(event, message, e);
+                    return; // 已进 DLQ，视为处理完成，避免无限重试
+                }
+                throw new RuntimeException("榜单事件消费失败，等待重试：recordId=" + event.getRecordId(), e);
             }
-        } catch (Exception e) {
-            // 3) 失败处理：删除去重键放行重投；超阈值投递死信队列（规范「失败进死信」）
-            deleteDedupKey(event.getEventId());
-            if (markRetryAndExceed(event.getEventId())) {
-                sendToDlq(event, message, e);
-                return; // 已进 DLQ，视为处理完成，避免无限重试
-            }
-            throw new RuntimeException("榜单事件消费失败，等待重试：recordId=" + event.getRecordId(), e);
+        } finally {
+            TraceIds.clear();
         }
     }
 

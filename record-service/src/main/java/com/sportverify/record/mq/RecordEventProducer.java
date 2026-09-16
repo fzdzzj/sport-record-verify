@@ -3,9 +3,11 @@ package com.sportverify.record.mq;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.sportverify.api.event.RecordVerifyEvents;
 import com.sportverify.api.event.VerifyEventDTO;
+import com.sportverify.common.trace.TraceIds;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.rocketmq.spring.core.RocketMQTemplate;
+import org.springframework.messaging.support.MessageBuilder;
 import org.springframework.stereotype.Component;
 
 import java.time.LocalDateTime;
@@ -15,7 +17,8 @@ import java.util.UUID;
  * 记录事件生产者（RocketMQ，规范「校验事件与幂等」）。
  *
  * <p>提交成功并迁移 VERIFYING 后发布 SUBMITTED 事件，由 verify-service 消费
- * 触发「拉轨迹 → 判定 → 回调」校验闭环。</p>
+ * 触发「拉轨迹 → 判定 → 回调」校验闭环。发送时把当前 MDC traceId 写入消息 userProperty，
+ * 供消费侧还原（add-request-tracing）。</p>
  */
 @Slf4j
 @Component
@@ -41,11 +44,17 @@ public class RecordEventProducer {
                 RecordVerifyEvents.EVENT_SUBMITTED,
                 LocalDateTime.now());
         try {
-            // Tag 区分事件类型；消息体为 JSON（rocketmq-spring 默认 Jackson 转换器）
+            String payload = objectMapper.writeValueAsString(event);
+            var builder = MessageBuilder.withPayload(payload);
+            String traceId = TraceIds.current();
+            if (traceId != null && !traceId.isBlank()) {
+                builder.setHeader(TraceIds.HEADER, traceId);
+            }
+            // Tag 区分事件类型；消息体为 JSON；traceId 经 header → RocketMQ userProperty
             rocketMQTemplate.syncSend(
                     RecordVerifyEvents.TOPIC + ":" + RecordVerifyEvents.TAG_SUBMITTED,
-                    objectMapper.writeValueAsString(event));
-            log.info("已发布 SUBMITTED 事件：recordId={}, userId={}", recordId, userId);
+                    builder.build());
+            log.info("已发布 SUBMITTED 事件：recordId={}, userId={}, traceId={}", recordId, userId, traceId);
             return true;
         } catch (Exception e) {
             // 发送失败不阻断提交（记录已落库）；由调用方降级 Feign 直调触发校验

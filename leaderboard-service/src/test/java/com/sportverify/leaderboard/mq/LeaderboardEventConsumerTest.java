@@ -68,6 +68,7 @@ class LeaderboardEventConsumerTest {
         MessageExt msg = mock(MessageExt.class);
         when(msg.getBody()).thenReturn(body.getBytes(StandardCharsets.UTF_8));
         when(msg.getMsgId()).thenReturn("msg-x");
+        when(msg.getUserProperty(anyString())).thenReturn(null);
         return msg;
     }
 

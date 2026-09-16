@@ -3,6 +3,7 @@ package com.sportverify.verify.consumer;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.sportverify.api.event.RecordVerifyEvents;
 import com.sportverify.api.event.VerifyEventDTO;
+import com.sportverify.common.trace.TraceIds;
 import com.sportverify.verify.service.VerifyService;
 import jakarta.annotation.PostConstruct;
 import jakarta.annotation.PreDestroy;
@@ -144,8 +145,7 @@ public class VerifyEventConsumer {
         });
         c.start();
         this.consumer = c;
-        log.info("SUBMITTED 事件消费者已启动：topic={}, tag={}, group={}, namesrv={}, " +
-                        "consumeThread={}/{} batchMaxSize={} pullIntervalMs={}",
+        log.info("SUBMITTED 事件消费者已启动：topic={}, tag={}, group={}, namesrv={}, consumeThread={}/{} batchMaxSize={} pullIntervalMs={}",
                 RecordVerifyEvents.TOPIC, RecordVerifyEvents.TAG_SUBMITTED, consumerGroup, ns,
                 consumeThreadMin, consumeThreadMax, consumeMessageBatchMaxSize, pullIntervalMs);
     }
@@ -161,37 +161,46 @@ public class VerifyEventConsumer {
         }
     }
 
-    /** 单条消息处理：解析 → 去重 → 校验；失败时按重试计数决定重投或进 DLQ */
+    /** 单条消息处理：还原 traceId → 解析 → 去重 → 校验；失败时按重试计数决定重投或进 DLQ */
     private void handleMessage(MessageExt message) throws Exception {
-        String body = new String(message.getBody(), StandardCharsets.UTF_8);
-        VerifyEventDTO event;
+        String traceId = TraceIds.resolveOrCreate(message.getUserProperty(TraceIds.HEADER));
+        TraceIds.put(traceId);
         try {
-            event = objectMapper.readValue(body, VerifyEventDTO.class);
-        } catch (Exception e) {
-            // 无法解析的消息直接 ack 丢弃并告警（避免无限重试）
-            log.error("事件体解析失败，丢弃：{}", body, e);
-            return;
-        }
-        try {
-            // 1) 事件幂等：eventId SETNX，重复投递直接跳过（规范「事件幂等消费」）
-            RBucket<String> bucket = redissonClient.getBucket(dedupKey(event.getEventId()));
-            boolean first = bucket.trySet("1", DEDUP_TTL_HOURS, TimeUnit.HOURS);
-            if (!first) {
-                log.info("重复事件已消费过，跳过：eventId={}", event.getEventId());
+            String body = new String(message.getBody(), StandardCharsets.UTF_8);
+            VerifyEventDTO event;
+            try {
+                event = objectMapper.readValue(body, VerifyEventDTO.class);
+            } catch (Exception e) {
+                // 无法解析的消息直接 ack 丢弃并告警（避免无限重试）
+                log.error("事件体解析失败，丢弃：{}", body, e);
                 return;
             }
-            // 2) 业务执行：拉轨迹 → 预处理+R1-R4 → 判定落库 → 回调（recordId 幂等兜底）
-            verifyService.verify(event.getRecordId());
-        } catch (Exception e) {
-            // 3) 失败处理：删除去重键放行重投；超阈值投递死信队列（规范「失败进死信」）
-            deleteDedupKey(event.getEventId());
-            if (markRetryAndExceed(event.getEventId())) {
-                sendToDlq(event, message, e);
-                return; // 已进 DLQ，视为处理完成，避免无限重试
+            try {
+                // 1) 事件幂等：eventId SETNX，重复投递直接跳过（规范「事件幂等消费」）
+                RBucket<String> bucket = redissonClient.getBucket(dedupKey(event.getEventId()));
+                boolean first = bucket.trySet("1", DEDUP_TTL_HOURS, TimeUnit.HOURS);
+                if (!first) {
+                    log.info("重复事件已消费过，跳过：eventId={}", event.getEventId());
+                    return;
+                }
+                // 2) 触发校验（内部再以 verification_result 主键幂等兜底）
+                log.info("消费 SUBMITTED 事件：eventId={}, recordId={}, traceId={}",
+                        event.getEventId(), event.getRecordId(), traceId);
+                verifyService.verify(event.getRecordId());
+            } catch (Exception e) {
+                // 3) 失败处理：删除去重键放行重投；超阈值投递死信队列（规范「失败进死信」）
+                deleteDedupKey(event.getEventId());
+                if (markRetryAndExceed(event.getEventId())) {
+                    sendToDlq(event, message, e);
+                    return; // 已进 DLQ，视为处理完成，避免无限重试
+                }
+                throw new RuntimeException("校验事件消费失败，等待重试：recordId=" + event.getRecordId(), e);
             }
-            throw new RuntimeException("校验消费失败，等待重试：recordId=" + event.getRecordId(), e);
+        } finally {
+            TraceIds.clear();
         }
     }
+
 
     /** 去重键：verify:event:{eventId} */
     private String dedupKey(String eventId) {
