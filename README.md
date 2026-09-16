@@ -60,13 +60,14 @@ bash scripts/mapmatch/import-road-network.sh
 # 3. 全量编译打包（父工程 + 8 个子模块）
 mvn clean install
 
-# 4. 启动六个服务（各开一个终端）
-java -jar gateway-service/target/sport-verify-gateway-service-0.1.0-SNAPSHOT.jar
-java -jar user-service/target/sport-verify-user-service-0.1.0-SNAPSHOT.jar
-java -jar record-service/target/sport-verify-record-service-0.1.0-SNAPSHOT.jar
-java -jar verify-service/target/sport-verify-verify-service-0.1.0-SNAPSHOT.jar
-java -jar leaderboard-service/target/sport-verify-leaderboard-service-0.1.0-SNAPSHOT.jar
-java -jar mapmatch-service/target/sport-verify-mapmatch-service-0.1.0-SNAPSHOT.jar
+# 4. 启动六个服务（各开一个终端；可选 G1 停顿目标，禁止 -Xms1g/-Xmx1g）
+#    export JAVA_OPTS="-XX:MaxGCPauseMillis=50"   # Windows PowerShell: $env:JAVA_OPTS="..."
+java $JAVA_OPTS -jar gateway-service/target/sport-verify-gateway-service-0.1.0-SNAPSHOT.jar
+java $JAVA_OPTS -jar user-service/target/sport-verify-user-service-0.1.0-SNAPSHOT.jar
+java $JAVA_OPTS -jar record-service/target/sport-verify-record-service-0.1.0-SNAPSHOT.jar
+java $JAVA_OPTS -jar verify-service/target/sport-verify-verify-service-0.1.0-SNAPSHOT.jar
+java $JAVA_OPTS -jar leaderboard-service/target/sport-verify-leaderboard-service-0.1.0-SNAPSHOT.jar
+java $JAVA_OPTS -jar mapmatch-service/target/sport-verify-mapmatch-service-0.1.0-SNAPSHOT.jar
 ```
 
 > `java` 必须是 JDK 21（PATH 上是 JDK 8 时会报 UnsupportedClassVersionError，改用绝对路径如
