@@ -33,3 +33,20 @@ nohup "$JAVA_BIN" -jar verify-service/target/sport-verify-verify-service-0.1.0-S
 sleep 130
 echo "-- 恢复后状态分布（预期 2 PASSED / 3 REJECTED 为主，7 MANUAL_REVIEW 清零）--"
 $MYSQL -e "SELECT status, COUNT(*) FROM record_db.sport_record WHERE request_id LIKE 'lt%' GROUP BY status" 2>/dev/null
+
+
+echo "== 6. 停掉 user-service（好友榜降级验证：空榜口径，非 500 堆栈）=="
+powershell -NoProfile -Command "Get-CimInstance Win32_Process -Filter \"Name='java.exe'\" | Where-Object { \$_.CommandLine -match 'sport-verify-user-service' } | ForEach-Object { Stop-Process -Id \$_.ProcessId -Force; Write-Host ('  kill pid=' + \$_.ProcessId) }"
+sleep 3
+
+echo "== 7. 好友榜查询（预期 HTTP 200 + 空列表 / 明确业务结果，不是 500 堆栈）=="
+FRIEND_RESP=$(curl -s -w "\nHTTP_CODE:%{http_code}" "http://127.0.0.1:8080/leaderboard/api/leaderboard?type=friend&userId=1&size=10" || true)
+echo "$FRIEND_RESP" | tail -5
+echo "$FRIEND_RESP" | grep -q "HTTP_CODE:500" && echo "FAIL: 好友榜在 user-service 停机时返回 500" && exit 1 || true
+echo "-- leaderboard 降级日志 --"
+grep -a "空榜\|user-service 熔断降级\|好友列表拉取失败" logs/leaderboard.log | tail -6 || true
+
+echo "== 8. 恢复 user-service =="
+nohup "$JAVA_BIN" -jar user-service/target/sport-verify-user-service-0.1.0-SNAPSHOT.jar > logs/user.log 2>&1 &
+sleep 20
+echo "breaker-test 完成"

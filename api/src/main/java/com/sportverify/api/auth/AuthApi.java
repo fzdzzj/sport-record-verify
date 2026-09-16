@@ -21,8 +21,11 @@ import org.springframework.web.bind.annotation.RequestBody;
  *
  * <p>contextId 说明：UserApi 与 AuthApi 同指 user-service，OpenFeign 按 contextId 区分
  * 同名客户端的注册上下文，否则会因重复的 FeignClientSpecification bean 导致启动失败。</p>
+ *
+ * <p><b>不可软降级</b>（add-resilience-hardening）：不可伪造 token/注册成功，
+ * 见 {@link AuthApiFallback}。</p>
  */
-@FeignClient(name = "user-service", contextId = "authApi", path = "/internal")
+@FeignClient(name = "user-service", contextId = "authApi", path = "/internal", fallbackFactory = AuthApiFallback.class)
 public interface AuthApi {
 
     /**

@@ -11,7 +11,7 @@ import lombok.Getter;
  *   <li>1xx：认证/授权（token、越权）</li>
  *   <li>2xx：用户域（注册、登录）</li>
  *   <li>3xx：记录域（不存在、无权、状态、幂等）</li>
- *   <li>4xx：校验服务降级</li>
+ *   <li>4xx：依赖服务降级 / 校验域</li>
  *   <li>5xx：好友域</li>
  *   <li>6xx：点赞域</li>
  *   <li>9999：系统兜底错误</li>
@@ -51,7 +51,7 @@ public enum ResultCode {
     /** 运动类型非法（枚举外取值，提交接口拒绝，规范「未知类型拒绝」） */
     SPORT_TYPE_INVALID(3007, "运动类型非法"),
 
-    // ===== 4xx 校验服务 =====
+    // ===== 4xx 依赖服务 / 校验域 =====
     /** 校验服务不可用（已降级转人工） */
     VERIFY_SERVICE_UNAVAILABLE(4001, "校验服务暂不可用，请稍后重试"),
     /** 规则版本不存在 */
@@ -62,6 +62,12 @@ public enum ResultCode {
     RULE_VERSION_CONFLICT(4004, "规则版本冲突"),
     /** 匹配服务不可用（mapmatch 熔断降级；R5 侧捕获后降级为不命中，不阻断校验） */
     MAPMATCH_SERVICE_UNAVAILABLE(4005, "匹配服务暂不可用"),
+    /** 用户服务不可用（好友榜读路径可降为空榜；认证写路径不可软降级） */
+    USER_SERVICE_UNAVAILABLE(4006, "用户服务暂不可用，请稍后重试"),
+    /** 记录服务不可用（verify 拉轨迹/回调不可软降级，须重试或进 DLQ） */
+    RECORD_SERVICE_UNAVAILABLE(4007, "记录服务暂不可用，请稍后重试"),
+    /** 榜单服务不可用（契约层显式失败，禁止假装成功） */
+    LEADERBOARD_SERVICE_UNAVAILABLE(4008, "榜单服务暂不可用，请稍后重试"),
 
     // ===== 5xx 好友域 =====
     /** 好友重复申请或已存在关系 */

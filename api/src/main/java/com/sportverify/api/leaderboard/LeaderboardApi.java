@@ -15,8 +15,11 @@ import java.util.List;
  * leaderboard-service，见 ADR-0005）。实现位于 leaderboard-service 的
  * InternalLeaderboardController（{@code /internal} 前缀），榜单查询
  * 供后续变更跨服务取数。</p>
+ *
+ * <p>降级决策（add-resilience-hardening）：契约层显式抛 4008（见 {@link LeaderboardApiFallback}），
+ * 不假装返回榜单；当前仓库无 Feign 消费方。</p>
  */
-@FeignClient(name = "leaderboard-service", path = "/internal")
+@FeignClient(name = "leaderboard-service", path = "/internal", fallbackFactory = LeaderboardApiFallback.class)
 public interface LeaderboardApi {
 
     /**

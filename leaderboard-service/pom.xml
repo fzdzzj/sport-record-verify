@@ -55,6 +55,11 @@
             <groupId>org.springframework.cloud</groupId>
             <artifactId>spring-cloud-starter-loadbalancer</artifactId>
         </dependency>
+        <!-- Feign 熔断：UserApi fallbackFactory 生效（add-resilience-hardening） -->
+        <dependency>
+            <groupId>org.springframework.cloud</groupId>
+            <artifactId>spring-cloud-starter-circuitbreaker-resilience4j</artifactId>
+        </dependency>
 
         <!-- 数据访问：MyBatis-Plus + MySQL（复用 record_db，贡献表 leaderboard_contribution
              仍在该库，与 record-service 共享；本服务对 sport_record 仅只读快照查询） -->

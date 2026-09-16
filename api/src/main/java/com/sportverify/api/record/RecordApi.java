@@ -23,8 +23,11 @@ import java.util.List;
  * 实现位于 record-service 的 InternalRecordController（{@code /internal} 前缀）。
  * 榜单查询契约已迁出至 {@link com.sportverify.api.leaderboard.LeaderboardApi}
  * （榜单职责独立为 leaderboard-service，服务数 4→5，见 ADR-0005）。</p>
+ *
+ * <p><b>不可软降级</b>（add-resilience-hardening）：判定强依赖轨迹与状态回调，
+ * {@link RecordApiFallback} 仅抛 4007 驱动重试/DLQ，禁止假装成功。</p>
  */
-@FeignClient(name = "record-service", path = "/internal")
+@FeignClient(name = "record-service", path = "/internal", fallbackFactory = RecordApiFallback.class)
 public interface RecordApi {
 
     /**

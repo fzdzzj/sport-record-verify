@@ -20,9 +20,12 @@ import java.util.List;
  *
  * <p>健康探活 + 好友域四接口（申请/同意/拒绝/列表）。
  * 实现位于 user-service 的 InternalHealthController 与 InternalFriendController
- * （{@code /internal} 前缀），好友列表供 record-service 后续好友榜过滤调用。</p>
+ * （{@code /internal} 前缀），好友列表供 leaderboard-service 好友榜过滤调用。</p>
+ *
+ * <p>降级决策（add-resilience-hardening）：读路径（好友列表/批量用户）可软降级为空，
+ * 好友榜产品口径为<b>空榜</b>而非「不过滤」；写路径不可软成功，见 {@link UserApiFallback}。</p>
  */
-@FeignClient(name = "user-service", path = "/internal")
+@FeignClient(name = "user-service", path = "/internal", fallbackFactory = UserApiFallback.class)
 public interface UserApi {
 
     /**

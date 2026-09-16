@@ -1,0 +1,83 @@
+[
+  {
+    "number": 1,
+    "category": "阶段 1：规范",
+    "task": "建立 openspec 变更目录与降级决策文档",
+    "steps": [
+      { "step": "创建 spec/changes/add-resilience-hardening/proposal.md（含降级决策理由）", "completed": true },
+      { "step": "编写 tasks.json", "completed": true },
+      { "step": "编写 specs/sport-record-verify/spec-delta.md", "completed": true }
+    ],
+    "passes": true
+  },
+  {
+    "number": 2,
+    "category": "阶段 2：Feign 超时",
+    "task": "统一全局 Feign 默认超时 1s/3s",
+    "steps": [
+      { "step": "record-service application.properties 增加 default connect/read，保留 verify-service 覆盖可选", "completed": true },
+      { "step": "verify-service application.yml 增加 default 超时", "completed": true },
+      { "step": "leaderboard-service application.yml 增加 Feign default 超时 + circuitbreaker", "completed": true },
+      { "step": "leaderboard-service 引入 resilience4j circuitbreaker 依赖", "completed": true }
+    ],
+    "passes": true
+  },
+  {
+    "number": 3,
+    "category": "阶段 3：Feign 降级",
+    "task": "补齐 fallbackFactory 与不可降级注释",
+    "steps": [
+      { "step": "ResultCode 新增 4006/4007/4008", "completed": true },
+      { "step": "UserApiFallback：读路径可降级语义 + 写路径抛 4006；契约注明空榜决策", "completed": true },
+      { "step": "RecordApiFallback：仅抛 4007，注释写明不可软降级", "completed": true },
+      { "step": "AuthApiFallback / LeaderboardApiFallback：显式业务失败", "completed": true },
+      { "step": "更新错误码表", "completed": true }
+    ],
+    "passes": true
+  },
+  {
+    "number": 4,
+    "category": "阶段 4：压测脚本",
+    "task": "扩展 breaker-test.sh 停 user-service 场景",
+    "steps": [
+      { "step": "增加停止 user-service 步骤", "completed": true },
+      { "step": "验证好友榜返回空榜/明确业务错误而非 500 堆栈", "completed": true }
+    ],
+    "passes": true
+  },
+  {
+    "number": 5,
+    "category": "阶段 5：内部凭证",
+    "task": "内部接口共享密钥头校验",
+    "steps": [
+      { "step": "common 增加 InternalApiAuthFilter + 配置项", "completed": true },
+      { "step": "api 增加 Feign RequestInterceptor 注入 X-Internal-Token", "completed": true },
+      { "step": "各服务 application 配置 app.internal.token 默认演示值", "completed": true },
+      { "step": "更新 InternalAuthController / ADR-0007 网内信任表述", "completed": true },
+      { "step": "单测：无密钥访问 /internal 被拒", "completed": true }
+    ],
+    "passes": true
+  },
+  {
+    "number": 6,
+    "category": "阶段 6：白名单与 actuator",
+    "task": "裁剪死配置白名单并写明生产 actuator 收敛",
+    "steps": [
+      { "step": "gateway whitelist 删除 /internal/**", "completed": true },
+      { "step": "更新 AuthGlobalFilter 注释与单测默认白名单", "completed": true },
+      { "step": "README / ADR 写明生产 actuator 收敛口径", "completed": true }
+    ],
+    "passes": true
+  },
+  {
+    "number": 7,
+    "category": "阶段 7：验收",
+    "task": "全量 mvn verify 与提交",
+    "steps": [
+      { "step": "mvn -B verify 全绿", "completed": false },
+      { "step": "commit1 feat(resilience): Feign 统一超时与降级决策对齐", "completed": false },
+      { "step": "commit2 fix(security): 内部接口加凭证校验并裁剪白名单", "completed": false }
+    ],
+    "passes": false
+  }
+]

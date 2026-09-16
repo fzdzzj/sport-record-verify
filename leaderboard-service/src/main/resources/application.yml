@@ -24,6 +24,15 @@ spring:
       config:
         server-addr: 127.0.0.1:8848
         file-extension: yml
+    # Feign 熔断（add-resilience-hardening）：UserApi 好友榜/昵称；读路径可软降级
+    openfeign:
+      circuitbreaker:
+        enabled: true
+      client:
+        config:
+          default:
+            connect-timeout: 1000
+            read-timeout: 3000
   # 数据源：复用 record_db（默认方案，最低改动，见提案「榜单数据依赖」）——
   # leaderboard_contribution 贡献表仍在该库，本服务读写；sport_record 仅只读快照查询
   # （状态/里程），写路径仍归 record-service，避免双写
@@ -66,6 +75,27 @@ app:
     # 默认 false 兼容本地调试与压测脚本；切换 true 前先验证验收项并更新压测脚本带 token
     # 说明：本服务只消费网关注入的身份（friend 榜 userId），不自行签发/校验 token
     enabled: false
+  internal:
+    # 内部接口共享密钥（add-resilience-hardening）：生产必须注入 INTERNAL_API_TOKEN
+    auth-enabled: true
+    token: ${INTERNAL_API_TOKEN:local-demo-internal-token}
+
+# Resilience4j：与 record/verify 同参数
+resilience4j:
+  circuitbreaker:
+    configs:
+      default:
+        sliding-window-type: COUNT_BASED
+        sliding-window-size: 10
+        minimum-number-of-calls: 5
+        failure-rate-threshold: 50
+        wait-duration-in-open-state: 10s
+        permitted-number-of-calls-in-half-open-state: 3
+  timelimiter:
+    configs:
+      default:
+        timeout-duration: 4s
+        cancel-running-future: true
 
 management:
   endpoints:

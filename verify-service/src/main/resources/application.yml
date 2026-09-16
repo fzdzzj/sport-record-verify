@@ -14,15 +14,17 @@ spring:
         server-addr: 127.0.0.1:8848
         file-extension: yml
     # Feign 熔断（规范「匹配降级」，沿用 record-service 已验证模式）：
-    # 开启后 MapMatchApi(Feign) 走 Resilience4j，mapmatch 不可用时 FallbackFactory 抛 4005，
-    # R5 捕获降级为不命中，校验主链路不挂。注：RecordApi 同被纳入熔断统计但无 fallback，
-    # 异常穿透语义不变（record 停机时仍由全局处理器兜底，OPEN 后快速失败反而减少等待）
+    # 开启后 MapMatchApi/RecordApi 走 Resilience4j：mapmatch Fallback 抛 4005（R5 不命中）；
+    # RecordApi 不可软降级，Fallback 抛 4007 驱动重试/DLQ（add-resilience-hardening）
     openfeign:
       circuitbreaker:
         enabled: true
-      # mapmatch 不可达时快速失败（R5 在校验链路内同步调用，读超时取 3s 与 record 侧口径一致）
+      # 全局默认超时 + mapmatch 显式覆盖（同值，便于检索）
       client:
         config:
+          default:
+            connect-timeout: 1000
+            read-timeout: 3000
           mapmatch-service:
             connect-timeout: 1000
             read-timeout: 3000
@@ -170,3 +172,8 @@ management:
   endpoint:
     health:
       show-details: always
+
+app:
+  internal:
+    auth-enabled: true
+    token: ${INTERNAL_API_TOKEN:local-demo-internal-token}

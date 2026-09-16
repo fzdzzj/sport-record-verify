@@ -224,8 +224,9 @@ public class LeaderboardService {
      * 好友榜（规范差异「好友榜查询」）：Feign 一次拉齐好友列表 → ZSet 按好友过滤
      * （内存过滤，不逐条远程调用；非好友与本人均被排除，只显示好友）。
      *
-     * <p>降级口径：user-service 不可用或无好友/好友均无 pass 里程 → 返回空榜
-     * （榜单是读热路径，可用性优先；Feign 异常记 warn 供排查）。</p>
+     * <p>降级口径（产品决策，add-resilience-hardening）：user-service 不可用 → <b>返回空榜</b>，
+     * 不选「不过滤」。不过滤会把总榜非好友泄露进好友榜（隐私/语义错误）；空榜仅短暂降级。
+     * UserApiFallback 对 listFriends 返回空页，或异常被本方法 catch 后同样空榜。</p>
      */
     public List<LeaderboardDTO> topFriends(Long userId, int size) {
         List<Long> friendIds;
