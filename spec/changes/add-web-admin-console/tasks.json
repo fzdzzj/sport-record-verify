@@ -1,0 +1,38 @@
+[
+  {
+    "number": 1,
+    "category": "阶段 1：入口与拒绝展示",
+    "task": "按 role 隐藏管理菜单，403 可见",
+    "steps": [
+      { "step": "role=ADMIN 才显示管理菜单；非管理员打开管理 URL 时展示 403/1002 信息，不伪造成功数据", "completed": true }
+    ],
+    "passes": true
+  },
+  {
+    "number": 2,
+    "category": "阶段 2：规则版本",
+    "task": "创建/灰度/全量",
+    "steps": [
+      { "step": "规则页调用既有 versions/gray/activate 接口；错误码 4002/4003/4004 展示 message", "completed": true }
+    ],
+    "passes": true
+  },
+  {
+    "number": 3,
+    "category": "阶段 3：终判",
+    "task": "按 appealId 终判",
+    "steps": [
+      { "step": "终判页输入 appealId，提交通过或维持拒绝；不新增申诉列表 API；不提供 grant-admin 页面", "completed": true }
+    ],
+    "passes": true
+  },
+  {
+    "number": 4,
+    "category": "阶段 4：文档与验收",
+    "task": "ADMIN 授予说明",
+    "steps": [
+      { "step": "README 说明 ADMIN 仅经内部接口授予，前端不暴露；口径自检；tasks.json 打勾", "completed": true }
+    ],
+    "passes": true
+  }
+]
