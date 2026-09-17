@@ -44,3 +44,95 @@ Axios 统一响应处理：`code === 0` 成功，否则抛出 `message`。
 - 参考技术栈选型来自同类工程，但代理与响应码严格按本仓规范（无 rewrite、code=0）。
 
 **口径自检**：已按 spec-delta 实现；未改 Java app.auth.enabled 默认；token 分别存储；仅 Bearer；README 强调演示开启鉴权。
+
+## 业务演示（add-web-record-console）
+
+**前提**：网关 + record-service + user-service + leaderboard-service + verify-service 运行中，**app.auth.enabled=true**（演示必须）。
+
+启动前端：
+```bash
+cd web
+pnpm install   # 如未装
+pnpm dev
+```
+访问 http://localhost:5173
+
+**演示顺序**（登录后）：
+1. 注册/登录（已有账号直接登录）。登录后顶部出现业务导航。
+2. 点击「提交记录」：
+   - 默认加载内置样例轨迹（TrackPointDTO 数组：seq/lat/lng/ts，10 点真实路网）。
+   - 选 sportType，自动生成 requestId。
+   - 点击提交 → POST /record/api/records 。
+   - 结果展示 recordId、status（0=SUBMITTED）；点击「保存到本会话」。
+3. 点击「判定/申诉/点赞」或从提交页跳转：
+   - 输入/从会话加载 recordId。
+   - 开始轮询 GET /record/api/records/{id}/verify-result 。
+   - **verdict=0**：显示「校验中」，继续每 3s 轮询，**不显示失败**。
+   - verdict=1 (PASSED)：显示通过 + score；下方可点赞/取消（POST/DELETE /record/api/records/{id}/like），显示 likeCount/liked。
+   - verdict=2 (REJECTED)：显示拒绝；可填理由提交申诉 POST /.../appeal 。
+4. 点赞测试：通过记录点赞成功；故意对未通过记录点赞 → 捕获 6001 错误并展示「未通过校验的记录不可点赞」，**不当作成功**。
+5. 「好友」页：
+   - 输入 targetUserId（可从榜单或手动提取 myUserId：提交后在提交页点「提取我的 userId」从 /points 取）。
+   - 发起申请 → 返回 request id + status。
+   - 用 request id 同意/拒绝。
+   - 刷新列表 GET /user/api/friends （仅 accepted）。
+   - 错误如 5001 直接展示 message。
+6. 「榜单」页：
+   - 切换 overall / friend ，查询 GET /leaderboard/api/leaderboard?type=... 。
+   - 展示 rank/nickname/distance；friend 榜空时正常空列表。
+7. 退出登录测试守卫。
+
+**无服务端「我的记录」列表限制**（诚实说明）：
+- 本变更**未使用/假装有**后端记录列表 API（record-service 暂无公开 /my-records 等）。
+- 提交页用 `sessionStorage` 记住**本次浏览器会话**内提交产生的 recordId 列表。
+- 刷新页面、关闭标签、换浏览器、清除存储后，记录 id 丢失，需重新提交或手动记下 id 再输入。
+- 演示时建议在同一会话内完成链路；README/页内均标注此限制。
+- 未来若加服务端列表，将另开变更。
+
+**已验证约束**：
+- 内置样例为 TrackPointDTO 数组，非 OSM 原始。
+- 提交等不伪造 userId（auth 下由网关 X-User-Id）。
+- 仅 web/ 页面 + API 封装 + README + tasks.json。
+- 无新 Java API、无管理端、无 ECharts/地图。
+
+**口径自检**：按 proposal 实现；tasks.json 已打勾；最多 1 次修复；未改 proposal/spec-delta。
+
+## 治理面控制台（add-web-admin-console）
+
+**前提**：网关 + verify-service + user-service 等运行，**app.auth.enabled=true**（演示必须）。有 ADMIN 角色用户（**前端不暴露 grant-admin 页面**）。
+
+登录后，顶部导航仅 role=ADMIN 时显示「规则版本」「申诉终判」（高亮 cyan）。
+
+**演示**：
+- 点击「规则版本」：
+  - 创建版本：输入 version/grayRatio（可选 rules JSON 快照）；POST /verify/rules/versions 。
+  - 调灰度：输入 id + grayRatio；PATCH /verify/rules/versions/{id}/gray （0=回滚）。
+  - 全量：输入 id；POST /verify/rules/versions/{id}/activate 。
+  - 展示返回 version 信息；4002/4003/4004 错误显示 `[code] message`。
+- 点击「申诉终判」：
+  - 手工输入 appealId（业务申诉后记下 id）。
+  - 输入 operator（如 admin）、recheckResult。
+  - 按钮「终判通过」或「维持拒绝」 → POST /admin/api/appeals/{id}/review {operator, pass, recheckResult}。
+  - 展示返回 appeal 状态。
+
+**403 展示**：非 ADMIN 打开 /admin-rules 或 /admin-appeal 必须看到 403 错误提示卡片，不渲染表单、不伪造成功数据。请求仍走网关，普通用户 token 得 403/1002。
+
+**ADMIN 授予说明**：
+ADMIN 授予仍走内部凭证接口，前端不暴露、不提供 grant-admin 页面或按钮。
+示例（内部接口，网关通常不路由 /internal/**）：
+```
+curl -X POST http://127.0.0.1:8080/internal/auth/grant-admin \
+  -H "Content-Type: application/json" \
+  -H "X-Internal-Token: <your-internal-token>" \
+  -d '{"userId": 123}'
+```
+授予后，用户需重新登录以获取带 `role: "ADMIN"` 的 token。登录响应中 role 由后端签发并存 localStorage（依赖方向 2 的 role 存储）。
+
+**已验证约束**：
+- 仅 role=ADMIN 显示管理菜单；非管理员打开管理 URL 展示 403，不伪造。
+- 终判页手工输入 appealId，无申诉列表 API。
+- ADMIN 授予仅内部接口，前端不暴露。
+- 依赖 role 存储；所有请求经网关，不绕过。
+- 仅 web/ 管理页与菜单、README ADMIN 说明、tasks.json。
+
+**口径自检**：按 proposal 实现；tasks.json 打勾；最多 1 次修复；未改 Java；未改 proposal。
