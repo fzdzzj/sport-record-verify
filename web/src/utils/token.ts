@@ -35,3 +35,17 @@ export function clearTokens(): void {
 export function hasAccessToken(): boolean {
   return !!getAccessToken()
 }
+
+// 401 refresh 失败时触发：清会话 + 跳转登录（由 main 注册 handler 防止循环）
+let authFailHandler: (() => void) | null = null
+
+export function setAuthFailHandler(handler: () => void): void {
+  authFailHandler = handler
+}
+
+export function triggerAuthFail(): void {
+  clearTokens()
+  if (authFailHandler) {
+    try { authFailHandler() } catch (e) { /* ignore */ }
+  }
+}
