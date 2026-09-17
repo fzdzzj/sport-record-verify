@@ -22,7 +22,7 @@
       <a-alert v-if="pollError" type="error" :message="pollError" class="mb-4" />
 
       <!-- Like section -->
-      <a-card v-if="verifyResult && (verifyResult.verdict === 1 || verifyResult.verdict === 5)" title="点赞 (仅通过可赞)" class="mb-4" size="small">
+      <a-card v-if="verifyResult && (verifyResult.verdict === 1)" title="点赞 (仅通过可赞)" class="mb-4" size="small">
         <div>当前 likeCount: {{ likeInfo ? likeInfo.likeCount : '...' }} ， liked: {{ likeInfo ? likeInfo.liked : '...' }}</div>
         <a-button :loading="likeLoading" @click="toggleLike" class="mt-2">
           {{ likeInfo && likeInfo.liked ? '取消点赞' : '点赞' }}
@@ -206,4 +206,5 @@ onUnmounted(() => {
   stopPoll()
 })
 </script>
+
 
