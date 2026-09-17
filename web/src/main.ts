@@ -1,18 +1,19 @@
 import { createApp } from 'vue'
 import App from './App.vue'
-import { createRouter, createWebHistory } from 'vue-router/auto'
+import { createRouter } from 'vue-router/auto'
+import { createWebHistory } from 'vue-router'
 import { VueQueryPlugin } from '@tanstack/vue-query'
 import Antd from 'ant-design-vue'
 import 'ant-design-vue/dist/reset.css'
 import './assets/main.css'
-import { hasAccessToken, setAuthFailHandler, clearTokens } from '@/utils/token'
+import { hasAccessToken, setAuthFailHandler } from '@/utils/token'
 
 const router = createRouter({
   history: createWebHistory(),
 })
 
 // 路由守卫：无 access 不能进控制台；已登录访问登录页去控制台
-router.beforeEach((to, from, next) => {
+router.beforeEach((to, _from, next) => {
   const loggedIn = hasAccessToken()
   if (to.path === '/login' && loggedIn) {
     next('/')
