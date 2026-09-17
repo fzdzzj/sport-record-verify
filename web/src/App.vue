@@ -3,7 +3,8 @@
     <a-layout-header style="background: #001529; padding: 0 24px; color: white; display: flex; align-items: center; justify-content: space-between;">
       <div style="font-size: 18px; font-weight: 600;">运动记录校验控制台 (Scaffold)</div>
       <div>
-        <a-button type="link" style="color: #fff;" @click="goTo('/login')">登录占位</a-button>
+        <a-button type="link" style="color: #fff;" @click="goTo('/register')">注册</a-button>
+        <a-button type="link" style="color: #fff;" @click="goTo('/login')">登录</a-button>
         <a-button type="link" style="color: #fff; margin-left: 8px;" @click="goTo('/probe')">探活页</a-button>
       </div>
     </a-layout-header>
