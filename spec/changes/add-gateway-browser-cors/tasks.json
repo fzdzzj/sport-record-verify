@@ -1,0 +1,29 @@
+[
+  {
+    "number": 1,
+    "category": "阶段 1：配置",
+    "task": "网关可配置 CORS 来源",
+    "steps": [
+      { "step": "gateway-service 增加 CORS 配置：默认允许 http://127.0.0.1:5173 与 http://localhost:5173，允许 Authorization 头与 OPTIONS；禁止默认 *", "completed": true }
+    ],
+    "passes": true
+  },
+  {
+    "number": 2,
+    "category": "阶段 2：测试",
+    "task": "预检来源白名单",
+    "steps": [
+      { "step": "测试或配置断言：本地 5173 来源被允许；未配置来源不被当成 *", "completed": true }
+    ],
+    "passes": true
+  },
+  {
+    "number": 3,
+    "category": "阶段 3：文档",
+    "task": "代理 vs 直连",
+    "steps": [
+      { "step": "README 写明 pnpm dev 走 Vite 代理可不依赖 CORS；静态页直连 8080 才需要；口径自检；tasks.json 打勾", "completed": true }
+    ],
+    "passes": true
+  }
+]
