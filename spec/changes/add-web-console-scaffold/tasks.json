@@ -1,0 +1,62 @@
+[
+  {
+    "number": 1,
+    "category": "阶段 1：工程初始化",
+    "task": "创建 web/ Vue3+Vite 骨架",
+    "steps": [
+      {
+        "step": "新增 web/：package.json 使用 pnpm，依赖 Vue3、Vite、TypeScript、Ant Design Vue、Tailwind、Axios、Vue Query、vue-router、unplugin-vue-router；不引入 Vuex/ECharts/OpenAPI codegen",
+        "completed": true
+      },
+      {
+        "step": "配置 Vite 与 TS：路径别名 @、.page.vue 文件路由、Tailwind 插件",
+        "completed": true
+      }
+    ],
+    "passes": true
+  },
+  {
+    "number": 2,
+    "category": "阶段 2：网关代理",
+    "task": "开发代理原样转发网关前缀",
+    "steps": [
+      {
+        "step": "vite.config 为 /api /user /record /leaderboard /verify /admin /mapmatch 设置 target=http://127.0.0.1:8080、changeOrigin=true、禁止 rewrite 剥前缀",
+        "completed": true
+      }
+    ],
+    "passes": true
+  },
+  {
+    "number": 3,
+    "category": "阶段 3：请求封装与空壳页",
+    "task": "统一 Result 解析与占位页",
+    "steps": [
+      {
+        "step": "Axios 封装：解析 {code,message,data}，code===0 为成功，否则抛出 message；不设置 headers.token",
+        "completed": true
+      },
+      {
+        "step": "空壳布局 + 探活页（例如请求 GET /leaderboard/api/leaderboard?type=overall&size=2 展示 code/message）；登录路由仅占位文案",
+        "completed": true
+      }
+    ],
+    "passes": true
+  },
+  {
+    "number": 4,
+    "category": "阶段 4：文档与验收",
+    "task": "启动说明与口径",
+    "steps": [
+      {
+        "step": "web/README.md 与根 README/速览补前端启动：pnpm install && pnpm dev，默认 5173，后端需网关 8080",
+        "completed": true
+      },
+      {
+        "step": "公开 md 口径自检；不改 Java；tasks.json 打勾",
+        "completed": true
+      }
+    ],
+    "passes": true
+  }
+]

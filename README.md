@@ -68,6 +68,10 @@ java $JAVA_OPTS -jar record-service/target/sport-verify-record-service-0.1.0-SNA
 java $JAVA_OPTS -jar verify-service/target/sport-verify-verify-service-0.1.0-SNAPSHOT.jar
 java $JAVA_OPTS -jar leaderboard-service/target/sport-verify-leaderboard-service-0.1.0-SNAPSHOT.jar
 java $JAVA_OPTS -jar mapmatch-service/target/sport-verify-mapmatch-service-0.1.0-SNAPSHOT.jar
+
+# 5. （可选）前端控制台脚手架
+cd web
+pnpm install && pnpm dev   # 默认 5173，Vite 代理原样转发网关 8080
 ```
 
 > `java` 必须是 JDK 21（PATH 上是 JDK 8 时会报 UnsupportedClassVersionError，改用绝对路径如
@@ -280,6 +284,7 @@ sql/            各库幂等建表脚本（docker-entrypoint-initdb.d 首次自�
 rocketmq/       Broker 本地配置
 prometheus/     抓取配置（prometheus.yml，六服务 job）与告警规则（alert-rules.yml）
 grafana/        数据源/面板 provider 预置（provisioning/）与预置面板 JSON（dashboards/）
+web/            # 前端控制台脚手架（Vue3 + Vite + TS + Antd + Tailwind + Axios + Vue Query）
 ```
 
 ## 变更交付
