@@ -22,5 +22,36 @@ export default defineConfig({
   },
   server: {
     port: 5173,
+    proxy: {
+      '/api': {
+        target: 'http://127.0.0.1:8080',
+        changeOrigin: true,
+        // NO rewrite: forward /api/auth/** as-is
+      },
+      '/user': {
+        target: 'http://127.0.0.1:8080',
+        changeOrigin: true,
+      },
+      '/record': {
+        target: 'http://127.0.0.1:8080',
+        changeOrigin: true,
+      },
+      '/leaderboard': {
+        target: 'http://127.0.0.1:8080',
+        changeOrigin: true,
+      },
+      '/verify': {
+        target: 'http://127.0.0.1:8080',
+        changeOrigin: true,
+      },
+      '/admin': {
+        target: 'http://127.0.0.1:8080',
+        changeOrigin: true,
+      },
+      '/mapmatch': {
+        target: 'http://127.0.0.1:8080',
+        changeOrigin: true,
+      },
+    },
   },
 })
