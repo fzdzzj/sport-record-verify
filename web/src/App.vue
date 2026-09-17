@@ -5,6 +5,7 @@
       <div>
         <a-button type="link" style="color: #fff;" @click="goTo('/register')">注册</a-button>
         <a-button type="link" style="color: #fff;" @click="goTo('/login')">登录</a-button>
+        <a-button type="link" style="color: #fff; margin-left: 8px;" @click="logout">退出</a-button>
         <a-button type="link" style="color: #fff; margin-left: 8px;" @click="goTo('/probe')">探活页</a-button>
       </div>
     </a-layout-header>
@@ -19,10 +20,16 @@
 
 <script setup lang="ts">
 import { useRouter } from 'vue-router/auto'
+import { clearTokens } from '@/utils/token'
 
 const router = useRouter()
 
 function goTo(path: string) {
   router.push(path)
+}
+
+function logout() {
+  clearTokens()
+  router.push('/login')
 }
 </script>
