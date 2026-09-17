@@ -1,0 +1,41 @@
+[
+  {
+    "number": 1,
+    "category": "阶段 1：会话存储与拦截器",
+    "task": "Bearer token 存储与自动附加",
+    "steps": [
+      { "step": "token 工具：分别存 accessToken/refreshToken/role；请求拦截器设置 Authorization Bearer，不设置 headers.token，不发送 X-User-Id/X-Role", "completed": false }
+    ],
+    "passes": false
+  },
+  {
+    "number": 2,
+    "category": "阶段 2：注册登录刷新",
+    "task": "对接 /api/auth 三个接口",
+    "steps": [
+      { "step": "注册页：POST /api/auth/register，成功提示去登录，不保存 token；重复手机号展示 2001", "completed": false },
+      { "step": "登录页：POST /api/auth/login，成功保存双 token 与 role；401/1001 与 403/1002 分别提示凭据错误与锁定", "completed": false },
+      { "step": "401 拦截：用 refreshToken 调 POST /api/auth/refresh 一次；失败清会话并跳转登录", "completed": false }
+    ],
+    "passes": false
+  },
+  {
+    "number": 3,
+    "category": "阶段 3：路由守卫",
+    "task": "未登录不可进控制台",
+    "steps": [
+      { "step": "无 access 访问控制台布局时跳转登录；已登录访问登录页跳转控制台；退出清除存储", "completed": false }
+    ],
+    "passes": false
+  },
+  {
+    "number": 4,
+    "category": "阶段 4：文档与验收",
+    "task": "演示须开鉴权",
+    "steps": [
+      { "step": "web/README 写明演示时网关及各服务 app.auth.enabled=true，默认仓库值保持 false 以兼容压测", "completed": false },
+      { "step": "口径自检；不改 Java 默认配置；tasks.json 打勾", "completed": false }
+    ],
+    "passes": false
+  }
+]
