@@ -72,6 +72,8 @@ java $JAVA_OPTS -jar mapmatch-service/target/sport-verify-mapmatch-service-0.1.0
 # 5. （可选）前端控制台脚手架
 cd web
 pnpm install && pnpm dev   # 默认 5173，Vite 代理原样转发网关 8080
+# pnpm dev 走 Vite 代理（默认 5173 反向代理 8080），浏览器请求同源，不触发 CORS 预检。
+# 静态页直连 8080（或 build 后独立访问、其他 Origin 浏览器直连网关）才需要 CORS；网关默认仅允许 http://127.0.0.1:5173 与 http://localhost:5173，允许 Authorization 头与 OPTIONS，凭证场景禁止 *。
 ```
 
 > `java` 必须是 JDK 21（PATH 上是 JDK 8 时会报 UnsupportedClassVersionError，改用绝对路径如
