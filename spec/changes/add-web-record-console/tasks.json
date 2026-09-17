@@ -1,0 +1,41 @@
+[
+  {
+    "number": 1,
+    "category": "阶段 1：提交与判定",
+    "task": "样例轨迹提交与结果轮询",
+    "steps": [
+      { "step": "提交页：选择 sportType、加载内置样例 points、生成 requestId、POST /record/api/records；展示返回 recordId 与 status", "completed": true },
+      { "step": "判定页：GET /record/api/records/{id}/verify-result，verdict=0 轮询，1 显示通过与分数，2 显示拒绝与申诉表单", "completed": true }
+    ],
+    "passes": true
+  },
+  {
+    "number": 2,
+    "category": "阶段 2：点赞与好友",
+    "task": "通过记录可赞，好友申请闭环",
+    "steps": [
+      { "step": "判定通过后可 POST/DELETE/GET like；未通过展示 6001 类错误", "completed": true },
+      { "step": "好友页：发起申请、列表、同意/拒绝；冲突展示既有错误码信息", "completed": true }
+    ],
+    "passes": true
+  },
+  {
+    "number": 3,
+    "category": "阶段 3：榜单",
+    "task": "总榜与好友榜",
+    "steps": [
+      { "step": "榜单页：type=overall 与 type=friend 切换；展示 rank/nickname/distance；空榜正常展示", "completed": true }
+    ],
+    "passes": true
+  },
+  {
+    "number": 4,
+    "category": "阶段 4：文档与验收",
+    "task": "演示步骤与诚实限制",
+    "steps": [
+      { "step": "web/README 演示顺序：登录→提交样例→等待判定→点赞/好友/榜单；写明无服务端「我的记录」列表，仅会话内记住 recordId", "completed": true },
+      { "step": "口径自检；不新增 Java API；tasks.json 打勾", "completed": true }
+    ],
+    "passes": true
+  }
+]
