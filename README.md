@@ -128,6 +128,39 @@ bash scripts/verify/mvn-verify.sh --pl leaderboard-service test
 - 需要真实 MySQL 的端到端测试不在 CI 上跑，走入口的 `--it` 分支，见下节。
 - 各模块覆盖率报告以 `jacoco-reports` artifact 上传，可在一次运行的 Artifacts 面板下载。
 - 附一条「公开口径自检」step，公开载体命中禁用措辞即 CI 失败。
+- 前端另有 `web` job：`pnpm install --frozen-lockfile` + `pnpm type-check` + `pnpm build`，见 `web/README.md`。
+
+### 真库端到端测试（`--it`）
+
+`LeaderboardDailySummaryMapperMysqlIT` 补的是 Mockito 照不到的那段（注解 SQL 真被 MyBatis 解析绑定、
+`ON DUPLICATE KEY UPDATE` 与 `DELETE ... LEFT JOIN` 在真引擎上的效果、`LocalDate` 与 `DECIMAL(10,2)`
+的映射）。类名以 `IT` 结尾，surefire 默认不收集，只有显式 `-Dtest=` 才会执行——这就是统一入口的
+`--it` 分支（内部展开为 `-pl leaderboard-service -am test -Dtest=... -Dsurefire.failIfNoSpecifiedTests=false`，
+`-am` 连带的 `common`/`api` 没有该测试，少了这个开关会在无匹配的模块上直接失败）：
+
+```bash
+bash scripts/verify/mvn-verify.sh --it
+```
+
+准备库（scratch 库，跑完即弃；机械改名灌入 `sql/02-record-db.sql`，验的就是提交里那份 DDL 本身，
+不是副本。**禁止连开发库**）：
+
+```bash
+# 一次性 scratch 容器（示例口令仅用于本地 scratch，勿复用）
+docker run -d --name sport-verify-it-scratch -e MYSQL_ROOT_PASSWORD=probe \
+  -e MYSQL_DATABASE=task108_it -p 3309:3306 mysql:8.0
+sed 's/record_db/task108_it/g' sql/02-record-db.sql \
+  | docker exec -i sport-verify-it-scratch mysql -uroot -pprobe task108_it
+
+export TASK108_IT_URL='jdbc:mysql://127.0.0.1:3309/task108_it?useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=Asia/Shanghai'
+export TASK108_IT_USER=root
+export TASK108_IT_PASSWORD=probe
+bash scripts/verify/mvn-verify.sh --it
+docker rm -f sport-verify-it-scratch   # 用完删掉
+```
+
+三个变量缺任一个，该测试即被 `assume` 跳过而构建仍以 0 退出——**被跳过不得计入通过**：入口会在
+stderr 打出"按口径记为未覆盖"的提示，台账须照此记录，不得据此声称真库路径已验证。
 
 
 ## JWT 鉴权闭环（注册/登录 + 网关统一鉴权 + 数据隔离，选型理由见 [ADR-0007](docs/adr/0007-鉴权设计.md)）

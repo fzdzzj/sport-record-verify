@@ -14,6 +14,8 @@ export interface TrackPointDTO {
   lng: number
   ts: number
   speed?: number
+  // 后端 com.sportverify.api.record.dto.TrackPointDTO 会带出所属记录与用户，前端「提取 myUserId」用到
+  userId?: number
 }
 
 export interface RecordSubmitDTO {
@@ -165,8 +167,8 @@ api.interceptors.response.use(
 export default api
 
 // ===== Probe (existing) =====
-export async function probeLeaderboard() {
-  return api.get<Result>('/leaderboard/api/leaderboard', {
+export async function probeLeaderboard(): Promise<Result> {
+  return api.get('/leaderboard/api/leaderboard', {
     params: { type: 'overall', size: 2 }
   })
 }

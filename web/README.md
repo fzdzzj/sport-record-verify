@@ -14,6 +14,25 @@ pnpm dev
 
 开发代理已配置，将 `/api`、`/user`、`/record`、`/leaderboard`、`/verify`、`/admin`、`/mapmatch` 原样转发到 `http://127.0.0.1:8080`（changeOrigin=true，无 rewrite 剥前缀）。
 
+## 验证（门槛上跑什么）
+
+CI 的 `web` job 对 `web/` 只执行三条命令，本地改完前端请跑同样三条再提交：
+
+```bash
+cd web
+pnpm install --frozen-lockfile   # 依赖声明与 pnpm-lock.yaml 漂移时这一步直接失败
+pnpm type-check                  # vue-tsc --noEmit，类型错误即门槛失败
+pnpm build                       # vite build 生产构建
+```
+
+- `package.json` 既没有 `packageManager` 也没有 `engines` 字段 → CI 上 pnpm 版本由门槛文件显式提供
+  （`corepack prepare pnpm@10.25.0`）；本地用哪个版本自便，但门槛按该版本判定。
+- 改了依赖声明就必须把 `pnpm-lock.yaml` 一起提交，否则 `--frozen-lockfile` 当场红，
+  失败信号指向锁文件而不是业务代码。
+- `pnpm build` 会重新生成 `src/typed-router.d.ts`（unplugin-vue-router 产物，已被 tracked），
+  构建后 `git status` 出现该文件的改动属正常。
+- 后端联调前提（起网关与各服务、`app.auth.enabled=true`）见下节，与这三条命令无关。
+
 ## 认证会话（add-web-auth-session）
 
 - 注册页：`/register` ，POST /api/auth/register ，成功不返回 token，提示去登录；重复手机号 2001。

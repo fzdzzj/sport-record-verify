@@ -32,7 +32,7 @@
 
 <script setup lang="ts">
 import { ref } from 'vue'
-import api, { createFriendRequest, acceptFriendRequest, rejectFriendRequest, listMyFriends, type FriendDTO, type FriendRequestDTO, type PageResult } from '@/api/client'
+import { createFriendRequest, acceptFriendRequest, rejectFriendRequest, listMyFriends, type FriendDTO, type FriendRequestDTO } from '@/api/client'
 
 const targetUserId = ref<number | null>(null)
 const creating = ref(false)

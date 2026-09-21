@@ -36,11 +36,11 @@
     "category": "阶段 4：已有检查接线",
     "task": "真库端到端测试与前端检查各获得确定路径",
     "steps": [
-      { "step": "脚本 --it 分支：定向 mvn -pl leaderboard-service -am test -Dtest=LeaderboardDailySummaryMapperMysqlIT -DfailIfNoSpecifiedTests=false（-am 会带上 common/api 等无该测试的模块，不加该开关会在无匹配模块上直接失败）；缺 TASK108_IT_URL/USER/PASSWORD 时任一缺失即由 assume 跳过。README 写明 scratch 准备库的一条命令（沿用该 IT 类注释里的 sql/02-record-db.sql 改名灌入 sport-verify-mysql 方式），并写明\"被跳过不得计入通过\"", "completed": false },
-      { "step": "ci.yml 新增 node 步骤：web/package.json 无 packageManager 也无 engines 字段，故必须先显式提供 pnpm（corepack enable + 指定版本，或 pnpm/action-setup 带 version），再执行 pnpm install --frozen-lockfile、pnpm type-check、pnpm build；web/README.md 增补验证节列出这三条命令", "completed": false },
-      { "step": "web/pnpm-lock.yaml 实测已 tracked，故 --frozen-lockfile 的失败面只剩锁文件与 package.json 漂移：若实跑失败，单独一条提交修锁文件，不混进其它改动", "completed": false }
+      { "step": "脚本 --it 分支：定向 mvn -pl leaderboard-service -am test -Dtest=LeaderboardDailySummaryMapperMysqlIT -DfailIfNoSpecifiedTests=false（-am 会带上 common/api 等无该测试的模块，不加该开关会在无匹配模块上直接失败）；缺 TASK108_IT_URL/USER/PASSWORD 时任一缺失即由 assume 跳过。README 写明 scratch 准备库的一条命令（沿用该 IT 类注释里的 sql/02-record-db.sql 改名灌入 sport-verify-mysql 方式），并写明\"被跳过不得计入通过\"", "completed": true },
+      { "step": "ci.yml 新增 node 步骤：web/package.json 无 packageManager 也无 engines 字段，故必须先显式提供 pnpm（corepack enable + 指定版本，或 pnpm/action-setup 带 version），再执行 pnpm install --frozen-lockfile、pnpm type-check、pnpm build；web/README.md 增补验证节列出这三条命令", "completed": true },
+      { "step": "web/pnpm-lock.yaml 实测已 tracked，故 --frozen-lockfile 的失败面只剩锁文件与 package.json 漂移：若实跑失败，单独一条提交修锁文件，不混进其它改动", "completed": true }
     ],
-    "passes": false
+    "passes": true
   },
   {
     "number": 5,

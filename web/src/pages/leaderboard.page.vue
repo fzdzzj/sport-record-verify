@@ -29,7 +29,7 @@
 
 <script setup lang="ts">
 import { ref, onMounted } from 'vue'
-import api, { getLeaderboard, type LeaderboardDTO } from '@/api/client'
+import { getLeaderboard, type LeaderboardDTO } from '@/api/client'
 
 const lbType = ref<'overall' | 'friend'>('overall')
 const lbSize = ref(10)
