@@ -1,0 +1,5 @@
+# 回滚补丁必须逐字节保真。仓库 core.autocrlf=true，checkout 会把 LF 转成 CRLF，
+# 实测新 clone 里 work/mailbox/rollback/TASK-005-aspect.patch 出现 101 行 CR，
+# 用它还原 untracked 文件会还回一份内容相同、行尾不同的产物（且还原件与备份件 cmp 不再一致）。
+# -text 让 git 既不做 eol 转换也不把它当文本 diff。
+*.patch -text
