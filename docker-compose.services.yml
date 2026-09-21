@@ -10,6 +10,11 @@
 # record-service 数据源走 sharding.yaml（ShardingDataSourceConfig 读取时替换 ${} 占位），
 # 地址已参数化：host 经 SHARDING_MYSQL_HOST 指向 compose 内 mysql，端口/口令见
 # record-service environment 段（口令走 env_file 的 MYSQL_PASSWORD，与 MYSQL_ROOT_PASSWORD 一致）。
+# 端口口径：仅 8080（网关）对宿主机全接口发布，5 个后端服务绑 127.0.0.1。
+# 原因：治理面准入只在网关判（ADR-0007；服务侧按约定不校验 token，角色靠网关注入的 X-Role，
+# 而 header 对能直连服务端口的人等于不存在）。把 8081-8085 直发网卡，绕开网关即可读到
+# /leaderboard/api/leaderboard/daily 这类治理面数据。本机 curl、浏览器与 scripts/ 下的冒烟
+# 压测脚本仍按 127.0.0.1:80xx 访问，不受影响；跨机访问请走网关。
 # ============================================================
 
 services:
@@ -54,7 +59,7 @@ services:
       # 口令沿用 yml 的 ${MYSQL_ROOT_PASSWORD:root} 占位（.env 未注入时用中间件默认 root，仅限本地）
       SPRING_DATASOURCE_URL: jdbc:mysql://mysql:3306/user_db?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai&useSSL=false&allowPublicKeyRetrieval=true
     ports:
-      - "8081:8081"
+      - "127.0.0.1:8081:8081"
     depends_on:
       nacos:
         condition: service_healthy
@@ -89,7 +94,7 @@ services:
       # mysql 须走容器端口，这里显式覆盖；口令走 env_file 的 MYSQL_PASSWORD
       MYSQL_PORT: 3306
     ports:
-      - "8082:8082"
+      - "127.0.0.1:8082:8082"
     depends_on:
       nacos:
         condition: service_healthy
@@ -121,7 +126,7 @@ services:
       ROCKETMQ_NAME_SERVER: rocketmq-namesrv:9876
       SPRING_DATASOURCE_URL: jdbc:mysql://mysql:3306/verify_db?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai&useSSL=false&allowPublicKeyRetrieval=true
     ports:
-      - "8083:8083"
+      - "127.0.0.1:8083:8083"
     depends_on:
       nacos:
         condition: service_healthy
@@ -153,7 +158,7 @@ services:
       ROCKETMQ_NAME_SERVER: rocketmq-namesrv:9876
       SPRING_DATASOURCE_URL: jdbc:mysql://mysql:3306/record_db?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai&useSSL=false&allowPublicKeyRetrieval=true
     ports:
-      - "8084:8084"
+      - "127.0.0.1:8084:8084"
     depends_on:
       nacos:
         condition: service_healthy
@@ -183,7 +188,7 @@ services:
       SPRING_CLOUD_NACOS_CONFIG_SERVER_ADDR: nacos:8848
       SPRING_DATASOURCE_URL: jdbc:postgresql://postgis:5432/road_db?stringtype=unspecified
     ports:
-      - "8085:8085"
+      - "127.0.0.1:8085:8085"
     depends_on:
       nacos:
         condition: service_healthy
