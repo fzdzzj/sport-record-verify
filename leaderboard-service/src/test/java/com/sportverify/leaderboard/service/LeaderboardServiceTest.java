@@ -11,7 +11,9 @@ import com.sportverify.leaderboard.entity.LeaderboardContribution;
 import com.sportverify.leaderboard.entity.SportRecordSnapshot;
 import com.sportverify.leaderboard.enums.ContributionStatus;
 import com.sportverify.leaderboard.mapper.LeaderboardContributionMapper;
+import com.sportverify.leaderboard.entity.LeaderboardDailySummary;
 import com.sportverify.leaderboard.mapper.LeaderboardContributionMapper.UserMileage;
+import com.sportverify.leaderboard.mapper.LeaderboardDailySummaryMapper;
 import com.sportverify.leaderboard.mapper.SportRecordMapper;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -22,6 +24,7 @@ import org.springframework.data.redis.core.ZSetOperations;
 import org.springframework.data.redis.core.ZSetOperations.TypedTuple;
 
 import java.math.BigDecimal;
+import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -58,6 +61,7 @@ class LeaderboardServiceTest {
 
     private SportRecordMapper sportRecordMapper;
     private LeaderboardContributionMapper contributionMapper;
+    private LeaderboardDailySummaryMapper dailySummaryMapper;
     private StringRedisTemplate redis;
     private ZSetOperations<String, String> zSetOps;
     private RedissonClient redissonClient;
@@ -70,6 +74,7 @@ class LeaderboardServiceTest {
     void setUp() throws InterruptedException {
         sportRecordMapper = mock(SportRecordMapper.class);
         contributionMapper = mock(LeaderboardContributionMapper.class);
+        dailySummaryMapper = mock(LeaderboardDailySummaryMapper.class);
         redis = mock(StringRedisTemplate.class);
         zSetOps = mock(ZSetOperations.class);
         redissonClient = mock(RedissonClient.class);
@@ -81,7 +86,7 @@ class LeaderboardServiceTest {
         doReturn(true).when(lock).tryLock(anyLong(), anyLong(), any(TimeUnit.class));
         when(redissonClient.getLock(anyString())).thenReturn(lock);
 
-        service = new LeaderboardService(sportRecordMapper, contributionMapper,
+        service = new LeaderboardService(sportRecordMapper, contributionMapper, dailySummaryMapper,
                 redis, redissonClient, userApi);
     }
 
@@ -270,7 +275,7 @@ class LeaderboardServiceTest {
         // 注意：对已 thenThrow 的桩重打桩必须用 doReturn（when 写法会先触发旧桩抛异常）
         doReturn(Result.success(new PageResult<>(1, 1000, 1, List.of(friend(100L)))))
                 .when(userApi).listFriends(200L, 1L, 1000L);
-        when(zSetOps.reverseRangeWithScores(LeaderboardService.OVERALL_ZSET_KEY, 0, -1))
+        when(zSetOps.reverseRangeWithScores(LeaderboardService.OVERALL_ZSET_KEY, 0, 499))
                 .thenReturn(null);
         assertTrue(service.top("friend", 200L, 10).isEmpty());
     }
@@ -321,6 +326,66 @@ class LeaderboardServiceTest {
         verify(contributionMapper, never()).markSettled(anyInt(), any());
     }
 
+    // ==================== 每日报表快照（TASK-108） ====================
+
+    /** 结算成功后必须写一次当日快照，并清掉"今日已无 ACTIVE 贡献"的残留行 */
+    @Test
+    void settleAndReconcile_writesDailyReportSnapshotOnce() {
+        UserMileage m = new UserMileage();
+        m.setUserId(100L);
+        m.setTotalDistance(new BigDecimal("42.50"));
+        when(contributionMapper.selectActiveSummaries(ContributionStatus.ACTIVE.getCode()))
+                .thenReturn(List.of(m));
+        when(zSetOps.range(LeaderboardService.OVERALL_ZSET_KEY, 0, -1))
+                .thenReturn(new LinkedHashSet<>(List.of("100")));
+
+        service.settleAndReconcile();
+
+        int active = ContributionStatus.ACTIVE.getCode();
+        verify(dailySummaryMapper).upsertFromActiveContributions(active);
+        verify(dailySummaryMapper).deleteStaleToday(active);
+    }
+
+    /** 锁没抢到＝整轮什么都不写，报表也不例外（多实例只有一份快照写入方） */
+    @Test
+    void settleAndReconcile_lockNotAcquired_doesNotTouchReport() throws InterruptedException {
+        doReturn(false).when(lock).tryLock(anyLong(), anyLong(), any(TimeUnit.class));
+
+        service.settleAndReconcile();
+
+        verify(dailySummaryMapper, never()).upsertFromActiveContributions(anyInt());
+        verify(dailySummaryMapper, never()).deleteStaleToday(anyInt());
+    }
+
+    /** 报表读取：按 Mapper 返回序编 rank，昵称走总榜同一降级口径；size 有上限 */
+    @Test
+    void dailyReport_ranksRowsAndClampsSize() {
+        LocalDate day = LocalDate.of(2026, 9, 20);
+        when(dailySummaryMapper.selectTopByDate(any(), anyInt())).thenReturn(List.of(
+                dailyRow(100L, "88.05"), dailyRow(101L, "12.50")));
+
+        List<LeaderboardDTO> top = service.dailyReport(day, 20);
+
+        verify(dailySummaryMapper).selectTopByDate(day, 20);
+        assertEquals(2, top.size());
+        assertEquals(1, top.get(0).getRank());
+        assertEquals(100L, top.get(0).getUserId());
+        assertEquals(new BigDecimal("88.05"), top.get(0).getDistance());
+        // userApi 未打桩 → 降级占位昵称，与总榜同口径（报表不能因 user-service 挂了就没数据）
+        assertEquals("用户100", top.get(0).getNickname());
+        assertEquals(2, top.get(1).getRank());
+
+        service.dailyReport(day, 9999);
+        verify(dailySummaryMapper).selectTopByDate(day, 500);
+    }
+
+    private LeaderboardDailySummary dailyRow(long userId, String distance) {
+        LeaderboardDailySummary row = new LeaderboardDailySummary();
+        row.setUserId(userId);
+        row.setTotalDistance(new BigDecimal(distance));
+        return row;
+    }
+
     // ==================== 工具 ====================
 
     private SportRecordSnapshot record(RecordStatus status, String distance) {
@@ -353,6 +418,72 @@ class LeaderboardServiceTest {
         f.setUserId(userId);
         f.setNickname("好友" + userId);
         return f;
+    }
+
+    // ==================== 新增边界场景测试 ====================
+
+    /** 规范差异「通过校验」：null 状态不被视为通过 */
+    @Test
+    void applyVerified_nullStatus_notPassed() {
+        SportRecordSnapshot r = new SportRecordSnapshot();
+        r.setId(1L);
+        r.setUserId(100L);
+        r.setStatus(null);
+        r.setDistance(new BigDecimal("42.50"));
+        when(sportRecordMapper.selectById(1L)).thenReturn(r);
+        service.applyVerified(1L);
+        verify(zSetOps, never()).incrementScore(anyString(), anyString(), anyDouble());
+    }
+
+    /** settleAndReconcile 残留成员清理：ZSet 有幽灵分数 */
+    @Test
+    void settleAndReconcile_clearStaleMembers() {
+        UserMileage m = new UserMileage();
+        m.setUserId(100L);
+        m.setTotalDistance(new BigDecimal("42.50"));
+        when(contributionMapper.selectActiveSummaries(ContributionStatus.ACTIVE.getCode()))
+                .thenReturn(List.of(m));
+        // ZSet 中有 ACTIVE 用户和无贡献的幽灵用户
+        Set<String> members = new LinkedHashSet<>(List.of("100", "999", "888"));
+        when(zSetOps.range(LeaderboardService.OVERALL_ZSET_KEY, 0, -1))
+                .thenReturn(members);
+
+        service.settleAndReconcile();
+
+        // 只清理非 ACTIVE 成员
+        verify(zSetOps).remove(LeaderboardService.OVERALL_ZSET_KEY, "999", "888");
+    }
+
+    /** settleAndReconcile 无汇总数据：仍执行清理残留 */
+    @Test
+    void settleAndReconcile_noSummaries_onlyCleanup() {
+        when(contributionMapper.selectActiveSummaries(ContributionStatus.ACTIVE.getCode()))
+                .thenReturn(List.of());
+        when(zSetOps.range(LeaderboardService.OVERALL_ZSET_KEY, 0, -1))
+                .thenReturn(new LinkedHashSet<>(List.of("999", "888")));
+
+        service.settleAndReconcile();
+
+        verify(zSetOps).remove(LeaderboardService.OVERALL_ZSET_KEY, "999", "888");
+        verify(contributionMapper, never()).markSettled(anyInt(), any());
+    }
+
+    /** topOverall 空榜：直接返回空列表 */
+    @Test
+    void topOverall_emptyZset_returnsEmpty() {
+        when(zSetOps.reverseRangeWithScores(LeaderboardService.OVERALL_ZSET_KEY, 0, 49L))
+                .thenReturn(null);
+
+        List<LeaderboardDTO> board = service.topOverall(50);
+
+        assertTrue(board.isEmpty());
+    }
+
+    /** top 非法 type：抛出 IllegalArgumentException */
+    @Test
+    void top_unknownType_throwsException() {
+        assertThrows(IllegalArgumentException.class, () -> service.top("invalid", null, 10));
+        assertThrows(IllegalArgumentException.class, () -> service.top("", null, 10));
     }
 
     /** 构造 ZSet 元组（按分数降序传入，模拟 ZREVRANGE 返回序） */

@@ -6,21 +6,26 @@ import com.sportverify.api.record.dto.LeaderboardDTO;
 import com.sportverify.api.user.UserApi;
 import com.sportverify.api.user.dto.UserDTO;
 import com.sportverify.leaderboard.entity.LeaderboardContribution;
+import com.sportverify.leaderboard.entity.LeaderboardDailySummary;
 import com.sportverify.leaderboard.entity.SportRecordSnapshot;
 import com.sportverify.leaderboard.enums.ContributionStatus;
 import com.sportverify.leaderboard.mapper.LeaderboardContributionMapper;
+import com.sportverify.leaderboard.mapper.LeaderboardDailySummaryMapper;
 import com.sportverify.leaderboard.mapper.LeaderboardContributionMapper.UserMileage;
 import com.sportverify.leaderboard.mapper.SportRecordMapper;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.redisson.api.RLock;
 import org.redisson.api.RedissonClient;
+import org.springframework.cache.annotation.Cacheable;
+import org.springframework.cache.annotation.EnableCaching;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.data.redis.core.ZSetOperations.TypedTuple;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 
 import java.math.BigDecimal;
+import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.LinkedHashSet;
@@ -68,6 +73,8 @@ public class LeaderboardService {
 
     /** 榜单默认取前 N 名 */
     private static final int DEFAULT_TOP_N = 50;
+    /** 报表单次查询上限（防 {@code size} 传成 10 万把整表拉进内存） */
+    private static final int DAILY_REPORT_MAX_SIZE = 500;
     /** 好友列表一次 Feign 拉取上限（演示规模 1000 用户：一次拉齐后内存过滤，不逐条远程调用） */
     private static final long FRIEND_FETCH_SIZE = 1000;
     /** 锁等待上限（秒）：拿不到锁抛出让 MQ 重投（不跳过，入榜/回滚不可丢） */
@@ -79,6 +86,7 @@ public class LeaderboardService {
 
     private final SportRecordMapper sportRecordMapper;
     private final LeaderboardContributionMapper contributionMapper;
+    private final LeaderboardDailySummaryMapper dailySummaryMapper;
     private final StringRedisTemplate stringRedisTemplate;
     private final RedissonClient redissonClient;
     private final UserApi userApi;
@@ -216,7 +224,10 @@ public class LeaderboardService {
 
     /**
      * 总榜（规范差异「总榜查询」）：ZREVRANGE 取前 N（按里程降序），批量补昵称。
+     * <p>二级缓存：L1 Caffeine + L2 Redis，TTL=5min，解决多实例不一致窗口。</p>
      */
+    @Cacheable(value = "leaderboard:overall", cacheManager = "hierarchicalCacheManager", key = "#size", condition = "#size > 0",
+            unless = "#result == null || #result.isEmpty()")
     public List<LeaderboardDTO> topOverall(int size) {
         Set<TypedTuple<String>> tuples =
                 stringRedisTemplate.opsForZSet().reverseRangeWithScores(OVERALL_ZSET_KEY, 0, size - 1L);
@@ -349,11 +360,47 @@ public class LeaderboardService {
             if (!summaries.isEmpty()) {
                 contributionMapper.markSettled(ContributionStatus.ACTIVE.getCode(), LocalDateTime.now());
             }
-            log.info("榜单结算完成：ACTIVE 汇总 {} 名，纠偏 {} 名，清理残留 {} 名",
-                    target.size(), target.size(), stale.size());
+            // 4) 写当日报表快照（TASK-108）：单条 INSERT...SELECT...ON DUPLICATE KEY UPDATE 自证原子，
+            //    不引本地事务（ADR-0009）；再清掉"今日已无 ACTIVE 贡献"的残留行，
+            //    否则全量回滚过的用户会带着旧里程留在报表里。
+            int upserted = dailySummaryMapper.upsertFromActiveContributions(
+                    ContributionStatus.ACTIVE.getCode());
+            int purged = dailySummaryMapper.deleteStaleToday(ContributionStatus.ACTIVE.getCode());
+            log.info("榜单结算完成：ACTIVE 汇总 {} 名，纠偏 {} 名，清理残留 {} 名，报表写入 {} / 清理 {} 行",
+                    target.size(), target.size(), stale.size(), upserted, purged);
         } finally {
             unlock(lock, locked);
         }
+    }
+
+    // ==================== 每日报表只读查询 ====================
+
+    /**
+     * 某日榜单快照前 N 名（TASK-108）。
+     *
+     * <p>直读 {@code leaderboard_daily_summary} 而非 ZSet：报表要"那天的数"，ZSet 只有当前值。
+     * 昵称与总榜同一路径（一次 Feign 批量补齐，user-service 不可用时降级为「用户{id}」占位）。</p>
+     *
+     * <p>刻意不加 {@code @Cacheable}：{@code CacheConfig} 的 Caffeine 只注册了
+     * {@code leaderboard:overall} 一个 cache 名，换新名字会在 L1 拿到 null。</p>
+     */
+    public List<LeaderboardDTO> dailyReport(LocalDate date, int topN) {
+        int size = topN <= 0 ? DEFAULT_TOP_N : Math.min(topN, DAILY_REPORT_MAX_SIZE);
+        List<LeaderboardDailySummary> rows = dailySummaryMapper.selectTopByDate(date, size);
+        if (rows.isEmpty()) {
+            return List.of();
+        }
+        List<Long> userIds = rows.stream().map(LeaderboardDailySummary::getUserId).toList();
+        Map<Long, String> nicknames = resolveNicknames(userIds);
+
+        List<LeaderboardDTO> result = new ArrayList<>(rows.size());
+        for (int i = 0; i < rows.size(); i++) {
+            LeaderboardDailySummary row = rows.get(i);
+            result.add(LeaderboardDTO.of(i + 1, row.getUserId(),
+                    nicknames.getOrDefault(row.getUserId(), "用户" + row.getUserId()),
+                    row.getTotalDistance()));
+        }
+        return result;
     }
 
     // ==================== 内部工具 ====================

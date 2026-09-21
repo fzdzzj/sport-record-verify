@@ -13,10 +13,12 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
+import java.time.LocalDate;
 import java.util.List;
 
 /**
@@ -57,6 +59,17 @@ public class LeaderboardController {
             @RequestParam(value = "size", defaultValue = "50") int size,
             HttpServletRequest request) {
         return Result.success(leaderboardService.top(type, resolveUserId(request, userId), size));
+    }
+
+    /**
+     * 每日报表只读查询：{@code GET /api/leaderboard/daily?date=2026-09-20&size=20}。
+     * 取某日累计快照前 N 名（默认 50、上限 500）；日期缺失或格式非法由 Spring 直接 400。
+     */
+    @GetMapping("/daily")
+    public Result<List<LeaderboardDTO>> daily(
+            @RequestParam("date") @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate date,
+            @RequestParam(value = "size", defaultValue = "50") int size) {
+        return Result.success(leaderboardService.dailyReport(date, size));
     }
 
     /**
