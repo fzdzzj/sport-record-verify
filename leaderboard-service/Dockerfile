@@ -9,10 +9,10 @@
 # （如 docker build 内 -v 不可用，可在外层先 mvn package 再改 COPY 预打 jar）；默认走公共中央仓库
 FROM maven:3.9-eclipse-temurin-21 AS build
 WORKDIR /workspace
-COPY pom.xml ./
-COPY common common
-COPY api api
-COPY leaderboard-service leaderboard-service
+# Parent pom declares all 6 modules: Maven must see the whole reactor, so copying
+# one module at a time fails while reading the pom. Use the full build context and
+# keep it small/secret-free via the repo-root .dockerignore.
+COPY . .
 RUN mvn -B -pl leaderboard-service -am -DskipTests package
 
 # ---- 运行阶段：仅 JRE，非 root 运行 ----

@@ -10,10 +10,10 @@
 FROM maven:3.9-eclipse-temurin-21 AS build
 WORKDIR /workspace
 # 全量复制：父 pom 聚合 8 模块，-am 需要 common/api 源码在上下文中
-COPY pom.xml ./
-COPY common common
-COPY api api
-COPY gateway-service gateway-service
+# Parent pom declares all 6 modules: Maven must see the whole reactor, so copying
+# one module at a time fails while reading the pom. Use the full build context and
+# keep it small/secret-free via the repo-root .dockerignore.
+COPY . .
 RUN mvn -B -pl gateway-service -am -DskipTests package
 
 # ---- 运行阶段：仅 JRE，非 root 运行 ----

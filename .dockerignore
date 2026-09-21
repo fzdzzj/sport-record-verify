@@ -1,0 +1,25 @@
+# 构建上下文瘦身与敏感文件隔离
+# 6 份 Dockerfile 的构建阶段改为 COPY . .（父 pom 声明全部 6 个 module，Maven 必须先读到整个
+# reactor，逐模块 COPY 会在读 pom 阶段就失败），故在此把无关与敏感内容挡在上下文之外。
+
+# 构建产物与本地仓（体积大且镜像内会重编；.m2-repo 是宿主机离线仓，镜像里用不上）
+**/target/
+.m2-repo/
+
+# 版本库与本地配置
+.git/
+.dockerignore
+.env
+
+# 前端与编排台账：镜像构建不需要
+web/
+work/
+docs/
+scripts/
+sql/
+logs/
+**/node_modules/
+*.log
+
+# 各服务自己的 Dockerfile 也不需要进上下文
+**/Dockerfile
