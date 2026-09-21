@@ -36,7 +36,14 @@ jobs:
       - name: Build and test
         run: bash scripts/verify/mvn-verify.sh --mode=online verify
 
-      # 交付面判别式之一：两份编排文件组合不可解析即门槛失败（HEAD 实测该命令已 0 退出，不会一上就红）。
+      # compose 的 6 个服务都声明 env_file: [.env]，而 .env 按约定不入库：CI 里没有它，
+      # config 与 build 会在解析阶段直接报 "env file ... not found"。这里放一份占位值
+      # （只为让编排可解析、镜像可构建，不用于起真服务）。本地开发仍必须自备 .env。
+      - name: Provision placeholder env for compose checks
+        run: cp scripts/verify/env.example .env
+
+      # 交付面判别式之一：两份编排文件组合不可解析即门槛失败。
+      # 注意：本命令必须在无 .env 的树上验证，只在有 .env 的开发机上跑过一次不算证据。
       - name: Compose files parse check
         run: docker compose -f docker-compose.yml -f docker-compose.services.yml config -q
 
