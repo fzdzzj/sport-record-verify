@@ -362,7 +362,7 @@ AND 不据此声称真库路径已验证
 ### Requirement: 前端改动有门槛判据
 
 WHEN 前端源码或依赖声明发生改动,
-系统 SHALL 在门槛上执行类型检查与生产构建，并 SHALL 以锁文件一致的严格安装方式暴露依赖漂移；前端入口文档 SHALL 指路到这两条命令。
+系统 SHALL 在门槛上执行类型检查与生产构建，并 SHALL 以锁文件一致的严格安装方式暴露依赖漂移；构建过程会重写的已跟踪生成物 SHALL 由门槛校验其与提交内容一致；前端入口文档 SHALL 指路到这几条命令与它们的处置方式。
 
 #### Scenario: 类型错误使门槛失败
 
@@ -377,6 +377,13 @@ GIVEN 依赖声明与已提交锁文件不一致或锁文件缺失
 WHEN 门槛以严格方式安装依赖
 THEN 安装步骤失败
 AND 失败信号指向锁文件而非业务代码
+
+#### Scenario: 生成物与提交不同步被捕获
+
+GIVEN 路由页面增删后提交的生成物未按新路由重新生成
+WHEN 门槛执行前端构建后比对该生成物与提交内容
+THEN 该步骤失败并指向该生成物文件
+AND 处置方式（重新生成并一并提交）在前端入口文档中可读
 
 ### Requirement: 公开口径自检覆盖全部发布载体
 
@@ -2021,4 +2028,4 @@ AND 下次读取回源到最新值
 - **add-sentinel-dynamic-rules**：把网关流控从「代码加载、重启生效」升级为「Nacos 动态数据源、改阈值不重启即生效」。规则对象为 `GatewayFlowRule`（resource/count/intervalSec/grade），粒度与 `SentinelGatewayRuleConfig` 中的路由 ID 一致；dataId `gateway-flow-rules`（DEFAULT_GROUP）。两条兜底口径：无规则时回退代码默认 5000 QPS 基线（限流不缺省），推送坏 JSON 时保留上一版有效规则（不因瞬时坏配置抖断限流）。Sentinel 本身仍是本地 Caffeine 之外的独立组件，不参与规则二级缓存路径。
 - **add-resilience-hardening**：Feign 容错标准化 + 内部接口凭证硬化。全局默认超时 connect 1000ms / read 3000ms（此前未配置的客户端走 Feign 默认 10s/60s，慢依赖可拖死整条链路）；每个 Feign 契约要么有 fallbackFactory、要么显式标注「不可软降级」——降级决策是产品语义而非实现细节：好友榜选**空榜**（反对「不过滤」，否则总榜非好友会泄露进好友榜）、RecordApi/AuthApi **不可软降级**（无轨迹无法判定、不可伪造 token/成功，fallback 只把故障转成 4007/4006 驱动重试或 DLQ）。内部接口从「仅网内拓扑信任」升级为「共享密钥校验」：服务本地 `/internal/**` 校验 `X-Internal-Token`（`app.internal.token` / 环境变量 `INTERNAL_API_TOKEN`，默认值仅本地演示），Feign 出站拦截器自动注入；网关白名单删除无路由的 `/internal/**` 死配置（原本不是漏洞，但未来误加 internal 路由会塌陷为可自提权）。新增错误码 4006-4008。引用 docs/adr/0007。
 - **add-request-tracing**：请求贯穿标识，以 MDC 最小实现满足「一次请求可检索对齐」，保持 ADR-0003 决策不引入 SkyWalking/Zipkin/Sleuth。三层：① 网关 `RequestIdGlobalFilter` 保证存在 `X-Request-Id`（已有则沿用，否则生成 UUID），写响应头并透传下游（WebFlux 过滤器是 `GlobalFilter` 而非 Servlet Filter）；② 各业务服务 `TraceIdFilter` 写入 MDC 键 `traceId` 并在请求结束清理，统一日志 pattern `[%X{traceId}]`（record-service 经 properties 的 `logging.pattern.console`，故六服务口径一致）；③ MQ 侧 Producer 把 traceId 写入消息 userProperty（键 `X-Request-Id`）、Consumer 还原到 MDC 并在处理后清理，使 record→verify→leaderboard 跨服务异步链路共用同一 traceId。已知残余：verify→record 的 Feign 状态回调用例在 record 侧日志会生成新 traceId（MQ 主链路已串通）；traceId 刻意不打 Micrometer tag（高基数）。引用变更 spec/changes/archive/add-request-tracing/。
-- **add-controlled-verify-entrypoint**：统一验收入口与门槛接线，起于一次 Harness 评审（窗口 2026-08-22~09-21，150 会话 / 502 Task Episode）。为什么要唯一入口：D12 事故证明"漏 `-s` 的 mvn 命令"会给出可信的假绿（换规范口径后 leaderboard 连依赖都解析不了，整批"通过"作废），而修正后的口径当时只活在台账散文里，README 与 CI 沿用的正是被作废的那一类命令；入口因此承担两件事——命令拼写唯一定义 + **调用构建前先打印并校验生效依赖来源**（离线仓缺失时以独立退出码失败，不与用例红混记）。四条新门槛步骤的落地过程本身成了两条口径教训：其一，`compose config -q` "在 HEAD 实测 0 退出"是在有 `.env` 的开发机上量的，干净检出下六个服务的 `env_file: [.env]` 会让该步在解析阶段就失败——机器态当仓库态，与本变更要堵的是同一类错误，故新增「环境文件不入库时门槛仍可解析」场景；其二，词面自检原先只看 markdown，实测 4 处命中在 java/yml 注释里，扩围后改为覆盖全部公开文本载体。真库 IT 与前端检查从"存在但没有路径"变为可触发（IT 缺环境变量按未覆盖计，不得记为通过；前端以 `--frozen-lockfile` + type-check + build 上门槛）。收口纪律同步升级：验收记录必须绑定 commit 与门槛来源，外部门槛结论变化时当场更新，不留过期判断。引用变更 spec/changes/archive/add-controlled-verify-entrypoint/。
+- **add-controlled-verify-entrypoint**：统一验收入口与门槛接线，起于一次 Harness 评审（窗口 2026-08-22~09-21，150 会话 / 502 Task Episode）。为什么要唯一入口：D12 事故证明"漏 `-s` 的 mvn 命令"会给出可信的假绿（换规范口径后 leaderboard 连依赖都解析不了，整批"通过"作废），而修正后的口径当时只活在台账散文里，README 与 CI 沿用的正是被作废的那一类命令；入口因此承担两件事——命令拼写唯一定义 + **调用构建前先打印并校验生效依赖来源**（离线仓缺失时以独立退出码失败，不与用例红混记）。四条新门槛步骤的落地过程本身成了两条口径教训：其一，`compose config -q` "在 HEAD 实测 0 退出"是在有 `.env` 的开发机上量的，干净检出下六个服务的 `env_file: [.env]` 会让该步在解析阶段就失败——机器态当仓库态，与本变更要堵的是同一类错误，故新增「环境文件不入库时门槛仍可解析」场景；其二，词面自检原先只看 markdown，实测 4 处命中在 java/yml 注释里，扩围后改为覆盖全部公开文本载体。真库 IT 与前端检查从"存在但没有路径"变为可触发（IT 缺环境变量按未覆盖计，不得记为通过；前端以 `--frozen-lockfile` + type-check + build 上门槛）。收口纪律同步升级：验收记录必须绑定 commit 与门槛来源，外部门槛结论变化时当场更新，不留过期判断。归档同一轮补记：前端生成物一致性判据已落地——提交真实的 `typed-router.d.ts`（原提交是 11 行手写桩且承重），并以手写的 `web/src/vue-router-auto-shim.d.ts` 供 `vue-router/auto` 的类型（vue-router@4.6 把该类型入口留成空占位、unplugin-vue-router@0.19.2 不写它），前端门槛由三条命令扩为四条。引用变更 spec/changes/archive/add-controlled-verify-entrypoint/。

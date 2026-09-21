@@ -112,11 +112,8 @@ jobs:
       - name: Build
         run: pnpm --dir web run build
 
-      # 已知盲区（先记账，不加会常红的灯）：web/src/typed-router.d.ts 名义上是 unplugin-vue-router
-      # 的生成物，实际提交的是 11 行手写桩（自己声明 vue-router/auto 的 createRouter/useRoute/useRouter），
-      # 而且它是承重的——用一次真实构建产出的 194 行版本替换后，pnpm type-check 立刻红：
-      #   src/pages/register.page.vue、src/pages/verdict.page.vue → TS2306
-      #   'vue-router/vue-router-auto.d.ts' is not a module
-      # 故此处不做 `git diff --exit-code -- web/src/typed-router.d.ts` 一致性检查（今天必红，只是造噪音）。
-      # 正确修法是先把 vue-router 自动类型的 tsconfig/生成物关系摆正，或改为不跟踪该文件并在 type-check 前生成；
-      # 那是前端 typing 的一处独立修复，不并入本变更，另开变更处理。
+      # web/src/typed-router.d.ts 是已跟踪的生成物（提交它是为了让 IDE 与 type-check 不必先跑 codegen）。
+      # 构建会重写它，故本步红 = 提交的生成物与当前路由表不同步，处置是把重新生成的结果一并提交。
+      # 本地实测两次构建产物逐字节一致，该判据不抖；vue-router/auto 的类型由 src/vue-router-auto-shim.d.ts 供。
+      - name: Generated router types match committed
+        run: git diff --exit-code -- web/src/typed-router.d.ts
