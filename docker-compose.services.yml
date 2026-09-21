@@ -1,0 +1,203 @@
+# ============================================================
+# 运动记录真实性校验系统 · 服务层编排（F20，独立文件，不改 docker-compose.yml）
+# 用法：docker compose -f docker-compose.yml -f docker-compose.services.yml up -d --build
+#       （中间件栈先 healthy 后服务才启动；镜像由本仓库 6 个多阶段 Dockerfile 构建）
+# 说明：各服务 build 上下文为仓库根（parent pom + common/api 在根下，多阶段构建必需）。
+# 中间件寻址：各服务配置默认 127.0.0.1（宿主机直跑口径），本文件经 environment 覆盖为
+# compose 网络内的服务名（Spring relaxed binding：SPRING_* 环境变量覆盖同名 yml/properties 键，
+# 不改应用配置文件）。容器内一律走中间件容器端口（mysql:3306/redis:6379/postgis:5432 等），
+# 与 .env 的宿主机映射端口（MYSQL_PORT/POSTGRES_PORT）无关。
+# record-service 数据源走 sharding.yaml（ShardingDataSourceConfig 读取时替换 ${} 占位），
+# 地址已参数化：host 经 SHARDING_MYSQL_HOST 指向 compose 内 mysql，端口/口令见
+# record-service environment 段（口令走 env_file 的 MYSQL_PASSWORD，与 MYSQL_ROOT_PASSWORD 一致）。
+# ============================================================
+
+services:
+  gateway-service:
+    build:
+      context: .
+      dockerfile: gateway-service/Dockerfile
+    container_name: sport-verify-gateway
+    env_file: [.env]
+    environment:
+      SPRING_CLOUD_NACOS_DISCOVERY_SERVER_ADDR: nacos:8848
+      SPRING_CLOUD_NACOS_CONFIG_SERVER_ADDR: nacos:8848
+      # Sentinel 动态规则源（app.sentinel.nacos.server-addr）同样指向 compose 内 Nacos
+      APP_SENTINEL_NACOS_SERVER_ADDR: nacos:8848
+      SPRING_DATA_REDIS_HOST: redis
+    ports:
+      - "8080:8080"
+    depends_on:
+      nacos:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "bash", "-c", "exec 3<>/dev/tcp/127.0.0.1/8080 || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 40s
+    networks:
+      - sport-verify-net
+
+  user-service:
+    build:
+      context: .
+      dockerfile: user-service/Dockerfile
+    container_name: sport-verify-user
+    env_file: [.env]
+    environment:
+      SPRING_CLOUD_NACOS_DISCOVERY_SERVER_ADDR: nacos:8848
+      SPRING_CLOUD_NACOS_CONFIG_SERVER_ADDR: nacos:8848
+      SPRING_DATA_REDIS_HOST: redis
+      # 口令沿用 yml 的 ${MYSQL_ROOT_PASSWORD:root} 占位（.env 未注入时用中间件默认 root，仅限本地）
+      SPRING_DATASOURCE_URL: jdbc:mysql://mysql:3306/user_db?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai&useSSL=false&allowPublicKeyRetrieval=true
+    ports:
+      - "8081:8081"
+    depends_on:
+      nacos:
+        condition: service_healthy
+      mysql:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "bash", "-c", "exec 3<>/dev/tcp/127.0.0.1/8081 || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 40s
+    networks:
+      - sport-verify-net
+
+  record-service:
+    build:
+      context: .
+      dockerfile: record-service/Dockerfile
+    container_name: sport-verify-record
+    env_file: [.env]
+    environment:
+      SPRING_CLOUD_NACOS_DISCOVERY_SERVER_ADDR: nacos:8848
+      SPRING_CLOUD_NACOS_CONFIG_SERVER_ADDR: nacos:8848
+      SPRING_DATA_REDIS_HOST: redis
+      ROCKETMQ_NAME_SERVER: rocketmq-namesrv:9876
+      # 数据源由 sharding.yaml 提供（ShardingDataSourceConfig 读取时替换 ${} 占位），
+      # SPRING_DATASOURCE_URL 对其无效；host 指向 compose 内 MySQL 服务名
+      SHARDING_MYSQL_HOST: mysql
+      # env_file 注入的 MYSQL_PORT 是宿主机映射端口（.env 里为 3307），容器内直连
+      # mysql 须走容器端口，这里显式覆盖；口令走 env_file 的 MYSQL_PASSWORD
+      MYSQL_PORT: 3306
+    ports:
+      - "8082:8082"
+    depends_on:
+      nacos:
+        condition: service_healthy
+      mysql:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      rocketmq-broker:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "bash", "-c", "exec 3<>/dev/tcp/127.0.0.1/8082 || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 40s
+    networks:
+      - sport-verify-net
+
+  verify-service:
+    build:
+      context: .
+      dockerfile: verify-service/Dockerfile
+    container_name: sport-verify-verify
+    env_file: [.env]
+    environment:
+      SPRING_CLOUD_NACOS_DISCOVERY_SERVER_ADDR: nacos:8848
+      SPRING_CLOUD_NACOS_CONFIG_SERVER_ADDR: nacos:8848
+      SPRING_DATA_REDIS_HOST: redis
+      ROCKETMQ_NAME_SERVER: rocketmq-namesrv:9876
+      SPRING_DATASOURCE_URL: jdbc:mysql://mysql:3306/verify_db?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai&useSSL=false&allowPublicKeyRetrieval=true
+    ports:
+      - "8083:8083"
+    depends_on:
+      nacos:
+        condition: service_healthy
+      mysql:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      rocketmq-broker:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "bash", "-c", "exec 3<>/dev/tcp/127.0.0.1/8083 || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 40s
+    networks:
+      - sport-verify-net
+
+  leaderboard-service:
+    build:
+      context: .
+      dockerfile: leaderboard-service/Dockerfile
+    container_name: sport-verify-leaderboard
+    env_file: [.env]
+    environment:
+      SPRING_CLOUD_NACOS_DISCOVERY_SERVER_ADDR: nacos:8848
+      SPRING_CLOUD_NACOS_CONFIG_SERVER_ADDR: nacos:8848
+      SPRING_DATA_REDIS_HOST: redis
+      ROCKETMQ_NAME_SERVER: rocketmq-namesrv:9876
+      SPRING_DATASOURCE_URL: jdbc:mysql://mysql:3306/record_db?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai&useSSL=false&allowPublicKeyRetrieval=true
+    ports:
+      - "8084:8084"
+    depends_on:
+      nacos:
+        condition: service_healthy
+      mysql:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      rocketmq-broker:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "bash", "-c", "exec 3<>/dev/tcp/127.0.0.1/8084 || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 40s
+    networks:
+      - sport-verify-net
+
+  mapmatch-service:
+    build:
+      context: .
+      dockerfile: mapmatch-service/Dockerfile
+    container_name: sport-verify-mapmatch
+    env_file: [.env]
+    environment:
+      SPRING_CLOUD_NACOS_DISCOVERY_SERVER_ADDR: nacos:8848
+      SPRING_CLOUD_NACOS_CONFIG_SERVER_ADDR: nacos:8848
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgis:5432/road_db?stringtype=unspecified
+    ports:
+      - "8085:8085"
+    depends_on:
+      nacos:
+        condition: service_healthy
+      postgis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "bash", "-c", "exec 3<>/dev/tcp/127.0.0.1/8085 || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 40s
+    networks:
+      - sport-verify-net
+
+# 与 docker-compose.yml 合并时按同名键合并（bridge 驱动以中间件文件为准）
+networks:
+  sport-verify-net: {}
