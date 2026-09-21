@@ -1,0 +1,56 @@
+[
+  {
+    "number": 1,
+    "category": "阶段 1：主 yaml host 参数化",
+    "task": "把 main sharding.yaml 的 jdbcUrl host 硬编码改为 ${SHARDING_MYSQL_HOST:127.0.0.1} 占位",
+    "steps": [
+      { "step": "record-service/src/main/resources/sharding.yaml jdbcUrl 行：jdbc:mysql://127.0.0.1:${MYSQL_PORT:3306}/record_db → jdbc:mysql://${SHARDING_MYSQL_HOST:127.0.0.1}:${MYSQL_PORT:3306}/record_db；默认值保持 127.0.0.1", "completed": true }
+    ],
+    "passes": true
+  },
+  {
+    "number": 2,
+    "category": "阶段 2：单测加固（哨兵 yaml + 真变量用例）",
+    "task": "test/resources/sharding.yaml 增真变量哨兵，ShardingDataSourceConfigTest 增 2 用例",
+    "steps": [
+      { "step": "test/resources/sharding.yaml 增一行 sharding-host: ${SHARDING_MYSQL_HOST:127.0.0.1} 哨兵", "completed": true },
+      { "step": "新增用例①：替换结果非残留、与当前 env（若设）或默认 127.0.0.1 一致", "completed": true },
+      { "step": "新增用例②：默认分支未设 env 保留 127.0.0.1 / 设 env 时替换为该值；Mockito 禁止 mockStatic(System)，改为运行级注入 env + 临时断言编辑复现红绿", "completed": true }
+    ],
+    "passes": true
+  },
+  {
+    "number": 3,
+    "category": "阶段 3：变更三件套与台账",
+    "task": "spec/changes/add-sharding-host-parameterization 三件套 + TASK-111 两件套 + PLAN 台账",
+    "steps": [
+      { "step": "新建 spec/changes/add-sharding-host-parameterization/{proposal.md,tasks.json,specs/sport-record-verify/spec-delta.md（EARS 格式）}", "completed": true },
+      { "step": "新建 work/mailbox/tasks/TASK-111/spec.md 与 handoff.md（含「只改清单」节，附录节标题避开「只改/改动/文件清单」触发词）", "completed": true },
+      { "step": "按收口清单五条在 work/mailbox/PLAN.md 追加 TASK-111 验收记录", "completed": true }
+    ],
+    "passes": true
+  },
+  {
+    "number": 4,
+    "category": "阶段 4：实跑验收（唯一入口）",
+    "task": "offline 281→283 / 构建产物含占位 / compose config / 容器内可达",
+    "steps": [
+      { "step": "bash scripts/verify/mvn-verify.sh --mode=offline test → BUILD SUCCESS，record 78→80、合计 282→283", "completed": true },
+      { "step": "构建产物 record-service/target/classes/sharding.yaml 含 ${SHARDING_MYSQL_HOST:127.0.0.1}", "completed": true },
+      { "step": "docker compose -f docker-compose.yml -f docker-compose.services.yml config → 退出 0，record-service environment 含 SHARDING_MYSQL_HOST: mysql", "completed": true },
+      { "step": "容器内可达：sport-verify_sport-verify-net 网络一次性 mysql 客户端容器连 mysql:3306（mysql 服务名）USE record_db SELECT 1，退出 0", "completed": true }
+    ],
+    "passes": true
+  },
+  {
+    "number": 5,
+    "category": "阶段 5：红绿取证与契约自证",
+    "task": "红（单测 env 注入 mismatched）、红（容器 -h 127.0.0.1）→ 绿；mailbox-contract 自证",
+    "steps": [
+      { "step": "红（单测）：注入 SHARDING_MYSQL_HOST=mysql 且临时期望 127.0.0.1 → BUILD FAILURE（断言红）；还原绿", "completed": true },
+      { "step": "红（容器）：同网络 -h 127.0.0.1 连接失败退出 1（证容器内服务名寻址非宿主回环）；-h mysql 绿退出 0", "completed": true },
+      { "step": "bash scripts/verify/mailbox-contract.sh --open=TASK-018,TASK-106 脏树退出 1（历史清单过冲），收口提交后退出 0", "completed": true }
+    ],
+    "passes": true
+  }
+]

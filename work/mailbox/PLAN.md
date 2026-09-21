@@ -232,3 +232,20 @@ bean 改名、未覆盖 `@Primary`，TASK-106 对这一点的批评成立。
 | 未覆盖 | 判据 B 对"已收口（足迹不在工作树）"的任务不重审既存记录，属设计取舍；`mvn-verify` 离线依赖来源以本机离线仓为准，未跑 online 全量 |
 | 归档与后续 | 本任务不自行归档；`spec/changes/add-mailbox-contract-check/` 三件套在本变更验收通过后并入主规格并移入 `archive/`，另行派发 |
 | 指导侧复验收 | 通过（不采信文字，现场复跑）：四组取证复现——红 A 退出 1 / 红 B 退出 1（含 `ghost-undeclared.md` 未声明项）/ TASK-108 隔离绿退出 0 / 全量绿退出 0 且 TASK-109 判据 B 清单一致（`.trae/` 排除生效）；额外实测退出码 3 路径（非 git 上下文即 3，不记通过）；`mvn-verify.sh --mode=offline test` → BUILD SUCCESS，281（17/19/31/78/81/49/6）0 失败 0 错误 0 跳过；词面自检按 CI 同款 pathspec 复跑（含 untracked 新文件）0 命中——回传 handoff 漏记此项，以本行为准。收口补齐两处：tasks.json 阶段 2–5 的 completed/passes 由指导侧回填（机械状态标记，非回传内容）；白名单 8 文件与 `git diff --name-only` 完全一致 |
+
+## 验收记录：`sharding.yaml 的 MySQL host 参数化（TASK-111，事项 3/5，2026-09-21）`
+
+| 项 | 内容 |
+| --- | --- |
+| 绑定修订 | 开工基线 `9c90d32`；本条记录所在的收口提交（指导侧验收通过后执行，未 push） |
+| 门槛来源 | 本地实跑，全部经唯一入口 `scripts/verify/mvn-verify.sh --mode=offline test` → BUILD SUCCESS / 17/19/31/**80**/81/49/6 = **283**（record 基线 78→80，全仓 281→283，只增不减） |
+| 是否到达外部门槛 | **未达外部门槛**：修订未推送，结论仅来自本地；无 CI run 编号可绑 |
+| 红绿取证 | 红（单测）：注入 `SHARDING_MYSQL_HOST=mysql` + 用例②临时固定期望 127.0.0.1 → `ShardingDataSourceConfigTest.realHostVariable_defaultOrOverrideBranch:70` `expected: <true> but was: <false>` / record BUILD FAILURE；还原绿。红（容器）：同网络 `-h 127.0.0.1` → `ERROR 2003 (HY000): Can't connect to MySQL server on '127.0.0.1:3306'(111)` 退出 1；`-h mysql` 绿 → 输出 `verdict/reachable` 退出 0。两判别式各取到红对与绿对 |
+| 静态 mock 说明 | 本任务未用 `mockStatic(System.class)`：Mockito 凭类加载无限循环保护禁止 mock java.lang.System，直接写会抛该异常；红绿取证以「运行级注入 env + 临时期望编辑」复现，断言仍覆盖默认/覆盖两分支 |
+| 构建产物 | `record-service/target/classes/sharding.yaml` L22 含 `jdbc:mysql://${SHARDING_MYSQL_HOST:127.0.0.1}:${MYSQL_PORT:3306}/record_db?...`（源资源真进构建输出） |
+| compose 口径 | `docker compose -f docker-compose.yml -f docker-compose.services.yml config` 退出 0；record-service environment 展开含 `SHARDING_MYSQL_HOST: mysql`（services.yml 注入 + compose 合并生效） |
+| 容器内可达 | 核心判据：compose 网络 `sport-verify_sport-verify-net` 内一次性 mysql 客户端连 `mysql:3306` 服务名成功、`USE record_db` 可查、退出 0（容器口径而非宿主口径） |
+| 未覆盖 | 无新未覆盖；TASK-110 全栈 `/daily` 端到端仍属其分期项（本任务不重提） |
+| 契约自证 | 脏树 `mailbox-contract.sh --open=TASK-018,TASK-106` 退出 1 属预期（历史 TASK-104/109 清单与公共文件过冲）；收口提交后 ACTUAL 空 → TASK-111 足迹不在工作树视为已收口，契约退出 0 |
+| 归档与后续 | 不自行归档；`add-sharding-host-parameterization` 三件套在本变更验收通过后并入主规格并移入 `archive/`，另行派发 |
+| 指导侧复验收（2026-09-21，现场复跑） | 六组取证逐字复现：① 契约脏树退出 1，TASK-111 判据 B 通过（两件套齐全），残余"改动集未声明"3 条全为 `ShardingDataSourceConfigTest.java`（历史 TASK-105/109/110 清单过冲，与回传口径一致）；② `--mode=offline test` 283 = 17/19/31/80/81/49/6 全绿零跳过（record 78→80，`ShardingDataSourceConfigTest` 5/5）；③ 构建产物 `target/classes/sharding.yaml` 含 `${SHARDING_MYSQL_HOST:127.0.0.1}` 且无 `jdbc:mysql://127.0.0.1` 硬编码残留（`grep -c` 0 命中）；④ `compose config -q` 退出 0、展开含 `SHARDING_MYSQL_HOST: mysql`；⑤ 容器口径红绿：`mysql:8.0` 镜像在 `sport-verify_sport-verify-net` 内 `-h mysql -P 3306` 退出 0（`USE record_db` 可查）、`-h 127.0.0.1` `ERROR 2003` 退出 1——证明判据测的是容器内服务名寻址而非宿主回环；⑥ 单测红对（env 注入 `mysql` + 临时期望固定 `127.0.0.1`）：`realHostVariable_defaultOrOverrideBranch:74 设 SHARDING_MYSQL_HOST=mysql 应替换默认值 ==> expected: <true> but was: <false>` / record 80 中 Failures:1 / BUILD FAILURE / rc=1，还原 cmp 0 差异。词面自检 ZERO-HIT。`mockStatic(System)` 偏离已核实属 Mockito 类加载循环保护硬限制，env 分支断言等价覆盖默认/覆盖两分支，handoff 已注明——偏离成立。白名单 9 文件与 `git diff --name-only` + untracked 一致 |

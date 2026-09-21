@@ -50,4 +50,29 @@ class ShardingDataSourceConfigTest {
         String content = loadYaml();
         assertFalse(content.contains("${"), "不应有未替换的 ${ 占位符残留");
     }
+
+    /** 真变量哨兵 ${SHARDING_MYSQL_HOST:127.0.0.1}：替换结果与当前 env（若设）或默认 127.0.0.1 一致，且不残留占位符 */
+    @Test
+    void realHostVariable_resolvesToEnvOrDefault() {
+        String content = loadYaml();
+        String host = System.getenv("SHARDING_MYSQL_HOST");
+        String expected = (host == null || host.isEmpty()) ? "127.0.0.1" : host;
+        assertTrue(content.contains("sharding-host: " + expected),
+                "真实变量应替换为 env(" + host + ") 或默认 127.0.0.1，实得需与之一致");
+        assertFalse(content.contains("${SHARDING_MYSQL_HOST"), "不应残留真实变量原样占位符");
+    }
+
+    /** 真变量哨兵默认分支：env 未设 → 取 127.0.0.1（宿主直跑口径零变化）；设 env → 取 env 值（容器口径覆盖） */
+    @Test
+    void realHostVariable_defaultOrOverrideBranch() {
+        String content = loadYaml();
+        String host = System.getenv("SHARDING_MYSQL_HOST");
+        if (host == null || host.isEmpty()) {
+            assertTrue(content.contains("sharding-host: 127.0.0.1"),
+                    "未设 SHARDING_MYSQL_HOST 应保留默认值 127.0.0.1");
+        } else {
+            assertTrue(content.contains("sharding-host: " + host),
+                    "设 SHARDING_MYSQL_HOST=" + host + " 应替换默认值");
+        }
+    }
 }

@@ -5,6 +5,7 @@
 #   - ${VAR} 无默认值未设 → 替换为空串
 dataSources:
   ds0:
+    sharding-host: ${SHARDING_MYSQL_HOST:127.0.0.1}
     jdbcUrl: jdbc:mysql://${SPORTVERIFY_TEST_DEFAULT_HOST_9F3E:12.34.56.78}:3306/record_db
     password: ${SPORTVERIFY_TEST_NODEFAULT_9F3E}
     host: pre-${SPORTVERIFY_TEST_NODEFAULT_9F3E}-post
