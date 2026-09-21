@@ -24,6 +24,7 @@
 - add-resilience-hardening（Feign 容错与内部接口凭证）
 - add-request-tracing（请求贯穿标识）
 - add-controlled-verify-entrypoint（统一验收入口与门槛接线）
+- update-spec-module-enum（规格模块枚举补正）
 
 各提案的 spec-delta 中 ADDED 需求已全部合并进本规范，MODIFIED 需求按规则处理（见「服务划分」分组与「变更历史」）。
 
@@ -32,7 +33,7 @@
 ### Requirement: 多模块工程结构
 
 WHEN 工程被构建,
-系统 SHALL 产出父工程与 8 个可编译模块（common、api、gateway-service、user-service、record-service、verify-service、leaderboard-service），并 SHALL 通过统一验收入口执行全量构建。任何需要完整反应堆的消费者（含容器镜像构建）SHALL 以仓库根为上下文，使父工程与全部被声明模块可见。
+系统 SHALL 产出父工程与 8 个可编译模块（common、api、gateway-service、user-service、record-service、verify-service、leaderboard-service、mapmatch-service），并 SHALL 通过统一验收入口执行全量构建。任何需要完整反应堆的消费者（含容器镜像构建）SHALL 以仓库根为上下文，使父工程与全部被声明模块可见。
 
 #### Scenario: 全量构建成功
 

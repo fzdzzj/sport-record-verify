@@ -249,3 +249,16 @@ bean 改名、未覆盖 `@Primary`，TASK-106 对这一点的批评成立。
 | 契约自证 | 脏树 `mailbox-contract.sh --open=TASK-018,TASK-106` 退出 1 属预期（历史 TASK-104/109 清单与公共文件过冲）；收口提交后 ACTUAL 空 → TASK-111 足迹不在工作树视为已收口，契约退出 0 |
 | 归档与后续 | 不自行归档；`add-sharding-host-parameterization` 三件套在本变更验收通过后并入主规格并移入 `archive/`，另行派发 |
 | 指导侧复验收（2026-09-21，现场复跑） | 六组取证逐字复现：① 契约脏树退出 1，TASK-111 判据 B 通过（两件套齐全），残余"改动集未声明"3 条全为 `ShardingDataSourceConfigTest.java`（历史 TASK-105/109/110 清单过冲，与回传口径一致）；② `--mode=offline test` 283 = 17/19/31/80/81/49/6 全绿零跳过（record 78→80，`ShardingDataSourceConfigTest` 5/5）；③ 构建产物 `target/classes/sharding.yaml` 含 `${SHARDING_MYSQL_HOST:127.0.0.1}` 且无 `jdbc:mysql://127.0.0.1` 硬编码残留（`grep -c` 0 命中）；④ `compose config -q` 退出 0、展开含 `SHARDING_MYSQL_HOST: mysql`；⑤ 容器口径红绿：`mysql:8.0` 镜像在 `sport-verify_sport-verify-net` 内 `-h mysql -P 3306` 退出 0（`USE record_db` 可查）、`-h 127.0.0.1` `ERROR 2003` 退出 1——证明判据测的是容器内服务名寻址而非宿主回环；⑥ 单测红对（env 注入 `mysql` + 临时期望固定 `127.0.0.1`）：`realHostVariable_defaultOrOverrideBranch:74 设 SHARDING_MYSQL_HOST=mysql 应替换默认值 ==> expected: <true> but was: <false>` / record 80 中 Failures:1 / BUILD FAILURE / rc=1，还原 cmp 0 差异。词面自检 ZERO-HIT。`mockStatic(System)` 偏离已核实属 Mockito 类加载循环保护硬限制，env 分支断言等价覆盖默认/覆盖两分支，handoff 已注明——偏离成立。白名单 9 文件与 `git diff --name-only` + untracked 一致 |
+
+## 验收记录：`规格模块枚举补正并归档（TASK-112，事项 4/5，2026-09-21）`
+
+| 项 | 内容 |
+| --- | --- |
+| 绑定修订 | 开工基线 `75ec1dd`；本条记录所在的收口提交（收口授权下放，执行侧自证全绿后直接收口，未 push） |
+| 门槛来源 | 本地实跑，唯一入口 `scripts/verify/mvn-verify.sh --mode=offline test` → BUILD SUCCESS（Reactor Summary 全 8 模块 SUCCESS）/ 17/19/31/80/81/49/6 = **283**（与基线一致，纯 spec 改动零扰动） |
+| 是否到达外部门槛 | **未达外部门槛**：修订未推送，结论仅来自本地；无 CI run 编号可绑 |
+| 红绿取证（文档判据，判据脚本落盘 .sh） | 红（修正前）：「多模块工程结构」需求节 `mapmatch-service` 计数 **0**、需求写"8 个"、节内枚举 **7** 项 vs 父 pom `grep -c "<module>"` = **8** → 7≠8 矛盾成立（`RED_OK`）；绿（修正后）：节内 `mapmatch-service` 计数 **1**、枚举 **8** 项 = 父 pom **8** 模块、枚举名与 pom 模块名排序 diff 为空逐名一致（`GREEN_OK`）。主规格仅动 L35 枚举（补 `mapmatch-service`）与头部归档列表两处 |
+| 归档动作 | `git mv spec/changes/update-spec-module-enum spec/changes/archive/`（先 `git add` 再 mv，git mv 只认已跟踪文件）；`git diff --cached --name-only` 仅含预期 3 文件（proposal.md / tasks.json / spec-delta.md，archive 路径）；`spec/changes/` 下无同名未归档目录 |
+| 未覆盖 | 无新未覆盖；其余 14 个存量未归档变更（web 系列、perf 系列、gateway-browser-cors 等）整体归档另行派发，本任务只归档自己 |
+| 契约自证 | 收口前脏树 `mailbox-contract.sh --open=TASK-018,TASK-106` 退出 **1** 属预期：TASK-112 自身判据 B 通过（只改清单与实际改动集 7=7 一致），残余为历史 TASK-111/110/109 清单与公共文件过冲（清单多报 + 改动集未声明并存）；收口提交后 ACTUAL 空（仅 `.trae/` 排除）→ 各任务足迹不在工作树视为已收口，契约退出 **0** |
+| 指导侧复验收 | 收口授权下放（TASK-112 修订），指导侧不再复跑；判据不全绿不得合并由执行侧自证——红绿计数、offline 283、契约脏树 1 / 收口后 0 均已实测落档 |

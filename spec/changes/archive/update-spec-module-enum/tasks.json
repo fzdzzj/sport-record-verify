@@ -1,0 +1,53 @@
+[
+  {
+    "number": 1,
+    "category": "阶段 1：变更三件套",
+    "task": "新建 spec/changes/update-spec-module-enum/{proposal.md,tasks.json,specs/sport-record-verify/spec-delta.md}",
+    "steps": [
+      { "step": "proposal.md 写明笔误位置（主规格 L32-42 枚举缺 mapmatch-service、父 pom 8 模块）、Why/What/Impact/明确不做", "completed": true },
+      { "step": "spec-delta 以 EARS MODIFIED 表达「多模块工程结构」修正：保留结构，枚举括号内补 mapmatch-service，使 8 个与列表一致", "completed": true }
+    ],
+    "passes": true
+  },
+  {
+    "number": 2,
+    "category": "阶段 2：红绿取证（文档判据）",
+    "task": "红（修正前）：需求节 mapmatch-service=0、枚举 7 项 vs 父 pom 8 模块；绿（修正后）：=1、8=8 逐名一致",
+    "steps": [
+      { "step": "红：从「多模块工程结构」标题到下一 ### Requirement: 之间，节内 mapmatch-service 计数 0，需求写 8 个，父 pom grep -c \"<module>\" pom.xml = 8，枚举 7 项 → 7!=8 矛盾成立", "completed": true },
+      { "step": "绿：应用修正后节内 mapmatch-service 计数 1，枚举 8 项 = pom 8 模块，逐名 diff 一致", "completed": true }
+    ],
+    "passes": true
+  },
+  {
+    "number": 3,
+    "category": "阶段 3：归档并入主规格",
+    "task": "主规格 L35 补枚举 + 头部归档列表追加 + git mv 入 archive + git diff --cached 核对",
+    "steps": [
+      { "step": "spec.md L35 枚举括号内补 mapmatch-service（不改其他行）", "completed": true },
+      { "step": "spec.md 头部「本规范已归档以下提案」列表末尾追加 - update-spec-module-enum（规格模块枚举补正）", "completed": true },
+      { "step": "git mv spec/changes/update-spec-module-enum spec/changes/archive/；git diff --cached --name-only 只含预期 3 文件", "completed": true }
+    ],
+    "passes": true
+  },
+  {
+    "number": 4,
+    "category": "阶段 4：回归与台账",
+    "task": "offline test 283 不变；TASK-112 两件套 + PLAN.md 收口清单五条验收记录",
+    "steps": [
+      { "step": "bash scripts/verify/mvn-verify.sh --mode=offline test → BUILD SUCCESS / 17/19/31/80/81/49/6 = 283（纯 spec 改动无代码影响，仍按铁律跑）", "completed": true },
+      { "step": "work/mailbox/tasks/TASK-112/spec.md + handoff.md（含「只改清单」节）+ work/mailbox/PLAN.md 追加验收记录", "completed": true }
+    ],
+    "passes": true
+  },
+  {
+    "number": 5,
+    "category": "阶段 5：收口 commit 与契约复验",
+    "task": "白名单 7 文件一次提交；mailbox-contract 收口后退出 0；git status 仅剩 .trae/",
+    "steps": [
+      { "step": "commit：docs(spec): 规格模块枚举补正 mapmatch-service（update-spec-module-enum 归档），正文含笔误位置、红绿计数、归档动作、台账", "completed": true },
+      { "step": "契约复验：bash scripts/verify/mailbox-contract.sh --open=TASK-018,TASK-106 → 退出 0；git status --porcelain 仅剩 .trae/", "completed": true }
+    ],
+    "passes": true
+  }
+]
