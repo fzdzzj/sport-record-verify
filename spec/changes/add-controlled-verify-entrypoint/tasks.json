@@ -81,9 +81,9 @@
     "category": "阶段 8：收口",
     "task": "把变更结论绑到修订上",
     "steps": [
-      { "step": "按新收口清单记录本变更的验收结论：commit id + 门槛来源 + 结果；若未推送则在记录里写明\"当前修订未达外部门槛\"", "completed": false },
-      { "step": "归档前跑一次 spec 结构自检：grep 计数确认 proposal/tasks/spec-delta 三件齐备且需求标题格式一致", "completed": false }
+      { "step": "按新收口清单记录本变更的验收结论：commit id + 门槛来源 + 结果；若未推送则在记录里写明\"当前修订未达外部门槛\"", "completed": true },
+      { "step": "归档前跑一次 spec 结构自检：grep 计数确认 proposal/tasks/spec-delta 三件齐备且需求标题格式一致", "completed": true }
     ],
-    "passes": false
+    "passes": true
   }
 ]

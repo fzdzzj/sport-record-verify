@@ -20,6 +20,17 @@
 `--mode` 判据见 `scripts/verify/README.md`）。下方 D12 那句"今后验收口径固定"作为作废史原文保留，
 其参数组合现由该脚本的 `--mode=offline` 表达。
 
+## 验收记录：`add-controlled-verify-entrypoint`（2026-09-21，按上方清单写法）
+
+| 项 | 内容 |
+| --- | --- |
+| 绑定修订 | `fe76219` 入口脚本 · `2080d40` CI 改调入口 · `8c58cfc` compose/镜像门槛 · `7adeeaa` IT 与前端接线 · `6daf863` 词面清理+扩围 · `ee3f594` env 样例+清单 · `5c68a80` 第 7 阶段取证 · 本条记录所在的收口提交 |
+| 门槛来源 | **本地 `--mode=online` 实跑**（非外部门槛）：`mvn -B -ntp clean verify` → BUILD SUCCESS，03:03，全仓 281（17/19/31/78/81/49/6）。同树 `--mode=offline` 亦 rc=0 / 281，两模式结论一致 |
+| 其他判别式来源 | 本地实跑：`--it` 在 scratch 库 3/3 通过、缺 env 时 Skipped: 3（记为未覆盖）；compose `config -q` rc=0；代表镜像 compose build rc=0，Dockerfile 退回部分 COPY 时 rc=1；6 份 Dockerfile 逐份 `docker build` 全 OK；词面自检扩围后范围内 0 命中 |
+| 结果 | 8 个任务 23 个 step 全 `completed`，各任务 `passes=true` |
+| 是否到达外部门槛 | **未达外部门槛**：本变更全部提交均未推送（推送属外部写操作，需单独授权）；`git rev-list --count origin/main..main` 在 `5c68a80` 上为 23，本条提交后为 24。CI 侧的新步骤（入口调用、compose 两步、web job、扩围自检）在当前修订上从未被真实执行过，只有同机等价命令的实跑凭据 |
+| 未覆盖 | `LeaderboardDailySummaryMapperMysqlIT` 之外的真中间件路径（Redis L2 真序列化、RocketMQ 真 broker、全栈 `/daily` 端到端）本次不新增覆盖 |
+
 ## ⚠️ D12：验收口径作废（2026-09-20 自查发现）
 
 本会话此前所有复跑用的是 `mvn -B -ntp -pl <模块> -am test`，**没带 `-s .mvn-settings.xml`**，
