@@ -30,10 +30,11 @@ jobs:
           key: m2-${{ hashFiles('**/pom.xml') }}
           restore-keys: m2-
 
-      # 本仓 125 个 @Test 均为纯 Mockito 单元测试，不依赖 MySQL/Redis/Nacos 等中间件，
-      # 故 CI 不启动任何 services 容器，直接跑 mvn clean verify。
+      # 验收命令的拼写只在 scripts/verify/mvn-verify.sh 里定义，本文件只引用它（入口内部固定先 clean）。
+      # CI 没有仓内 settings 与离线仓，故固定 online 模式作为对外权威口径。用例为纯 Mockito 单元测试，
+      # 不依赖 MySQL/Redis/Nacos 等中间件，所以不启动任何 services 容器。
       - name: Build and test
-        run: mvn -B clean verify
+        run: bash scripts/verify/mvn-verify.sh --mode=online verify
 
       # 公开文档口径自检：命中求职禁用词即失败（详见 README / docs 口径约定）
       - name: Public docs wording self-check

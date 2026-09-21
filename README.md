@@ -57,8 +57,8 @@ bash scripts/db/migrate.sh
 #    PATH 上是 JDK8 时需指定 JAVA_BIN，如 JAVA_BIN="D:\develop1\jdk21\bin\java"）
 bash scripts/mapmatch/import-road-network.sh
 
-# 3. 全量编译打包（父工程 + 8 个子模块）
-mvn clean install
+# 3. 全量编译打包（父工程 + 全部子模块；命令拼写只在统一验收入口里定义）
+bash scripts/verify/mvn-verify.sh package
 
 # 4. 启动六个服务（各开一个终端；可选 G1 停顿目标，禁止 -Xms1g/-Xmx1g）
 #    export JAVA_OPTS="-XX:MaxGCPauseMillis=50"   # Windows PowerShell: $env:JAVA_OPTS="..."
@@ -103,24 +103,32 @@ pnpm install && pnpm dev   # 默认 5173，Vite 代理原样转发网关 8080
 
 ## 测试
 
-本仓现有 **15 个测试类、125 个 `@Test`**，全部为纯 Mockito 单元测试（不依赖 MySQL/Redis/Nacos 中间件），
-因此本地与 CI 均可在无中间件环境下运行。JaCoCo 覆盖率报告随构建集成，只报告不做强制门槛。
+验收命令的拼写只在统一入口 `scripts/verify/mvn-verify.sh` 里定义一处，README 与 CI 都引用它；
+用例数量与模块分布以该入口一次实跑的汇总输出为准，本文不写死计数（写死的数字每次改动都会失真）。
+JaCoCo 覆盖率报告随构建集成，只报告不做强制门槛（根 pom 明示的取舍）。
 
-**本地跑法**（需 JDK 21）：
+**本地跑法**（需 JDK 21 与 Maven）：
 
 ```bash
-# 全量编译 + 跑全部单测 + 产出各模块覆盖率报告（target/site/jacoco/index.html）
-mvn clean test
-# 与 CI 一致的口径（含 verify 阶段，产出完整 JaCoCo 报告）
-mvn -B clean verify
+# 全量验收：先清理 → 编译 → 全部单测 → 产出各模块覆盖率报告（target/site/jacoco/index.html）
+bash scripts/verify/mvn-verify.sh verify
+# 只验某个模块及其上游（自动补 -am）
+bash scripts/verify/mvn-verify.sh --pl leaderboard-service test
+# --mode / 退出码语义 / 依赖来源判定见 scripts/verify/README.md
 ```
+
+入口在执行任何阶段前固定先 `clean`，结论不复用上一轮 `target/` 产物；调用构建工具前先打印
+生效模式、settings 路径、`localRepository` 与命令全文，再原样透传其退出码。
 
 **CI 跑法**（`.github/workflows/ci.yml`，见 [Actions](https://github.com/fzdzzj/sport-record-verify/actions)）：
 
 - 触发：push 到 `main` + pull_request，JDK 21（Temurin）。
-- 步骤：`mvn -B clean verify`；同时用 `actions/cache` 缓存 `~/.m2/repository` 加速。
+- 步骤：`bash scripts/verify/mvn-verify.sh --mode=online verify`，同时用 `actions/cache` 缓存
+  `~/.m2/repository` 加速。CI 上没有仓内 settings 与离线仓，online 即对外权威口径。
+- 需要真实 MySQL 的端到端测试不在 CI 上跑，走入口的 `--it` 分支，见下节。
 - 各模块覆盖率报告以 `jacoco-reports` artifact 上传，可在一次运行的 Artifacts 面板下载。
-- 附一条「公开文档口径自检」step，命中禁用词口径即 CI 失败。
+- 附一条「公开口径自检」step，公开载体命中禁用措辞即 CI 失败。
+
 
 ## JWT 鉴权闭环（注册/登录 + 网关统一鉴权 + 数据隔离，选型理由见 [ADR-0007](docs/adr/0007-鉴权设计.md)）
 
@@ -281,6 +289,7 @@ bash scripts/perf/run-perf.sh quality base && bash scripts/perf/run-perf.sh load
 spec/           openspec 规范（specs/ 能力域基线 + changes/ 变更提案与差异）
 docs/           需求文档与 ADR；docs/perf/ 压测报告与原始数据（data/raw 为逐请求 CSV/JSON）
 scripts/perf/   压测工具（零依赖 JDK21 单文件程序）与一键驱动脚本
+scripts/verify/ 统一验收入口（mvn-verify.sh）、退出码与依赖来源判据、本机环境变量样例 env.example
 scripts/mapmatch/  OSM 路网导入脚本（Overpass 下载 + 零依赖导入器 + 建表 SQL，幂等可重跑；data/ 为生成物不入库）
 sql/            各库幂等建表脚本（docker-entrypoint-initdb.d 首次自动执行）+ migrations/ 手动迁移
 rocketmq/       Broker 本地配置

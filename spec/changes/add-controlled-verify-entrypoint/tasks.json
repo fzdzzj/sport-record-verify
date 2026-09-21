@@ -15,10 +15,10 @@
     "category": "阶段 2：CI 收敛到入口",
     "task": "ci.yml 构建步骤改调脚本的 online 模式",
     "steps": [
-      { "step": "把 .github/workflows/ci.yml 的 Build and test 由 mvn -B clean verify 改为 bash scripts/verify/mvn-verify.sh --mode=online verify（CI 无 .mvn-settings.xml，online 即今天的实际口径，行为不变但命令定义只剩一处）。offline 判别式的负例不在 CI 上做，留到阶段 7 本地验证", "completed": false },
-      { "step": "更新根 README「测试」节的 CI 说明，使其指向同一脚本；删除写死的 15 类 / 125 个 @Test 计数，改为以脚本汇总输出为准", "completed": false }
+      { "step": "把 .github/workflows/ci.yml 的 Build and test 由 mvn -B clean verify 改为 bash scripts/verify/mvn-verify.sh --mode=online verify（CI 无 .mvn-settings.xml，online 即今天的实际口径，行为不变但命令定义只剩一处）。offline 判别式的负例不在 CI 上做，留到阶段 7 本地验证", "completed": true },
+      { "step": "更新根 README「测试」节的 CI 说明，使其指向同一脚本；删除写死的 15 类 / 125 个 @Test 计数，改为以脚本汇总输出为准", "completed": true }
     ],
-    "passes": false
+    "passes": true
   },
   {
     "number": 3,
