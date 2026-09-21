@@ -1,0 +1,183 @@
+diff --git a/record-service/src/test/java/com/sportverify/record/config/FeignHttpClientPoolConfigTest.java b/record-service/src/test/java/com/sportverify/record/config/FeignHttpClientPoolConfigTest.java
+new file mode 100644
+index 0000000..700f273
+--- /dev/null
++++ b/record-service/src/test/java/com/sportverify/record/config/FeignHttpClientPoolConfigTest.java
+@@ -0,0 +1,84 @@
++package com.sportverify.record.config;
++
++import java.io.IOException;
++import java.util.concurrent.TimeUnit;
++
++import feign.Client;
++import feign.hc5.ApacheHttp5Client;
++import org.apache.hc.client5.http.impl.io.PoolingHttpClientConnectionManager;
++import org.apache.hc.client5.http.io.HttpClientConnectionManager;
++import org.junit.jupiter.api.Test;
++
++import org.springframework.boot.autoconfigure.AutoConfigurations;
++import org.springframework.boot.context.properties.bind.Binder;
++import org.springframework.boot.test.context.runner.ApplicationContextRunner;
++import org.springframework.cloud.openfeign.FeignAutoConfiguration;
++import org.springframework.cloud.openfeign.support.FeignHttpClientProperties;
++import org.springframework.core.io.ClassPathResource;
++import org.springframework.core.io.support.ResourcePropertySource;
++import org.springframework.mock.env.MockEnvironment;
++
++import static org.assertj.core.api.Assertions.assertThat;
++
++/**
++ * F07 Feign 连接池断言（单条下游路由：VerifyApi 提交后回调判定）。
++ *
++ * <p>守两个静默失效口子：pom 里 feign-hc5 被删掉时 Spring Cloud 悄悄退回 JDK
++ * HttpURLConnection（配置全对，连接照旧每次新建）；properties 键名写成 hc5 原生的
++ * maxTotal 时宽松绑定不报错、只用默认值。前者测自动装配真换了池化客户端，后者测随仓配置能绑上。</p>
++ */
++class FeignHttpClientPoolConfigTest {
++
++    @Test
++    void feignClientIsPooledApacheHttpClient5() {
++        new ApplicationContextRunner()
++                .withConfiguration(AutoConfigurations.of(FeignAutoConfiguration.class))
++                .withPropertyValues(
++                        "spring.cloud.openfeign.httpclient.max-connections=7",
++                        "spring.cloud.openfeign.httpclient.max-connections-per-route=3")
++                .run(context -> {
++                    assertThat(context).hasSingleBean(Client.class);
++                    assertThat(context.getBean(Client.class)).isInstanceOf(ApacheHttp5Client.class);
++
++                    HttpClientConnectionManager connectionManager =
++                            context.getBean(HttpClientConnectionManager.class);
++                    assertThat(connectionManager).isInstanceOf(PoolingHttpClientConnectionManager.class);
++                    PoolingHttpClientConnectionManager pool = (PoolingHttpClientConnectionManager) connectionManager;
++                    assertThat(pool.getMaxTotal()).isEqualTo(7);
++                    assertThat(pool.getDefaultMaxPerRoute()).isEqualTo(3);
++                });
++    }
++
++    @Test
++    void shippedConfigBoundsPoolAndFailsFastOnExhaustedPool() throws IOException {
++        MockEnvironment environment = shippedEnvironment();
++        // 键名拼错时宽松绑定不会报错、只会静默用默认值，先确认这个键真被识别
++        assertThat(environment.containsProperty("spring.cloud.openfeign.httpclient.max-connections")).isTrue();
++
++        FeignHttpClientProperties props = Binder.get(environment)
++                .bind("spring.cloud.openfeign.httpclient", FeignHttpClientProperties.class)
++                .orElseThrow(() -> new AssertionError(
++                        "application.properties 未配置 spring.cloud.openfeign.httpclient"));
++
++        // 只有 verify-service 一条下游路由：total 与 per-route 同取压测最大并发 100
++        assertThat(props.getMaxConnections()).isEqualTo(100);
++        assertThat(props.getMaxConnectionsPerRoute()).isEqualTo(100);
++        // 小于服务端 keep-alive 空闲超时 20s：连接由本端先到期，不会捞到对端已关的半关连接
++        assertThat(props.getTimeToLive()).isEqualTo(15L);
++        assertThat(props.getTimeToLiveUnit()).isEqualTo(TimeUnit.SECONDS);
++        assertThat(props.getConnectionTimeout()).isEqualTo(1000);
++        assertThat(props.getHc5().getSocketTimeout()).isEqualTo(3);
++        assertThat(props.getHc5().getSocketTimeoutUnit()).isEqualTo(TimeUnit.SECONDS);
++        // 池满时 500ms 拿不到连接就失败，交给熔断计数，而非排队到 4s 超时窗口
++        assertThat(props.getHc5().getConnectionRequestTimeout()).isEqualTo(500);
++        assertThat(props.getHc5().getConnectionRequestTimeoutUnit()).isEqualTo(TimeUnit.MILLISECONDS);
++    }
++
++    /** 读随仓 application.properties（非测试覆盖），断言的是配置文件本身。 */
++    private static MockEnvironment shippedEnvironment() throws IOException {
++        MockEnvironment environment = new MockEnvironment();
++        environment.getPropertySources().addLast(
++                new ResourcePropertySource("application", new ClassPathResource("application.properties")));
++        return environment;
++    }
++}
+diff --git a/verify-service/src/test/java/com/sportverify/verify/config/FeignHttpClientPoolConfigTest.java b/verify-service/src/test/java/com/sportverify/verify/config/FeignHttpClientPoolConfigTest.java
+new file mode 100644
+index 0000000..8043f16
+--- /dev/null
++++ b/verify-service/src/test/java/com/sportverify/verify/config/FeignHttpClientPoolConfigTest.java
+@@ -0,0 +1,87 @@
++package com.sportverify.verify.config;
++
++import java.io.IOException;
++import java.util.concurrent.TimeUnit;
++
++import feign.Client;
++import feign.hc5.ApacheHttp5Client;
++import org.apache.hc.client5.http.impl.io.PoolingHttpClientConnectionManager;
++import org.apache.hc.client5.http.io.HttpClientConnectionManager;
++import org.junit.jupiter.api.Test;
++
++import org.springframework.boot.autoconfigure.AutoConfigurations;
++import org.springframework.boot.context.properties.bind.Binder;
++import org.springframework.boot.env.YamlPropertySourceLoader;
++import org.springframework.boot.test.context.runner.ApplicationContextRunner;
++import org.springframework.cloud.openfeign.FeignAutoConfiguration;
++import org.springframework.cloud.openfeign.support.FeignHttpClientProperties;
++import org.springframework.core.io.ClassPathResource;
++import org.springframework.mock.env.MockEnvironment;
++
++import static org.assertj.core.api.Assertions.assertThat;
++
++/**
++ * F07 Feign 连接池断言（两条下游路由：RecordApi 拉轨迹、MapMatchApi R5 匹配）。
++ *
++ * <p>不拉 Nacos/DB，只守两个静默失效口子：一是 pom 里 feign-hc5 被删掉时 Spring Cloud 会
++ * 悄悄退回 JDK HttpURLConnection（配置看着全对，连接照旧每次新建）；二是 yml 键名写成
++ * hc5 原生的 maxTotal 时宽松绑定不报错，只用默认值。故一条测自动装配真换了池化客户端，
++ * 一条测随仓配置项能绑上且数值就是定的那些。</p>
++ */
++class FeignHttpClientPoolConfigTest {
++
++    @Test
++    void feignClientIsPooledApacheHttpClient5() {
++        new ApplicationContextRunner()
++                .withConfiguration(AutoConfigurations.of(FeignAutoConfiguration.class))
++                .withPropertyValues(
++                        "spring.cloud.openfeign.httpclient.max-connections=7",
++                        "spring.cloud.openfeign.httpclient.max-connections-per-route=3")
++                .run(context -> {
++                    assertThat(context).hasSingleBean(Client.class);
++                    assertThat(context.getBean(Client.class)).isInstanceOf(ApacheHttp5Client.class);
++
++                    HttpClientConnectionManager connectionManager =
++                            context.getBean(HttpClientConnectionManager.class);
++                    assertThat(connectionManager).isInstanceOf(PoolingHttpClientConnectionManager.class);
++                    PoolingHttpClientConnectionManager pool = (PoolingHttpClientConnectionManager) connectionManager;
++                    assertThat(pool.getMaxTotal()).isEqualTo(7);
++                    assertThat(pool.getDefaultMaxPerRoute()).isEqualTo(3);
++                });
++    }
++
++    @Test
++    void shippedConfigBoundsPoolAndFailsFastOnExhaustedPool() throws IOException {
++        MockEnvironment environment = shippedEnvironment();
++        // max-connections 恰好与 hc5 默认值同为 200，键名拼错时宽松绑定不会报错也不会偏离，
++        // 只能先确认这个键真被识别
++        assertThat(environment.containsProperty("spring.cloud.openfeign.httpclient.max-connections")).isTrue();
++
++        FeignHttpClientProperties props = Binder.get(environment)
++                .bind("spring.cloud.openfeign.httpclient", FeignHttpClientProperties.class)
++                .orElseThrow(() -> new AssertionError("application.yml 未配置 spring.cloud.openfeign.httpclient"));
++
++        // 两条下游路由 × 压测最大并发 100
++        assertThat(props.getMaxConnections()).isEqualTo(200);
++        assertThat(props.getMaxConnectionsPerRoute()).isEqualTo(100);
++        // 小于服务端 keep-alive 空闲超时 20s：连接由本端先到期，不会捞到对端已关的半关连接
++        assertThat(props.getTimeToLive()).isEqualTo(15L);
++        assertThat(props.getTimeToLiveUnit()).isEqualTo(TimeUnit.SECONDS);
++        assertThat(props.getConnectionTimeout()).isEqualTo(1000);
++        assertThat(props.getHc5().getSocketTimeout()).isEqualTo(3);
++        assertThat(props.getHc5().getSocketTimeoutUnit()).isEqualTo(TimeUnit.SECONDS);
++        // 池满时 500ms 拿不到连接就失败，交给熔断计数，而非排队到 4s 超时窗口
++        assertThat(props.getHc5().getConnectionRequestTimeout()).isEqualTo(500);
++        assertThat(props.getHc5().getConnectionRequestTimeoutUnit()).isEqualTo(TimeUnit.MILLISECONDS);
++    }
++
++    /** 读随仓 application.yml（非测试覆盖），断言的是配置文件本身。 */
++    private static MockEnvironment shippedEnvironment() throws IOException {
++        MockEnvironment environment = new MockEnvironment();
++        new YamlPropertySourceLoader()
++                .load("application", new ClassPathResource("application.yml"))
++                .forEach(source -> environment.getPropertySources().addLast(source));
++        return environment;
++    }
++}
++

@@ -1,0 +1,101 @@
+diff --git a/leaderboard-service/src/main/java/com/sportverify/leaderboard/aop/TransactionLogAspect.java b/leaderboard-service/src/main/java/com/sportverify/leaderboard/aop/TransactionLogAspect.java
+new file mode 100644
+index 0000000..2010746
+--- /dev/null
++++ b/leaderboard-service/src/main/java/com/sportverify/leaderboard/aop/TransactionLogAspect.java
+@@ -0,0 +1,66 @@
++package com.sportverify.leaderboard.aop;
++
++import lombok.extern.slf4j.Slf4j;
++import org.aspectj.lang.ProceedingJoinPoint;
++import org.aspectj.lang.annotation.Around;
++import org.aspectj.lang.annotation.Aspect;
++import org.aspectj.lang.annotation.Pointcut;
++import org.springframework.core.Ordered;
++import org.springframework.core.annotation.Order;
++import org.springframework.stereotype.Component;
++
++/**
++ * 事务日志切面。
++ *
++ * <p>统一记录所有 Spring 事务方法的生命周期日志：</p>
++ * <ul>
++ *   <li><b>事务开始</b>：在目标方法执行前记录；</li>
++ *   <li><b>事务提交成功</b>：方法正常返回后记录；</li>
++ *   <li><b>事务回滚</b>：方法抛出异常后记录（含异常信息）。</li>
++ * </ul>
++ *
++ * <p>通过 {@link Order} 确保在业务逻辑之前执行，便于追踪事务边界。</p>
++ */
++@Slf4j
++@Aspect
++@Component
++@Order(Ordered.HIGHEST_PRECEDENCE + 1)
++public class TransactionLogAspect {
++
++    /**
++     * 切点：匹配 leaderboard-service 下所有带 @Transactional 注解的方法。
++     */
++    @Pointcut("@within(org.springframework.transaction.annotation.Transactional) || " +
++            "@annotation(org.springframework.transaction.annotation.Transactional)")
++    public void transactionPointcut() {
++    }
++
++    /**
++     * 环绕通知：记录事务开始/提交/回滚。
++     *
++     * <p>流程：</p>
++     * <ol>
++     *   <li>记录“事务开始”；</li>
++     *   <li>执行目标方法；</li>
++     *   <li>若正常返回 → 记录“事务提交成功”；</li>
++     *   <li>若抛出异常 → 记录“事务回滚”并重新抛出异常。</li>
++     * </ol>
++     */
++    @Around("transactionPointcut()")
++    public Object logTransaction(ProceedingJoinPoint joinPoint) throws Throwable {
++        String methodName = joinPoint.getSignature().getName();
++        String className = joinPoint.getSignature().getDeclaringTypeName();
++        String fullMethodName = className + "." + methodName;
++
++        log.info("[TRANSACTION] 事务开始：method={}, args={}", fullMethodName, joinPoint.getArgs());
++
++        try {
++            Object result = joinPoint.proceed();
++            log.info("[TRANSACTION] 事务提交成功：method={}", fullMethodName);
++            return result;
++        } catch (Throwable e) {
++            log.warn("[TRANSACTION] 事务回滚：method={}, exception={}", fullMethodName, e.getMessage(), e);
++            throw e;
++        }
++    }
++}
+diff --git a/leaderboard-service/src/main/java/com/sportverify/leaderboard/config/TransactionConfig.java b/leaderboard-service/src/main/java/com/sportverify/leaderboard/config/TransactionConfig.java
+new file mode 100644
+index 0000000..9abc0bc
+--- /dev/null
++++ b/leaderboard-service/src/main/java/com/sportverify/leaderboard/config/TransactionConfig.java
+@@ -0,0 +1,23 @@
++package com.sportverify.leaderboard.config;
++
++import org.springframework.context.annotation.Configuration;
++
++/**
++ * 事务配置。
++ *
++ * <p>本类刻意不做任何声明式配置：事务管理器与注解式事务开关都由 Boot 自动装配提供——
++ * {@code DataSourceTransactionManagerAutoConfiguration} 用容器里的 {@code DataSource} 装配
++ * {@code DataSourceTransactionManager}，{@code TransactionAutoConfiguration} 在已有
++ * {@code TransactionManager} 时补上 {@code @EnableTransactionManagement(proxyTargetClass = true)}。
++ * 此前在此手搓 {@code new DataSourceTransactionManager()}（漏 {@code setDataSource}）既让服务起不来，
++ * 又因同名 bean 顶掉上述两处自动装配；裸 {@code @EnableTransactionManagement} 的
++ * {@code proxyTargetClass} 默认 false，遇有接口的 bean 会退化成 JDK 动态代理（按具体类型注入即失败），
++ * 而 Boot 那条走 {@code spring.aop.proxy-target-class}（默认 true），与本服务其他代理口径一致。</p>
++ *
++ * <p>榜单写路径本身按 ADR-0009 保持最终一致，不纳入本地事务，详见
++ * {@link com.sportverify.leaderboard.aop.TransactionLogAspect} 与
++ * {@code docs/adr/0009-事务边界.md}。</p>
++ */
++@Configuration
++public class TransactionConfig {
++}

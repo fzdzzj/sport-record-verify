@@ -1,0 +1,581 @@
+diff --git a/leaderboard-service/src/main/java/com/sportverify/leaderboard/config/RabbitMQConfig.java b/leaderboard-service/src/main/java/com/sportverify/leaderboard/config/RabbitMQConfig.java
+new file mode 100644
+index 0000000..9ec34e1
+--- /dev/null
++++ b/leaderboard-service/src/main/java/com/sportverify/leaderboard/config/RabbitMQConfig.java
+@@ -0,0 +1,84 @@
++package com.sportverify.leaderboard.config;
++
++import org.springframework.amqp.core.*;
++import org.springframework.beans.factory.annotation.Value;
++import org.springframework.context.annotation.Bean;
++import org.springframework.context.annotation.Configuration;
++
++/**
++ * RabbitMQ 配置：榜单更新队列（异步幂等 + 死信处理）
++ */
++@Configuration
++public class RabbitMQConfig {
++
++    /** 榜单更新队列 */
++    private static final String QUEUE = "leaderboard-update-queue";
++    
++    /** 死信交换机 */
++    private static final String DLX_EXCHANGE = "leaderboard-update-dlx-exchange";
++    
++    /** 死信队列 */
++    private static final String DLX_QUEUE = "leaderboard-update-dlx-queue";
++    
++    /** TTL（毫秒） */
++    private static final long MESSAGE_TTL_MS = 60000;
++    
++    /** 最大重试次数 */
++    private static final int MAX_RETRY = 3;
++
++    @Value("${spring.rabbitmq.host:localhost}")
++    private String host;
++
++    @Value("${spring.rabbitmq.port:5672}")
++    private int port;
++
++    @Value("${spring.rabbitmq.username:guest}")
++    private String username;
++
++    @Value("${spring.rabbitmq.password:guest}")
++    private String password;
++
++    /**
++     * 创建主队列（带死信交换器）
++     */
++    @Bean
++    public Queue mainQueue() {
++        return QueueBuilder.durable(QUEUE)
++                .withArgument("x-dead-letter-exchange", DLX_EXCHANGE)
++                .withArgument("x-message-ttl", MESSAGE_TTL_MS)
++                .withArgument("x-max-length", MAX_RETRY)
++                .build();
++    }
++
++    /**
++     * 创建死信交换机
++     */
++    @Bean
++    public DirectExchange dlxExchange() {
++        return new DirectExchange(DLX_EXCHANGE, true, false);
++    }
++
++    /**
++     * 创建死信队列
++     */
++    @Bean
++    public Queue dlxQueue() {
++        return QueueBuilder.durable(DLX_QUEUE).build();
++    }
++
++    /**
++     * 绑定死信队列到死信交换机
++     */
++    @Bean
++    public Binding dlxBinding() {
++        return BindingBuilder.bind(dlxQueue()).to(dlxExchange()).with(DLX_QUEUE);
++    }
++
++    /**
++     * 绑定主队列到死信交换机（消息失败后路由到死信队列）
++     */
++    @Bean
++    public Binding mainBinding() {
++        return BindingBuilder.bind(mainQueue()).to(dlxExchange()).with(QUEUE);
++    }
++}
+diff --git a/leaderboard-service/src/main/java/com/sportverify/leaderboard/consumer/LeaderboardUpdateConsumer.java b/leaderboard-service/src/main/java/com/sportverify/leaderboard/consumer/LeaderboardUpdateConsumer.java
+new file mode 100644
+index 0000000..c199ceb
+--- /dev/null
++++ b/leaderboard-service/src/main/java/com/sportverify/leaderboard/consumer/LeaderboardUpdateConsumer.java
+@@ -0,0 +1,133 @@
++package com.sportverify.leaderboard.consumer;
++
++import com.fasterxml.jackson.databind.ObjectMapper;
++import com.sportverify.leaderboard.event.LeaderboardUpdateEvent;
++import lombok.RequiredArgsConstructor;
++import lombok.extern.slf4j.Slf4j;
++import org.redisson.api.RBucket;
++import org.redisson.api.RedissonClient;
++import org.springframework.amqp.core.Message;
++import org.springframework.amqp.rabbit.annotation.RabbitListener;
++import org.springframework.messaging.handler.annotation.Payload;
++import org.springframework.stereotype.Component;
++
++import java.time.Duration;
++import java.util.concurrent.TimeUnit;
++
++/**
++ * 榜单更新消费者（RabbitMQ）
++ * 
++ * <p>处理异步榜单更新消息，实现幂等性和死信处理：
++ * <ul>
++ *   <li>幂等：Redis SETNX（eventId，24h TTL）去重</li>
++ *   <li>失败重试：返回 RECONSUME_LATER 交由 RabbitMQ 重投</li>
++ *   <li>死信：超过最大重试次数进入 DLQ</li>
++ * </ul>
++ */
++@Slf4j
++@Component
++@RequiredArgsConstructor
++public class LeaderboardUpdateConsumer {
++
++    private final ObjectMapper objectMapper;
++    private final RedissonClient redissonClient;
++
++    /** 去重键 TTL（小时） */
++    private static final long DEDUP_TTL_HOURS = 24;
++    
++    /** 最大重试次数 */
++    private static final int MAX_RETRY = 3;
++
++    /**
++     * 监听主队列
++     */
++    @RabbitListener(queues = "leaderboard-update-queue")
++    public void consume(Message message, @Payload LeaderboardUpdateEvent event) {
++        String correlationId = message.getMessageProperties().getCorrelationId();
++        
++        try {
++            log.info("收到榜单更新事件：eventId={}, userId={}, sportType={}, operation={}, correlationId={}",
++                    event.getEventId(), event.getUserId(), event.getSportType(), event.getOperation(), correlationId);
++
++            // 1. 幂等检查
++            if (!checkAndSetDedupKey(event.getEventId())) {
++                log.info("重复榜单更新事件已消费过，跳过：eventId={}", event.getEventId());
++                return;
++            }
++
++            // 2. 处理榜单更新
++            processUpdate(event);
++
++        } catch (Exception e) {
++            log.error("榜单更新事件处理失败：eventId={}, correlationId={}", event.getEventId(), correlationId, e);
++            
++            // 检查是否超过重试次数
++            if (isRetryExceeded(event.getEventId())) {
++                log.error("榜单更新事件重试超阈值，进入死信队列：eventId={}", event.getEventId());
++                throw e; // 抛出异常让 RabbitMQ 路由到死信队列
++            }
++            
++            // 未超阈值，抛异常触发重投
++            throw e;
++        }
++    }
++
++    /**
++     * 处理榜单更新逻辑
++     */
++    private void processUpdate(LeaderboardUpdateEvent event) {
++        // TODO: 实际业务逻辑由 LeaderboardService 处理
++        // 这里仅做示例演示
++        switch (event.getOperation()) {
++            case "ADD":
++                log.info("执行榜单添加：userId={}, pointsDelta={}", event.getUserId(), event.getPointsDelta());
++                break;
++            case "REMOVE":
++                log.info("执行榜单移除：userId={}", event.getUserId());
++                break;
++            case "UPDATE":
++                log.info("执行榜单更新：userId={}, pointsDelta={}", event.getUserId(), event.getPointsDelta());
++                break;
++            default:
++                log.warn("未知操作类型：{}", event.getOperation());
++        }
++    }
++
++    /**
++     * 幂等检查：SETNX
++     * @return true 表示首次处理，false 表示重复
++     */
++    private boolean checkAndSetDedupKey(String eventId) {
++        String key = "leaderboard:update:" + eventId;
++        RBucket<String> bucket = redissonClient.getBucket(key);
++        boolean success = bucket.setIfAbsent("1", Duration.ofHours(DEDUP_TTL_HOURS));
++        return success;
++    }
++
++    /**
++     * 删除去重键（用于失败场景允许重投）
++     */
++    private void deleteDedupKey(String eventId) {
++        String key = "leaderboard:update:" + eventId;
++        try {
++            redissonClient.getBucket(key).delete();
++        } catch (Exception e) {
++            log.warn("删除去重键失败：eventId={}", eventId, e);
++        }
++    }
++
++    /**
++     * 重试计数自增并判断是否超过阈值
++     */
++    private boolean isRetryExceeded(String eventId) {
++        String key = "leaderboard:retry:" + eventId;
++        try {
++            var atomicLong = redissonClient.getAtomicLong(key);
++            long count = atomicLong.incrementAndGet();
++            return count > MAX_RETRY;
++        } catch (Exception e) {
++            log.warn("重试计数失败：eventId={}", eventId, e);
++            return false;
++        }
++    }
++}
+diff --git a/leaderboard-service/src/main/java/com/sportverify/leaderboard/event/LeaderboardUpdateEvent.java b/leaderboard-service/src/main/java/com/sportverify/leaderboard/event/LeaderboardUpdateEvent.java
+new file mode 100644
+index 0000000..f7f4d03
+--- /dev/null
++++ b/leaderboard-service/src/main/java/com/sportverify/leaderboard/event/LeaderboardUpdateEvent.java
+@@ -0,0 +1,45 @@
++package com.sportverify.leaderboard.event;
++
++import lombok.AllArgsConstructor;
++import lombok.Builder;
++import lombok.Data;
++import lombok.NoArgsConstructor;
++
++import java.io.Serializable;
++import java.time.Instant;
++
++/**
++ * 榜单更新事件 DTO（RabbitMQ 消息体）
++ */
++@Data
++@Builder
++@NoArgsConstructor
++@AllArgsConstructor
++public class LeaderboardUpdateEvent implements Serializable {
++
++    private static final long serialVersionUID = 1L;
++
++    /** 事件 ID（幂等键） */
++    private String eventId;
++    
++    /** 用户 ID */
++    private Long userId;
++    
++    /** 运动类型：RUNNING / CYCLING / WALKING */
++    private String sportType;
++    
++    /** 榜单类型：total / daily / weekly */
++    private String leaderboardType;
++    
++    /** 更新操作：ADD / REMOVE / UPDATE */
++    private String operation;
++    
++    /** 贡献值变化量 */
++    private Long pointsDelta;
++    
++    /** 关联记录 ID */
++    private Long recordId;
++    
++    /** 时间戳 */
++    private Instant timestamp;
++}
+diff --git a/leaderboard-service/src/test/java/com/sportverify/leaderboard/consumer/LeaderboardUpdateConsumerTest.java b/leaderboard-service/src/test/java/com/sportverify/leaderboard/consumer/LeaderboardUpdateConsumerTest.java
+new file mode 100644
+index 0000000..91154a4
+--- /dev/null
++++ b/leaderboard-service/src/test/java/com/sportverify/leaderboard/consumer/LeaderboardUpdateConsumerTest.java
+@@ -0,0 +1,172 @@
++package com.sportverify.leaderboard.consumer;
++
++import ch.qos.logback.classic.Logger;
++import ch.qos.logback.classic.spi.ILoggingEvent;
++import ch.qos.logback.core.read.ListAppender;
++import com.fasterxml.jackson.databind.ObjectMapper;
++import com.sportverify.leaderboard.event.LeaderboardUpdateEvent;
++import org.junit.jupiter.api.AfterEach;
++import org.junit.jupiter.api.BeforeEach;
++import org.junit.jupiter.api.Test;
++import org.mockito.Mock;
++import org.mockito.MockitoAnnotations;
++import org.redisson.api.RAtomicLong;
++import org.redisson.api.RBucket;
++import org.redisson.api.RedissonClient;
++import org.slf4j.LoggerFactory;
++import org.springframework.amqp.core.Message;
++import org.springframework.amqp.core.MessageProperties;
++
++import java.time.Duration;
++import java.time.Instant;
++
++import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
++import static org.junit.jupiter.api.Assertions.assertFalse;
++import static org.junit.jupiter.api.Assertions.assertThrows;
++import static org.junit.jupiter.api.Assertions.assertTrue;
++import static org.mockito.ArgumentMatchers.any;
++import static org.mockito.ArgumentMatchers.anyString;
++import static org.mockito.ArgumentMatchers.eq;
++import static org.mockito.Mockito.never;
++import static org.mockito.Mockito.times;
++import static org.mockito.Mockito.verify;
++import static org.mockito.Mockito.when;
++
++/**
++ * LeaderboardUpdateConsumer 单元测试：幂等去重、重复跳过、失败重投计数、死信阈值分支。
++ *
++ * <p>processUpdate 目前只写日志、未接入 LeaderboardService（见 handoff.md），
++ * 因此「是否进入处理分支」唯一可观测信号是日志；这里用 Logback ListAppender 捕获
++ * 消费者自身 logger 的输出，配合 Mockito 交互断言共同锁定行为。</p>
++ */
++class LeaderboardUpdateConsumerTest {
++
++    /** 去重键前缀，须与 LeaderboardUpdateConsumer#checkAndSetDedupKey 保持一致 */
++    private static final String DEDUP_KEY_PREFIX = "leaderboard:update:";
++    /** 重试计数键前缀，须与 LeaderboardUpdateConsumer#isRetryExceeded 保持一致 */
++    private static final String RETRY_KEY_PREFIX = "leaderboard:retry:";
++    /** processUpdate 三个分支的日志共同前缀，用于判断「是否进入了处理分支」 */
++    private static final String PROCESSING_LOG_MARKER = "执行榜单";
++
++    private LeaderboardUpdateConsumer consumer;
++    private AutoCloseable mocks;
++    private Logger consumerLogger;
++    private ListAppender<ILoggingEvent> logAppender;
++
++    @Mock
++    private ObjectMapper objectMapper;
++
++    @Mock
++    private RedissonClient redissonClient;
++
++    @Mock
++    private RBucket<String> dedupBucket;
++
++    @Mock
++    private RAtomicLong retryCounter;
++
++    @Mock
++    private Message message;
++
++    @Mock
++    private MessageProperties messageProperties;
++
++    @BeforeEach
++    void setUp() {
++        mocks = MockitoAnnotations.openMocks(this);
++        consumer = new LeaderboardUpdateConsumer(objectMapper, redissonClient);
++
++        when(message.getMessageProperties()).thenReturn(messageProperties);
++        when(messageProperties.getCorrelationId()).thenReturn("test-trace-id");
++
++        logAppender = new ListAppender<>();
++        logAppender.start();
++        consumerLogger = (Logger) LoggerFactory.getLogger(LeaderboardUpdateConsumer.class);
++        consumerLogger.addAppender(logAppender);
++    }
++
++    @AfterEach
++    void tearDown() throws Exception {
++        consumerLogger.detachAppender(logAppender);
++        logAppender.stop();
++        mocks.close();
++    }
++
++    @Test
++    void firstTimeEventWritesDedupKeyAndRunsProcessing() {
++        LeaderboardUpdateEvent event = event("evt-first", "ADD");
++        when(redissonClient.<String>getBucket(DEDUP_KEY_PREFIX + "evt-first")).thenReturn(dedupBucket);
++        when(dedupBucket.setIfAbsent(eq("1"), any(Duration.class))).thenReturn(true);
++
++        assertDoesNotThrow(() -> consumer.consume(message, event));
++
++        verify(redissonClient, times(1)).getBucket(DEDUP_KEY_PREFIX + "evt-first");
++        verify(dedupBucket, times(1)).setIfAbsent(eq("1"), eq(Duration.ofHours(24)));
++        verify(redissonClient, never()).getAtomicLong(anyString());
++        assertTrue(hasLoggedContaining("执行榜单添加"), "首次事件应进入处理分支");
++    }
++
++    @Test
++    void duplicateEventIsSkippedWithoutProcessing() {
++        LeaderboardUpdateEvent event = event("evt-dup", "ADD");
++        when(redissonClient.<String>getBucket(DEDUP_KEY_PREFIX + "evt-dup")).thenReturn(dedupBucket);
++        when(dedupBucket.setIfAbsent(eq("1"), any(Duration.class))).thenReturn(false);
++
++        assertDoesNotThrow(() -> consumer.consume(message, event));
++
++        // 只做了去重探测，未进入后续处理，也未触碰重试计数
++        verify(dedupBucket, times(1)).setIfAbsent(eq("1"), eq(Duration.ofHours(24)));
++        verify(redissonClient, never()).getAtomicLong(anyString());
++        assertTrue(hasLoggedContaining("重复榜单更新事件已消费过"), "重复事件应命中跳过分支");
++        assertFalse(hasLoggedContaining(PROCESSING_LOG_MARKER), "重复事件不得进入处理分支");
++    }
++
++    @Test
++    void processingFailureIsRethrownAfterCountingRetry() {
++        LeaderboardUpdateEvent event = event("evt-fail", null);
++        when(redissonClient.<String>getBucket(DEDUP_KEY_PREFIX + "evt-fail")).thenReturn(dedupBucket);
++        when(dedupBucket.setIfAbsent(eq("1"), any(Duration.class))).thenReturn(true);
++        when(redissonClient.getAtomicLong(RETRY_KEY_PREFIX + "evt-fail")).thenReturn(retryCounter);
++        when(retryCounter.incrementAndGet()).thenReturn(1L);
++
++        // operation=null 时 processUpdate 的 switch 抛 NPE：这是桩体唯一可控的失败注入点
++        assertThrows(NullPointerException.class, () -> consumer.consume(message, event));
++
++        verify(redissonClient, times(1)).getAtomicLong(RETRY_KEY_PREFIX + "evt-fail");
++        verify(retryCounter, times(1)).incrementAndGet();
++        assertFalse(hasLoggedContaining(PROCESSING_LOG_MARKER), "处理应在 switch 处失败，未产出任何处理分支日志");
++    }
++
++    @Test
++    void retryOverThresholdStillRethrowsForDeadLetterRouting() {
++        LeaderboardUpdateEvent event = event("evt-dlq", null);
++        when(redissonClient.<String>getBucket(DEDUP_KEY_PREFIX + "evt-dlq")).thenReturn(dedupBucket);
++        when(dedupBucket.setIfAbsent(eq("1"), any(Duration.class))).thenReturn(true);
++        when(redissonClient.getAtomicLong(RETRY_KEY_PREFIX + "evt-dlq")).thenReturn(retryCounter);
++        when(retryCounter.incrementAndGet()).thenReturn(4L);
++
++        assertThrows(NullPointerException.class, () -> consumer.consume(message, event));
++
++        verify(retryCounter, times(1)).incrementAndGet();
++        assertTrue(hasLoggedContaining("进入死信队列"), "重试超阈值应命中死信分支");
++    }
++
++    private LeaderboardUpdateEvent event(String eventId, String operation) {
++        return LeaderboardUpdateEvent.builder()
++                .eventId(eventId)
++                .userId(1L)
++                .sportType("RUNNING")
++                .leaderboardType("total")
++                .operation(operation)
++                .pointsDelta(100L)
++                .recordId(456L)
++                .timestamp(Instant.now())
++                .build();
++    }
++
++    private boolean hasLoggedContaining(String fragment) {
++        return logAppender.list.stream()
++                .map(ILoggingEvent::getFormattedMessage)
++                .anyMatch(msg -> msg.contains(fragment));
++    }
++}
+diff --git a/leaderboard-service/src/test/java/com/sportverify/leaderboard/consumer/LeaderboardUpdateConsumerTest.java.bak b/leaderboard-service/src/test/java/com/sportverify/leaderboard/consumer/LeaderboardUpdateConsumerTest.java.bak
+new file mode 100644
+index 0000000..6f355fe
+--- /dev/null
++++ b/leaderboard-service/src/test/java/com/sportverify/leaderboard/consumer/LeaderboardUpdateConsumerTest.java.bak
+@@ -0,0 +1,117 @@
++package com.sportverify.leaderboard.consumer;
++
++import com.fasterxml.jackson.databind.ObjectMapper;
++import com.sportverify.leaderboard.event.LeaderboardUpdateEvent;
++import org.junit.jupiter.api.BeforeEach;
++import org.junit.jupiter.api.Test;
++import org.mockito.Mock;
++import org.mockito.MockitoAnnotations;
++import org.redisson.api.RBucket;
++import org.redisson.api.RedissonClient;
++import org.springframework.amqp.core.Message;
++
++import java.time.Instant;
++
++import static org.junit.jupiter.api.Assertions.*;
++import static org.mockito.ArgumentMatchers.*;
++import static org.mockito.Mockito.*;
++
++/**
++ * LeaderboardUpdateConsumer 测试
++ */
++class LeaderboardUpdateConsumerTest {
++
++    private LeaderboardUpdateConsumer consumer;
++    
++    @Mock
++    private ObjectMapper objectMapper;
++    
++    @Mock
++    private RedissonClient redissonClient;
++    
++    @Mock
++    private RBucket<String> bucket;
++    
++    @Mock
++    private Message message;
++
++    @BeforeEach
++    void setUp() {
++        MockitoAnnotations.openMocks(this);
++        consumer = new LeaderboardUpdateConsumer(objectMapper, redissonClient);
++        
++        // Mock message properties
++        when(message.getMessageProperties().getReceivedRoutingKey()).thenReturn("test-trace-id");
++    }
++
++    @Test
++    void testConsumeSuccessfulUpdate() throws Exception {
++        // Arrange
++        LeaderboardUpdateEvent event = LeaderboardUpdateEvent.builder()
++                .eventId("test-event-123")
++                .userId(1L)
++                .sportType("RUNNING")
++                .leaderboardType("total")
++                .operation("ADD")
++                .pointsDelta(100L)
++                .recordId(456L)
++                .timestamp(Instant.now())
++                .build();
++        
++        when(redissonClient.getBucket(anyString())).thenReturn(bucket);
++        when(bucket.setIfAbsent(any(), any())).thenReturn(true);
++        
++        // Act & Assert - should not throw exception
++        assertDoesNotThrow(() -> consumer.consume(message, event));
++        
++        // Verify idempotency key was set
++        verify(redissonClient).getBucket(eq("leaderboard:update:test-event-123"));
++        verify(bucket).setIfAbsent(eq("1"), any());
++    }
++
++    @Test
++    void testConsumeDuplicateEvent() throws Exception {
++        // Arrange
++        LeaderboardUpdateEvent event = LeaderboardUpdateEvent.builder()
++                .eventId("test-event-123")
++                .userId(1L)
++                .sportType("RUNNING")
++                .leaderboardType("total")
++                .operation("ADD")
++                .pointsDelta(100L)
++                .recordId(456L)
++                .timestamp(Instant.now())
++                .build();
++        
++        when(redissonClient.getBucket(anyString())).thenReturn(bucket);
++        when(bucket.setIfAbsent(any(), any())).thenReturn(false); // Already processed
++        
++        // Act & Assert - should handle duplicate gracefully
++        assertDoesNotThrow(() -> consumer.consume(message, event));
++    }
++
++    @Test
++    void testConsumeWithException() throws Exception {
++        // Arrange
++        LeaderboardUpdateEvent event = LeaderboardUpdateEvent.builder()
++                .eventId("test-event-456")
++                .userId(1L)
++                .sportType("RUNNING")
++                .leaderboardType("total")
++                .operation("ADD")
++                .pointsDelta(100L)
++                .recordId(456L)
++                .timestamp(Instant.now())
++                .build();
++        
++        when(redissonClient.getBucket(anyString())).thenReturn(bucket);
++        when(bucket.setIfAbsent(any(), any())).thenReturn(true);
++        
++        // Simulate processing error
++        doThrow(new RuntimeException("Processing failed"))
++                .when(bucket).setIfAbsent(any(), any());
++        
++        // Act & Assert - should throw exception for retry
++        assertThrows(RuntimeException.class, () -> consumer.consume(message, event));
++    }
++}

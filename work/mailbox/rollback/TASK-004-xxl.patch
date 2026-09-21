@@ -1,0 +1,102 @@
+diff --git a/leaderboard-service/src/main/java/com/sportverify/leaderboard/scheduler/DailyLeaderboardReportJob.java b/leaderboard-service/src/main/java/com/sportverify/leaderboard/scheduler/DailyLeaderboardReportJob.java
+new file mode 100644
+index 0000000..fb1e61c
+--- /dev/null
++++ b/leaderboard-service/src/main/java/com/sportverify/leaderboard/scheduler/DailyLeaderboardReportJob.java
+@@ -0,0 +1,73 @@
++package com.sportverify.leaderboard.scheduler;
++
++import lombok.extern.slf4j.Slf4j;
++import org.apache.commons.lang3.StringUtils;
++import org.springframework.stereotype.Component;
++import xxl.job.core.biz.model.ReturnT;
++import xxl.job.core.handler.annotation.XxlJob;
++
++/**
++ * 每日排行榜报表生成任务（XXL-JOB）
++ * <p>
++ * 支持分片并行执行和失败重试机制，每天凌晨 2 点触发
++ */
++@Slf4j
++@Component
++public class DailyLeaderboardReportJob {
++
++    /**
++     * 每日排行榜统计报表生成
++     * <p>
++     * 分片参数：
++     * - shardIndex: 当前分片索引（0 ~ shardTotal-1）
++     * - shardParam: 分片参数字符串（userId 范围或分页参数）
++     * <p>
++     * 失败重试：由 XXL-JOB 自动处理，配置 retryTimes=3
++     */
++    @XxlJob("dailyLeaderboardReportHandler")
++    public ReturnT<String> dailyLeaderboardReportHandler(String param) throws Exception {
++        long startTime = System.currentTimeMillis();
++
++        try {
++            log.info("DailyLeaderboardReportJob 开始执行，param={}", param);
++
++            // 解析分片参数
++            int shardIndex = 0;
++            int shardTotal = 1;
++            String shardParam = "";
++
++            if (StringUtils.isNotBlank(param)) {
++                String[] parts = param.split(",");
++                if (parts.length >= 3) {
++                    shardIndex = Integer.parseInt(parts[0]);
++                    shardTotal = Integer.parseInt(parts[1]);
++                    shardParam = parts[2];
++                }
++            }
++
++            log.info("分片信息：shardIndex={}, shardTotal={}, shardParam={}", shardIndex, shardTotal, shardParam);
++
++            // 模拟分片处理逻辑
++            if (shardTotal > 1) {
++                log.info("正在执行分片任务 [{}/{}]，处理数据：{}", shardIndex + 1, shardTotal, shardParam);
++                // TODO: 实际业务逻辑 - 根据 shardIndex 和 shardParam 进行并行数据处理
++                // 例如：查询 userId % shardTotal == shardIndex 的用户榜单数据
++                Thread.sleep(1000); // 模拟处理耗时
++            } else {
++                log.info("单模式执行，处理数据：{}", shardParam);
++                // 非分片模式下的处理逻辑
++                Thread.sleep(500); // 模拟处理耗时
++            }
++
++            long duration = System.currentTimeMillis() - startTime;
++            log.info("DailyLeaderboardReportJob 执行成功，耗时={}ms", duration);
++
++            return ReturnT.SUCCESS;
++
++        } catch (Exception e) {
++            long duration = System.currentTimeMillis() - startTime;
++            log.error("DailyLeaderboardReportJob 执行失败，耗时={}ms，error={}", duration, e.getMessage(), e);
++            throw e;
++        }
++    }
++}
+diff --git before/leaderboard-service/src/main/resources/application.yml after/leaderboard-service/src/main/resources/application.yml
+index 1124215..4528659 100644
+--- before/leaderboard-service/src/main/resources/application.yml
++++ after/leaderboard-service/src/main/resources/application.yml
+@@ -120,3 +120,18 @@ management:
+ logging:
+   pattern:
+     console: "%d{yyyy-MM-dd HH:mm:ss.SSS} [%thread] [%X{traceId}] %-5level %logger{36} - %msg%n"
++
++# ===== XXL-JOB 配置（add-daily-leaderboard-report）=====
++xxl:
++  job:
++    enabled: true
++    accessToken: ${XXL_JOB_ACCESS_TOKEN:default-token}
++    admin:
++      address: http://127.0.0.1:8080/xxl-job-admin
++    executor:
++      appname: leaderboard-service
++      address:
++      ip:
++      port: 9999
++      logpath: /var/log/leaderboard-service/xxl-job
++      logretentiondays: 30
