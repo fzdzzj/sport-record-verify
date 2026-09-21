@@ -23,6 +23,7 @@
 - add-sentinel-dynamic-rules（网关流控动态数据源）
 - add-resilience-hardening（Feign 容错与内部接口凭证）
 - add-request-tracing（请求贯穿标识）
+- add-controlled-verify-entrypoint（统一验收入口与门槛接线）
 
 各提案的 spec-delta 中 ADDED 需求已全部合并进本规范，MODIFIED 需求按规则处理（见「服务划分」分组与「变更历史」）。
 
@@ -31,14 +32,30 @@
 ### Requirement: 多模块工程结构
 
 WHEN 工程被构建,
-系统 SHALL 产出父工程与 8 个可编译模块（common、api、gateway-service、user-service、record-service、verify-service、leaderboard-service），并 SHALL 通过 `mvn clean install`。
+系统 SHALL 产出父工程与 8 个可编译模块（common、api、gateway-service、user-service、record-service、verify-service、leaderboard-service），并 SHALL 通过统一验收入口执行全量构建。任何需要完整反应堆的消费者（含容器镜像构建）SHALL 以仓库根为上下文，使父工程与全部被声明模块可见。
 
 #### Scenario: 全量构建成功
 
 GIVEN 本地已安装 JDK 21 与 Maven
-WHEN 执行 `mvn clean install`
+WHEN 通过统一验收入口执行全量构建
 THEN 所有模块编译打包成功
 AND 无快照依赖缺失报错
+AND 构建前已打印本次生效的依赖来源
+
+#### Scenario: 镜像构建可见完整反应堆
+
+GIVEN 服务镜像的构建阶段需要解析父工程声明的全部模块
+WHEN 以仓库根为上下文构建该镜像
+THEN 父工程与被依赖模块均在构建上下文内
+AND 不再出现子模块缺失导致的构建失败
+
+#### Scenario: 验收路径不承诺安装到本地仓
+
+GIVEN 外部工程希望从本仓获取快照构件
+WHEN 仅按统一验收入口执行全量验收
+THEN 产物落在各模块 target 目录
+AND 入口不把构件安装进调用方的本地 Maven 仓库
+AND 确需安装的场景必须显式另行执行，不属验收路径的承诺
 
 #### Scenario: 版本不匹配被拦截
 
@@ -233,6 +250,178 @@ GIVEN 目标服务未启动
 WHEN 客户端请求对应网关路径
 THEN 网关返回 502/503
 AND 错误不泄漏内部拓扑
+
+## 验收与门槛
+
+### Requirement: 统一验收入口
+
+WHEN 任一会话、开发者或持续集成需要判定改动是否通过,
+系统 SHALL 通过仓内唯一受版本控制的验收入口取得完整构建命令，该入口 SHALL 是命令拼写的唯一定义处；README、CI 与验收记录 SHALL 引用该入口而不是各自复述命令。入口 SHALL 在所请求阶段前执行清理，使结论不复用上一轮构建产物。SHALL NOT 存在第二处需要人工同步的验收命令写法。
+
+#### Scenario: 通过入口执行全量验收
+
+GIVEN 本地已安装 JDK 21 与 Maven
+WHEN 执行统一验收入口并指定 verify 阶段
+THEN 入口打印本次生效的依赖来源与命令全文
+AND 随后执行构建与测试并透传其退出码
+
+#### Scenario: 上一轮产物不被复用
+
+GIVEN 工作树中存在上一轮构建留下的编译产物
+WHEN 通过统一入口执行任一阶段
+THEN 本次执行先完成清理再进入所请求阶段
+AND 结论不依赖上一轮遗留产物
+
+#### Scenario: 复述命令被消除
+
+GIVEN 本变更已归档
+WHEN 检索仓库中的验收命令定义
+THEN 根 README 与 `.github/workflows/ci.yml` 均引用统一入口
+AND 不存在与入口不一致的第二份参数组合
+
+### Requirement: 依赖来源可判定
+
+WHEN 统一验收入口以离线模式执行,
+系统 SHALL 在实际调用构建工具之前判定其声明的本地仓库目录是否真实存在，判定 SHALL 仅依赖对 settings 文件的文本解析而不引入额外插件；来源不可判定时 SHALL 以区别于"用例失败"的独立退出码失败并打印期望与实际路径。WHEN 以在线模式执行, 系统 SHALL 不携带任何指向本机私有配置的开关。
+
+#### Scenario: 离线仓在位时正常执行
+
+GIVEN settings 文件存在且其声明的本地仓库目录存在
+WHEN 以离线模式执行入口
+THEN 入口报告依赖来源为仓内离线仓库
+AND 构建按离线方式执行
+
+#### Scenario: 离线仓缺失时不假绿
+
+GIVEN settings 文件存在但其声明的本地仓库目录不存在
+WHEN 以离线模式执行入口
+THEN 入口以独立退出码失败
+AND 失败信号指向依赖来源不可判定而非测试失败
+AND 不产出"通过"结论
+
+#### Scenario: 在线模式为 CI 权威口径
+
+GIVEN 无本地私有配置与离线仓库的持续集成环境
+WHEN 以在线模式执行入口
+THEN 构建与测试结论作为对外权威结论
+AND 与离线模式的差异被记录为依赖集差异而非用例结论
+
+### Requirement: 交付面最小判别式
+
+WHEN 推送或合并请求触发门槛,
+系统 SHALL 校验服务编排文件组合可被解析，并 SHALL 至少构建一份服务镜像以覆盖容器交付路径；SHALL NOT 让镜像与编排文件处于"改动后无任何机械信号"的状态。编排文件对环境文件的依赖 SHALL NOT 成为门槛在干净检出上失败的原因。
+
+#### Scenario: 编排配置不可解析时门槛失败
+
+GIVEN 编排文件存在引用错误或端口/服务定义不合法
+WHEN 门槛执行编排配置校验
+THEN 该步骤以非 0 状态失败
+AND 失败信息指向具体编排文件
+
+#### Scenario: 反应堆不完整被构建步骤捕获
+
+GIVEN 某份 Dockerfile 只复制部分模块而父工程声明全部模块
+WHEN 门槛以仓库根为上下文构建代表镜像
+THEN 构建步骤失败并暴露缺失的子模块
+AND 该失败不被静默跳过
+
+#### Scenario: 环境文件不入库时门槛仍可解析
+
+GIVEN 编排文件声明的 `.env` 按约定不随仓库发布
+WHEN 门槛在干净检出上执行编排解析与镜像构建
+THEN 门槛先自备一份占位环境文件再执行解析
+AND 不因缺失该文件而把交付面判为不可验证
+
+#### Scenario: 同批其余镜像有确定判据
+
+GIVEN 多份 Dockerfile 在同一批被修正
+WHEN 逐份执行本地构建
+THEN 每份各有一条记录在案的成功或失败结果
+AND 未实跑的份被显式标注为未验证
+
+### Requirement: 真库端到端测试有确定路径
+
+WHERE 存在需要真实数据库的端到端测试,
+系统 SHALL 提供一条被文档指路的定向执行入口，并 SHALL 声明其运行前提（所需环境变量与准备库步骤）；当执行前提缺失而被跳过时, 系统 SHALL 把该测试记为未覆盖, SHALL NOT 让其缺席被表述为通过。
+
+#### Scenario: 前提齐备时真库执行
+
+GIVEN 准备库已按文档建立且所需环境变量齐备
+WHEN 通过统一入口的端到端分支执行该测试
+THEN 注解 SQL 在真实引擎上被解析与绑定
+AND 断言通过
+
+#### Scenario: 前提缺失时按跳过处理
+
+GIVEN 缺少任一所需环境变量
+WHEN 执行该端到端分支
+THEN 测试被跳过而非失败
+AND 验收记录标注该测试未覆盖
+AND 不据此声称真库路径已验证
+
+### Requirement: 前端改动有门槛判据
+
+WHEN 前端源码或依赖声明发生改动,
+系统 SHALL 在门槛上执行类型检查与生产构建，并 SHALL 以锁文件一致的严格安装方式暴露依赖漂移；前端入口文档 SHALL 指路到这两条命令。
+
+#### Scenario: 类型错误使门槛失败
+
+GIVEN 前端类型检查会报错的改动被提交
+WHEN 门槛执行前端检查
+THEN 该步骤失败并输出具体类型错误
+AND 改动不能在无信号状态下合入
+
+#### Scenario: 锁文件缺失或漂移被捕获
+
+GIVEN 依赖声明与已提交锁文件不一致或锁文件缺失
+WHEN 门槛以严格方式安装依赖
+THEN 安装步骤失败
+AND 失败信号指向锁文件而非业务代码
+
+### Requirement: 公开口径自检覆盖全部发布载体
+
+WHEN 门槛执行公开口径自检,
+系统 SHALL 覆盖全部随仓库公开发布的文本载体（含源码注释、配置与仓库元文件），并 SHALL 显式排除仅承载该正则自身的文件、历史归档与已被忽略清单声明为内部的载体；SHALL NOT 以扩展名白名单取样而使不变量在未列出的载体上静默失效。
+
+#### Scenario: 非文档载体命中被判失败
+
+GIVEN 某个 tracked 源码注释含被禁止的内部口径措辞
+WHEN 门槛执行公开口径自检
+THEN 该步骤失败并定位到具体文件与行
+AND 失败不被文件类型豁免
+
+#### Scenario: 自检规则自身不误伤
+
+GIVEN 门槛定义文件本身含有该匹配正则
+WHEN 自检执行
+THEN 该文件被排除且不产生命中
+AND 排除理由在门槛文件内可读
+
+### Requirement: 验收结论与修订绑定
+
+WHEN 一次改动被判定为验收通过,
+系统 SHALL 在验收记录中同时保留该结论所绑定的 commit 标识与其门槛来源（外部持续集成运行编号，或一次在线模式实跑结果）；若结论仅来自本地执行且当前修订未到达外部门槛, 记录 SHALL 显式标注该状态；外部门槛结论发生变化时, 记录 SHALL 同步更新而不留过期判断。SHALL NOT 以未绑定修订的数字或口头转述作为验收凭据。
+
+#### Scenario: 仅本地绿时标注未达外部门槛
+
+GIVEN 本地实跑通过但当前修订尚未推送到外部门槛
+WHEN 写入验收记录
+THEN 记录包含 commit 标识、本地实跑结论与"未达外部门槛"标注
+AND 后续会话不会把该结论读成已过门槛
+
+#### Scenario: 外部结论绑定运行编号
+
+GIVEN 修订已到达外部门槛并产生运行记录
+WHEN 写入验收记录
+THEN 记录包含该运行的标识与结果状态
+AND 结论可被复验到具体修订
+
+#### Scenario: 推送需单独授权
+
+GIVEN 收口流程要求让修订到达外部门槛
+WHEN 准备执行推送
+THEN 该动作作为需单独授权的外部写操作被显式确认
+AND 未获授权时以在线模式本地实跑作为替代凭据并记录该替代
 
 ## 校验引擎
 
@@ -1832,3 +2021,4 @@ AND 下次读取回源到最新值
 - **add-sentinel-dynamic-rules**：把网关流控从「代码加载、重启生效」升级为「Nacos 动态数据源、改阈值不重启即生效」。规则对象为 `GatewayFlowRule`（resource/count/intervalSec/grade），粒度与 `SentinelGatewayRuleConfig` 中的路由 ID 一致；dataId `gateway-flow-rules`（DEFAULT_GROUP）。两条兜底口径：无规则时回退代码默认 5000 QPS 基线（限流不缺省），推送坏 JSON 时保留上一版有效规则（不因瞬时坏配置抖断限流）。Sentinel 本身仍是本地 Caffeine 之外的独立组件，不参与规则二级缓存路径。
 - **add-resilience-hardening**：Feign 容错标准化 + 内部接口凭证硬化。全局默认超时 connect 1000ms / read 3000ms（此前未配置的客户端走 Feign 默认 10s/60s，慢依赖可拖死整条链路）；每个 Feign 契约要么有 fallbackFactory、要么显式标注「不可软降级」——降级决策是产品语义而非实现细节：好友榜选**空榜**（反对「不过滤」，否则总榜非好友会泄露进好友榜）、RecordApi/AuthApi **不可软降级**（无轨迹无法判定、不可伪造 token/成功，fallback 只把故障转成 4007/4006 驱动重试或 DLQ）。内部接口从「仅网内拓扑信任」升级为「共享密钥校验」：服务本地 `/internal/**` 校验 `X-Internal-Token`（`app.internal.token` / 环境变量 `INTERNAL_API_TOKEN`，默认值仅本地演示），Feign 出站拦截器自动注入；网关白名单删除无路由的 `/internal/**` 死配置（原本不是漏洞，但未来误加 internal 路由会塌陷为可自提权）。新增错误码 4006-4008。引用 docs/adr/0007。
 - **add-request-tracing**：请求贯穿标识，以 MDC 最小实现满足「一次请求可检索对齐」，保持 ADR-0003 决策不引入 SkyWalking/Zipkin/Sleuth。三层：① 网关 `RequestIdGlobalFilter` 保证存在 `X-Request-Id`（已有则沿用，否则生成 UUID），写响应头并透传下游（WebFlux 过滤器是 `GlobalFilter` 而非 Servlet Filter）；② 各业务服务 `TraceIdFilter` 写入 MDC 键 `traceId` 并在请求结束清理，统一日志 pattern `[%X{traceId}]`（record-service 经 properties 的 `logging.pattern.console`，故六服务口径一致）；③ MQ 侧 Producer 把 traceId 写入消息 userProperty（键 `X-Request-Id`）、Consumer 还原到 MDC 并在处理后清理，使 record→verify→leaderboard 跨服务异步链路共用同一 traceId。已知残余：verify→record 的 Feign 状态回调用例在 record 侧日志会生成新 traceId（MQ 主链路已串通）；traceId 刻意不打 Micrometer tag（高基数）。引用变更 spec/changes/archive/add-request-tracing/。
+- **add-controlled-verify-entrypoint**：统一验收入口与门槛接线，起于一次 Harness 评审（窗口 2026-08-22~09-21，150 会话 / 502 Task Episode）。为什么要唯一入口：D12 事故证明"漏 `-s` 的 mvn 命令"会给出可信的假绿（换规范口径后 leaderboard 连依赖都解析不了，整批"通过"作废），而修正后的口径当时只活在台账散文里，README 与 CI 沿用的正是被作废的那一类命令；入口因此承担两件事——命令拼写唯一定义 + **调用构建前先打印并校验生效依赖来源**（离线仓缺失时以独立退出码失败，不与用例红混记）。四条新门槛步骤的落地过程本身成了两条口径教训：其一，`compose config -q` "在 HEAD 实测 0 退出"是在有 `.env` 的开发机上量的，干净检出下六个服务的 `env_file: [.env]` 会让该步在解析阶段就失败——机器态当仓库态，与本变更要堵的是同一类错误，故新增「环境文件不入库时门槛仍可解析」场景；其二，词面自检原先只看 markdown，实测 4 处命中在 java/yml 注释里，扩围后改为覆盖全部公开文本载体。真库 IT 与前端检查从"存在但没有路径"变为可触发（IT 缺环境变量按未覆盖计，不得记为通过；前端以 `--frozen-lockfile` + type-check + build 上门槛）。收口纪律同步升级：验收记录必须绑定 commit 与门槛来源，外部门槛结论变化时当场更新，不留过期判断。引用变更 spec/changes/archive/add-controlled-verify-entrypoint/。
