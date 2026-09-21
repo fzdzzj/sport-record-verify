@@ -61,7 +61,7 @@ docs/project-task-prompt-v3.2.md
 .workbuddy/
 .qoder/
 
-# ===== 内部文档（面试策略 / AI 编排提示词 / 内部指导，不公开）=====
+# ===== 内部文档（策略推演材料 / AI 编排提示词 / 内部指导，不公开）=====
 docs/internal/
 
 # ===== Web / Frontend (勿提交 node_modules 与构建产物) =====

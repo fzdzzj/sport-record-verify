@@ -54,19 +54,16 @@ jobs:
       - name: Build representative service image
         run: docker compose -f docker-compose.yml -f docker-compose.services.yml build leaderboard-service
 
-      # 公开口径自检：命中禁用措辞即失败。pathspec 覆盖全部随仓库公开发布的文本载体
-      # （markdown 文档 + 源码注释 + 配置 + 脚本 + 编排/迁移文件），不再只看 '*.md'——
-      # 只覆盖单一文件类型会让不变量在其余载体上静默失效（扩围前实测有 4 处命中在 java/yml 注释里）。
+      # 公开口径自检：命中禁用措辞即失败。扫描范围是**全部 tracked 文本文件**（-I 跳二进制），
+      # 不再按扩展名白名单取样——白名单是"新增文件类型要记得同步扩 glob"的自设盲区，
+      # 曾让 4 处命中长期躲在 java/yml 注释里不被发现，而 .gitignore 这类无扩展名载体根本不匹配任何 glob。
       # 三处显式排除，理由各不同：
-      #   spec/changes/archive/**  历史变更的既成措辞，本变更不动历史措辞
+      #   spec/changes/archive/**  历史变更的既成措辞，本变更不动历史措辞（含本变更自己的提案存档）
       #   docs/internal/**         .gitignore 已声明为不公开，不属公开发布载体
       #   .github/workflows/ci.yml 本文件自身携带该正则与示例词，不排除则这道门槛永远红
-      # 按扩展名白名单取样是"新增文件类型需同步扩这里的 glob"的已知局限（.gitignore 的注释含同类
-      # 措辞但不匹配任何 glob，故"全仓零命中"不成立，成立的判据是"范围内零命中"）。
       - name: Public docs wording self-check
         run: |
-          if git grep -n -iE "面试|弹药|大厂|八股|简历|求职|突击|附录 ?A" -- \
-              '*.md' '*.java' '*.yml' '*.yaml' '*.json' '*.sh' '*.ts' '*.vue' '*.sql' '*.xml' '*.patch' \
+          if git grep -n -I -iE "面试|弹药|大厂|八股|简历|求职|突击|附录 ?A" -- \
               ':!spec/changes/archive/**' ':!docs/internal/**' ':!.github/workflows/ci.yml'; then
             echo "::error::公开载体出现禁用口径词汇，请改用工程表述"
             exit 1
@@ -114,3 +111,12 @@ jobs:
 
       - name: Build
         run: pnpm --dir web run build
+
+      # 已知盲区（先记账，不加会常红的灯）：web/src/typed-router.d.ts 名义上是 unplugin-vue-router
+      # 的生成物，实际提交的是 11 行手写桩（自己声明 vue-router/auto 的 createRouter/useRoute/useRouter），
+      # 而且它是承重的——用一次真实构建产出的 194 行版本替换后，pnpm type-check 立刻红：
+      #   src/pages/register.page.vue、src/pages/verdict.page.vue → TS2306
+      #   'vue-router/vue-router-auto.d.ts' is not a module
+      # 故此处不做 `git diff --exit-code -- web/src/typed-router.d.ts` 一致性检查（今天必红，只是造噪音）。
+      # 正确修法是先把 vue-router 自动类型的 tsconfig/生成物关系摆正，或改为不跟踪该文件并在 type-check 前生成；
+      # 那是前端 typing 的一处独立修复，不并入本变更，另开变更处理。
