@@ -69,12 +69,12 @@
     "category": "阶段 7：验收",
     "task": "两模式实跑 + 门槛步骤齐备性复验",
     "steps": [
-      { "step": "本地实跑 bash scripts/verify/mvn-verify.sh --mode=offline verify 与 --mode=online verify 各一次，记录两次模块汇总数字与生效来源；不一致则按 CI online 为准并在台账记差异", "completed": false },
-      { "step": "判别式负例（只在本机做，不进 CI）：临时把 settings 的 localRepository 指向不存在路径后以 offline 模式执行，确认脚本以 3 退出、不调用 mvn、且明确报出期望与实际路径；验完还原 settings", "completed": false },
-      { "step": "实跑 --it 一次（有 scratch 库时断言通过；无 env 时确认输出为跳过且台账记为未覆盖），并实跑 compose config -q 与代表镜像 build", "completed": false },
-      { "step": "扩围后的词面自检在本地按新 pathspec 复跑为 0 命中；确认本次新增/修改的所有 markdown 零命中", "completed": false }
+      { "step": "本地实跑 bash scripts/verify/mvn-verify.sh --mode=offline verify 与 --mode=online verify 各一次，记录两次模块汇总数字与生效来源；不一致则按 CI online 为准并在台账记差异", "completed": true },
+      { "step": "判别式负例（只在本机做，不进 CI）：临时把 settings 的 localRepository 指向不存在路径后以 offline 模式执行，确认脚本以 3 退出、不调用 mvn、且明确报出期望与实际路径；验完还原 settings", "completed": true },
+      { "step": "实跑 --it 一次（有 scratch 库时断言通过；无 env 时确认输出为跳过且台账记为未覆盖），并实跑 compose config -q 与代表镜像 build", "completed": true },
+      { "step": "扩围后的词面自检在本地按新 pathspec 复跑为 0 命中；确认本次新增/修改的所有 markdown 零命中", "completed": true }
     ],
-    "passes": false
+    "passes": true
   },
   {
     "number": 8,
