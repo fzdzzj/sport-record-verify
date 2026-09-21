@@ -20,14 +20,12 @@
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-web</artifactId>
         </dependency>
-        <!-- Spring 事务与 DAO 支持（用于处理 DuplicateKeyException / TransactionSystemException） -->
+        <!-- 事务/DAO 异常处理所需：DuplicateKeyException 与 TransactionSystemException 均在 spring-tx 内
+             （已对仓内 jar 核过：spring-jdbc 里命中 0）。此前用 starter-jdbc 是把 HikariCP/spring-jdbc
+             一起拖进来当通道；starter-aop 则是为已删除的事务日志切面准备的，本模块无使用方。 -->
         <dependency>
-            <groupId>org.springframework.boot</groupId>
-            <artifactId>spring-boot-starter-aop</artifactId>
-        </dependency>
-        <dependency>
-            <groupId>org.springframework.boot</groupId>
-            <artifactId>spring-boot-starter-jdbc</artifactId>
+            <groupId>org.springframework</groupId>
+            <artifactId>spring-tx</artifactId>
         </dependency>
         <dependency>
             <groupId>org.projectlombok</groupId>
