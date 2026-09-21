@@ -1,0 +1,58 @@
+[
+  {
+    "number": 1,
+    "category": "阶段 1：定义了事",
+    "task": "先把契约校验的定义落地成可评审文档，再写代码",
+    "steps": [
+      { "step": "新建 spec/changes/add-mailbox-contract-check/proposal.md：论证三处决定——脚本落点 scripts/verify/ 与 mvn-verify.sh 并列、判据 B 基线取开工 HEAD（默认）且三层排除开工前改动、open 任务'仅 spec'经 --open 显式声明后豁免并一律列待办。明确不动 mvn-verify.sh / ci.yml / Java / 前端 / SQL / compose / Dockerfile", "completed": true },
+      { "step": "新建 spec/changes/add-mailbox-contract-check/tasks.json：按阶段拆步（本文件），每步 filled 且给 passes 供实施后回填", "completed": true },
+      { "step": "新建 spec/changes/add-mailbox-contract-check/specs/sport-record-verify/spec-delta.md：用 EARS（WHEN… 系统 SHALL… + Scenario）写 ADDED 两条需求：两件套完备、只改清单与工作树比对", "completed": true }
+    ],
+    "passes": false
+  },
+  {
+    "number": 2,
+    "category": "阶段 2：判据 A（两件套）",
+    "task": "实现脚本的判据 A：任务目录两件套完备 + open 豁免",
+    "steps": [
+      { "step": "新建 scripts/verify/mailbox-contract.sh：支持 --ledger（默认 work/mailbox/tasks）、--open <task,...>、--baseline <ref>（默认 HEAD）、--diff-file。退出码 0/1/2/3。判据 A：spec+handoff 双全→通过；仅 spec→进行中，声明于 --open 则列待办放行、否则判A失败；仅 handoff→判A失败；两者皆无且目录非空→判A失败；空目录不判", "completed": true },
+      { "step": "判据 A 红证：在系统临时目录构造'仅 spec.md 无 handoff.md'的任务目录且不声明 --open，脚本判定该目录并整体以非 0 退出；验证后删除临时目录", "completed": true }
+    ],
+    "passes": true
+  },
+  {
+    "number": 3,
+    "category": "阶段 3：判据 B（清单比对）",
+    "task": "实现脚本的判据 B：回传只改清单 vs 工作树改动集",
+    "steps": [
+      { "step": "判据 B 改动集来源：缺省用 git（git diff --name-only --diff-filter=ACMR <baseline> + git ls-files --others --exclude-standard 再剔除 .trae/ 前缀）；给定 --diff-file 时逐行读取该文件作为改动集（供临时样例在非 git 场景复演）. 差异来源不可判定→退出码 3", "completed": true },
+      { "step": "判据 B 比对：从回传 handoff 提取「改动清单」节（#+ 只改|改动|文件清单 为界）的路径 token；与改动集比对——有交叠（回传在途）要求完全一致，多报少报任一文件即失败；无交叠视为已收口跳过重审；清单为空则跳过", "completed": true },
+      { "step": "判据 B 红证：临时目录构造 spec+handoff 且 --diff-file 给出的改动集含清单未声明文件（或清单含改动集外文件），脚本以非 0 退出；验证后删除临时目录", "completed": true }
+    ],
+    "passes": true
+  },
+  {
+    "number": 4,
+    "category": "阶段 4：台账与文档",
+    "task": "接线只改清单、台账记录与用法文档",
+    "steps": [
+      { "step": "修改 scripts/verify/README.md：补 mailbox-contract.sh 的用法、判据 A/B、--open/--baseline/--diff-file、退出码语义 0/1/2/3", "completed": true },
+      { "step": "新建 work/mailbox/tasks/TASK-109/spec.md：任务包格式（先读文件/只改清单/先红后绿/禁止/完成定义）", "completed": true },
+      { "step": "新建 work/mailbox/tasks/TASK-109/handoff.md：按回传格式写入只改清单（file:line 级）、红绿取证原文、实跑结论、台账位置、未决", "completed": true },
+      { "step": "修改 work/mailbox/PLAN.md：按开头收口清单格式追加本变更验收记录 + open 任务当前集（TASK-018/TASK-106）", "completed": true }
+    ],
+    "passes": true
+  },
+  {
+    "number": 5,
+    "category": "阶段 5：回归与自检",
+    "task": "红绿复现 + Maven 回归 + 词面自检",
+    "steps": [
+      { "step": "绿证：bash scripts/verify/mailbox-contract.sh --ledger work/mailbox/tasks --open=TASK-018,TASK-106 → 退出 0；单跑 TASK-108 亦 0", "completed": true },
+      { "step": "bash scripts/verify/mvn-verify.sh --mode=offline test → 全仓 281 条用例全绿、BUILD SUCCESS，证明未碰坏任何模块（比基线 281 只许不减）", "completed": true },
+      { "step": "词面自检：按 CI 同款 pathspec（排除 archive/docs/internal/ci.yml）本地复跑 git grep，范围内 0 命中；确认本变更新增/修改文本零命中", "completed": true },
+      { "step": "git diff --name-only 与 handoff 只改清单比对：两者完全一致（判据 B 自证）", "completed": true }
+    ],
+    "passes": true
+  }
+]

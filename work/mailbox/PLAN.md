@@ -206,3 +206,16 @@ bean 改名、未覆盖 `@Primary`，TASK-106 对这一点的批评成立。
 19. ⏳ push 仍未做，需用户显式授权
 13. ⏳ 遗留小瑕疵：`afcd398` 消息写"五个服务"，实为 6 个 Dockerfile（含 mapmatch）；
     `common/pom.xml` 的 `spring-boot-starter-aop` 因切面删除已无使用方，应收成 `spring-tx`
+
+## 验收记录：`add-mailbox-contract-check`（2026-09-22，按上方收口清单写法）
+
+| 项 | 内容 |
+| --- | --- |
+| 绑定修订 | 本条记录所在的收口提交（2026-09-22 指导侧验收通过后执行；含只改清单全部 8 文件与 tasks.json 状态回填） |
+| 门槛来源 | 本地实跑：`mailbox-contract.sh --ledger=work/mailbox/tasks --open=TASK-018,TASK-106` → 退出 0（判据 A 25 目录两件套齐含 2 个待办进行中、判据 B 清单一致）；红 A / 红 B / TASK-108 隔离绿三对取证均为实测；`mvn-verify.sh --mode=offline test` → 281 全绿 / BUILD SUCCESS（模块合计见 TASK-109 handoff） |
+| 是否到达外部门槛 | **未达外部门槛**（未 push，需单独授权） |
+| open 任务集合 | 当前 `work/mailbox/tasks` 仅 `TASK-018`、`TASK-106` 为"仅 spec 无 handoff"进行中任务，经 `--open` 显式声明后在输出中列待办；后续台账演进须同步更新 `scripts/verify/README.md` 里给出的 `--open` 值 |
+| 不作伪造 | 对 TASK-018 / TASK-106 未补写 handoff，只列待办；补写属停止边界，由指导侧另行决定 |
+| 未覆盖 | 判据 B 对"已收口（足迹不在工作树）"的任务不重审既存记录，属设计取舍；`mvn-verify` 离线依赖来源以本机离线仓为准，未跑 online 全量 |
+| 归档与后续 | 本任务不自行归档；`spec/changes/add-mailbox-contract-check/` 三件套在本变更验收通过后并入主规格并移入 `archive/`，另行派发 |
+| 指导侧复验收 | 通过（不采信文字，现场复跑）：四组取证复现——红 A 退出 1 / 红 B 退出 1（含 `ghost-undeclared.md` 未声明项）/ TASK-108 隔离绿退出 0 / 全量绿退出 0 且 TASK-109 判据 B 清单一致（`.trae/` 排除生效）；额外实测退出码 3 路径（非 git 上下文即 3，不记通过）；`mvn-verify.sh --mode=offline test` → BUILD SUCCESS，281（17/19/31/78/81/49/6）0 失败 0 错误 0 跳过；词面自检按 CI 同款 pathspec 复跑（含 untracked 新文件）0 命中——回传 handoff 漏记此项，以本行为准。收口补齐两处：tasks.json 阶段 2–5 的 completed/passes 由指导侧回填（机械状态标记，非回传内容）；白名单 8 文件与 `git diff --name-only` 完全一致 |
