@@ -1,0 +1,89 @@
+[
+  {
+    "number": 1,
+    "category": "阶段 1：唯一验收入口",
+    "task": "新增 scripts/verify/mvn-verify.sh，把验收命令收敛成一处",
+    "steps": [
+      { "step": "新增 scripts/verify/mvn-verify.sh：接受 --mode=auto|offline|online 与阶段参数（test|verify|package），可选 --pl <模块> 自动补 -am，可选 --it。脚本内部固定以 clean 开头（今天的 CI 跑的是 mvn -B clean verify，入口若不带 clean 会复用上一轮 target 产物，那正是本提案要堵的假绿面）；offline 模式拼 -B -ntp -o -s .mvn-settings.xml，online 模式剥离 -s 与 -o；auto 在 .mvn-settings.xml 与其 localRepository 目录都在位时选 offline，否则 online。不吞 mvn 输出，透传退出码", "completed": true },
+      { "step": "脚本内加依赖来源判别式：纯文本解析 .mvn-settings.xml 的 localRepository（不依赖 maven-help-plugin），offline 模式下该目录不存在则以独立退出码 3 失败并打印期望与实际路径；任何模式在执行 mvn 前先打印生效模式、settings 路径、localRepository、命令全文", "completed": true },
+      { "step": "脚本用法与判据写进 scripts/verify/README.md（或脚本头部注释）：退出码语义 0 通过 / 1 用例红 / 3 依赖来源不可判定，明确 3 不得被当作测试失败", "completed": true }
+    ],
+    "passes": true
+  },
+  {
+    "number": 2,
+    "category": "阶段 2：CI 收敛到入口",
+    "task": "ci.yml 构建步骤改调脚本的 online 模式",
+    "steps": [
+      { "step": "把 .github/workflows/ci.yml 的 Build and test 由 mvn -B clean verify 改为 bash scripts/verify/mvn-verify.sh --mode=online verify（CI 无 .mvn-settings.xml，online 即今天的实际口径，行为不变但命令定义只剩一处）。offline 判别式的负例不在 CI 上做，留到阶段 7 本地验证", "completed": false },
+      { "step": "更新根 README「测试」节的 CI 说明，使其指向同一脚本；删除写死的 15 类 / 125 个 @Test 计数，改为以脚本汇总输出为准", "completed": false }
+    ],
+    "passes": false
+  },
+  {
+    "number": 3,
+    "category": "阶段 3：交付面判别式",
+    "task": "compose 与镜像构建上门槛，并逐个实跑六份 Dockerfile",
+    "steps": [
+      { "step": "ci.yml 新增步骤：docker compose -f docker-compose.yml -f docker-compose.services.yml config -q（HEAD 实测该命令已 0 退出，上门槛不会立即变红；配置不可解析即门槛失败）", "completed": false },
+      { "step": "ci.yml 新增步骤：复用 compose 定义构建 1 份代表服务镜像（docker compose -f docker-compose.yml -f docker-compose.services.yml build leaderboard-service），不手写 docker build -f；docker-compose.services.yml:22-183 已为 6 个服务声明 context: . 与各自 dockerfile，确认 .dockerignore 挡掉的目录（web/ work/ docs/ scripts/ sql/ **/Dockerfile）不影响 reactor 解析", "completed": false },
+      { "step": "本地对 6 份 Dockerfile 各跑一次 docker build，逐份记录成功或失败与耗时；失败的按 8e6eb0d 的同根模式修，修完重跑该份", "completed": false }
+    ],
+    "passes": false
+  },
+  {
+    "number": 4,
+    "category": "阶段 4：已有检查接线",
+    "task": "真库端到端测试与前端检查各获得确定路径",
+    "steps": [
+      { "step": "脚本 --it 分支：定向 mvn -pl leaderboard-service -am test -Dtest=LeaderboardDailySummaryMapperMysqlIT -DfailIfNoSpecifiedTests=false（-am 会带上 common/api 等无该测试的模块，不加该开关会在无匹配模块上直接失败）；缺 TASK108_IT_URL/USER/PASSWORD 时任一缺失即由 assume 跳过。README 写明 scratch 准备库的一条命令（沿用该 IT 类注释里的 sql/02-record-db.sql 改名灌入 sport-verify-mysql 方式），并写明\"被跳过不得计入通过\"", "completed": false },
+      { "step": "ci.yml 新增 node 步骤：web/package.json 无 packageManager 也无 engines 字段，故必须先显式提供 pnpm（corepack enable + 指定版本，或 pnpm/action-setup 带 version），再执行 pnpm install --frozen-lockfile、pnpm type-check、pnpm build；web/README.md 增补验证节列出这三条命令", "completed": false },
+      { "step": "web/pnpm-lock.yaml 实测已 tracked，故 --frozen-lockfile 的失败面只剩锁文件与 package.json 漂移：若实跑失败，单独一条提交修锁文件，不混进其它改动", "completed": false }
+    ],
+    "passes": false
+  },
+  {
+    "number": 5,
+    "category": "阶段 5：口径自检扩围",
+    "task": "先清理非 markdown 载体命中，再扩 pathspec",
+    "steps": [
+      { "step": "以拟用的新 pathspec（java/yml/json/sh/ts/sql/patch，排除 archive、docs/internal、ci.yml）本地预跑同一条 git grep，得到完整命中清单。实测现状为 4 处：LeaderboardService.java:47、RecordLikeService.java:34、Friendship.java:12 三处 javadoc + verify-service/src/main/resources/application.yml:119 一处注释；markdown 侧 HEAD 实测 0 命中", "completed": false },
+      { "step": "逐条改写命中的注释措辞为工程表述，只动注释文本不动逻辑；改后复跑预跑得 0 命中", "completed": false },
+      { "step": "ci.yml 的 Public docs wording self-check pathspec 扩到新载体集合，保留 archive 与 docs/internal 排除并新增 ci.yml 自身排除", "completed": false }
+    ],
+    "passes": false
+  },
+  {
+    "number": 6,
+    "category": "阶段 6：环境与记录",
+    "task": "env 样例入库 + 验收记录绑定门槛来源",
+    "steps": [
+      { "step": "新增 scripts/verify/env.example（MYSQL_PORT/POSTGRES_PORT 及 IT 三个变量占位），README 的 .env 段落改为指向该样例并删除\"仓库根 .env 已按此口径配置\"这一与相邻段落矛盾的表述", "completed": false },
+      { "step": "work/mailbox/PLAN.md 收口清单增加必备步骤：每条验收记录绑定 commit id 与门槛来源（CI run 编号或一次 --mode=online 实跑结论）；未推送时显式标注\"未达外部门槛\"；推送需单独授权，可用 online 本地实跑作为替代凭据", "completed": false },
+      { "step": "修正 TASK-104/handoff.md 中声称已加入 ci.yml 的两处校验（compose config 校验、Surefire 报告上传）：本提案真正落地后改为\"由本变更引入\"并附可复验判别式（git grep 命令 + 期望），不得保留与仓库实况不符的既成表述", "completed": false }
+    ],
+    "passes": false
+  },
+  {
+    "number": 7,
+    "category": "阶段 7：验收",
+    "task": "两模式实跑 + 门槛步骤齐备性复验",
+    "steps": [
+      { "step": "本地实跑 bash scripts/verify/mvn-verify.sh --mode=offline verify 与 --mode=online verify 各一次，记录两次模块汇总数字与生效来源；不一致则按 CI online 为准并在台账记差异", "completed": false },
+      { "step": "判别式负例（只在本机做，不进 CI）：临时把 settings 的 localRepository 指向不存在路径后以 offline 模式执行，确认脚本以 3 退出、不调用 mvn、且明确报出期望与实际路径；验完还原 settings", "completed": false },
+      { "step": "实跑 --it 一次（有 scratch 库时断言通过；无 env 时确认输出为跳过且台账记为未覆盖），并实跑 compose config -q 与代表镜像 build", "completed": false },
+      { "step": "扩围后的词面自检在本地按新 pathspec 复跑为 0 命中；确认本次新增/修改的所有 markdown 零命中", "completed": false }
+    ],
+    "passes": false
+  },
+  {
+    "number": 8,
+    "category": "阶段 8：收口",
+    "task": "把变更结论绑到修订上",
+    "steps": [
+      { "step": "按新收口清单记录本变更的验收结论：commit id + 门槛来源 + 结果；若未推送则在记录里写明\"当前修订未达外部门槛\"", "completed": false },
+      { "step": "归档前跑一次 spec 结构自检：grep 计数确认 proposal/tasks/spec-delta 三件齐备且需求标题格式一致", "completed": false }
+    ],
+    "passes": false
+  }
+]
