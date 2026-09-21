@@ -36,6 +36,17 @@ jobs:
       - name: Build and test
         run: bash scripts/verify/mvn-verify.sh --mode=online verify
 
+      # 交付面判别式之一：两份编排文件组合不可解析即门槛失败（HEAD 实测该命令已 0 退出，不会一上就红）。
+      - name: Compose files parse check
+        run: docker compose -f docker-compose.yml -f docker-compose.services.yml config -q
+
+      # 交付面判别式之二：复用 compose 自己的构建定义构一份代表服务镜像，覆盖容器交付路径。
+      # 不手写 docker build -f——docker-compose.services.yml 里 6 个服务各自声明 context: . 与 dockerfile:，
+      # 镜像定义与编排文件一旦漂移，这一步先红。其余 5 份同批模式由上一条的 config 覆盖，
+      # 逐份实跑结果记在台账（8e6eb0d 修的就是"父 pom 声明全部模块、build 阶段只 COPY 部分模块"）。
+      - name: Build representative service image
+        run: docker compose -f docker-compose.yml -f docker-compose.services.yml build leaderboard-service
+
       # 公开文档口径自检：命中求职禁用词即失败（详见 README / docs 口径约定）
       - name: Public docs wording self-check
         run: |
@@ -54,3 +65,35 @@ jobs:
             **/target/site/jacoco/jacoco.xml
             **/target/site/jacoco/index.html
           if-no-files-found: warn
+
+  # 前端门槛：类型检查 + 生产构建，并用严格安装把依赖漂移暴露出来（前端 api 层是近期改动热点）。
+  # web/package.json 既无 packageManager 也无 engines 字段 → pnpm 版本必须由本文件显式提供。
+  web:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Enable pnpm
+        run: |
+          corepack enable
+          corepack prepare pnpm@10.25.0 --activate
+          pnpm --version
+
+      # 依赖声明与已提交锁文件不一致（或锁文件缺失）时这一步直接失败，失败信号指向锁文件而非业务代码
+      - name: Install with frozen lockfile
+        run: pnpm --dir web install --frozen-lockfile
+
+      - name: Type check
+        run: pnpm --dir web run type-check
+
+      - name: Build
+        run: pnpm --dir web run build

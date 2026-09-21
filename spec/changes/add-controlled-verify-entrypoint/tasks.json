@@ -25,11 +25,11 @@
     "category": "阶段 3：交付面判别式",
     "task": "compose 与镜像构建上门槛，并逐个实跑六份 Dockerfile",
     "steps": [
-      { "step": "ci.yml 新增步骤：docker compose -f docker-compose.yml -f docker-compose.services.yml config -q（HEAD 实测该命令已 0 退出，上门槛不会立即变红；配置不可解析即门槛失败）", "completed": false },
-      { "step": "ci.yml 新增步骤：复用 compose 定义构建 1 份代表服务镜像（docker compose -f docker-compose.yml -f docker-compose.services.yml build leaderboard-service），不手写 docker build -f；docker-compose.services.yml:22-183 已为 6 个服务声明 context: . 与各自 dockerfile，确认 .dockerignore 挡掉的目录（web/ work/ docs/ scripts/ sql/ **/Dockerfile）不影响 reactor 解析", "completed": false },
-      { "step": "本地对 6 份 Dockerfile 各跑一次 docker build，逐份记录成功或失败与耗时；失败的按 8e6eb0d 的同根模式修，修完重跑该份", "completed": false }
+      { "step": "ci.yml 新增步骤：docker compose -f docker-compose.yml -f docker-compose.services.yml config -q（HEAD 实测该命令已 0 退出，上门槛不会立即变红；配置不可解析即门槛失败）", "completed": true },
+      { "step": "ci.yml 新增步骤：复用 compose 定义构建 1 份代表服务镜像（docker compose -f docker-compose.yml -f docker-compose.services.yml build leaderboard-service），不手写 docker build -f；docker-compose.services.yml:22-183 已为 6 个服务声明 context: . 与各自 dockerfile，确认 .dockerignore 挡掉的目录（web/ work/ docs/ scripts/ sql/ **/Dockerfile）不影响 reactor 解析", "completed": true },
+      { "step": "本地对 6 份 Dockerfile 各跑一次 docker build，逐份记录成功或失败与耗时；失败的按 8e6eb0d 的同根模式修，修完重跑该份", "completed": true }
     ],
-    "passes": false
+    "passes": true
   },
   {
     "number": 4,
