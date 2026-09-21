@@ -117,7 +117,10 @@ app:
       # 默认 true 关门；false=降级为裸放行（灰度观察，不建议生产）
       enabled: true
       # 治理面路径前缀：命中即要求 role=ADMIN；/verify/rules/** 即 verify-service RuleVersionController 外部路径
-      paths: /admin/**,/verify/rules/**
+      # 榜单每日报表（某日全平台用户里程排行）属跨用户数据，仅 ADMIN 可读：
+      # /leaderboard/api/leaderboard/daily 是外部路径（路由 Path=/leaderboard/** + StripPrefix=1
+      # → leaderboard-service 的 /api/leaderboard/daily）；只列这一条，总榜/好友榜仍是用户面公开读接口
+      paths: /admin/**,/verify/rules/**,/leaderboard/api/leaderboard/daily
     sentinel:
       # 网关流控规则 Nacos 数据源（add-sentinel-dynamic-rules）：SentinelGatewayRuleConfig 注册的
       # NacosDataSource 指向该 dataId；Nacos 里规则 JSON 数组（每个元素为 GatewayFlowRule：resource/count/intervalSec/grade），
