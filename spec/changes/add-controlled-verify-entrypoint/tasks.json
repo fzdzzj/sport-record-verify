@@ -58,11 +58,11 @@
     "category": "阶段 6：环境与记录",
     "task": "env 样例入库 + 验收记录绑定门槛来源",
     "steps": [
-      { "step": "新增 scripts/verify/env.example（MYSQL_PORT/POSTGRES_PORT 及 IT 三个变量占位），README 的 .env 段落改为指向该样例并删除\"仓库根 .env 已按此口径配置\"这一与相邻段落矛盾的表述", "completed": false },
-      { "step": "work/mailbox/PLAN.md 收口清单增加必备步骤：每条验收记录绑定 commit id 与门槛来源（CI run 编号或一次 --mode=online 实跑结论）；未推送时显式标注\"未达外部门槛\"；推送需单独授权，可用 online 本地实跑作为替代凭据", "completed": false },
-      { "step": "修正 TASK-104/handoff.md 中声称已加入 ci.yml 的两处校验（compose config 校验、Surefire 报告上传）：本提案真正落地后改为\"由本变更引入\"并附可复验判别式（git grep 命令 + 期望），不得保留与仓库实况不符的既成表述", "completed": false }
+      { "step": "新增 scripts/verify/env.example（MYSQL_PORT/POSTGRES_PORT 及 IT 三个变量占位），README 的 .env 段落改为指向该样例并删除\"仓库根 .env 已按此口径配置\"这一与相邻段落矛盾的表述", "completed": true },
+      { "step": "work/mailbox/PLAN.md 收口清单增加必备步骤：每条验收记录绑定 commit id 与门槛来源（CI run 编号或一次 --mode=online 实跑结论）；未推送时显式标注\"未达外部门槛\"；推送需单独授权，可用 online 本地实跑作为替代凭据", "completed": true },
+      { "step": "修正 TASK-104/handoff.md 中声称已加入 ci.yml 的两处校验（compose config 校验、Surefire 报告上传）：本提案真正落地后改为\"由本变更引入\"并附可复验判别式（git grep 命令 + 期望），不得保留与仓库实况不符的既成表述", "completed": true }
     ],
-    "passes": false
+    "passes": true
   },
   {
     "number": 7,

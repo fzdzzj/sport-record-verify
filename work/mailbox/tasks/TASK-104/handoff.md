@@ -22,8 +22,22 @@
 - 6 个可执行模块各新增多阶段 `Dockerfile`（maven:3.9-eclipse-temurin-21 构建 → eclipse-temurin:21-jre 运行，非 root，EXPOSE 各自端口；构建上下文=仓库根，离线 settings/仓库缓存挂载由构建者自行决定）。
 - 新增 `docker-compose.services.yml`（独立文件，未动 docker-compose.yml）：6 服务 build 指向各 Dockerfile、depends_on 中间件（healthy 条件）、`env_file: .env`、bash /dev/tcp 端口健康检查、复用 sport-verify-net。
 
-### F21 CI 增补（部分落地）
-- `ci.yml` 新增：① `docker compose -f docker-compose.yml -f docker-compose.services.yml config -q` 配置校验；② Surefire 测试报告上传 artifact（`if: always()`）。
+### F21 CI 增补（当时未落地，记录已按仓库实况更正）
+
+本条原写"`ci.yml` 新增 ① compose 配置校验、② Surefire 测试报告上传 artifact（`if: always()`）"，
+与该修订实际进入仓库的内容不符：ci.yml 当时无任何 docker 步骤，artifact 步骤只上传 JaCoCo 报告。
+更正为可复验的形式：
+
+- ① `docker compose -f docker-compose.yml -f docker-compose.services.yml config -q` 配置校验
+  **由变更 `add-controlled-verify-entrypoint` 引入**，不是本任务产物。判别式：
+  `git grep -c "config -q" -- .github/workflows/ci.yml` 期望输出 `.github/workflows/ci.yml:1`；
+  本地执行该 compose 命令期望退出码 `0`。
+- ①b 同一变更另加"复用 compose 定义构建 1 份代表服务镜像"（`... build leaderboard-service`），
+  判别式：`git grep -c "build leaderboard-service" -- .github/workflows/ci.yml`
+  期望输出 `.github/workflows/ci.yml:1`。
+- ② Surefire 测试报告上传：**至今仍未引入**，且该变更明确不做（不新增插件、不改 pom）。
+  判别式：`git grep -c "surefire-reports" -- .github/workflows/ci.yml` 期望无输出（命令退出码非 0）。
+- 构建步骤已改调统一验收入口：`bash scripts/verify/mvn-verify.sh --mode=online verify`（同属该变更）。
 - **未实施**：spotless/checkstyle、OWASP dependency-check 插件——离线仓库 .m2-repo 无对应构件，按约束不引入新插件、未改根 pom.xml，待联网环境评估。
 
 ## 验收结果

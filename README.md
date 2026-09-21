@@ -78,7 +78,8 @@ pnpm install && pnpm dev   # 默认 5173，Vite 代理原样转发网关 8080
 
 > `java` 必须是 JDK 21（PATH 上是 JDK 8 时会报 UnsupportedClassVersionError，改用绝对路径如
 > `D:\develop1\jdk21\bin\java`）；宿主机 3306 被本机 MySQL 占用时，服务启动同样注入 `MYSQL_PORT=3307`；
-> 宿主机 5432 被本机 PostgreSQL 占用时注入 `POSTGRES_PORT=5433`（仓库根 `.env` 已按此口径配置）。
+> 宿主机 5432 被本机 PostgreSQL 占用时注入 `POSTGRES_PORT=5433`。这些变量走仓库根 `.env`
+> （该文件不入库，每台机器自建），入库样例见 [`scripts/verify/env.example`](scripts/verify/env.example)。
 
 ## 冒烟验证
 
@@ -92,8 +93,9 @@ pnpm install && pnpm dev   # 默认 5173，Vite 代理原样转发网关 8080
 | 榜单查询 | `curl http://127.0.0.1:8080/leaderboard/api/leaderboard?type=overall` | `{"code":0,...,"data":[...]}`（总榜；`type=friend&userId=` 查好友榜） |
 | 路网匹配 | `curl -X POST http://127.0.0.1:8080/mapmatch/match -H 'Content-Type: application/json' -d '{"points":[{"seq":0,"lat":31.23,"lng":121.4626,"ts":1700000000000},{"seq":1,"lat":31.2293,"lng":121.4627,"ts":1700000165000},{"seq":2,"lat":31.2287,"lng":121.4628,"ts":1700000428000}]}'` | `data.offRoadRatio≈0`（点位在南北高架路上，悬浮点位如黄浦江江心则 ≈1） |
 
-> 宿主机 3306 被本机 MySQL 占用时：仓库根目录建 `.env` 写入 `MYSQL_PORT=3307`（compose 与四个服务
-> 的数据源端口均已参数化，默认仍 3306），服务侧同名变量见 `scripts/perf/run-perf.sh`。
+> 宿主机 3306 被本机 MySQL 占用时：复制 `scripts/verify/env.example` 为仓库根 `.env`，把 `MYSQL_PORT`
+> 改成 `3307`（compose 与四个服务的数据源端口均已参数化，默认仍 3306），服务侧同名变量见
+> `scripts/perf/run-perf.sh`。`.env` 与 `.env.*` 都在忽略清单内，仓库不含本机实值。
 
 ## 验证
 
