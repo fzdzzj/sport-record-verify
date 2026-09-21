@@ -30,6 +30,7 @@
 | 结果 | 8 个任务 23 个 step 全 `completed`，各任务 `passes=true`；外部门槛在 `1fbf3eb` 上为绿 |
 | 是否到达外部门槛 | **已到达**。推送两次：`2cfa16c..b1afb84`（26 个提交）触发首跑 `35570779585`，build job 红在 Compose files parse check——根因是 compose 六个服务声明 `env_file: [.env]` 而 `.env` 按约定不入库，干净检出下解析阶段就失败，其后的镜像构建与扩围自检被 skip；提案原写的"`config -q` HEAD 实测 0 退出"是在有 `.env` 的开发机上量的，属本变更要堵的"机器态当仓库态"同一类错误。修法为在该步前补 `cp scripts/verify/env.example .env`（不把 compose 的 `env_file` 改成可选，以保留 `docker compose up` 缺 `.env` 时的硬防护），本地红绿对：无 `.env` rc=1 / 放占位 rc=0。第二次推送 `b1afb84..1fbf3eb` 触发 `35571634401`，四条新步骤与 web job 首次全部真实执行、无一 skip |
 | 未覆盖 | `LeaderboardDailySummaryMapperMysqlIT` 之外的真中间件路径（Redis L2 真序列化、RocketMQ 真 broker、全栈 `/daily` 端到端）本次不新增覆盖 |
+| 归档与后续 | 已并入能力规格并移入 `spec/changes/archive/`（`db3e341`，门槛 run `35574770124` 两个 job 全绿）；词面自检同期去掉扩展名白名单改为全部 tracked 文本载体（`6e00a62`）。**归档时新发现的遗留**：`web/src/typed-router.d.ts` 名义上是生成物、实为 11 行手写桩且承重——换成一次真实构建产出的 194 行版本后 `pnpm type-check` 即红（register/verdict 两处 TS2306 `vue-router-auto.d.ts` is not a module）。因此生成物一致性检查今天不能加（证据与正确修法已记在 ci.yml web job 注释），需另开变更修 vue-router 自动类型 |
 
 ## ⚠️ D12：验收口径作废（2026-09-20 自查发现）
 
