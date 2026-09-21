@@ -157,7 +157,10 @@ bean 改名、未覆盖 `@Primary`，TASK-106 对这一点的批评成立。
     补上了 `AuthGlobalFilterTest` 硬编码注入导致"yml 少配一条也不红"的盲区。
     红凭据：改配置前 `expected 403 FORBIDDEN but was null`（null＝网关放行，即越权本身）。
     gateway 16 → 19、全仓 278 → **281**。已知残余：治理面只在网关判，直连 8084 可绕（同 ADR-0007 内网信任边界）
-13. ⏳ push 需用户显式授权；`work/mailbox/rollback/*.patch` 是三组 untracked 删除的唯一恢复途径，
-    建议至少把 `work/mailbox/rollback/` 纳入版本控制
+13. ✅ `work/` 已入库（`6650ae3`，75 文件）；提交前扫过密钥，命中项只是对 compose 本地默认口令的复述。
+    入库后发现并修掉一个连带风险（`dc6121b`）：`core.autocrlf=true` 会把 `.patch` 在 checkout 时转成 CRLF
+    （新 clone 实测 101 行 CR），恢复途径自带静默降级 → 加 `.gitattributes` 给 `*.patch -text`，
+    再测新 clone 为 **0 行 CR**
+14. ⏳ push 仍未做，需用户显式授权
 13. ⏳ 遗留小瑕疵：`afcd398` 消息写"五个服务"，实为 6 个 Dockerfile（含 mapmatch）；
     `common/pom.xml` 的 `spring-boot-starter-aop` 因切面删除已无使用方，应收成 `spring-tx`
