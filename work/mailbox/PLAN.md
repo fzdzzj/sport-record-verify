@@ -25,10 +25,10 @@
 | 项 | 内容 |
 | --- | --- |
 | 绑定修订 | `fe76219` 入口脚本 · `2080d40` CI 改调入口 · `8c58cfc` compose/镜像门槛 · `7adeeaa` IT 与前端接线 · `6daf863` 词面清理+扩围 · `ee3f594` env 样例+清单 · `5c68a80` 第 7 阶段取证 · `a18f19a` 订正 `--it` 的 surefire 属性名 · `b1afb84` 忽略评审产物 · `7fb7c1d` compose 占位修复与本行证据订正 · 本条记录所在的收口提交 |
-| 门槛来源 | 外部门槛 run `35570779585`（`b1afb84`，2026-09-21T06:58Z）：**build job 失败**、**web job 成功**。其中「Build and test」经统一入口 `--mode=online` 真实跑通（打印 `mvn -B -ntp clean verify`，约 45s）；「web」四步（corepack pnpm@10.25.0、`install --frozen-lockfile`、`type-check`、`build`）全绿；「Compose files parse check」红于 `env file ... not found`。本地补充：`--mode=online` 与 `--mode=offline` 各一次全量 `clean verify` 均 rc=0 / 281（17/19/31/78/81/49/6），两模式结论一致 |
+| 门槛来源 | 外部门槛 run `35571634401`（`1fbf3eb`，1m48s，**build 与 web 两个 job 全绿**，15 个步骤无一 skip）：入口 `--mode=online` 46s 通过；compose 占位与 `config -q` 通过；代表镜像 47s 真建成（日志含 Maven `BUILD SUCCESS` 与 `writing image sha256:4caa1f83…`）；扩围后的词面自检首次真实执行且范围内 0 命中；web job 四步（corepack pnpm@10.25.0、frozen-lockfile、type-check、build）全绿。首跑 run `35570779585` 的红与根因记在下行与本表下方。本地补充：`--mode=online` 与 `--mode=offline` 各一次全量 `clean verify` 均 rc=0 / 281（17/19/31/78/81/49/6），两模式结论一致 |
 | 其他判别式来源 | 本地实跑：`--it` 在 scratch 库 3/3 通过、缺 env 时 Skipped: 3（记为未覆盖）；代表镜像 compose build rc=0，Dockerfile 退回部分 COPY 时 rc=1；6 份 Dockerfile 逐份 `docker build` 全 OK；词面自检扩围后范围内 0 命中；compose 步骤的红绿对为「无 .env rc=1 / 放占位 rc=0」两条实测 |
-| 结果 | 8 个任务 23 个 step 全 `completed`，各任务 `passes=true`；**但外部门槛整体仍是红的**，见下行 |
-| 是否到达外部门槛 | **已推送并到达**（`2cfa16c..b1afb84`，26 个提交）。首跑结论：**build job 红**，根因是 compose 六个服务声明 `env_file: [.env]` 而 `.env` 按约定不入库——提案原写的"`config -q` HEAD 实测 0 退出"是在有 `.env` 的开发机上量的，属"机器态当仓库态"，已按实况订正并在该步之前补 `cp scripts/verify/env.example .env`。「Build representative service image」与「Public docs wording self-check」因前一步失败被 **skip，仍未获得外部证据**，需下一次跑补齐后才可称四条新步骤全部真实执行 |
+| 结果 | 8 个任务 23 个 step 全 `completed`，各任务 `passes=true`；外部门槛在 `1fbf3eb` 上为绿 |
+| 是否到达外部门槛 | **已到达**。推送两次：`2cfa16c..b1afb84`（26 个提交）触发首跑 `35570779585`，build job 红在 Compose files parse check——根因是 compose 六个服务声明 `env_file: [.env]` 而 `.env` 按约定不入库，干净检出下解析阶段就失败，其后的镜像构建与扩围自检被 skip；提案原写的"`config -q` HEAD 实测 0 退出"是在有 `.env` 的开发机上量的，属本变更要堵的"机器态当仓库态"同一类错误。修法为在该步前补 `cp scripts/verify/env.example .env`（不把 compose 的 `env_file` 改成可选，以保留 `docker compose up` 缺 `.env` 时的硬防护），本地红绿对：无 `.env` rc=1 / 放占位 rc=0。第二次推送 `b1afb84..1fbf3eb` 触发 `35571634401`，四条新步骤与 web job 首次全部真实执行、无一 skip |
 | 未覆盖 | `LeaderboardDailySummaryMapperMysqlIT` 之外的真中间件路径（Redis L2 真序列化、RocketMQ 真 broker、全栈 `/daily` 端到端）本次不新增覆盖 |
 
 ## ⚠️ D12：验收口径作废（2026-09-20 自查发现）
