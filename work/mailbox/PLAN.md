@@ -305,3 +305,19 @@ bean 改名、未覆盖 `@Primary`，TASK-106 对这一点的批评成立。
 | 未覆盖 | add-sharding-host-parameterization（冲突停手未归档，其独立 ADDED「sharding 数据源 host 可由环境变量覆盖」未受影响，建议后续以该需求单开不 MODIFIED 既有需求的变更）；`spec/changes/ 仅剩 archive/` 判据因冲突停手未完全达成 |
 | 归档与后续 | 已归档 14 个；sharding 冲突明细回传，处置留指导侧定口径；后续必要时以独立变更补开 sharding 需求 |
 | 指导侧复验收 | 收口授权下放（指导侧不复跑）；执行侧自证：14 逐变更 commit + offline 283 零扰动 + 词面 ZERO-HIT + 契约脏树 1 / 收口后 0 + 台账两件套，全部实测落档 |
+
+## 验收记录：`全栈 /daily 端到端冒烟（TASK-116，闭环 TASK-110 C 项分期，2026-09-21）`
+
+| 项 | 内容 |
+| --- | --- |
+| 绑定修订 | 本条记录所在的收口提交（执行侧自证全绿后自行收口，未 push） |
+| 门槛来源 | 冒烟脚本真机核验（非仅 `bash -n`）：红/绿/未就绪三维真实跑出，分别 exit 1/0/3；`mvn-verify.sh --mode=offline test` → BUILD SUCCESS（本轮无源码改动，纯新增冒烟脚本 + 文档，零扰动） |
+| 是否到达外部门槛 | **未达外部门槛**：修订未推送，结论仅来自本地；无 CI run 编号可绑 |
+| 环境前置自检（第一停止边界） | 六中间件 `docker compose ps` 全 `healthy`（nacos/mysql/redis/rocketmq-namesrv/rocketmq-broker/postgis）；六服务宿主拉起 8080-8085（含 mapmatch/PostGIS/sharding）。内存治理：停 exam 容器 + Docker VM 12GB；中途修正 DB 密码与迁移 `USE` 子句 |
+| 红绿取证（三维退出码） | 绿：`top-1 距离 88.05 == 期望 88.05` / exit 0；红：`EXPECT_TOP=99.99` → `top-1 距离 88.05 ≠ 期望 99.99` / exit 1；未就绪：`BASE_URL=:9999` → 连接失败 / exit 3。关键：seed 固定 `SEED_TOP`（不随 `EXPECT_TOP` 变化），红绿可独立翻转 |
+| 隔离岛设计 | `/daily` 沉淀由结算管线写 `CURDATE()`，故判定日期默认取 3 天前过去日期（该日快照行仅由脚本 preinsert、结果确定）；登录号须 ADMIN（`/daily` 在网关 `app.auth.admin.paths`，非 ADMIN 403）。临时 ADMIN 账号 `13900009999/smoke-daily-116` |
+| 契约自证 | 收口前脏树 `mailbox-contract.sh --open=TASK-018,TASK-106` 退出 **1** 属预期（TASK-116 自身判据 B 只改清单与实际改动集一致；历史任务共占 `PLAN.md`/`README.md` 公共文件过冲）；收口提交后 ACTUAL 空（仅 `.trae/` 排除）→ 契约退出 **0** |
+| C 项闭环 | **TASK-110 C 项（全栈 `/daily` 端到端）自此闭环**：A（Redis 真往返）/B（RocketMQ 真 broker）已于 TASK-110 经 `--it` 覆盖，C 于本任务交付可运行、可红绿的 `scripts/smoke/smoke-daily.sh` |
+| 未覆盖 | 无新未覆盖 |
+| 归档与后续 | 不自行归档；不建 `spec/changes/` 三件套（冒烟脚本非 spec 需求变更）；脚本依赖宿主「六中间件 + 六服务」全拉起，置于 `scripts/smoke/` 不并入 `mvn-verify.sh`（停止边界） |
+| 指导侧复验收 | 收口授权下放（指导侧不复跑）；执行侧自证：三维退出码实测 + offline 零扰动 + 契约脏树 1 / 收口后 0 + 台账两件套落档 |
