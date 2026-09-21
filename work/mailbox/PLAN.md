@@ -161,6 +161,19 @@ bean 改名、未覆盖 `@Primary`，TASK-106 对这一点的批评成立。
     入库后发现并修掉一个连带风险（`dc6121b`）：`core.autocrlf=true` 会把 `.patch` 在 checkout 时转成 CRLF
     （新 clone 实测 101 行 CR），恢复途径自带静默降级 → 加 `.gitattributes` 给 `*.patch -text`，
     再测新 clone 为 **0 行 CR**
-14. ⏳ push 仍未做，需用户显式授权
+14. ✅ **6 份 Dockerfile 修好**（真 build 过）：build 阶段逐模块 COPY 与父 pom 的 6 module 冲突，
+    此前一次都没构建成功过（`Child module ... does not exist` × 5）；改 `COPY . .` + 新增仓库根 `.dockerignore`。
+    证据：`docker build --progress=plain -f leaderboard-service/Dockerfile .` → BUILD SUCCESS、镜像命名成功；
+    `docker run --entrypoint java` → openjdk 21.0.12。临时镜像已删
+15. ✅ **服务端口绑回环**：8081-8085 改 `127.0.0.1:80xx`（8080 网关入口保持发布）。
+    否则直连 8084 即绕开网关读到 `/api/leaderboard/daily`，把 D16 的 ADMIN 收口绕空；本机工具链不受影响
+16. ✅ **common 依赖收窄**：`starter-aop`（切面已删，src 内 aspectj 命中 0）与 `starter-jdbc`（只是 spring-tx 的通道）
+    → 直接声明 `org.springframework:spring-tx`；规范口径全仓复跑绿
+17. ✅ **MyBatis 端到端补上**：`LeaderboardDailySummaryMapperMysqlIT` 3 条，真 MySQL + 真 MyBatis 跑通
+    upsert 幂等/回滚清理/按日隔离+LIMIT 下推；红凭据是把 `status = #{}` 改成 `>=`（102 漏进快照，2→3）。
+    中途还种过一次**无效变异**（`<=` 在 ACTIVE=0/ROLLED_BACK=1 下与 `=` 等价 → 假绿），已换掉。
+    顺带修台账漂移：D11 说改名为 `TransactionManagerWiringTest` 但磁盘从未改过，本次真改
+18. ⏳ 治理面残余：服务侧不校验角色是 ADR-0007 的既有约定，若要更严需网络策略或服务侧验 JWT，属另一次拍板
+19. ⏳ push 仍未做，需用户显式授权
 13. ⏳ 遗留小瑕疵：`afcd398` 消息写"五个服务"，实为 6 个 Dockerfile（含 mapmatch）；
     `common/pom.xml` 的 `spring-boot-starter-aop` 因切面删除已无使用方，应收成 `spring-tx`
