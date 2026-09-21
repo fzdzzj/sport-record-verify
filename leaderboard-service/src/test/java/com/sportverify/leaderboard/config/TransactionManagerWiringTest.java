@@ -28,7 +28,7 @@ import static org.mockito.Mockito.mock;
  * 而不是一个"看起来有、一用就抛"的空壳。bean 名区分不出手搓与自动装配，只有
  * {@code getDataSource()} 的引用相等做得到。</p>
  */
-class TransactionConfigTest {
+class TransactionManagerWiringTest {
 
     private final ApplicationContextRunner runner = new ApplicationContextRunner()
             .withBean(DataSource.class, () -> mock(DataSource.class))
