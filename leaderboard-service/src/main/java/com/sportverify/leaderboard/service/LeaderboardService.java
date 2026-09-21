@@ -44,7 +44,7 @@ import java.util.stream.Collectors;
  * <b>只读</b>——经 {@link SportRecordMapper} 快照查询记录状态/里程做入榜闸门，
  * 对 {@code sport_record} 零写入，写路径与榜单消费互不双写。</p>
  *
- * <p><b>双层数据结构</b>（面试弹药：Redis ZSet 热读 + 快照表权威源）：</p>
+ * <p><b>双层数据结构</b>（读写分层：Redis ZSet 热读 + 快照表权威源）：</p>
  * <ul>
  *   <li><b>热读层</b>：ZSet {@code leaderboard:overall}（member=userId，score=累计 pass 里程），
  *       ZREVRANGE 秒级取前 N，读多写少；</li>

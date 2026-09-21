@@ -47,11 +47,21 @@ jobs:
       - name: Build representative service image
         run: docker compose -f docker-compose.yml -f docker-compose.services.yml build leaderboard-service
 
-      # 公开文档口径自检：命中求职禁用词即失败（详见 README / docs 口径约定）
+      # 公开口径自检：命中禁用措辞即失败。pathspec 覆盖全部随仓库公开发布的文本载体
+      # （markdown 文档 + 源码注释 + 配置 + 脚本 + 编排/迁移文件），不再只看 '*.md'——
+      # 只覆盖单一文件类型会让不变量在其余载体上静默失效（扩围前实测有 4 处命中在 java/yml 注释里）。
+      # 三处显式排除，理由各不同：
+      #   spec/changes/archive/**  历史变更的既成措辞，本变更不动历史措辞
+      #   docs/internal/**         .gitignore 已声明为不公开，不属公开发布载体
+      #   .github/workflows/ci.yml 本文件自身携带该正则与示例词，不排除则这道门槛永远红
+      # 按扩展名白名单取样是"新增文件类型需同步扩这里的 glob"的已知局限（.gitignore 的注释含同类
+      # 措辞但不匹配任何 glob，故"全仓零命中"不成立，成立的判据是"范围内零命中"）。
       - name: Public docs wording self-check
         run: |
-          if git grep -n -iE "面试|弹药|大厂|八股|简历|求职|突击|附录 ?A" -- '*.md' ':!spec/changes/archive/**' ':!docs/internal/**'; then
-            echo "::error::公开文档出现禁用求职口径词汇，请改用工程表述"
+          if git grep -n -iE "面试|弹药|大厂|八股|简历|求职|突击|附录 ?A" -- \
+              '*.md' '*.java' '*.yml' '*.yaml' '*.json' '*.sh' '*.ts' '*.vue' '*.sql' '*.xml' '*.patch' \
+              ':!spec/changes/archive/**' ':!docs/internal/**' ':!.github/workflows/ci.yml'; then
+            echo "::error::公开载体出现禁用口径词汇，请改用工程表述"
             exit 1
           fi
 

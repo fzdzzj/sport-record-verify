@@ -47,11 +47,11 @@
     "category": "阶段 5：口径自检扩围",
     "task": "先清理非 markdown 载体命中，再扩 pathspec",
     "steps": [
-      { "step": "以拟用的新 pathspec（java/yml/json/sh/ts/sql/patch，排除 archive、docs/internal、ci.yml）本地预跑同一条 git grep，得到完整命中清单。实测现状为 4 处：LeaderboardService.java:47、RecordLikeService.java:34、Friendship.java:12 三处 javadoc + verify-service/src/main/resources/application.yml:119 一处注释；markdown 侧 HEAD 实测 0 命中", "completed": false },
-      { "step": "逐条改写命中的注释措辞为工程表述，只动注释文本不动逻辑；改后复跑预跑得 0 命中", "completed": false },
-      { "step": "ci.yml 的 Public docs wording self-check pathspec 扩到新载体集合，保留 archive 与 docs/internal 排除并新增 ci.yml 自身排除", "completed": false }
+      { "step": "以拟用的新 pathspec（java/yml/json/sh/ts/sql/patch，排除 archive、docs/internal、ci.yml）本地预跑同一条 git grep，得到完整命中清单。实测现状为 4 处：LeaderboardService.java:47、RecordLikeService.java:34、Friendship.java:12 三处 javadoc + verify-service/src/main/resources/application.yml:119 一处注释；markdown 侧 HEAD 实测 0 命中", "completed": true },
+      { "step": "逐条改写命中的注释措辞为工程表述，只动注释文本不动逻辑；改后复跑预跑得 0 命中", "completed": true },
+      { "step": "ci.yml 的 Public docs wording self-check pathspec 扩到新载体集合，保留 archive 与 docs/internal 排除并新增 ci.yml 自身排除", "completed": true }
     ],
-    "passes": false
+    "passes": true
   },
   {
     "number": 6,
