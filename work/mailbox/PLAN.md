@@ -290,3 +290,18 @@ bean 改名、未覆盖 `@Primary`，TASK-106 对这一点的批评成立。
 | 未覆盖 | 无新未覆盖；`--open` 值核对 TASK-018、TASK-106 与台账一致，无待改 |
 | 归档与后续 | 不自行归档；停止边界内仅白名单一行 + README，不动契约判定逻辑，后续以既有 mailbox-contract 复跑验证 |
 | 指导侧复验收 | 收口授权下放（指导侧不复跑）；执行侧自证：红 0 / 绿 1 / 提取层 TASK-110 env.example 命中 + offline 283 零扰动 + 词面 ZERO-HIT + 契约脏树 1 / 收口后 0，全部实测落档 |
+
+## 验收记录：`14 个存量 spec 变更归档并入主规格（TASK-115，2026-09-22）`
+
+| 项 | 内容 |
+| --- | --- |
+| 绑定修订 | 开工基线 `8521f32`；14 个逐变更归档 commit：`1292596`(web-console-scaffold) `fdac48f`(web-auth-session) `ce2ca12`(web-admin-console) `f84762a`(web-record-console) `12cb4cd`(gateway-browser-cors) `15725e4`(db-migration-entrypoint) `1773f0b`(mailbox-contract-check) `1571172`(transaction-boundary-audit) `9c1bded`(perf-demo-innodb-flush) `8790307`(perf-g1-pause-target) `90ca84c`(perf-mq-publish-async) `d331db7`(perf-submit-aggregation-gate) `0fcb53c`(update-perf-optimized-defaults) `4be7929`(middleware-it-coverage)；本条记录所在的收口提交（收口授权下放，执行侧自证后直接收口，未 push） |
+| 门槛来源 | 本地实跑，唯一入口 `scripts/verify/mvn-verify.sh --mode=offline test`（`D:\git\Git\bin\bash.exe`）→ RC=0 / BUILD SUCCESS / 17/19/31/**80**/81/49/6 = **283**（与基线 `8521f32` 一致，纯 spec 文档改动零扰动，Failures 0 / Errors 0 / Skipped 0） |
+| 是否到达外部门槛 | **未达外部门槛**：修订未推送，结论仅来自本地；无 CI run 编号可绑 |
+| 并入 | 14 个变更的 ADDED 需求追加到主规格对应分区（新增「Web 控制台」分区分组）/ MODIFIED 需求替换基线文本；主规格头部「本规范已归档提案」新增 14 项；逐变更 `git mv` 入 `spec/changes/archive/`，每变更 1 commit 可回滚；每个 commit 的 `git diff --cached --name-only` 均只含预期（`spec.md` + archive 内 3 件套） |
+| 冲突即停 | **add-sharding-host-parameterization 冲突停手**：与 `4be7929`(middleware-it-coverage) 共同 MODIFIED「真库端到端测试有确定路径」（均覆盖「真实中间件」泛化前提）；先并入 middleware 后，sharding 的 MODIFIED 基线文本与主规格当前文本对不上（强行并即将丢弃 middleware 已并入的清单/未覆盖内容）。按规则整体停手，不并入不归档，`spec/changes/` 下保留 `add-sharding-host-parameterization/`（非 archive），冲突明细回传指导侧 |
+| 契约自证 | 收口前脏树 `mailbox-contract.sh --open=TASK-018,TASK-106` 退出 **1** 属预期（TASK-115 两件套 + PLAN.md 未提交 + add-sharding 未动为冲突停手预留）；收口提交后 ACTUAL 空（仅 `.trae/` 排除）→ 契约退出 **0** |
+| 词面自检 | CI 原版口径（git grep 三排除：`spec/changes/archive/**`、`docs/internal/**`、`.github/workflows/ci.yml`）ZERO-HIT；全仓命中仅落在三排除路径内（`.trae/tmp/wording-check.sh` 为历史遗留、`ci.yml` 自身正则、`archive/add-two-level-cache` 历史表述） |
+| 未覆盖 | add-sharding-host-parameterization（冲突停手未归档，其独立 ADDED「sharding 数据源 host 可由环境变量覆盖」未受影响，建议后续以该需求单开不 MODIFIED 既有需求的变更）；`spec/changes/ 仅剩 archive/` 判据因冲突停手未完全达成 |
+| 归档与后续 | 已归档 14 个；sharding 冲突明细回传，处置留指导侧定口径；后续必要时以独立变更补开 sharding 需求 |
+| 指导侧复验收 | 收口授权下放（指导侧不复跑）；执行侧自证：14 逐变更 commit + offline 283 零扰动 + 词面 ZERO-HIT + 契约脏树 1 / 收口后 0 + 台账两件套，全部实测落档 |
