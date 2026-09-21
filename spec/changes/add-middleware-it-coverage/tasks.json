@@ -1,0 +1,67 @@
+[
+  {
+    "number": 1,
+    "category": "阶段 1：Redis L2 真序列化往返",
+    "task": "新增 LeaderboardL2RedisRoundTripIT，把生产二级缓存接到真 Redis",
+    "steps": [
+      { "step": "新建 leaderboard-service/src/test/java/com/sportverify/leaderboard/config/LeaderboardL2RedisRoundTripIT.java：类名 *IT（surefire 默认不收集）、env 沿用 TASK110_IT_* 惯例（HOST/PORT 必填，PASSWORD 可选留空连无口令实例）、缺任一必填 env 即 assume 跳过", "completed": true },
+      { "step": "用 Redisson 建 RedissonConnectionFactory，走生产 @Bean CacheConfig#hierarchicalCacheManager 写 List<LeaderboardDTO> 到真 Redis；新 CacheManager 实例按 @Cacheable 语义读回，断言 equals、BigDecimal scale、TTL≈300s", "completed": true },
+      { "step": "连接后打印 INFO server 的 run_id/tcp_port 作为实例归属凭据，与 docker exec sport-verify-redis INFO server 比对（防连错原生 6379）", "completed": true }
+    ],
+    "passes": true
+  },
+  {
+    "number": 2,
+    "category": "阶段 2：RocketMQ 真 broker 往返",
+    "task": "新增 RocketMqBrokerRoundTripIT，在真 broker 上完成生产/消费往返",
+    "steps": [
+      { "step": "新建 leaderboard-service/src/test/java/com/sportverify/leaderboard/mq/RocketMqBrokerRoundTripIT.java：TASK110_IT_ROCKETMQ_NAMESRV/TOPIC 必填，缺任一即 assume 跳过", "completed": true },
+      { "step": "用 DefaultMQProducer + DefaultMQPushConsumer（topic + VERIFIED||REJECTED 订阅，独立 group）在真 namesrv 上发一条 VerifyEventDTO、收一条，断言 msgId/Tag/消息体字节/反序列化后 eventId·recordId·eventType 一致", "completed": true },
+      { "step": "隔离：用独立 topic 与 consumer group（broker autoCreateTopicEnable 已开），不触碰生产 record-verify-events 与 leaderboard-consumer-group", "completed": true }
+    ],
+    "passes": true
+  },
+  {
+    "number": 3,
+    "category": "阶段 3：--it 多 IT 扩展",
+    "task": "把 mvn-verify.sh 的 --it 段扩为多 IT 清单，常规路径不变",
+    "steps": [
+      { "step": "IT_CLASS 单类 → IT_CLASSES 逗号清单（含既有 MySQL Mapper IT + 两条新 IT）；IT_ENV_VARS 并入 TASK110_IT_* 必填变量；只改 run_it=1 分支，常规 test/verify/package 路径不读清单", "completed": true },
+      { "step": "scripts/verify/env.example 补 TASK110_IT_* 样例与说明（Redis 指向核对过 run_id 的实例；RocketMQ namespace + 隔离 topic）", "completed": true },
+      { "step": "复跑 --mode=offline test 确认 281 不变、exit 语义不变", "completed": true }
+    ],
+    "passes": true
+  },
+  {
+    "number": 4,
+    "category": "阶段 4：红绿与跳过取证",
+    "task": "每条新 IT 取到红对与绿对；缺 env 跳过取证",
+    "steps": [
+      { "step": "Redis IT：红线复演（改 scale 期望 2→3 或换断言值即红）；绿线原样跑通；打印实例归属证据", "completed": true },
+      { "step": "RocketMQ IT：红线复演（订阅 Tag 改为与发送不匹配即超时红）；绿线原样跑通", "completed": true },
+      { "step": "缺 env：不设 TASK110_IT_* 或设空时 --it 输出 assume 跳过若干条，按未覆盖记账", "completed": true }
+    ],
+    "passes": true
+  },
+  {
+    "number": 5,
+    "category": "阶段 5：台账与契约",
+    "task": "spec 三件套 + TASK-110 spec/handoff + PLAN 验收记录，mailbox-contract 自证",
+    "steps": [
+      { "step": "新建 spec/changes/add-middleware-it-coverage/{proposal.md,tasks.json,specs/sport-record-verify/spec-delta.md}", "completed": true },
+      { "step": "新建 work/mailbox/tasks/TASK-110/spec.md 与 handoff.md（含「只改清单」节）", "completed": true },
+      { "step": "按收口清单在 PLAN.md 追加验收记录；bash scripts/verify/mailbox-contract.sh --open=TASK-018,TASK-106 自证退出 0", "completed": true },
+      { "step": "清理临时文件（docker-compose.override.yml、logs/runner）；git diff --name-only 与只改清单一致", "completed": true }
+    ],
+    "passes": true
+  },
+  {
+    "number": 6,
+    "category": "阶段 6：分期未覆盖",
+    "task": "C 项 /daily 全栈端到端显式记未覆盖 + 分期理由",
+    "steps": [
+      { "step": "在 proposal/handoff/PLAN 中记录：C 判据形态为独立 smoke-daily.sh（宿主六服务 + 登录 token + rule version），因全栈宿主运行门槛本期不具备，显式记未覆盖并给分期理由；不交付未经红绿自证的脚本", "completed": true }
+    ],
+    "passes": true
+  }
+]

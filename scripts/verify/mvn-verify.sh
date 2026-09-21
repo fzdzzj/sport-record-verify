@@ -9,7 +9,7 @@
 #   --mode=online   剥离 -s 与 -o，依赖来源交由 Maven 自身解析；CI 用这一档作为对外权威口径
 #   --mode=auto     settings 文件与其 localRepository 目录都在位时走 offline，否则走 online（默认）
 #   --pl <模块>     只构建该模块及其上游，自动补 -am
-#   --it            定向执行需要真实 MySQL 的端到端测试（缺环境变量时该测试被跳过，不记为通过）
+#   --it            定向执行需要真实中间件（MySQL/Redis/RocketMQ）的端到端测试（缺环境变量时该测试被跳过，不记为通过）
 #
 # 退出码：
 #   0    通过
@@ -21,9 +21,11 @@
 set -uo pipefail
 
 SETTINGS_FILE=".mvn-settings.xml"
+# 定向执行的端到端 IT 清单（逗号分隔类名）。常规 test/verify/package 路径完全不读本清单，
+# 本扩展只作用于 --it 分支：把 --it 的 -Dtest= 从单类扩展为多类，依赖经 -am 一并在 leaderboard-service 汇总。
 IT_MODULE="leaderboard-service"
-IT_CLASS="LeaderboardDailySummaryMapperMysqlIT"
-IT_ENV_VARS="TASK108_IT_URL TASK108_IT_USER TASK108_IT_PASSWORD"
+IT_CLASSES="LeaderboardDailySummaryMapperMysqlIT,LeaderboardL2RedisRoundTripIT,RocketMqBrokerRoundTripIT"
+IT_ENV_VARS="TASK108_IT_URL TASK108_IT_USER TASK108_IT_PASSWORD TASK110_IT_REDIS_HOST TASK110_IT_REDIS_PORT TASK110_IT_ROCKETMQ_NAMESRV TASK110_IT_ROCKETMQ_TOPIC"
 
 usage() { sed -n '2,20p' "$0" | sed 's/^# \{0,1\}//'; }
 
@@ -49,7 +51,7 @@ done
 
 case "$mode" in auto|offline|online) ;; *) echo "[verify-entry] --mode 只接受 auto|offline|online，收到 $mode" >&2; exit 2 ;; esac
 [ -n "$phase" ] || phase="test"
-# 真库端到端测试只需要 test 阶段；带上 --it 时其余阶段一律不连带跑。
+# 真中间件端到端测试只需要 test 阶段；带上 --it 时其余阶段一律不连带跑。
 if [ "$run_it" -eq 1 ] && [ "$phase" != "test" ]; then
   echo "[verify-entry] --it 会把阶段收为 test（忽略 $phase）" >&2
   phase="test"
@@ -129,7 +131,7 @@ fi
 
 mvn_args+=(clean "$phase")
 if [ "$run_it" -eq 1 ]; then
-  mvn_args+=(-pl "$IT_MODULE" -am "-Dtest=$IT_CLASS" "-Dsurefire.failIfNoSpecifiedTests=false")
+  mvn_args+=(-pl "$IT_MODULE" -am "-Dtest=$IT_CLASSES" "-Dsurefire.failIfNoSpecifiedTests=false")
 elif [ -n "$pl_module" ]; then
   mvn_args+=(-pl "$pl_module" -am)
 fi
@@ -144,7 +146,7 @@ if [ "$run_it" -eq 1 ]; then
     [ -n "${!v:-}" ] || missing="$missing $v"
   done
   if [ -n "$missing" ]; then
-    echo "[verify-entry] 真库端到端测试前提缺失：$missing（该测试会被 assume 跳过，按口径记为未覆盖，不得计入通过）" >&2
+    echo "[verify-entry] 真中间件端到端测试前提缺失：$missing（该测试会被 assume 跳过，按口径记为未覆盖，不得计入通过）" >&2
   fi
 fi
 

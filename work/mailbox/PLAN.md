@@ -32,6 +32,19 @@
 | 未覆盖 | `LeaderboardDailySummaryMapperMysqlIT` 之外的真中间件路径（Redis L2 真序列化、RocketMQ 真 broker、全栈 `/daily` 端到端）本次不新增覆盖 |
 | 归档与后续 | 已并入能力规格并移入 `spec/changes/archive/`（`db3e341`，门槛 run `35574770124` 两个 job 全绿）；词面自检同期去掉扩展名白名单改为全部 tracked 文本载体（`6e00a62`）。**归档时新发现的遗留**：`web/src/typed-router.d.ts` 名义上是生成物、实为 11 行手写桩且承重——换成一次真实构建产出的 194 行版本后 `pnpm type-check` 即红（register/verdict 两处 TS2306 `vue-router-auto.d.ts` is not a module）。因此生成物一致性检查今天不能加（证据与正确修法已记在 ci.yml web job 注释），需另开变更修 vue-router 自动类型 |
 
+## 验收记录：`真中间件路径的覆盖缺口（TASK-110，事项 2/5，2026-09-21）`
+
+| 项 | 内容 |
+| --- | --- |
+| 绑定修订 | 开工基线 `14d2600`；本条记录所在的收口提交（指导侧验收通过后执行，未 push） |
+| 门槛来源 | 本地实跑，全部经 `scripts/verify/mvn-verify.sh`：`--mode=offline test` BUILD SUCCESS / 17/19/31/78/81/49/6 = **281**（与基线一致）；`--it` 真中间件在位 `Tests run: 5, Failures: 0, Errors: 0, Skipped: 0` / IT_RC=0 |
+| 是否到达外部门槛 | **未达外部门槛**：修订未推送，结论仅来自本地；无 CI run 编号可绑 |
+| 未覆盖（不得写成通过） | **C 全栈 `/daily` 端到端：本期显式记未覆盖 + 分期理由**（宿主六服务拉起门槛本环境不具备；判据形态为独立 `smoke-daily.sh`，A/B 为可运行机器判据）。缺 `TASK110_IT_*` 时 Redis/RocketMQ IT 各 `Skipped:1`＝未覆盖，MySQL IT 3 绿 |
+| 红绿取证 | Redis IT 红：改 scale 期望 2→3 → `expected: <3> but was: <2>`（`LeaderboardL2RedisRoundTripIT.java:119`），BUILD FAILURE；还原绿。RocketMQ IT 红：订阅 Tag 只 `SUBMITTED`、发 `VERIFIED` → 超时 `expected: not <null>`（`RocketMqBrokerRoundTripIT.java:122`），BUILD FAILURE；还原绿。两判别式各取到红对与绿对 |
+| 环境核实 | Redis 连 `127.0.0.1:16379`（容器 `sport-verify-redis` override 映射），IT 打印 `run_id=d6f6ee451462b48ca165082afa519ad3d09cdfdf tcp_port=6379`，与 `docker exec sport-verify-redis INFO server` 逐字一致（容器实例，非原生 6379）；MySQL scratch 库 `task108_it` |
+| 判定 | A/B 两条真中间件链路通过 `--it` 一键定向覆盖；C 分期未覆盖已显式记账 |
+| 指导侧复验收（2026-09-21，现场复跑） | 六组取证逐字复现：① 契约脏树 `--open=TASK-018,TASK-106` 退出 1，TASK-110 段残余仅 `scripts/verify/env.example`（白名单 10 文件中 9 文件声明命中，`.example` 不在 `mailbox-contract.sh` 提取正则白名单内属已知盲区），TASK-104/109 段为历史清单共占公共文件的必然过冲；② `--it` 全 env `Tests run: 5, Failures: 0, Errors: 0, Skipped: 0` / rc=0，Redis IT 打印 `run_id=d6f6ee451462b48ca165082afa519ad3d09cdfdf tcp_port=6379` 与 `docker exec sport-verify-redis redis-cli INFO server` 逐字一致；③ 缺 `TASK110_*` 跳过路径：L2Redis/RocketMQ IT 各 `Skipped:1`、总计 `Tests run: 5, Skipped: 2`（MySQL 3 绿）；④ `--mode=offline test` 281（17/19/31/78/81/49/6 全绿零跳过，`*IT` 未进常规收集）；⑤ Redis 红对复演（scale 2→3）：`expected: <3> but was: <2>` @ `LeaderboardL2RedisRoundTripIT.java:119` / BUILD FAILURE / rc=1，还原 cmp 0 差异；⑥ RocketMQ 红对复演（订阅只 `SUBMITTED`、发 `VERIFIED`）：`expected: not <null>`（22.64s ≈ 20s poll 超时）/ BUILD FAILURE / rc=1，还原 cmp 0 差异。词面自检 ZERO-HIT。顺手订正 `mvn-verify.sh` 三处"真库/真实 MySQL"措辞为"真中间件"（该文件在只改清单内，`bash -n` 通过）。README（根/`scripts/verify/`）"真实 MySQL/真库"的文档同步缺口记为后续微变更，不扩大本次改动集。执行侧"契约退出 0 在收口提交后成立"论点由指导侧 commit 后复跑验证 |
+
 ## ⚠️ D12：验收口径作废（2026-09-20 自查发现）
 
 本会话此前所有复跑用的是 `mvn -B -ntp -pl <模块> -am test`，**没带 `-s .mvn-settings.xml`**，
