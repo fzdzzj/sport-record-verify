@@ -276,3 +276,17 @@ bean 改名、未覆盖 `@Primary`，TASK-106 对这一点的批评成立。
 | 契约自证 | 收口前脏树 `mailbox-contract.sh --open=TASK-018,TASK-106` 退出 **1** 属预期（TASK-113 自身判据 B 只改清单与改动集 4=4 一致；历史 TASK-110/111/112 清单共占 PLAN.md 过冲）；收口提交后 ACTUAL 空（仅 `.trae/` 排除）→ 契约退出 **0** |
 | 归档与后续 | 不自行归档：纯评估任务，无代码/规格需求改动，不建 `spec/changes/` 三件套，台账两件套即满足契约判据 A；ADR 编号顺延取 **0010**（`docs/adr/` 0001-0009 已占用，任务包起草时假设该目录不存在） |
 | 指导侧复验收 | 收口授权下放（指导侧不复跑）；执行侧自证：ADR 五节 + ci.yml 行号 sed 抽查 14 行全命中 + offline 283 + 词面自检两口径 ZERO-HIT（CI 原版 tracked 口径；`--untracked` 扩围排除 `.trae/` 后——不排除则命中指导侧残留脚本 `.trae/tmp/wording-check.sh` 自携的正则字面量，属工具伪影非交付载体，已辨析未改动）+ 契约脏树 1 / 收口后 0 |
+
+## 验收记录：`契约提取盲区微变更（TASK-114，.example 白名单 + README 同步，2026-09-21）`
+
+| 项 | 内容 |
+| --- | --- |
+| 绑定修订 | 开工基线 `86024eb`；本条记录所在的收口提交（收口授权下放，执行侧自证全绿后直接收口，未 push） |
+| 门槛来源 | 本地实跑，唯一入口 `scripts/verify/mvn-verify.sh --mode=offline test` → RC=0 / BUILD SUCCESS / 17/19/31/**80**/81/49/6 = **283**（与基线一致，纯白名单一行 + README 说明，零扰动） |
+| 是否到达外部门槛 | **未达外部门槛**：修订未推送，结论仅来自本地；无 CI run 编号可绑 |
+| 红绿取证 | 红（修正前）：`echo 'scripts/verify/env.example' | grep -oE '<原白名单>'`→ `old_hit_count=0`（提取漏实证，即 TASK-110 声明却判法上提取不到的盲区根因）；绿（修正后）：同式 `new_hit_count=1`、命中串 `scripts/verify/env.example` 且 `eq=1`；提取层管道跑 TASK-110 handoff（`extract_claims` 同款 grep/sed/sort），`env_example_extracted=1`——TASK-110 的 `env.example` 声明现在可被契约提取 |
+| 契约自证 | 收口前脏树 `mailbox-contract.sh --open=TASK-018,TASK-106` 退出 **1** 属预期（历史 TASK-110 的 PLAN.md/mvn-verify.sh/env.example 及公共文件过冲）；收口提交后 ACTUAL 空（仅 `.trae/` 排除，临时判据脚本已删）→ 契约退出 **0** |
+| 词面自检 | CI 原版口径（git grep pathspec 三排除）ZERO-HIT 退出 1；临时取证脚本已清理 |
+| 未覆盖 | 无新未覆盖；`--open` 值核对 TASK-018、TASK-106 与台账一致，无待改 |
+| 归档与后续 | 不自行归档；停止边界内仅白名单一行 + README，不动契约判定逻辑，后续以既有 mailbox-contract 复跑验证 |
+| 指导侧复验收 | 收口授权下放（指导侧不复跑）；执行侧自证：红 0 / 绿 1 / 提取层 TASK-110 env.example 命中 + offline 283 零扰动 + 词面 ZERO-HIT + 契约脏树 1 / 收口后 0，全部实测落档 |
