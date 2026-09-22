@@ -14,6 +14,7 @@
 
 ```bash
 bash scripts/verify/mvn-verify.sh [--mode=auto|offline|online] [--pl <模块>] [--it] [test|verify|package]
+bash scripts/verify/mvn-verify.sh [--mode=auto|offline|online] --static[=<模块>]
 ```
 
 | 参数 | 含义 |
@@ -23,6 +24,7 @@ bash scripts/verify/mvn-verify.sh [--mode=auto|offline|online] [--pl <模块>] [
 | `--mode=auto`（默认） | settings 文件与其 `localRepository` 目录都在位 → offline；否则 → online |
 | `--pl <模块>` | 只构建该模块及其上游，自动补 `-am` |
 | `--it` | 定向执行需要真实 MySQL 的端到端测试，见下节 |
+| `--static[=<模块>]` | 静态检查三件套门槛（checkstyle / spotbugs / pmd），见「静态检查三件套门槛」节；缺省模块 `leaderboard-service` |
 | 阶段参数 | `test`（默认）\| `verify` \| `package` |
 
 固定行为：
@@ -65,6 +67,38 @@ bash scripts/verify/mvn-verify.sh --it
 
 **被跳过不得计入通过**：脚本在缺变量时会往 stderr 打印一条"按口径记为未覆盖"的提示，
 Maven 自身仍以 0 退出（surefire 不把 assume 跳过当失败），所以这条提示必须进台账。
+
+## 静态检查三件套门槛（`--static`）
+
+```bash
+bash scripts/verify/mvn-verify.sh --static                       # 缺省模块 leaderboard-service
+bash scripts/verify/mvn-verify.sh --static=leaderboard-service   # CI build job 引用的拼写
+```
+
+对指定模块执行 TASK-018 接入的三件套失败判据：`test-compile checkstyle:check spotbugs:check
+pmd:check`。插件配置（规则集、豁免阈值）完全来自目标模块自身 pom，本子命令不携带任何
+`-D` 覆盖。两处命令拼写细节：
+
+- **spotbugs 用全限定 GAV**（`com.github.spotbugs:spotbugs-maven-plugin:4.9.8.5:check`）：
+  其前缀不在 Maven 默认插件组内，且插件只声明在目标模块 pom——全限定写法把版本定死，不随
+  调用上下文漂移。
+- **两段执行，第 1 段是 CI 可用性的前提而非可省略的加速步骤**：单模块 reactor 解析不到
+  兄弟模块 SNAPSHOT（CI 里这些构件从未 deploy），故先 `-pl <模块> -am clean install
+  -DskipTests` 把目标模块与上游装进本地仓（offline 模式写入 settings 声明的
+  `localRepository`，同时消除"独立模块构建解析到陈旧内部构件"的既有隐患），第 2 段再以
+  `-f <模块>/pom.xml` 跑三 goal（与 TASK-018 的 `cd <模块> && mvn …` 同上下文）。
+
+语义边界：
+
+- 本子命令**不执行测试**：用例门槛仍由 `test`/`verify`/`package` 模式承担，`--static` 与
+  阶段参数、`--it`、`--pl` 互斥（同给即退出码 2）。
+- `<模块>` 必须是含 `pom.xml` 的模块目录名，否则退出码 2。传入未声明三插件的模块时，
+  checkstyle/pmd 会按插件默认规则集（sun_checks 等）判定，通常直接红——逐模块治理是
+  另立变更的事，不是本子命令的缺省行为。
+- 三 goal 依旧**不绑 lifecycle phase**：静态检查门槛只经本子命令显式触发，`clean test` /
+  `clean verify` 等常规路径既不执行也不解析它们。
+- 退出码：违规或构建失败 = Maven 原样退出码（1）；参数用法错误 = 2；依赖来源不可判定 = 3
+  （与既有语义一致）。
 
 ## 与两种依赖来源的关系
 
