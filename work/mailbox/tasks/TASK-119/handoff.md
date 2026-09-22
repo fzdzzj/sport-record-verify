@@ -23,6 +23,9 @@
 未动其它模块与 `application.yml`；全程未用 `git stash`（临时态用 `cp` 副本 + 还原后 `sha256sum -c`）。
 实际改动集（`git diff --name-only 1c1b5c2` + untracked 排除 `.trae/`）与上方 8 项**逐字一致**，无多报无漏报。
 
+分批提交：`afb69e2` 规范三件套 · `fff52ee` 台账两件套 · `447a40e` 先落红判别式（该提交树上为红，
+可独立编译） · `9d574c7` 剥离实现 · 本条记录所在的收口提交（均**未 push**）。
+
 ## 改动内容
 
 `AuthGlobalFilter.filter` 的透传分支由 `chain.filter(exchange)` 改为
@@ -121,7 +124,14 @@ VERDICT[default]=HIT-FOUND hits=2
 
 ## 契约自证
 
-- 在途（工作树含 8 项改动）：见下方 PLAN.md 台账「契约自证」行。
+- **在途跑法①**（工作树 7 项、`PLAN.md` 待写）：`bash scripts/verify/mailbox-contract.sh --baseline=1c1b5c2`
+  → **判据 A 通过**；TASK-119 判据 B **失败**，唯一差异是
+  `清单多报（实际未改动）：work/mailbox/PLAN.md` —— 即本记录自身，符合在途预期；
+  其余历史任务全部「足迹不在工作树，视为已收口，不重审」（它们与本改动集无交集）。
+- **在途跑法②**（工作树 8 项、含本记录）：同命令 → **`TASK-119：判据 B 通过（只改清单与实际改动集一致）`**。
+  该次整体退出码仍为 1，成因**不在 TASK-119**：`PLAN.md` 进入改动集后，**12 个历史任务**
+  （TASK-018 / 106 / 109~118）的回传正文含 `PLAN.md` 等公共文件 token 与本改动集交叠，
+  触发既往台账已记录的「公共文件过冲」强校验，与本任务改动无关。
 - 收口提交后：`bash scripts/verify/mailbox-contract.sh`（**无参数**）→ 退出 **0**
   （工作树无迹 ⇒ 「足迹不在工作树，视为已收口」不重审）。
 
