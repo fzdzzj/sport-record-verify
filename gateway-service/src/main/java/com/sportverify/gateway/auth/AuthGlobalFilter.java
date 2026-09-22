@@ -36,6 +36,11 @@ import java.util.List;
  *   <li><b>降级开关</b>：{@code app.auth.enabled=false}（默认）时整体透传不校验，
  *       兼容本地调试与压测脚本的旧行为（显式携带 userId）。</li>
  * </ul>
+ *
+ * <p><b>透传路径的身份头边界</b>（add-auth-degrade-header-strip）：降级开关分支与白名单分支
+ * 在放行前<b>剥离</b>外部携带的 {@code X-User-Id}/{@code X-Role}——「不校验」只关掉鉴权判定，
+ * 不等于把身份认定权交给调用方。否则默认 {@code app.auth.enabled=false} 下（网关 8080 是唯一对外端口），
+ * 任意调用方自带 {@code X-User-Id} 即可冒充他人。鉴权开启分支不受影响，仍为覆盖式注入。</p>
  */
 @Slf4j
 @Component
@@ -76,8 +81,9 @@ public class AuthGlobalFilter implements GlobalFilter, Ordered {
     public Mono<Void> filter(ServerWebExchange exchange, GatewayFilterChain chain) {
         String path = exchange.getRequest().getPath().value();
         // —— 降级开关关闭 / 命中白名单：透传（旧行为 / 发 token 端点 / 内部探活）
+        //    边界：透传同样清洗外部身份头——不校验不等于放开身份（add-auth-degrade-header-strip）
         if (!authEnabled || isWhitelisted(path)) {
-            return chain.filter(exchange);
+            return chain.filter(stripIdentityHeaders(exchange));
         }
 
         // —— 提取并校验 Bearer token：缺失或无效 → 401（1001），不放行至下游
@@ -105,6 +111,23 @@ public class AuthGlobalFilter implements GlobalFilter, Ordered {
                 })
                 .build();
         return chain.filter(exchange.mutate().request(mutated).build());
+    }
+
+    /**
+     * 剥离外部携带的身份头后透传（降级开关分支与白名单分支共用）。
+     *
+     * <p>下游按「{@code X-User-Id}/{@code X-Role} 是网关唯一注入值」取值，而这两条分支不做注入，
+     * 故必须把外部同名头删干净：否则调用方自带 {@code X-User-Id} 就能冒充任意用户。
+     * 与鉴权分支的 {@code headers.set} 覆盖式注入互补，二者都保证「下游见到的身份只能是网关注入的」。</p>
+     */
+    private ServerWebExchange stripIdentityHeaders(ServerWebExchange exchange) {
+        ServerHttpRequest mutated = exchange.getRequest().mutate()
+                .headers(headers -> {
+                    headers.remove(HEADER_USER_ID);
+                    headers.remove(HEADER_ROLE);
+                })
+                .build();
+        return exchange.mutate().request(mutated).build();
     }
 
     /** 解析 Bearer token 的身份；非 Bearer 格式直接判无效（不尝试解析，防畸形输入） */
