@@ -112,4 +112,4 @@ bash scripts/verify/mailbox-contract.sh [--ledger=<dir>] [--open=<task,...>] [--
 | 2 | 参数使用错误 |
 | 3 | 差异来源不可判定：非 git 上下文且未给 `--diff-file`，或基线/命令无法解析——不是契约红，也不得记为通过 |
 
-本仓当前进行中任务（仅 `spec.md`）：`--open=TASK-018,TASK-106`。
+本仓当前进行中任务（仅 `spec.md`）：`--open=TASK-018`。

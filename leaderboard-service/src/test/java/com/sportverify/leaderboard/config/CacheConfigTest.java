@@ -28,7 +28,7 @@ import static org.mockito.Mockito.when;
 /**
  * TASK-002 缓存接线断言（二级缓存：L1 Caffeine + L2 Redis）。
  *
- * <p>守三类此前只能靠人肉读码发现的静默失效：</p>
+ * <p>守四类此前只能靠人肉读码发现的静默失效：</p>
  * <ol>
  *   <li>{@code CacheConfig} 曾同时暴露 {@code caffeineCacheManager} 与 {@code redisCacheManager}
  *       两个 {@code CacheManager} bean 且无 {@code @Primary} —— 按类型注入当场歧义，
@@ -39,6 +39,11 @@ import static org.mockito.Mockito.when;
  *   <li>{@code CacheConfig} 曾用裸 {@code new ObjectMapper()} 顶掉 Boot 的自动装配
  *       （丢 JavaTimeModule，带 {@code Instant} 的 DTO 直接序列化失败）。
  *       上下文里存在自定义 {@code ObjectMapper} bean 即为回归。</li>
+ *   <li>{@code CacheConfig#hierarchicalCacheManager} 的 {@code @Primary} 在"容器里只有它一个
+ *       {@code CacheManager}"的现状下不可观测 —— 摘掉它全仓测试仍全绿（字节码里确实少了注解）。
+ *       它守的是"将来再多一个 {@code CacheManager}"时的按类型解析形状，
+ *       故由 {@link #typeLookupPrefersHierarchicalCacheManagerWhenAnotherCacheManagerExists}
+ *       自带 runner 挂第二个 {@code CacheManager} 把歧义面造出来。</li>
  * </ol>
  *
  * <p>Redis 侧只给一个"能连上但什么都不存"的桩：上下文级用例证明接线、L1 往返，以及写操作
@@ -56,6 +61,20 @@ class CacheConfigTest {
             .withUserConfiguration(CacheConfig.class)
             .withBean(RedisConnectionFactory.class, this::stubRedisConnectionFactory);
 
+    /**
+     * 人造歧义用 runner：在共享 {@link #runner} 的基础上多挂一个次优 {@link CacheManager}，
+     * 把"生产上下文里只有一个 {@code CacheManager}"这一现状在测试里打破，
+     * 使按类型解析必须靠 {@code @Primary} 才能落到 {@code hierarchicalCacheManager}。
+     *
+     * <p>不与共享 {@code runner} 合并：那里一旦多出第二个 {@code CacheManager}，
+     * {@link #onlyHierarchicalCacheManagerIsExposed} 的 {@code hasSingleBean} 与
+     * {@code containsExactly} 会连带变红，那是改写既有断言，不是补测。</p>
+     */
+    private final ApplicationContextRunner ambiguityRunner = new ApplicationContextRunner()
+            .withUserConfiguration(CacheConfig.class)
+            .withBean(RedisConnectionFactory.class, this::stubRedisConnectionFactory)
+            .withBean("secondaryCacheManager", CacheManager.class, () -> new ConcurrentMapCacheManager(OVERALL_CACHE));
+
     @Test
     void onlyHierarchicalCacheManagerIsExposed() {
         runner.run(context -> {
@@ -63,6 +82,31 @@ class CacheConfigTest {
             // 再多一个裸 CacheManager 就在这里红：按名断言只允许 hierarchicalCacheManager 一个
             assertThat(context).hasSingleBean(CacheManager.class);
             assertThat(context.getBeanNamesForType(CacheManager.class)).containsExactly("hierarchicalCacheManager");
+            assertThat(context.getBean(CacheManager.class))
+                    .isSameAs(context.getBean("hierarchicalCacheManager", CacheManager.class));
+        });
+    }
+
+    /**
+     * 守 {@code CacheConfig#hierarchicalCacheManager} 上的 {@code @Primary}：
+     * 生产上下文今天只有一个 {@code CacheManager} bean，按类型注入无歧义，
+     * 所以 {@code @Primary} 护的是"将来再多一个 {@code CacheManager}"（换缓存实现、加装饰层、
+     * 或某个 starter 自动装配带进来）时的按类型解析形状——它指出"哪个才是给人用的那个"，
+     * 不是可有可无的装饰，缺了它按类型注入立即变成启动期失败。
+     *
+     * <p>可观测手段只有本用例：单 bean 现状下摘掉 {@code @Primary} 不会有任何测试变红，
+     * 故自带 {@link #ambiguityRunner} 挂第二个次优 {@code CacheManager} 造出歧义面。
+     * 有 {@code @Primary} → 按类型解析落到 ours；摘掉 → 容器启动期当场失败
+     * （{@code @EnableCaching} 的 {@code CacheAspectSupport} 找不到唯一 {@code CacheManager}，
+     * 报 "no unique bean of type CacheManager found"）→ 本条红。</p>
+     *
+     * <p>不断言"容器里有 2 个 CacheManager"：那是计数断言，有无 {@code @Primary} 都成立，
+     * 对这条失效完全无感。</p>
+     */
+    @Test
+    void typeLookupPrefersHierarchicalCacheManagerWhenAnotherCacheManagerExists() {
+        ambiguityRunner.run(context -> {
+            assertThat(context).hasNotFailed();
             assertThat(context.getBean(CacheManager.class))
                     .isSameAs(context.getBean("hierarchicalCacheManager", CacheManager.class));
         });
