@@ -54,6 +54,14 @@ jobs:
       - name: Build representative service image
         run: docker compose -f docker-compose.yml -f docker-compose.services.yml build leaderboard-service
 
+      # 静态检查三件套（checkstyle / spotbugs / pmd）门槛，拼写唯一定义在 mvn-verify.sh 的
+      # --static 子命令（与上方 Build and test 同一引用原则，本文件不手拼 mvn 命令）。
+      # 缺省模块 leaderboard-service（TASK-018 接入，逐模块治理另立变更）；子命令内部先
+      # install 目标模块与上游再跑三 goal——单模块 reactor 在 CI 解析不到兄弟模块 SNAPSHOT，
+      # 第 1 段是本步可用的前提，不是加速项。三 goal 不绑 lifecycle phase，常规构建不受扰动。
+      - name: Static analysis gate (checkstyle / spotbugs / pmd)
+        run: bash scripts/verify/mvn-verify.sh --static=leaderboard-service
+
       # 公开口径自检：命中禁用措辞即失败。扫描范围是**全部 tracked 文本文件**（-I 跳二进制），
       # 不再按扩展名白名单取样——白名单是"新增文件类型要记得同步扩 glob"的自设盲区，
       # 曾让 4 处命中长期躲在 java/yml 注释里不被发现，而 .gitignore 这类无扩展名载体根本不匹配任何 glob。
