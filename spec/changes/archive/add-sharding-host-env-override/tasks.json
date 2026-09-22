@@ -1,0 +1,58 @@
+[
+  {
+    "number": 1,
+    "category": "阶段 1：独立 ADDED 变更三件套",
+    "task": "新建 add-sharding-host-env-override 三件套（仅 ADDED 一条，零 MODIFIED）",
+    "steps": [
+      { "step": "新建 spec/changes/add-sharding-host-env-override/proposal.md（承接 TASK-115 冲突停手项；代码侧 TASK-111 已落地 commit 75ec1dd）", "completed": true },
+      { "step": "新建 specs/sport-record-verify/spec-delta.md：仅 ADDED 需求一条（从原变更 spec-delta 的 ADDED 段原样复制），零 MODIFIED", "completed": true },
+      { "step": "新建 tasks.json 并按实际执行回填状态", "completed": true }
+    ],
+    "passes": true
+  },
+  {
+    "number": 2,
+    "category": "阶段 2：并入主规格",
+    "task": "ADDED 追加到既有 sharding 表述同节 + 头部归档列表 +1，其余文本零改动",
+    "steps": [
+      { "step": "冲突即停复核：「真库端到端测试有确定路径」当前文本仍为 middleware 泛化版（4be7929），本变更零 MODIFIED 不触碰；「轨迹分片存储」文本与基线一致", "completed": true },
+      { "step": "ADDED 需求追加到「轨迹分片存储」之后（校验引擎分区，record-service sharding.yaml 即该需求 ShardingSphere 数据源配置载体）", "completed": true },
+      { "step": "头部「本规范已归档以下提案」追加 add-sharding-host-env-override", "completed": true }
+    ],
+    "passes": true
+  },
+  {
+    "number": 3,
+    "category": "阶段 3：归档与停手项闭合",
+    "task": "两个 sharding 变更 git mv 入 archive，spec/changes/ 仅剩 archive/",
+    "steps": [
+      { "step": "git add 新三件套后 git mv add-sharding-host-env-override → archive/（并入即归档，先例 TASK-115 逐变更口径）", "completed": true },
+      { "step": "git mv add-sharding-host-parameterization → archive/（整体归档保留历史，MODIFIED 不再并入——与 TASK-115 停手判定一致）", "completed": true },
+      { "step": "逐 commit 核对 git diff --cached --name-only 仅含预期文件", "completed": true }
+    ],
+    "passes": true
+  },
+  {
+    "number": 4,
+    "category": "阶段 4：红绿取证与实跑验收",
+    "task": "文档判据红→绿 + offline 零扰动 + 词面自检",
+    "steps": [
+      { "step": "红（并入前）：主规格 SHARDING_MYSQL_HOST / 需求标题计数 0；add-sharding-host-parameterization 仍在 spec/changes/（非 archive）", "completed": true },
+      { "step": "绿（并入后）：主规格需求标题计数 1、头部列表含新变更名；spec/changes/ 仅剩 archive/ 且含两个 sharding 变更", "completed": true },
+      { "step": "bash scripts/verify/mvn-verify.sh --mode=offline test → BUILD SUCCESS，模块测试合计 283 与基线零扰动（纯 spec 改动）", "completed": true },
+      { "step": "词面自检 CI 原版口径（git grep 三排除：archive/**、docs/internal/**、ci.yml）ZERO-HIT", "completed": true }
+    ],
+    "passes": true
+  },
+  {
+    "number": 5,
+    "category": "阶段 5：台账与契约",
+    "task": "TASK-117 两件套 + PLAN 验收记录 + mailbox-contract 自证",
+    "steps": [
+      { "step": "新建 work/mailbox/tasks/TASK-117/{spec.md,handoff.md}（含只改清单，完整路径逐行列出）", "completed": true },
+      { "step": "PLAN.md 追加验收记录（注明闭合 TASK-115 停手项、spec/changes/ 仅剩 archive/ 判据达成）", "completed": true },
+      { "step": "收口提交前脏树 mailbox-contract.sh --open=TASK-018,TASK-106 退出 1 属预期（TASK-117 全量清单 vs 前序 commit 已落部分足迹）；收口提交后退出 0", "completed": true }
+    ],
+    "passes": true
+  }
+]

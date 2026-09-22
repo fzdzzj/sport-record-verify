@@ -39,6 +39,7 @@
 - add-perf-submit-aggregation-gate（跨请求提交聚合须先复测）
 - update-perf-optimized-defaults（提交路径默认批量插入）
 - add-middleware-it-coverage（真中间件路径自动覆盖）
+- add-sharding-host-env-override（sharding 数据源 host 环境变量覆盖）
 
 各提案的 spec-delta 中 ADDED 需求已全部合并进本规范，MODIFIED 需求按规则处理（见「服务划分」分组与「变更历史」）。
 
@@ -706,6 +707,27 @@ GIVEN 轨迹点分布在多个分片
 WHEN MyBatis-Plus 分页查询该用户轨迹
 THEN 分页插件正确绑定 ShardingSphere 代理数据源
 AND 返回跨分片合并的完整分页结果
+
+### Requirement: sharding 数据源 host 可由环境变量覆盖
+
+WHEN record-service 的数据源经 `sharding.yaml` 由 `ShardingDataSourceConfig` 加载时,
+系统 SHALL 采用 `${SHARDING_MYSQL_HOST:<默认>}` 形式的 host 占位，使服务容器内能经环境变量把
+host 指向 compose 中的 MySQL 服务名；SHALL NOT 把 host 硬编码为宿主回环地址而使容器口径失效。
+宿主直跑未设该环境变量时, 系统 SHALL 使用默认值 `127.0.0.1`，SHALL NOT 改动宿主直跑口径。
+
+#### Scenario: 宿主直跑保留默认 host
+
+GIVEN 运行环境未设置 SHARDING_MYSQL_HOST
+WHEN record-service 读取 sharding.yaml 的数据源 jdbcUrl
+THEN host 解析为默认值 127.0.0.1
+AND 与参数化前的宿主直跑口径完全一致
+
+#### Scenario: 容器内经服务名寻址
+
+GIVEN compose 为 record-service 注入 SHARDING_MYSQL_HOST=mysql
+WHEN record-service 在容器内读取 sharding.yaml 的数据源 jdbcUrl
+THEN host 解析为 mysql（服务名）
+AND 容器内能以该服务名连上 MySQL（如 `-h mysql -P 3306` 的 USE/查询成功）
 
 ### Requirement: 轨迹提交幂等
 
