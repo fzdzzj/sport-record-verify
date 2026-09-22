@@ -4,6 +4,7 @@ import io.jsonwebtoken.Claims;
 import io.jsonwebtoken.JwtException;
 import io.jsonwebtoken.Jwts;
 import io.jsonwebtoken.security.Keys;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
@@ -28,15 +29,31 @@ public class JwtTokenParser {
     /** 合法类型：access（业务接口携带；refresh 仅供换新，网关一律拒绝） */
     private static final String TYPE_ACCESS = "ACCESS";
 
-    /** HS256 密钥（>=32 字节；与 user-service 配置必须一致，见 ADR-0007） */
-    private final SecretKey key;
+    /** strict 判别用的本地演示默认密钥（与下方 @Value 兜底字面量保持一致） */
+    static final String DEMO_SECRET = "sport-verify-hs256-secret-key-0123456789abcdef";
 
-    public JwtTokenParser(@Value("${app.auth.jwt.secret:sport-verify-hs256-secret-key-0123456789abcdef}") String secret) {
+    /** 兼容旧单参构造（strict=false，行为与引入 app.security.strict 前逐位一致） */
+    public JwtTokenParser(@Value("${app.auth.jwt.secret:" + DEMO_SECRET + "}") String secret) {
+        this(secret, false);
+    }
+
+    /** Spring 装配入口：多一个 strict 开关参数（app.security.strict，默认 false 零扰动） */
+    @Autowired
+    public JwtTokenParser(@Value("${app.auth.jwt.secret:" + DEMO_SECRET + "}") String secret,
+                          @Value("${app.security.strict:false}") boolean strictMode) {
+        // fail-fast（strict 模式）：密钥未显式注入（回落演示默认串）即拒绝启动；默认不触发，零扰动
+        if (strictMode && DEMO_SECRET.equals(secret)) {
+            throw new IllegalStateException(
+                    "app.security.strict=true 但 app.auth.jwt.secret 未显式注入（回落本地演示默认值），拒绝启动");
+        }
         if (secret == null || secret.getBytes(StandardCharsets.UTF_8).length < 32) {
             throw new IllegalArgumentException("app.auth.jwt.secret 长度必须 >= 32 字节（HS256 最低密钥长度）");
         }
         this.key = Keys.hmacShaKeyFor(secret.getBytes(StandardCharsets.UTF_8));
     }
+
+    /** HS256 密钥（>=32 字节；与 user-service 配置必须一致，见 ADR-0007） */
+    private final SecretKey key;
 
     /**
      * 校验签名/时效/type 并解析身份（userId + role）；任一不符抛 {@link JwtException}，

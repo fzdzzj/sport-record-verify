@@ -100,6 +100,11 @@ spring:
 # 注意：已删除无路由的 /internal/** 死配置（add-resilience-hardening）——服务间 Feign 不经网关；
 # 若将来误加 /internal 路由，死白名单会让安全边界瞬间塌陷。
 app:
+  # 密钥治理开关（add-strict-secret-fail-fast / TASK-126）：true=任一密钥项缺失
+  # （JWT 密钥、内部接口 token 回落到演示默认值）即启动失败；默认 false 本地演示零扰动，
+  # 下方各密钥的演示默认值原样保留
+  security:
+    strict: false
   auth:
     # 鉴权降级开关：false=旧行为（透传不校验，显式携带 userId），true=强制鉴权 + 数据隔离
     # 默认 false 兼容本地调试与压测脚本；切换 true 前先验证 7 个 commit 的验收项，并更新压测脚本带 token
