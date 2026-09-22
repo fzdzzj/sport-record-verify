@@ -434,3 +434,19 @@ bean 改名、未覆盖 `@Primary`，TASK-106 对这一点的批评成立。
 | 未覆盖 | ① 第①处 import 未删（javadoc `{@link}` 引用，删了破坏 javadoc 解析），如需让静态检查对该处归零须改 javadoc 为全限定名，属另一最小变更（见 TASK-121/handoff「未决」）；② 默认 locale 下 CI 同款词面自检仍余 2 条（TASK-118/119/120 已登记的 `api/**/MapMatchResultDTO.java:17/36` 本机引擎伪影，只改清单外，未修）；③ 本任务改动待下次 push 由 CI 复验 |
 | 归档与后续 | 不自行归档：纯清理 + 台账，无 spec 需求变更（不建 `spec/changes/` 三件套），台账两件套即满足契约判据 A。TASK-018 建议单的 3 处就此闭合 2 处、1 处改判保留（javadoc 引用），后续若做 javadoc 全限定名最小变更可一并复跑 checkstyle/pmd 观察违规归零 |
 | 指导侧复验收 | 收口授权下放（指导侧不复跑）；执行侧自证：三处计数逐项留档 → 删 2 留 1 → diff 仅 2 行删除 → offline 287 全绿零扰动 → 词面自检 0 命中 → 契约在途逐项一致 / 收口后 0，全部实测落档 |
+
+## 验收记录：`静态检查三件套经唯一入口接入 CI（TASK-122，2026-09-22）`
+
+| 项 | 内容 |
+| --- | --- |
+| 绑定修订 | 开工基线 `ad63c3b`（`git status` 事前仅 `?? .trae/`）；`8858b5f` 入口 --static 子命令 + README · `c32be58` CI 门槛步骤 · 本条记录所在的台账收口提交（**未 push**、未建 PR） |
+| 门槛来源 | 本地实跑，唯一入口 `bash scripts/verify/mvn-verify.sh --static=leaderboard-service`（auto→offline、生效模式 offline、依赖来源可判定未触发退出码 3）→ rc=0 / 两段 BUILD SUCCESS / 0 Checkstyle violations / Total bugs 10；全仓回归 `--mode=offline test` → rc=0 / 2m44s / 模块合计 `17 22 31 80 81 50 6 = 287`（与开工基线逐位一致，Failures 0 / Errors 0 / Skipped 0）。任务包原文写"284"为 TASK-119 增量前旧锚点，实跑以 287 为准并在此登记 |
+| 是否到达外部门槛 | 本次**不 push**（任务硬边界），无新外部 run；CI 新步骤（`--static=leaderboard-service`，online 模式）实际效果待下次 push 复验——尤其第 1 段 install 装料在冷仓无缓存的耗时未实测——此处如实标注不作声称 |
+| 红绿取证 | 红绿取证（哨兵）：向 `LeaderboardService.java` 尾部注入 163 字符 CRLF 哨兵注释（原 439 行，工作树 sha256 `4306d384…`）→ `--static` **rc=1**，判别式红在静态检查本身（第 1 段装料 BUILD SUCCESS）：`[ERROR] …LeaderboardService.java:440: 本行字符数 163个，最多：140个。 [LineLength]`（两处输出均含行号 440）。还原（`git show HEAD:<path>` + 非 `-p` 的 `cp` + `touch` + `git checkout-index -f` 归位）：cmp **IDENTICAL**、`git diff` EMPTY、归位后工作树 sha256 回到 `4306d384…` 逐位一致、哨兵残留 0。绿：还原后同命令 **rc=0**（0 violations / Total bugs 10 / 两段 BUILD SUCCESS）。参数错四组均 **rc=2**（`--static=nonexistent-module`、`--static test`、`--static --it`、`--static --pl common`，均不调 Maven） |
+| 实现要点 | 子命令两段执行：第 1 段 `-pl <模块> -am clean install -DskipTests` 装料是 **CI 可用性前提**（单模块 reactor 解析不到兄弟模块 SNAPSHOT，CI 从未 deploy），offline 下顺带消除 TASK-018 登记的陈旧内部构件隐患；第 2 段 `-f <模块>/pom.xml test-compile checkstyle:check com.github.spotbugs:spotbugs-maven-plugin:4.9.8.5:check pmd:check`（spotbugs 用全限定 GAV：前缀不在默认插件组、插件只声明在目标模块 pom）。三 goal 依旧**不绑 lifecycle phase**（pom 零改动），CI 既有步骤判据逐字未动 |
+| 契约自证 | 在途 `mailbox-contract.sh --baseline=ad63c3b`（PLAN 记录追加后）：TASK-122 判据 A 通过（两件套齐全）、判据 B 通过（只改清单 6 项与实际改动集逐项一致）；整体退出码 1 的成因**不在 TASK-122**——PLAN.md 进改动集后历史 handoff 公共文件 token 交叠触发既往已登记的"公共文件过冲"。收口提交后 `mailbox-contract.sh`（**无参数**）退出 **0** |
+| 只改清单一致性 | 实际改动集（`git diff --name-only ad63c3b` + untracked 排除 `.trae/`）＝ `scripts/verify/mvn-verify.sh` · `scripts/verify/README.md` · `.github/workflows/ci.yml` · `TASK-122/spec.md` · `TASK-122/handoff.md` · `PLAN.md`，与 handoff 声明**逐字一致**。未把三 goal 绑进 verify 生命周期、未扩展到其余模块、未动 CI 既有步骤判据、未动契约脚本；全程未用 `git stash`（哨兵还原用 `cp` + 哈希校验）、开工前后各留一份仓库外 bundle |
+| 词面自检 | CI 同款正则、`LC_ALL=C`：全仓 **0 命中**、本任务 6 个改动载体单独扫 **0 命中**；默认 locale 仅余 TASK-118 起已登记的 2 条本机伪影（`api/**/MapMatchResultDTO.java:17/36`，本任务未触碰） |
+| 未覆盖 | ① CI 效果（online 模式、冷仓装料耗时）待下次 push 复验；② `--static` 传入未声明三插件的模块时按插件默认规则集判定通常直接红，逐模块治理另立变更（README 已写明）；③ 287 之外的既有未覆盖面（真中间件路径等）本任务不新增 |
+| 归档与后续 | 不自行归档：纯工程接线 + 台账，无 spec 需求变更（不建 `spec/changes/` 三件套），台账两件套即满足契约判据 A。TASK-018「待主 agent 决定」第 5 条（CI 不跑三 goal、外部门槛为空）由本任务闭合 |
+| 指导侧复验收 | 收口授权下放（指导侧不复跑）；执行侧自证：哨兵红（行号+字数原文）→ 还原 cmp 零差异 → 绿 rc=0 → 参数错 rc=2 ×4 → offline 287 零扰动 → 词面 0 命中 → 契约在途逐项一致 / 收口后 0，全部实测落档（日志 `.trae/tmp/task122-*.log`，不入库） |
