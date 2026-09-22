@@ -114,7 +114,8 @@ management:
             requests: true
   endpoint:
     health:
-      show-details: always
+      # narrow-actuator-exposure：never——health 仍返回 UP/status，不泄组件明细
+      show-details: never
 
 # 请求贯穿：MDC traceId（add-request-tracing）
 logging:
