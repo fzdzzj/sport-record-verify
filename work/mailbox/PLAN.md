@@ -321,3 +321,19 @@ bean 改名、未覆盖 `@Primary`，TASK-106 对这一点的批评成立。
 | 未覆盖 | 无新未覆盖 |
 | 归档与后续 | 不自行归档；不建 `spec/changes/` 三件套（冒烟脚本非 spec 需求变更）；脚本依赖宿主「六中间件 + 六服务」全拉起，置于 `scripts/smoke/` 不并入 `mvn-verify.sh`（停止边界） |
 | 指导侧复验收 | 收口授权下放（指导侧不复跑）；执行侧自证：三维退出码实测 + offline 零扰动 + 契约脏树 1 / 收口后 0 + 台账两件套落档 |
+
+## 验收记录：`sharding host 环境变量覆盖独立 ADDED 并入并闭合停手项（TASK-117，2026-09-22）`
+
+| 项 | 内容 |
+| --- | --- |
+| 绑定修订 | 开工基线 `726cf63`；spec 侧逐变更 commit：`85252df`（归档 add-sharding-host-env-override 并入主规格）/ `466f7b1`（归档 add-sharding-host-parameterization 闭合 TASK-115 停手项）；本条记录所在的收口提交（收口授权下放，执行侧自证后直接收口，未 push） |
+| 门槛来源 | 本地实跑，唯一入口 `scripts/verify/mvn-verify.sh --mode=offline test`（`D:\git\Git\bin\bash.exe`）→ rc=0 / BUILD SUCCESS / 17/19/31/**80**/81/49/6 = **283**（与基线 `726cf63` 一致，纯 spec 文档改动零扰动，Failures 0 / Errors 0 / Skipped 0）；生效模式 offline、localRepository `D:/code/sports/.m2-repo`，依赖来源可判定（未触发退出码 3） |
+| 是否到达外部门槛 | 本次**不 push**（任务硬边界），无新外部 run；基线口径（含 `4be7929` middleware 泛化并入）已由 run `35671465068`（head `620240b`，2026-09-22，web/build 两 job 全绿）覆盖验证；本任务纯 spec 改动待下次 push 由 CI 复验，此处如实标注不作声称 |
+| 红绿取证（文档判据） | 红（并入前，`726cf63`）：主规格 `grep -c SHARDING_MYSQL_HOST` = **0**、需求标题（临时模式文件精确匹配）= **0**、`ls spec/changes/` 仍列 `add-sharding-host-parameterization/`（非 archive）、`ls spec/changes/archive/ \| grep -i sharding` 无命中。绿（并入后）：需求标题计数 **1**、`SHARDING_MYSQL_HOST` 计数 **3**（正文 1 + 场景 2）、头部列表 L42 含 `add-sharding-host-env-override`；`git diff --cached --name-only` 逐 commit 仅含预期（commit 1 = 4 文件 196 行纯插入 / commit 2 = 3 文件全 R100）；`spec/changes/` 仅剩 `archive/` 且含两个 sharding 变更 |
+| 并入内容（零 MODIFIED 自证） | spec-delta ADDED 段与主规格新增需求块逐字 diff 一致（两段 VERBATIM OK）；主规格总 diff **22 行纯插入 0 删除**（头部列表 1 行 + 需求块 21 行），落点为「校验引擎」分区「轨迹分片存储」之后（record-service `sharding.yaml` 即该需求 track_point 分片 ShardingSphere 数据源配置载体，与既有 sharding 表述同节）；「真库端到端测试有确定路径」保持 `4be7929` 泛化版原文未动（并入前复核通过，未触发冲突即停） |
+| 停手项闭合 | **TASK-115 停手项自此闭合**：独立 ADDED 以零 MODIFIED 变更单开并入；原变更整体 `git mv` 入 `archive/`（R100 历史保留，MODIFIED 不再并入——容器口径判据已由 middleware 泛化版「可按清单覆盖多条 + 未覆盖记账」承载，与 TASK-115 停手判定一致）；`spec/changes/ 仅剩 archive/` 判据达成（TASK-115 完成定义唯一未达成项补齐） |
+| 契约自证 | 收口提交前脏树 `mailbox-contract.sh --open=TASK-018,TASK-106` 退出 **1** 属预期（TASK-117 只改清单声明全量 10 文件，7 文件已随前两 commit 落库，工作树仅剩两件套 + PLAN.md，清单多报=在途口径）；收口提交后 ACTUAL 空（仅 `.trae/` 排除）→ 退出 **0** |
+| 词面自检 | CI 原版口径（git grep 三排除：`spec/changes/archive/**`、`docs/internal/**`、`.github/workflows/ci.yml`）ZERO-HIT；禁用词模式经 `printf` 转义构造，命令行保持纯 ASCII |
+| 未覆盖 | 无新未覆盖；原变更 MODIFIED（容器口径 E2E 细节）不再并入，由「真库端到端测试有确定路径」middleware 泛化版承载（判据形态：定向入口按清单覆盖多条真中间件测试、缺前提按未覆盖记账），不产生规范欠账 |
+| 归档与后续 | `add-sharding-host-env-override` 与 `add-sharding-host-parameterization` 均已入 `spec/changes/archive/`；`spec/changes/` 下无未归档变更；后续无需跟进 |
+| 指导侧复验收 | 收口授权下放（指导侧不复跑）；执行侧自证：红绿计数 + 逐字并入 + 逐 commit 暂存清单 + offline 283 零扰动 + 词面 ZERO-HIT + 契约脏树 1 / 收口后 0，全部实测落档 |
