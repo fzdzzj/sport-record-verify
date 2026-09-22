@@ -94,8 +94,10 @@ but context failed to start:
 - 暂存清单：`git diff --cached --name-only` 与白名单 4 项**完全一致**（无多报、无漏报）。
 - 词面自检：CI 同款模式经 UTF-8 脚本承载后，**本任务 4 个改动文件 0 命中**（`LC_ALL=C` 与默认
   `C.UTF-8` 各跑一次均无命中）。附带发现：本机 MSYS `git grep -i` 在 `C.UTF-8` 下把字节 `0x8E`/`0x9E`
-  视作大小写等价（cp1252 的 Ž/ž），使既有未触碰文件 `MapMatchResultDTO.java` 的「大垂」误命中「大厂」；
-  `LC_ALL=C` 下全量 **ZERO-HIT**，判为 locale 伪影、非真命中。
+  视作大小写等价（cp1252 的 Ž/ž），使既有未触碰文件 `MapMatchResultDTO.java` 中「垂距」的「垂」
+  （`0xE5 0x9E 0x82`）被误判为**词面自检的禁用词**命中（二者仅差第二字节；TASK-118 实测：该误判
+  只在模式含多分支时复现）；
+  `LC_ALL=C` 下全量 **ZERO-HIT**，判为 locale 伪影、非真命中。该处原文引用已由 TASK-118 改写为指代表述。
 
 ## 待主 agent 决定
 
