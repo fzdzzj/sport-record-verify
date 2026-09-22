@@ -36,9 +36,9 @@
 
 | 项 | 内容 |
 | --- | --- |
-| 绑定修订 | 开工基线 `14d2600`；本条记录所在的收口提交（指导侧验收通过后执行，未 push） |
+| 绑定修订 | 开工基线 `14d2600`；本条记录所在的收口提交（指导侧验收通过后执行，已推送） |
 | 门槛来源 | 本地实跑，全部经 `scripts/verify/mvn-verify.sh`：`--mode=offline test` BUILD SUCCESS / 17/19/31/78/81/49/6 = **281**（与基线一致）；`--it` 真中间件在位 `Tests run: 5, Failures: 0, Errors: 0, Skipped: 0` / IT_RC=0 |
-| 是否到达外部门槛 | **未达外部门槛**：修订未推送，结论仅来自本地；无 CI run 编号可绑 |
+| 是否到达外部门槛 | **已到达**：push `67ddcdf..86024eb` 触发 run `35616258697`（2026-09-21 15:02，head=`86024eb`）——web/build 两 job 全绿（Build and test 8 模块 SUCCESS、compose 解析、代表镜像构建、词面自检；web 全 8 步含 `Generated router types match committed`）。批注仅 Node20 弃用等告警，非失败 |
 | 未覆盖（不得写成通过） | **C 全栈 `/daily` 端到端：本期显式记未覆盖 + 分期理由**（宿主六服务拉起门槛本环境不具备；判据形态为独立 `smoke-daily.sh`，A/B 为可运行机器判据）。缺 `TASK110_IT_*` 时 Redis/RocketMQ IT 各 `Skipped:1`＝未覆盖，MySQL IT 3 绿 |
 | 红绿取证 | Redis IT 红：改 scale 期望 2→3 → `expected: <3> but was: <2>`（`LeaderboardL2RedisRoundTripIT.java:119`），BUILD FAILURE；还原绿。RocketMQ IT 红：订阅 Tag 只 `SUBMITTED`、发 `VERIFIED` → 超时 `expected: not <null>`（`RocketMqBrokerRoundTripIT.java:122`），BUILD FAILURE；还原绿。两判别式各取到红对与绿对 |
 | 环境核实 | Redis 连 `127.0.0.1:16379`（容器 `sport-verify-redis` override 映射），IT 打印 `run_id=d6f6ee451462b48ca165082afa519ad3d09cdfdf tcp_port=6379`，与 `docker exec sport-verify-redis INFO server` 逐字一致（容器实例，非原生 6379）；MySQL scratch 库 `task108_it` |
@@ -185,7 +185,7 @@ bean 改名、未覆盖 `@Primary`，TASK-106 对这一点的批评成立。
     降序索引 EXPLAIN 命中 `idx_date_score` + `Using index`，upsert 幂等（2 行不变），`deleteStaleToday` 真的删掉回滚用户残留。
     **仍未收口**：MyBatis 运行时替换 `#{}` 的端到端链路（需全栈起服务）；另有 3 项待决（累计 vs 增量口径、
     历史日重算、`/daily` 无鉴权即暴露全平台某日里程排行）——见 `work/mailbox/tasks/TASK-108/handoff.md`
-11. ✅ **已分 7 批提交（用户指令"分批commit"，仅本地，未 push）**：
+11. ✅ **已分 7 批提交（用户指令"分批commit"，仅本地，已推送）**：
     `a281b9c` fix(common) 异常收口 · `c4e595b` feat 二级缓存 · `190ab1f` feat 每日报表 ·
     `10684ec` test 事务接线+ADR-0009 哨兵 · `a048745` feat verify outbox ·
     `afcd398` chore Dockerfile/compose · `3030f6f` chore pnpm 锁文件。
@@ -226,7 +226,7 @@ bean 改名、未覆盖 `@Primary`，TASK-106 对这一点的批评成立。
 | --- | --- |
 | 绑定修订 | 本条记录所在的收口提交（2026-09-22 指导侧验收通过后执行；含只改清单全部 8 文件与 tasks.json 状态回填） |
 | 门槛来源 | 本地实跑：`mailbox-contract.sh --ledger=work/mailbox/tasks --open=TASK-018,TASK-106` → 退出 0（判据 A 25 目录两件套齐含 2 个待办进行中、判据 B 清单一致）；红 A / 红 B / TASK-108 隔离绿三对取证均为实测；`mvn-verify.sh --mode=offline test` → 281 全绿 / BUILD SUCCESS（模块合计见 TASK-109 handoff） |
-| 是否到达外部门槛 | **未达外部门槛**（未 push，需单独授权） |
+| 是否到达外部门槛 | **已到达**：功能落地 `14d2600`（mailbox-contract 入口）由 run `35616258697`（head `86024eb`，2026-09-21 15:02，web/build 两 job 全绿）验绿；归档 `1773f0b`（TASK-115 并入主规格）由 run `35671465068`（head `620240b`，2026-09-22，两 job 全绿）复验 |
 | open 任务集合 | 当前 `work/mailbox/tasks` 仅 `TASK-018`、`TASK-106` 为"仅 spec 无 handoff"进行中任务，经 `--open` 显式声明后在输出中列待办；后续台账演进须同步更新 `scripts/verify/README.md` 里给出的 `--open` 值 |
 | 不作伪造 | 对 TASK-018 / TASK-106 未补写 handoff，只列待办；补写属停止边界，由指导侧另行决定 |
 | 未覆盖 | 判据 B 对"已收口（足迹不在工作树）"的任务不重审既存记录，属设计取舍；`mvn-verify` 离线依赖来源以本机离线仓为准，未跑 online 全量 |
@@ -237,9 +237,9 @@ bean 改名、未覆盖 `@Primary`，TASK-106 对这一点的批评成立。
 
 | 项 | 内容 |
 | --- | --- |
-| 绑定修订 | 开工基线 `9c90d32`；本条记录所在的收口提交（指导侧验收通过后执行，未 push） |
+| 绑定修订 | 开工基线 `9c90d32`；本条记录所在的收口提交（指导侧验收通过后执行，已推送） |
 | 门槛来源 | 本地实跑，全部经唯一入口 `scripts/verify/mvn-verify.sh --mode=offline test` → BUILD SUCCESS / 17/19/31/**80**/81/49/6 = **283**（record 基线 78→80，全仓 281→283，只增不减） |
-| 是否到达外部门槛 | **未达外部门槛**：修订未推送，结论仅来自本地；无 CI run 编号可绑 |
+| 是否到达外部门槛 | **已到达**：push `67ddcdf..86024eb` 触发 run `35616258697`（2026-09-21 15:02，head=`86024eb`）——web/build 两 job 全绿（Build and test 8 模块 SUCCESS、compose 解析、代表镜像构建、词面自检；web 全 8 步含 `Generated router types match committed`）。批注仅 Node20 弃用等告警，非失败 |
 | 红绿取证 | 红（单测）：注入 `SHARDING_MYSQL_HOST=mysql` + 用例②临时固定期望 127.0.0.1 → `ShardingDataSourceConfigTest.realHostVariable_defaultOrOverrideBranch:70` `expected: <true> but was: <false>` / record BUILD FAILURE；还原绿。红（容器）：同网络 `-h 127.0.0.1` → `ERROR 2003 (HY000): Can't connect to MySQL server on '127.0.0.1:3306'(111)` 退出 1；`-h mysql` 绿 → 输出 `verdict/reachable` 退出 0。两判别式各取到红对与绿对 |
 | 静态 mock 说明 | 本任务未用 `mockStatic(System.class)`：Mockito 凭类加载无限循环保护禁止 mock java.lang.System，直接写会抛该异常；红绿取证以「运行级注入 env + 临时期望编辑」复现，断言仍覆盖默认/覆盖两分支 |
 | 构建产物 | `record-service/target/classes/sharding.yaml` L22 含 `jdbc:mysql://${SHARDING_MYSQL_HOST:127.0.0.1}:${MYSQL_PORT:3306}/record_db?...`（源资源真进构建输出） |
@@ -254,9 +254,9 @@ bean 改名、未覆盖 `@Primary`，TASK-106 对这一点的批评成立。
 
 | 项 | 内容 |
 | --- | --- |
-| 绑定修订 | 开工基线 `75ec1dd`；本条记录所在的收口提交（收口授权下放，执行侧自证全绿后直接收口，未 push） |
+| 绑定修订 | 开工基线 `75ec1dd`；本条记录所在的收口提交（收口授权下放，执行侧自证全绿后直接收口，已推送） |
 | 门槛来源 | 本地实跑，唯一入口 `scripts/verify/mvn-verify.sh --mode=offline test` → BUILD SUCCESS（Reactor Summary 全 8 模块 SUCCESS）/ 17/19/31/80/81/49/6 = **283**（与基线一致，纯 spec 改动零扰动） |
-| 是否到达外部门槛 | **未达外部门槛**：修订未推送，结论仅来自本地；无 CI run 编号可绑 |
+| 是否到达外部门槛 | **已到达**：push `67ddcdf..86024eb` 触发 run `35616258697`（2026-09-21 15:02，head=`86024eb`）——web/build 两 job 全绿（Build and test 8 模块 SUCCESS、compose 解析、代表镜像构建、词面自检；web 全 8 步含 `Generated router types match committed`）。批注仅 Node20 弃用等告警，非失败 |
 | 红绿取证（文档判据，判据脚本落盘 .sh） | 红（修正前）：「多模块工程结构」需求节 `mapmatch-service` 计数 **0**、需求写"8 个"、节内枚举 **7** 项 vs 父 pom `grep -c "<module>"` = **8** → 7≠8 矛盾成立（`RED_OK`）；绿（修正后）：节内 `mapmatch-service` 计数 **1**、枚举 **8** 项 = 父 pom **8** 模块、枚举名与 pom 模块名排序 diff 为空逐名一致（`GREEN_OK`）。主规格仅动 L35 枚举（补 `mapmatch-service`）与头部归档列表两处 |
 | 归档动作 | `git mv spec/changes/update-spec-module-enum spec/changes/archive/`（先 `git add` 再 mv，git mv 只认已跟踪文件）；`git diff --cached --name-only` 仅含预期 3 文件（proposal.md / tasks.json / spec-delta.md，archive 路径）；`spec/changes/` 下无同名未归档目录 |
 | 未覆盖 | 无新未覆盖；其余 14 个存量未归档变更（web 系列、perf 系列、gateway-browser-cors 等）整体归档另行派发，本任务只归档自己 |
@@ -267,9 +267,9 @@ bean 改名、未覆盖 `@Primary`，TASK-106 对这一点的批评成立。
 
 | 项 | 内容 |
 | --- | --- |
-| 绑定修订 | 开工基线 `0883bec`；本条记录所在的收口提交（收口授权下放，执行侧自证全绿后直接收口，未 push） |
+| 绑定修订 | 开工基线 `0883bec`；本条记录所在的收口提交（收口授权下放，执行侧自证全绿后直接收口，已推送） |
 | 门槛来源 | 本地实跑，唯一入口 `scripts/verify/mvn-verify.sh --mode=offline test` → RC=0 / BUILD SUCCESS / 17/19/31/80/81/49/6 = **283**（与基线一致，纯文档零扰动）；计时对照为本机 `docker compose build` 三组实测（冷 340.0s / 热 2.3s / 增量 219.8s，本机口径限定见 ADR §3） |
-| 是否到达外部门槛 | **未达外部门槛**：本任务修订未推送，无 CI run 编号可绑；ADR 所引 47s 基线为既有外部 run `35571634401`（`1fbf3eb`，本文件《add-controlled-verify-entrypoint》记录门槛来源行）的转引，非本任务新实跑 |
+| 是否到达外部门槛 | **已到达**：本任务即 run `35616258697` 的 head 提交（`86024eb`，2026-09-21 15:02，web/build 两 job 全绿）；ADR 所引 47s 基线为既有外部 run `35571634401`（`1fbf3eb`，本文件《add-controlled-verify-entrypoint》记录门槛来源行）的转引，非本任务新实跑 |
 | 评估结论 | ADR-0010 五节齐备：**维持策略 B**（1 份实构 + config 覆盖）。A（BuildKit 层缓存）在上下文变更日与 B 等速（`COPY . .` 失效 → mvn 层必重跑），仅 docs/web/scripts 类提交日有 20~40s 级收益；cache mounts 不随 cache-to 导出（已查证）；本机实测证实冷构 97~98% 落在 mvn 层、`COPY . .` 跨 Dockerfile CACHED、热路径 2.3s——每多实构 1 份 ≈ +30~45s（机制估算）。重评触发：实构镜像数 > 3 或 build job > 5 分钟。切换属未来变更，动作清单见 ADR §5 |
 | 出处勘误 | 任务包称 47s 系"概览 §8.5 转引"——经查 `docs/判定引擎-开发总览.md` 无 §8.5 小节，docs 全域 "47" 仅 GC 百分比与本台账命中；ADR 以 PLAN.md 上方记录绑定的外部门槛 run 为唯一可考出处，如实记录，未编造 |
 | 未覆盖 | 未实测 runner 上的多实构与缓存行为（不实施、不 push 属本任务停止边界）；runner 口径增量为机制估算非实测；本机计时绝对值受本地到 Maven Central 带宽支配，仅取层机制份额 |
@@ -281,9 +281,9 @@ bean 改名、未覆盖 `@Primary`，TASK-106 对这一点的批评成立。
 
 | 项 | 内容 |
 | --- | --- |
-| 绑定修订 | 开工基线 `86024eb`；本条记录所在的收口提交（收口授权下放，执行侧自证全绿后直接收口，未 push） |
+| 绑定修订 | 开工基线 `86024eb`；本条记录所在的收口提交（收口授权下放，执行侧自证全绿后直接收口，已推送） |
 | 门槛来源 | 本地实跑，唯一入口 `scripts/verify/mvn-verify.sh --mode=offline test` → RC=0 / BUILD SUCCESS / 17/19/31/**80**/81/49/6 = **283**（与基线一致，纯白名单一行 + README 说明，零扰动） |
-| 是否到达外部门槛 | **未达外部门槛**：修订未推送，结论仅来自本地；无 CI run 编号可绑 |
+| 是否到达外部门槛 | **已到达**：push `86024eb..620240b` 触发 run `35671465068`（2026-09-22）——web job 24s 全 8 步绿（含 `Generated router types match committed`），build job 2m21s 全 6 步绿（Build and test 8 模块 SUCCESS、compose 解析、代表镜像构建、词面自检、JaCoCo 上传）。批注仅 Node20 弃用等告警，非失败 |
 | 红绿取证 | 红（修正前）：`echo 'scripts/verify/env.example' | grep -oE '<原白名单>'`→ `old_hit_count=0`（提取漏实证，即 TASK-110 声明却判法上提取不到的盲区根因）；绿（修正后）：同式 `new_hit_count=1`、命中串 `scripts/verify/env.example` 且 `eq=1`；提取层管道跑 TASK-110 handoff（`extract_claims` 同款 grep/sed/sort），`env_example_extracted=1`——TASK-110 的 `env.example` 声明现在可被契约提取 |
 | 契约自证 | 收口前脏树 `mailbox-contract.sh --open=TASK-018,TASK-106` 退出 **1** 属预期（历史 TASK-110 的 PLAN.md/mvn-verify.sh/env.example 及公共文件过冲）；收口提交后 ACTUAL 空（仅 `.trae/` 排除，临时判据脚本已删）→ 契约退出 **0** |
 | 词面自检 | CI 原版口径（git grep pathspec 三排除）ZERO-HIT 退出 1；临时取证脚本已清理 |
@@ -295,9 +295,9 @@ bean 改名、未覆盖 `@Primary`，TASK-106 对这一点的批评成立。
 
 | 项 | 内容 |
 | --- | --- |
-| 绑定修订 | 开工基线 `8521f32`；14 个逐变更归档 commit：`1292596`(web-console-scaffold) `fdac48f`(web-auth-session) `ce2ca12`(web-admin-console) `f84762a`(web-record-console) `12cb4cd`(gateway-browser-cors) `15725e4`(db-migration-entrypoint) `1773f0b`(mailbox-contract-check) `1571172`(transaction-boundary-audit) `9c1bded`(perf-demo-innodb-flush) `8790307`(perf-g1-pause-target) `90ca84c`(perf-mq-publish-async) `d331db7`(perf-submit-aggregation-gate) `0fcb53c`(update-perf-optimized-defaults) `4be7929`(middleware-it-coverage)；本条记录所在的收口提交（收口授权下放，执行侧自证后直接收口，未 push） |
+| 绑定修订 | 开工基线 `8521f32`；14 个逐变更归档 commit：`1292596`(web-console-scaffold) `fdac48f`(web-auth-session) `ce2ca12`(web-admin-console) `f84762a`(web-record-console) `12cb4cd`(gateway-browser-cors) `15725e4`(db-migration-entrypoint) `1773f0b`(mailbox-contract-check) `1571172`(transaction-boundary-audit) `9c1bded`(perf-demo-innodb-flush) `8790307`(perf-g1-pause-target) `90ca84c`(perf-mq-publish-async) `d331db7`(perf-submit-aggregation-gate) `0fcb53c`(update-perf-optimized-defaults) `4be7929`(middleware-it-coverage)；本条记录所在的收口提交（收口授权下放，执行侧自证后直接收口，已推送） |
 | 门槛来源 | 本地实跑，唯一入口 `scripts/verify/mvn-verify.sh --mode=offline test`（`D:\git\Git\bin\bash.exe`）→ RC=0 / BUILD SUCCESS / 17/19/31/**80**/81/49/6 = **283**（与基线 `8521f32` 一致，纯 spec 文档改动零扰动，Failures 0 / Errors 0 / Skipped 0） |
-| 是否到达外部门槛 | **未达外部门槛**：修订未推送，结论仅来自本地；无 CI run 编号可绑 |
+| 是否到达外部门槛 | **已到达**：push `86024eb..620240b` 触发 run `35671465068`（2026-09-22）——web job 24s 全 8 步绿（含 `Generated router types match committed`），build job 2m21s 全 6 步绿（Build and test 8 模块 SUCCESS、compose 解析、代表镜像构建、词面自检、JaCoCo 上传）。批注仅 Node20 弃用等告警，非失败 |
 | 并入 | 14 个变更的 ADDED 需求追加到主规格对应分区（新增「Web 控制台」分区分组）/ MODIFIED 需求替换基线文本；主规格头部「本规范已归档提案」新增 14 项；逐变更 `git mv` 入 `spec/changes/archive/`，每变更 1 commit 可回滚；每个 commit 的 `git diff --cached --name-only` 均只含预期（`spec.md` + archive 内 3 件套） |
 | 冲突即停 | **add-sharding-host-parameterization 冲突停手**：与 `4be7929`(middleware-it-coverage) 共同 MODIFIED「真库端到端测试有确定路径」（均覆盖「真实中间件」泛化前提）；先并入 middleware 后，sharding 的 MODIFIED 基线文本与主规格当前文本对不上（强行并即将丢弃 middleware 已并入的清单/未覆盖内容）。按规则整体停手，不并入不归档，`spec/changes/` 下保留 `add-sharding-host-parameterization/`（非 archive），冲突明细回传指导侧 |
 | 契约自证 | 收口前脏树 `mailbox-contract.sh --open=TASK-018,TASK-106` 退出 **1** 属预期（TASK-115 两件套 + PLAN.md 未提交 + add-sharding 未动为冲突停手预留）；收口提交后 ACTUAL 空（仅 `.trae/` 排除）→ 契约退出 **0** |
@@ -310,9 +310,9 @@ bean 改名、未覆盖 `@Primary`，TASK-106 对这一点的批评成立。
 
 | 项 | 内容 |
 | --- | --- |
-| 绑定修订 | 本条记录所在的收口提交（执行侧自证全绿后自行收口，未 push） |
+| 绑定修订 | 本条记录所在的收口提交（执行侧自证全绿后自行收口，已推送） |
 | 门槛来源 | 冒烟脚本真机核验（非仅 `bash -n`）：红/绿/未就绪三维真实跑出，分别 exit 1/0/3；`mvn-verify.sh --mode=offline test` → BUILD SUCCESS（本轮无源码改动，纯新增冒烟脚本 + 文档，零扰动） |
-| 是否到达外部门槛 | **未达外部门槛**：修订未推送，结论仅来自本地；无 CI run 编号可绑 |
+| 是否到达外部门槛 | **已到达**：push `86024eb..620240b` 触发 run `35671465068`（2026-09-22）——web job 24s 全 8 步绿（含 `Generated router types match committed`），build job 2m21s 全 6 步绿（Build and test 8 模块 SUCCESS、compose 解析、代表镜像构建、词面自检、JaCoCo 上传）。批注仅 Node20 弃用等告警，非失败 |
 | 环境前置自检（第一停止边界） | 六中间件 `docker compose ps` 全 `healthy`（nacos/mysql/redis/rocketmq-namesrv/rocketmq-broker/postgis）；六服务宿主拉起 8080-8085（含 mapmatch/PostGIS/sharding）。内存治理：停 exam 容器 + Docker VM 12GB；中途修正 DB 密码与迁移 `USE` 子句 |
 | 红绿取证（三维退出码） | 绿：`top-1 距离 88.05 == 期望 88.05` / exit 0；红：`EXPECT_TOP=99.99` → `top-1 距离 88.05 ≠ 期望 99.99` / exit 1；未就绪：`BASE_URL=:9999` → 连接失败 / exit 3。关键：seed 固定 `SEED_TOP`（不随 `EXPECT_TOP` 变化），红绿可独立翻转 |
 | 隔离岛设计 | `/daily` 沉淀由结算管线写 `CURDATE()`，故判定日期默认取 3 天前过去日期（该日快照行仅由脚本 preinsert、结果确定）；登录号须 ADMIN（`/daily` 在网关 `app.auth.admin.paths`，非 ADMIN 403）。临时 ADMIN 账号 `13900009999/smoke-daily-116` |
