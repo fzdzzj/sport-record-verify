@@ -5,6 +5,7 @@ import io.jsonwebtoken.JwtException;
 import io.jsonwebtoken.Jwts;
 import io.jsonwebtoken.security.Keys;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
@@ -38,6 +39,9 @@ public class JwtUtil {
     /** 角色声明键（access token 携带；add-admin-rbac，见 ADR-0007）：网关据此判定 /admin/** 准入 */
     private static final String CLAIM_ROLE = "role";
 
+    /** strict 判别用的本地演示默认密钥（与下方 @Value 兜底字面量保持一致） */
+    static final String DEMO_SECRET = "sport-verify-hs256-secret-key-0123456789abcdef";
+
     /** HS256 密钥（>=32 字节；本地默认仅演示，生产必须覆盖，见 ADR-0007） */
     private final SecretKey key;
     /** access token 时效（毫秒） */
@@ -45,9 +49,25 @@ public class JwtUtil {
     /** refresh token 时效（毫秒） */
     private final long refreshTtlMillis;
 
-    public JwtUtil(@Value("${app.auth.jwt.secret:sport-verify-hs256-secret-key-0123456789abcdef}") String secret,
+    /** 兼容旧三参构造（strict=false，行为与引入 app.security.strict 前逐位一致） */
+    public JwtUtil(@Value("${app.auth.jwt.secret:" + DEMO_SECRET + "}") String secret,
                    @Value("${app.auth.jwt.access-ttl-minutes:15}") long accessTtlMinutes,
                    @Value("${app.auth.jwt.refresh-ttl-days:7}") long refreshTtlDays) {
+        this(secret, accessTtlMinutes, refreshTtlDays, false);
+    }
+
+    /** Spring 装配入口：多一个 strict 开关参数（app.security.strict，默认 false 零扰动） */
+    @Autowired
+    public JwtUtil(@Value("${app.auth.jwt.secret:" + DEMO_SECRET + "}") String secret,
+                   @Value("${app.auth.jwt.access-ttl-minutes:15}") long accessTtlMinutes,
+                   @Value("${app.auth.jwt.refresh-ttl-days:7}") long refreshTtlDays,
+                   @Value("${app.security.strict:false}") boolean strictMode) {
+        // fail-fast（strict 模式）：密钥未显式注入（回落演示默认串）即拒绝启动，杜绝生产把
+        // 公开仓库里的字面值当签名密钥静默运行；默认（strict=false）不触发，零扰动
+        if (strictMode && DEMO_SECRET.equals(secret)) {
+            throw new IllegalStateException(
+                    "app.security.strict=true 但 app.auth.jwt.secret 未显式注入（回落本地演示默认值），拒绝启动");
+        }
         // HS256 要求密钥 >= 256 bit（32 字节），配置过短在启动期直接暴露，避免运行时静默降级
         if (secret == null || secret.getBytes(StandardCharsets.UTF_8).length < 32) {
             throw new IllegalArgumentException("app.auth.jwt.secret 长度必须 >= 32 字节（HS256 最低密钥长度）");

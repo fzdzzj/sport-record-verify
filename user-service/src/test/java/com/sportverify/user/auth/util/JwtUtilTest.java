@@ -5,13 +5,16 @@ import io.jsonwebtoken.JwtException;
 import io.jsonwebtoken.Jwts;
 import io.jsonwebtoken.security.Keys;
 import org.junit.jupiter.api.Test;
+import org.springframework.boot.test.context.runner.ApplicationContextRunner;
 
 import javax.crypto.SecretKey;
 import java.nio.charset.StandardCharsets;
 import java.util.Date;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
 /**
@@ -61,5 +64,28 @@ class JwtUtilTest {
                 .signWith(key, Jwts.SIG.HS256)
                 .compact();
         assertThrows(JwtException.class, () -> jwtUtil.parse(expired));
+    }
+
+    @Test
+    void strictTrueWithoutSecretFailsStartup() {
+        // strict=true 且不注入 app.auth.jwt.secret → 解析回落演示默认串 → 启动必须失败（fail-fast）
+        new ApplicationContextRunner()
+                .withUserConfiguration(JwtUtil.class)
+                .withPropertyValues("app.security.strict=true")
+                .run(context -> {
+                    assertThat(context).hasFailed();
+                    assertThat(context).getFailure().hasRootCauseInstanceOf(IllegalStateException.class);
+                    assertThat(context).getFailure().hasStackTraceContaining("app.security.strict=true");
+                });
+    }
+
+    @Test
+    void strictTrueWithExplicitSecretStarts() {
+        // 反向绿：strict=true 但密钥已显式注入（>=32 字节）→ 正常启动
+        new ApplicationContextRunner()
+                .withUserConfiguration(JwtUtil.class)
+                .withPropertyValues("app.security.strict=true",
+                        "app.auth.jwt.secret=strict-explicit-secret-key-0123456789abcdef-0123456789")
+                .run(context -> assertThat(context).hasNotFailed());
     }
 }
