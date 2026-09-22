@@ -101,7 +101,8 @@ bash scripts/verify/mailbox-contract.sh [--ledger=<dir>] [--open=<task,...>] [--
 **判据 B（清单比对）**：把回传「改动清单」节声明的只改文件集与工作树相对基线的实际改动集比对。
 二者有交叠（回传在途）→ 要求完全一致，清单多报或改动集未声明任多出一文件都判据 B 失败；
 二者无交叠 → 视为已收口，不重审既有台账。只改清单只从「改动清单」节解析，正文引用不算改动。
-清单提取的扩展名白名单含 `.example`（如 `env.example`），避免声明了却判法上无法提取而误记为未声明。
+清单提取的扩展名白名单含 `.example`（如 `env.example`）与 `.editorconfig`
+（如模块根目录的 `leaderboard-service/.editorconfig`），避免声明了却判法上无法提取而误记为未声明。
 
 **退出码**：
 
@@ -115,8 +116,10 @@ bash scripts/verify/mailbox-contract.sh [--ledger=<dir>] [--open=<task,...>] [--
 本仓当前无进行中任务（无「仅 `spec.md` 无 `handoff.md`」的任务目录）：`TASK-018` 补齐
 `handoff.md` 后已收口，收口命令不再需要 `--open`，即 `bash scripts/verify/mailbox-contract.sh`。
 
-**已知局限**（`TASK-018` 实测发现，本任务未修脚本本体）：判据 B 的「只改清单」路径提取依赖
-一个扩展名白名单，`.editorconfig` 不在其中 —— 声明了也提取不出来，于是在途窗口里该文件会被
-记为「改动集未声明」。同源问题此前在 `env.example` 上出现过一次（故白名单补了 `.example`），
-`.editorconfig` 是同一个坑的第二次。要支持它须扩 `mailbox-contract.sh` 的白名单
-（本任务白名单不含该脚本，故仅在此如实登记，未改）。
+**提取白名单的扩展名盲区（已修，留作同类问题的判别样本）**：判据 B 的「只改清单」路径提取
+依赖一个扩展名白名单，声明了白名单外的扩展名路径就提取不出来，在途窗口里该文件会被记为
+「改动集未声明」。这个坑先后踩过两次：`env.example`（`TASK-110` 实测，`TASK-114` 补
+`.example`）与 `leaderboard-service/.editorconfig`（`TASK-018` 实测，`TASK-120` 补
+`.editorconfig`）。两处修法同源：只扩 `extract_claims` 的正则白名单一行，不动契约判定逻辑。
+后续再有新载体类型（如 `Dockerfile` 这类无扩展名文件）要写进只改清单时，先验证提取管道能
+出该路径，再交付——否则清单与改动集会因判法盲区而假性不一致。
