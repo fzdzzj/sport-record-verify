@@ -405,3 +405,16 @@ bean 改名、未覆盖 `@Primary`，TASK-106 对这一点的批评成立。
 | 归档与后续 | **不自行归档**：`spec/changes/add-auth-degrade-header-strip/` 保持变更态，需求并入 `spec/specs/sport-record-verify/spec.md` 由后续变更统一处理。后续可选项：`gateway-service/src/main/resources/application.yml:104` 的注释已与实现漂移（仍写「false=旧行为（透传不校验，显式携带 userId）」，未提剥离身份头）——该文件不在本任务只改清单内故未动，建议与「是否按 profile 强制开启 `app.auth.enabled`」一并处理 |
 | 指导侧复验收 | 收口授权下放（指导侧不复跑）；执行侧自证：红（`:144`/`:154`）→ 绿（gateway 22）→ 变异复红 → 还原 `cmp` 零差异 → 全量 287 全绿 → 词面自检 `LC_ALL=C` 零命中 → 契约在途逐项一致 / 收口后 0，全部实测落档 |
 
+
+## 验收记录：`契约提取白名单补 .editorconfig（TASK-120，2026-09-22）`
+
+| 项 | 内容 |
+| --- | --- |
+| 绑定修订 | 开工基线 `ac2a8ff`（`git status` 事前仅 `?? .trae/`）；`14a2697` 白名单一行 · `7c1f1ce` README 同步 · 本条记录所在的台账收口提交（**未 push**、未建 PR） |
+| 门槛来源 | 本地实跑，唯一入口 `bash scripts/verify/mvn-verify.sh --mode=offline test` → rc=0 / BUILD SUCCESS / 模块合计 `17 22 31 80 81 50 6 = 287`（与开工基线 `ac2a8ff` 逐位一致，纯脚本一行 + 文档零扰动，Failures 0 / Errors 0 / Skipped 0）。任务包原文写"284"为 TASK-119 增量前的旧锚点，实跑以 287 为准并在此登记。生效模式 offline、依赖来源可判定（未触发退出码 3） |
+| 是否到达外部门槛 | 本次**不 push**（任务硬边界），无新外部 run；待下次 push 由 CI 复验，此处如实标注不作声称 |
+| 红绿取证（提取判据） | **红**（改前）：`echo 'leaderboard-service/.editorconfig' | grep -oE '<原白名单>'` → 0 命中（grep 计数 0）；提取层管道（awk 截节 + grep/sed/sort，与 `extract_claims` 同构）对 TASK-018 handoff 跑一遍 → 6 个声明路径只出 5 个，`leaderboard-service/.editorconfig` 缺席——"清单多报"假阳性的实证。**绿**（改后）：同式命中 1 且串一致（eq=1）；同管道对 TASK-018 handoff 出全 6 个路径。**变异验证**（TASK-106 手法）：临时回退白名单复现红（0 命中）、还原后 `sha256sum -c` 报 OK、`cmp` 退出 0（逐位一致）。`bash -n` 语法自检通过 |
+| 契约自证 | 在途 `mailbox-contract.sh --baseline=ac2a8ff`：TASK-120 判据 A 通过（两件套齐全）、判据 B 通过（只改清单 5 项与实际改动集逐项一致）；整体退出码 1 的成因**不在 TASK-120**——`PLAN.md` 进改动集后历史 handoff 的公共文件 token 交叠触发既往已登记的"公共文件过冲"。收口提交后 `mailbox-contract.sh`（**无参数**）退出 **0** |
+| 只改清单一致性 | 实际改动集（`git diff --name-only ac2a8ff` + untracked 排除 `.trae/`）＝ `scripts/verify/mailbox-contract.sh` · `scripts/verify/README.md` · `TASK-120/spec.md` · `TASK-120/handoff.md` · `PLAN.md`，与 handoff 声明**逐字一致**。未动契约判定逻辑（判据 A/B 分支、比对、退出码）、未动 `--open` 机制、未改 CI 工作流与统一验收入口；全程未用 `git stash`（变异验证用 `cp` 副本 + 哈希校验） |
+| 未覆盖 | ① 默认 locale 下 CI 同款词面自检仍余 2 条（TASK-118/119 已登记的 `api/**/MapMatchResultDTO.java:17/36` 本机引擎伪影，只改清单外，未修）；② 本任务改动待下次 push 由 CI 复验 |
+| 归档与后续 | 不自行归档：纯脚本一行 + 文档，无 spec 需求变更（不建 `spec/changes/` 三件套），台账两件套即满足契约判据 A。`.editorconfig` 是扩展名提取白名单的第二次同源盲区（第一次 `.example`，TASK-114）；README 已把两次修法沉淀为"新载体类型先验证提取管道再交付"的判别样本 |
