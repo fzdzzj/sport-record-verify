@@ -507,3 +507,21 @@ Generated router types match committed；build 2m44s 全 7 步：入口 online v
 | 未覆盖 | ① 本次改动待下次 push 由 CI 复验；② TASK-126 在途任务的最终编译/用例结论（含 gateway 用例总数随之变化）归属该任务，本任务的全量计数以取证时刻快照为准并如实登记；③ 默认 locale 词面伪影 2 条（清单外既有登记） |
 | 归档与后续 | 不自行归档：纯兜底补全 + 台账，无 spec 需求变更（不建 `spec/changes/` 三件套），台账两件套即满足契约判据 A |
 | 指导侧复验收 | 收口授权下放（指导侧不复跑）；执行侧自证：红（缺失清单原文+行号）→ 绿 rc=0 → 变异复红 → 还原 cmp 零差异 → offline 快照 292（gateway+2 其余零扰动）/ 收口修订 299（差值 +7 归属 TASK-126 在途）→ 词面 LC_ALL=C 零命中 → 契约在途 TASK-124 范围逐项一致 / 收口后 0，全部实测落档（日志 `.trae/tmp/task124-*.log`，不入库） |
+
+## 验收记录：`密钥默认值治理与常量时间比较（TASK-126 / add-strict-secret-fail-fast，2026-09-23）`
+
+| 项 | 内容 |
+| --- | --- |
+| 绑定修订 | 开工基线 `e6c2643`（开工时 `git status` 仅 `?? .trae/`；执行中并行会话 TASK-124 落 `d181b90`，其台账两件套至本记录时仍处已暂存未提交，本任务全程未触碰）；6 个分批提交（common/api/user/gateway/spec/docs），末位为本条记录所在的收口提交（**未 push**、未建 PR） |
+| 门槛来源 | 本地实跑，唯一入口 `bash scripts/verify/mvn-verify.sh --mode=offline test` → rc=0 / BUILD SUCCESS / 模块合计 `20/29/33/80/81/50/6 = 299`（Failures 0 / Errors 0 / Skipped 0）。开工快照 292（17/27/31/80/81/50/6，含 TASK-124 并行 +2），净增 7 = common +3、gateway +2、user +2，其余四模块逐位一致零扰动。生效模式 offline、依赖来源可判定（未触发退出码 3）。全量第一次 rc=1 为 record-service「程序包 com.sportverify.common.* 不存在」编译红——common target/classes 实际完整、源码零改动，判定瞬时类路径抖动非用例红，原样重跑即 rc=0（已登记，CI 复现需另查） |
+| 是否到达外部门槛 | 本次**不 push**（任务硬边界），无新外部 run；待下次 push 由 CI 复验，此处如实标注不作声称 |
+| 红绿取证 | 判别式形态：`ApplicationContextRunner` 纯属性驱动（不引用新 API）。**红**（实现前）：common `InternalApiAuthFilterTest.strictTrueWithoutTokenFailsStartup:85→86` rc=1（Tests run 20, Failures 1——strict=true 不注入 token 上下文仍启动成功）；gateway `JwtTokenParserTest.strictTrueWithoutSecretFailsStartup:92→93` rc=1（29/1）；user 定向被 `-am` 链 common 红阻断，其自身红以变异轮补齐。**绿**（实现后）：common 20/0 rc=0、user 33/0 rc=0、gateway 29/0 rc=0，反向绿（strict=true+显式密钥启动成功）与零扰动判别式（strict 缺省）均绿，既有测试零回归。过程注记（如实登记）：①判别式初版误用 `getStartupError()`（不在本仓 spring-boot-test 3.2.4 的公开 API，javap 实核为 `getFailure()`；BeanCreationException 三层包装下改 `hasRootCauseInstanceOf`+`hasStackTraceContaining`），两轮编译红后订正；②全量第一次 rc=1 同上 |
+| 变异验证 | 三判别式逐一摘除（`strictMode`→`false &&`，可编译）：common `:85→86` 红 rc=1、gateway `:92→93` 红 rc=1、user `JwtUtilTest.strictTrueWithoutSecretFailsStartup:75→76` 红 rc=1（33/1，需单独变异——三文件同变时 user 定向被 `-am` 链 common 红阻断，首轮还因占位符 `MUTATED` 未声明成编译红作废重做，均如实登记）；还原为字节级 `copyfile`，sha256 一致 + cmp 零差异（文本模式回写曾引入行尾漂移，已用字节级备份消除）；全程未用 `git stash` |
+| 实现要点 | `app.security.strict`（默认 false 零扰动）：JwtUtil/JwtTokenParser 新增 `@Autowired` 构造器（带 strict 参数，旧三参/单参构造保留 strict=false 委托，既有测试零改动）；common `@PostConstruct` 判别 + `MessageDigest.isEqual`（UTF-8 字节常量时间比较，`expectedToken != null && provided != null` 守卫与原 equals 语义等价）；api `InitializingBean.afterPropertiesSet`（模块无 jakarta.annotation-api 直接依赖，同型判别）；gateway yml 仅新增 `security.strict: false` 声明，各密钥演示默认值原样保留；@Value 兜底字面量改为与 `DEMO_TOKEN`/`DEMO_SECRET` 常量拼接防漂移 |
+| 规格判定 | 主规格有对象：「内部接口共享密钥校验」（spec.md:2113 + Scenario 密钥默认值不得用于生产 :2132-2135）与 JWT 鉴权域（:1967）⇒ 建三件套 `spec/changes/add-strict-secret-fail-fast/`（ADDED 2 Requirement：密钥注入严格模式、内部接口密钥常量时间比较，EARS） |
+| 契约自证 | 在途 `--baseline=e6c2643`（全工作树）整体 rc=1：TASK-124 并行足迹 + 历史公共文件过冲，非本任务；`--baseline=d181b90 --diff-file=<本任务 14 文件>` → **`TASK-126：判据 B 通过（只改清单与实际改动集一致）`**（整体 rc=1 为 18 个历史任务在 diff-file 口径下的交叠噪声）。收口提交后无参数跑：**退出码 0**（契约校验通过：判据 A 两件套齐含 0 个待办进行中 + 判据 B 清单一致；TASK-126 足迹不在工作树视为已收口）；收口修订树（`96b60bd` 后仅台账回填）复跑全量 offline rc=0 / `20/29/33/80/81/50/6 = 299`，门槛数字绑定收口修订 |
+| 只改清单一致性 | 实际改动集（`git diff --name-only d181b90` + untracked 排除 `.trae/`，剔除 TASK-124 并行足迹）＝ api/api-Interceptor · common/Filter + FilterTest · gateway/JwtTokenParser + application.yml + JwtTokenParserTest · user/JwtUtil + JwtUtilTest · spec 三件套（3）· TASK-126/spec.md · TASK-126/handoff.md · PLAN.md，与 handoff 声明逐字一致（14 项） |
+| 词面自检 | CI 同款正则与排除、`LC_ALL=C`：全仓 **ZERO-HIT**；默认 locale 仅余 TASK-118 起登记的 2 条本机伪影（`api/**/MapMatchResultDTO.java:17/36`，本任务未触碰） |
+| 未覆盖 | ① api 侧 strict 判别未建独立测试（api 模块无测试基建 + 不新增依赖约束；实现与 common 逐字同型）；② 全量第一次 rc=1 的瞬时抖动根因未深挖（未复现第二次）；③ 默认 locale 词面伪影 2 条（清单外既有）；④ 未 push，待 CI 复验 |
+| 归档与后续 | **不自行归档**（按任务包边界）：三件套已建；届时 `spec/changes/` 未归档变更将达 3 个（add-auth-degrade-header-strip、narrow-actuator-exposure、本变更） |
+| 指导侧复验收 | 收口授权下放（指导侧不复跑）；执行侧自证：红（判别式 + 行号 + Tests run）→ 绿 rc=0 → 三判别式变异复红 → 字节级还原 cmp 零差异 → offline 299（+7 全部为本任务新增判别式）→ 词面 LC_ALL=C 零命中 → 契约 diff-file 口径判据 B 通过，全部实测落档（日志 `.trae/tmp/t126-*.log`，不入库） |
