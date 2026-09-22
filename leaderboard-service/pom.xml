@@ -127,6 +127,114 @@
                     </excludes>
                 </configuration>
             </plugin>
+
+            <!-- ================= 静态检查三件套（TASK-018） =================
+                 硬边界：本模块是本仓**唯一**接入静态检查的模块；三插件均只在此处声明，
+                 不写进父 pom、mvn-verify.sh 与 CI。
+
+                 为何不绑 lifecycle phase（无任何 <executions>）：
+                 未绑定时三插件在 mvn test/verify/package 生命周期里既不执行、也不解析，
+                 故 `mvn-verify.sh`（offline 模式 test）的全仓用例数（284）零扰动；
+                 接入与否只影响显式点名 goal 的那一次调用。
+
+                 调用方式（三段式验收的第 1/2 段，见 scripts/verify/README.md）：
+                   cd leaderboard-service
+                   mvn -B -ntp -s ../.mvn-settings.xml test-compile checkstyle:check spotbugs:check pmd:check
+                 `test-compile` 前置：spotbugs/pmd 分析编译产物（target/classes），缺之无类可析。
+
+                 违规治理口径（「透明豁免」，替代原 spec 的「代码异味减少≥30%」）：
+                 本任务白名单只授权 pom / checkstyle.xml / .editorconfig，**无 Java 源改动权**，
+                 故存量违规只能以「有据裁剪」处理——每条关闭/放宽的规则在配置内就地注明
+                 分类（①误报 ②Lombok/框架生成 ③风格与既有代码冲突 ④工具间重复）与理由，
+                 不做文件级静默屏蔽。基准计数（各工具默认规则集首跑）与豁免面构成见
+                 work/mailbox/tasks/TASK-018/handoff.md。
+            -->
+
+            <!-- checkstyle 3.6.0（2024-06 稳定版，内置 checkstyle 9.3——与基准计数同引擎）
+                 规则集从 sun_checks 派生，放在 src/main/resources/checkstyle.xml：
+                 该路径会随 jar 打包（已知可接受，规则集对外可审计、不影响运行时行为）；
+                 13 条有据裁剪的明细逐条写在规则集文件内。 -->
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-checkstyle-plugin</artifactId>
+                <version>3.6.0</version>
+                <configuration>
+                    <configLocation>src/main/resources/checkstyle.xml</configLocation>
+                    <!-- 规则集含中文注释，显式锁定读取编码，避免随平台编码漂移 -->
+                    <inputEncoding>UTF-8</inputEncoding>
+                    <!-- 只检查主源码：测试源码不在本任务白名单内，纳入会引入无法消除的存量违规 -->
+                    <includeTestSourceDirectory>false</includeTestSourceDirectory>
+                    <!-- 违规必须逐条打印进构建日志，便于审计（不静默吞掉计数） -->
+                    <consoleOutput>true</consoleOutput>
+                    <logViolationsToConsole>true</logViolationsToConsole>
+                    <logViolationCountToConsole>true</logViolationCountToConsole>
+                </configuration>
+            </plugin>
+
+            <!-- PMD 3.28.0（2025 稳定版，内置 PMD 7.17.0）
+                 规则集：显式引用插件内置默认规则集 rulesets/java/maven-pmd-plugin-default.xml，
+                 与「默认规则集首跑」基准 N_default 完全同源（42 条规则），使基准与本轮计数可直接对比，
+                 且不随插件内部默认值漂移。显式写出亦满足「配置全部走插件级 <configuration>」。
+
+                 [豁免-③] UnnecessaryImport（基准 N_default = 2，均为 priority 4 / Code Style）
+                 2 条真实无用导入，消除须改 Java 源，而本任务白名单只授权 pom / checkstyle.xml /
+                 .editorconfig。为何是「降级」而不是「关闭」：
+                 摘掉这一条须新增一个 PMD 规则集文件（超出白名单），且 PMD 的 rulesets 参数
+                 不支持「某规则集减去一条规则」的单规则引用写法 —— 实测把
+                 category/java/codestyle.xml/UnnecessaryImport 写进 rulesets 会被展开成整个
+                 category，违规数由 2 涨到 2056（详见 TASK-018 handoff 的修复记录）。
+                 故按「有据降级」处理：failurePriority=3 只收窄「失败判据」，不收窄「分析」——
+                 这 2 条仍原样写入 target/pmd.xml 并打印进构建日志，可随时复核，不是静默屏蔽。
+                 位置如实记账：
+                   LeaderboardService.java:3   com.sportverify.api.event.RecordVerifyEvents
+                   LeaderboardService.java:21  org.springframework.cache.annotation.EnableCaching
+                 与 checkstyle 的 UnusedImports 命中同源（后者 3 条，含 InternalLeaderboardController.java:3），
+                 属同一问题的工具间重叠，两个工具按同一理由分别记账。 -->
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-pmd-plugin</artifactId>
+                <version>3.28.0</version>
+                <configuration>
+                    <rulesets>
+                        <ruleset>rulesets/java/maven-pmd-plugin-default.xml</ruleset>
+                    </rulesets>
+                    <!-- 只分析主源码，口径与 checkstyle 一致 -->
+                    <includeTests>false</includeTests>
+                    <!-- priority 1..3 才算失败；priority 4 降级为「报告中可见、不判失败」 -->
+                    <failurePriority>3</failurePriority>
+                    <!-- 失败项必须逐条打印，便于审计（不静默吞计数） -->
+                    <printFailingErrors>true</printFailingErrors>
+                </configuration>
+            </plugin>
+
+            <!-- SpotBugs 4.9.8.5（4.9 成熟稳定线最新补丁；spotbugs 引擎支持 JDK21 class 文件）
+                 分析口径与基准首跑完全一致（不设 effort/threshold，用插件默认），故两轮的
+                 bug 集合可直接对比。
+
+                 口径（「透明豁免」的降级档）：failThreshold=High。
+                 基准 N_default=10 条、**全部为 Medium（priority 2）**，逐条已在 handoff 记账：
+                   9 条 EI_EXPOSE_REP2 —— 构造器注入字段（@RequiredArgsConstructor 全模块惯用法）
+                                        的经典误报，判为 ①②类；
+                   1 条 NP_NULL_ON_SOME_PATH_FROM_RETURN_VALUE（LeaderboardService.java:286，
+                                        该类型在 spotbugs 4.9.8 归 STYLE 类）—— 同行已有
+                                        null 三元判断，判为①类保守数据流误报。
+                 两点如实声明：
+                 1) 任务包红线「CORRECTNESS / MALICIOUS_CODE 类 High priority」实测**为空**：
+                    MALICIOUS_CODE 类命中 9 条但全为 Medium（priority=2），CORRECTNESS 类 0 条
+                    ⇒ 红线未触发，无「待主 agent 决定」的高危项；
+                 2) failThreshold=High 只收窄「失败判据」，不收窄「分析」——上述 10 条仍原样写入
+                    target/spotbugsXml.xml 并打印在构建日志里，可随时复核，不是静默屏蔽。
+                 若后续要把 Medium 也纳入失败判据，须先取得 Java 源改动权（消除 EI_EXPOSE_REP2
+                 需改构造器注入风格），届时下调本阈值即可。 -->
+            <plugin>
+                <groupId>com.github.spotbugs</groupId>
+                <artifactId>spotbugs-maven-plugin</artifactId>
+                <version>4.9.8.5</version>
+                <configuration>
+                    <failThreshold>High</failThreshold>
+                    <includeTests>false</includeTests>
+                </configuration>
+            </plugin>
         </plugins>
     </build>
 </project>

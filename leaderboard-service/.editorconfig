@@ -1,0 +1,39 @@
+# leaderboard-service 编辑器约定（TASK-018）
+#
+# 定位：编辑器/IDE 层的自动格式化约定，与 src/main/resources/checkstyle.xml 中的
+# Checker 级闸门同源（缩进用空格、文件末尾留空行、行尾不留空白）。两者一起构成
+# 「写的时候就对」+「提交时可机械校验」的组合，不替代 checkstyle 的语义检查。
+#
+# root = true：本文件是该目录树的根，不再向上查找父级 .editorconfig
+# （仓库根当前无 .editorconfig，此声明同时防止将来根级文件意外覆盖本模块约定）。
+
+root = true
+
+[*]
+charset = utf-8
+end_of_line = lf
+insert_final_newline = true
+trim_trailing_whitespace = true
+indent_style = space
+indent_size = 4
+
+# Java：与既有代码一致（4 空格缩进，续行 8 空格）
+[*.java]
+indent_size = 4
+continuation_indent_size = 8
+
+# Spring 配置：YAML 用 2 空格（application.yml 现有缩进口径）
+[*.{yml,yaml}]
+indent_size = 2
+
+# XML（pom.xml / checkstyle.xml）：4 空格，保留既有风格
+[*.xml]
+indent_size = 4
+
+# Markdown：行尾双空格是合法的换行语义，不做裁剪
+[*.md]
+trim_trailing_whitespace = false
+
+# SQL：迁移脚本与建表脚本均用 4 空格
+[*.sql]
+indent_size = 4

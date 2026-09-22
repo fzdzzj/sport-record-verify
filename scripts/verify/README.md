@@ -112,4 +112,11 @@ bash scripts/verify/mailbox-contract.sh [--ledger=<dir>] [--open=<task,...>] [--
 | 2 | 参数使用错误 |
 | 3 | 差异来源不可判定：非 git 上下文且未给 `--diff-file`，或基线/命令无法解析——不是契约红，也不得记为通过 |
 
-本仓当前进行中任务（仅 `spec.md`）：`--open=TASK-018`。
+本仓当前无进行中任务（无「仅 `spec.md` 无 `handoff.md`」的任务目录）：`TASK-018` 补齐
+`handoff.md` 后已收口，收口命令不再需要 `--open`，即 `bash scripts/verify/mailbox-contract.sh`。
+
+**已知局限**（`TASK-018` 实测发现，本任务未修脚本本体）：判据 B 的「只改清单」路径提取依赖
+一个扩展名白名单，`.editorconfig` 不在其中 —— 声明了也提取不出来，于是在途窗口里该文件会被
+记为「改动集未声明」。同源问题此前在 `env.example` 上出现过一次（故白名单补了 `.example`），
+`.editorconfig` 是同一个坑的第二次。要支持它须扩 `mailbox-contract.sh` 的白名单
+（本任务白名单不含该脚本，故仅在此如实登记，未改）。
