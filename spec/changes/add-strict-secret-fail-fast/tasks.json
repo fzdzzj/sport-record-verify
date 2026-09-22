@@ -1,0 +1,32 @@
+[
+  {
+    "id": "TASK-126-01",
+    "step": "开工核实四处密钥落点行号与既有测试形态，建台账两件套",
+    "status": "completed"
+  },
+  {
+    "id": "TASK-126-02",
+    "step": "先红：common/user-service/gateway 各新增 strict 判别式（ApplicationContextRunner 属性驱动），定向跑取红",
+    "status": "pending"
+  },
+  {
+    "id": "TASK-126-03",
+    "step": "后绿：实现 app.security.strict 判别（JwtUtil/JwtTokenParser 构造期 + 两处 @PostConstruct）与 MessageDigest.isEqual 常量时间比较，定向跑回绿",
+    "status": "pending"
+  },
+  {
+    "id": "TASK-126-04",
+    "step": "变异验证：临时摘除 strict 判别逻辑复现红，还原后 sha256/cmp 零差异",
+    "status": "pending"
+  },
+  {
+    "id": "TASK-126-05",
+    "step": "全量 offline test 全绿 + 词面自检双 locale 零命中 + 契约校验",
+    "status": "pending"
+  },
+  {
+    "id": "TASK-126-06",
+    "step": "分批 commit + PLAN.md 验收记录 + handoff 收口",
+    "status": "pending"
+  }
+]
