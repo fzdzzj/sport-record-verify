@@ -123,7 +123,7 @@ extract_claims() {
   ' "$hf")"
   [ -n "$block" ] || block="$(cat "$hf")"
   printf '%s\n' "$block" \
-    | grep -oE '[A-Za-z0-9_./-]+\.(sh|md|java|kt|scala|groovy|js|jsx|ts|tsx|vue|json|ya?ml|xml|sql|patch|csv|txt|properties|css|html|d\.ts|example)' \
+    | grep -oE '[A-Za-z0-9_./-]+\.(sh|md|java|kt|scala|groovy|js|jsx|ts|tsx|vue|json|ya?ml|xml|sql|patch|csv|txt|properties|css|html|d\.ts|example|editorconfig)' \
     | sed -E 's#^\./##' \
     | sort -u
 }
