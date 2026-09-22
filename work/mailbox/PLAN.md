@@ -418,3 +418,19 @@ bean 改名、未覆盖 `@Primary`，TASK-106 对这一点的批评成立。
 | 只改清单一致性 | 实际改动集（`git diff --name-only ac2a8ff` + untracked 排除 `.trae/`）＝ `scripts/verify/mailbox-contract.sh` · `scripts/verify/README.md` · `TASK-120/spec.md` · `TASK-120/handoff.md` · `PLAN.md`，与 handoff 声明**逐字一致**。未动契约判定逻辑（判据 A/B 分支、比对、退出码）、未动 `--open` 机制、未改 CI 工作流与统一验收入口；全程未用 `git stash`（变异验证用 `cp` 副本 + 哈希校验） |
 | 未覆盖 | ① 默认 locale 下 CI 同款词面自检仍余 2 条（TASK-118/119 已登记的 `api/**/MapMatchResultDTO.java:17/36` 本机引擎伪影，只改清单外，未修）；② 本任务改动待下次 push 由 CI 复验 |
 | 归档与后续 | 不自行归档：纯脚本一行 + 文档，无 spec 需求变更（不建 `spec/changes/` 三件套），台账两件套即满足契约判据 A。`.editorconfig` 是扩展名提取白名单的第二次同源盲区（第一次 `.example`，TASK-114）；README 已把两次修法沉淀为"新载体类型先验证提取管道再交付"的判别样本 |
+
+
+## 验收记录：`leaderboard-service 无用 import 清理（TASK-121，2026-09-22）`
+
+| 项 | 内容 |
+| --- | --- |
+| 绑定修订 | 开工基线 `095fd98`（`git status` 事前仅 `?? .trae/`）；`8ce8171` 删 import 代码改动 · 本条记录所在的台账收口提交（**未 push**、未建 PR） |
+| 门槛来源 | 本地实跑，唯一入口 `bash scripts/verify/mvn-verify.sh --mode=offline test`（删后、收口前工作树实跑；收口提交仅新增台账文本，Java 源零变化）→ rc=0 / BUILD SUCCESS / 2m47s / 模块合计 `17 22 31 80 81 50 6 = 287`（与开工基线逐位一致，删 import 不改行为零扰动，Failures 0 / Errors 0 / Skipped 0）。任务包原文写"284"为 TASK-119 增量前的旧锚点，实跑以 287 为准并在此登记。生效模式 offline、依赖来源可判定（未触发退出码 3） |
+| 是否到达外部门槛 | 本次**不 push**（任务硬边界），无新外部 run；待下次 push 由 CI 复验，此处如实标注不作声称 |
+| 红绿取证（反向取证 + 删后绿） | 本任务为删除类变更，无"先红"判别式，改为**逐处核实（引用计数）+ 删后绿**：三处候选用 Grep 全文件计数逐一核实——① `InternalLeaderboardController.java:3`（`LeaderboardApi`）除 import 行外计数 **1**（第 16 行 javadoc `{@link LeaderboardApi}`，命中判据 3 排除项）→ **核实不成立未删**；② `LeaderboardService.java:3`（`RecordVerifyEvents`）计数 **0** → 已删；③ `LeaderboardService.java:21`（`EnableCaching`）计数 **0**（另核对本文件只有 `@Cacheable` 无 `@EnableCaching` 注解）→ 已删。删后 `git diff 095fd98` 仅 2 行删除 0 行新增；offline 全量 287 全绿即"删了不红"的绿对。TASK-018 handoff 把第①处列为待删是就 checkstyle `UnusedImports` 而言（其不解析 javadoc 引用），本任务判据更严，以实测为准 |
+| 契约自证 | 在途 `mailbox-contract.sh --baseline=095fd98`（PLAN 记录追加前）：TASK-121 判据 B 失败且**唯一差异**为 `清单多报（实际未改动）：work/mailbox/PLAN.md`——即本记录自身，符合在途预期；其余历史任务全部"足迹不在工作树"（当时 PLAN.md 未进改动集）。PLAN 记录追加后：TASK-121 判据 B 通过（只改清单 4 项与实际改动集逐项一致）；整体退出码 1 的成因**不在 TASK-121**——PLAN.md 进改动集后历史 handoff 的公共文件 token 交叠触发既往已登记的"公共文件过冲"。收口提交后 `mailbox-contract.sh`（**无参数**）退出 **0** |
+| 只改清单一致性 | 实际改动集（`git diff --name-only 095fd98` + untracked 排除 `.trae/`）＝ `LeaderboardService.java` · `TASK-121/spec.md` · `TASK-121/handoff.md` · `PLAN.md`，与 handoff 声明**逐字一致**（无多报、无漏报）。只删 import 行，未动 checkstyle/pmd 配置、未做顺手清理、未改 CI 工作流与统一验收入口；全程未用 `git stash`、未 push |
+| 词面自检 | CI 同款正则、`LC_ALL=C`：新增/改动文本载体（台账两件套 + PLAN 追加段）**0 命中**；收口后全仓 `git grep` 同款复跑 0 命中（输出留档于 TASK-121/handoff「删后绿」节） |
+| 未覆盖 | ① 第①处 import 未删（javadoc `{@link}` 引用，删了破坏 javadoc 解析），如需让静态检查对该处归零须改 javadoc 为全限定名，属另一最小变更（见 TASK-121/handoff「未决」）；② 默认 locale 下 CI 同款词面自检仍余 2 条（TASK-118/119/120 已登记的 `api/**/MapMatchResultDTO.java:17/36` 本机引擎伪影，只改清单外，未修）；③ 本任务改动待下次 push 由 CI 复验 |
+| 归档与后续 | 不自行归档：纯清理 + 台账，无 spec 需求变更（不建 `spec/changes/` 三件套），台账两件套即满足契约判据 A。TASK-018 建议单的 3 处就此闭合 2 处、1 处改判保留（javadoc 引用），后续若做 javadoc 全限定名最小变更可一并复跑 checkstyle/pmd 观察违规归零 |
+| 指导侧复验收 | 收口授权下放（指导侧不复跑）；执行侧自证：三处计数逐项留档 → 删 2 留 1 → diff 仅 2 行删除 → offline 287 全绿零扰动 → 词面自检 0 命中 → 契约在途逐项一致 / 收口后 0，全部实测落档 |
