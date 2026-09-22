@@ -42,9 +42,11 @@ public class SentinelGatewayRuleConfig {
 
     private static final ObjectMapper MAPPER = new ObjectMapper();
 
-    /** 业务路由 ID（与 application.yml 路由表一致） */
+    /** 业务路由 ID（与 application.yml 路由表一致；一致性由 SentinelRouteCoverageTest 机械校验，漏配即红） */
     private static final String[] ROUTE_IDS = {
-            "route-record-service", "route-user-service", "route-verify-service"
+            "route-auth-service", "route-user-service", "route-record-service",
+            "route-leaderboard-service", "route-verify-service", "route-admin-service",
+            "route-mapmatch-service"
     };
 
     /** 限流阈值 QPS（兜底默认 5000，对齐审批版 §8.3，仅在 Nacos 无规则或缺省时使用） */
