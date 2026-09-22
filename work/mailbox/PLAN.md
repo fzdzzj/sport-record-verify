@@ -472,3 +472,20 @@ Generated router types match committed；build 2m44s 全 7 步：入口 online v
 判据 B 清单一致）；唯一入口 `--mode=offline test` → rc=0 / BUILD SUCCESS / 287（17/22/31/80/81/50/6）
 零失败零跳过；`--static=leaderboard-service` → rc=0 两段 BUILD SUCCESS；词面自检 CI 同款脚本
 （.trae/tmp 不入库）范围内零命中。
+
+## 验收记录：`actuator 白名单与详情暴露收窄（TASK-125，2026-09-22）`
+
+| 项 | 内容 |
+| --- | --- |
+| 绑定修订 | 开工基线 `04c6bbc`（`git status` 事前仅 `?? .trae/`）；`0e48d9a` 网关白名单收窄 + 新测试 · `5f9463c` 六服务 show-details · `6156b82` spec 三件套 · 本条记录所在的台账收口提交（**未 push**、未建 PR） |
+| 门槛来源 | 本地实跑，唯一入口 `bash scripts/verify/mvn-verify.sh --mode=offline test` → rc=0 / BUILD SUCCESS / 3m46s / 模块合计 `17 25 31 80 81 50 6 = 290`（gateway 22→25 +3 即 ActuatorWhitelistNarrowTest，其余模块与基线 287 逐位一致零扰动，Failures 0 / Errors 0 / Skipped 0）。生效模式 offline、依赖来源可判定（未触发退出码 3） |
+| 是否到达外部门槛 | 本次**不 push**（任务硬边界），无新外部 run；待下次 push 由 CI 复验，此处如实标注不作声称 |
+| 红绿取证 | **红**（改前 yml，只加测试）：`mvn -pl gateway-service -am test -Dtest=ActuatorWhitelistNarrowTest` → Tests run: 3, Failures: 2, **rc=1**，失败原文：`指标查询端点 /actuator/metrics 不得经网关裸放行，实际=[/api/auth/**, /actuator/**] ==> expected: <false> but was: <true>`（:82）、`指标查询端点无 token 必须 401（走鉴权分支）… expected: <401 UNAUTHORIZED> but was: <null>`（:112）。**绿**（改后）：Tests run: 3, Failures: 0, **rc=0**。**变异验证**（TASK-106 手法）：修复态副本 sha256 `5f676ce3…` 留底 → whitelist 临时改回 `/actuator/**` → 复现同样 2 失败 rc=1（断言与行号逐字同红）→ `cp` 还原 → `sha256sum -c` OK + `cmp` IDENTICAL |
+| 实现要点 | 网关 `whitelist: /api/auth/**,/actuator/**` → `/api/auth/**,/actuator/health`（matchesPrefixList 对无 `/**` 后缀模式走精确匹配，探针放行、metrics/env/prometheus 落回鉴权分支，相邻注释同步）；六处 `show-details: always` → `never`（gateway yml:152、user yml:95→96、record properties:88→89、mapmatch yml:72→73、leaderboard yml:117→118、verify yml:174→175，实际命中数 6、其中 record 为 properties 格式）。include 列表与监控栈编排未动（prometheus 六 target 均内网直连 8080-8085，不经网关） |
+| 规格判定 | Grep 主规格：`/actuator/**` 写进两处需求文本（「网关统一鉴权·白名单放行」GIVEN spec.md:1988、「白名单收紧」正文 :2083 +「白名单无 /internal/**」AND 子句 :2104）⇒ 建三件套 `spec/changes/narrow-actuator-exposure/`（MODIFIED 两需求 + EARS，见提交 `6156b82`）；scripts/perf 与 compose 仅依赖 /actuator/health 或内网直连，停止条件不触发 |
+| 契约自证 | 在途 `mailbox-contract.sh --baseline=04c6bbc`（PLAN 记录追加后、收口提交前）：TASK-125 判据 A 通过（两件套齐全）、判据 B 通过（只改清单 13 项与实际改动集逐项一致）；整体退出码 1 的成因**不在 TASK-125**——PLAN.md 进改动集后历史 handoff 公共文件 token 交叠触发既往已登记的"公共文件过冲"。收口提交后 `mailbox-contract.sh`（**无参数**）退出 **0**（收口提交后实测回填） |
+| 只改清单一致性 | 实际改动集（`git diff --name-only 04c6bbc` + untracked 排除 `.trae/`）＝ 网关 application.yml · 五服务 yml/properties（5 个）· ActuatorWhitelistNarrowTest.java · spec/changes/narrow-actuator-exposure/ 三件套（3 个）· TASK-125/spec.md · TASK-125/handoff.md · PLAN.md，与 handoff 声明**逐字一致**。未动 include 列表、监控栈编排、网关路由、AuthGlobalFilter.java（@Value 默认值与 javadoc 的 /actuator/** 漂移登记 handoff 未决）；全程未用 `git stash`（变异用 cp + 哈希校验） |
+| 词面自检 | CI 同款正则、`LC_ALL=C`：全仓 **ZERO-HIT**；默认 locale 仅余 TASK-118 起已登记的 2 条本机伪影（`api/**/MapMatchResultDTO.java:17/36`，本任务未触碰） |
+| 未覆盖 | ① AuthGlobalFilter 的 `@Value` 默认值 `,/actuator/**` 与 javadoc 未同步（Java 文件不在只改清单，fallback 漂移不生效）；② 在途变更 add-auth-degrade-header-strip 的 delta 场景 GIVEN 仍写 `/actuator/**`，待其并入主规格时修正；③ 默认 locale 词面伪影 2 条（同上，只改清单外）；④ 本次改动待下次 push 由 CI 复验 |
+| 归档与后续 | **不自行归档**（按任务包边界）：三件套已建，归档（spec-delta 并入 spec.md + 移 archive/）待统一 openspec 归档步骤；届时 `spec/changes/` 下将有 2 个未归档变更（add-auth-degrade-header-strip + 本变更） |
+| 指导侧复验收 | 收口授权下放（指导侧不复跑）；执行侧自证：红（断言原文+行号）→ 绿 rc=0 → 变异复红 → 还原 cmp 零差异 → offline 290（gateway+3 其余零扰动）→ 词面 LC_ALL=C 零命中 → 契约在途逐项一致 / 收口后 0，全部实测落档（日志 `.trae/tmp/task125-*.log`，不入库） |
