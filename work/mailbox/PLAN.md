@@ -373,3 +373,19 @@ bean 改名、未覆盖 `@Primary`，TASK-106 对这一点的批评成立。
 | 未覆盖 | ① 3 处真实无用 import（`InternalLeaderboardController.java:3`、`LeaderboardService.java:3`、`:21`）**未修**——白名单无 Java 源改动权，已在 handoff 建议单开最小变更；② spec 原验收命令（无 `test-compile` 前置）未单独复跑——`spotbugs`/`pmd` 分析 `target/classes`，冷 `target/` 下无类可析，任务包已注明该前置；③ 静态检查**未进 CI**（硬边界），外部门槛为空 |
 | 归档与后续 | 不自行归档：静态检查配置接入非 spec 需求变更（不改主规格、不建 `spec/changes/` 三件套），台账两件套即满足契约判据 A。后续可选项：3 处无用 import 单开变更修掉、`mailbox-contract.sh` 提取白名单补 `.editorconfig`、把三 goal 纳入 CI（需重新派发授权） |
 | 指导侧复验收 | 收口授权下放（指导侧不复跑）；执行侧自证：装料 122 jar → N_default 374/2/10 → 三段式 0/0/0（含离线 0 下载、离线+clean 全量编译）→ 红绿取证（`LineLength` @442 / `cmp` 0 / `git diff` 空 / 哨兵 0）→ 全仓 284 零扰动 → 契约脏树 1 / 收口后 0，全部实测落档 |
+
+## 验收记录：`台账禁用词原文改写（TASK-118，2026-09-22）`
+
+| 项 | 内容 |
+| --- | --- |
+| 绑定修订 | 开工基线 `0f31c18`（`git status` 事前仅 `?? .trae/`，领先 `origin/main`（`726cf63`）5 个提交）；`a424b67` 建档两件套 · `2f8c090` 两处改写 · 本条记录所在的收口提交（收口授权下放，执行侧自证后自行 commit，**未 push**） |
+| 门槛来源 | 本地实跑，唯一入口 `bash scripts/verify/mvn-verify.sh --mode=offline test` → rc=0 / BUILD SUCCESS / 模块合计 `17 19 31 80 81 50 6 = 284`（与基线 `0f31c18` 逐位一致，纯台账文本改动零扰动，Failures 0 / Errors 0 / Skipped 0）→ 生效模式 offline、localRepository `D:/code/sports/.m2-repo`，依赖来源可判定（未触发退出码 3）。前置环境坑如实登记：首次裸跑 rc=1 报 `找不到或无法加载主类 …plexus.classworlds.launcher.Launcher`，根因是本机继承 `MSYS_NO_PATHCONV`/`MSYS2_ARG_CONV_EXCL`，`unset` + `JAVA_HOME=/d/develop1/jdk21` 后 rc=0 —— 该 1 不计作用例红，也不计作退出码 3 |
+| 是否到达外部门槛 | 本次**不 push**（任务硬边界），无新外部 run；本任务纯台账改写**待下次 push 由 CI 复验**，此处如实标注不作声称。反向影响面已实测：CI 的公开文档口径自检在 `620240b`（上次绿 run `35671465068` 的 head）上已存在同款步骤与三排除、且该 head 上被伪命中文件已含触发内容 ⇒ 本机默认 locale 残留的 2 条属本机引擎伪影，不代表 CI 会红 |
+| 红绿取证（词面判据） | **红**（改前）：CI 同款 `git grep -n -I -iE <禁用词表> -- 三排除` → `LC_ALL=C` 命中 **2** 行（`PLAN.md:353`、`TASK-106/handoff.md:97`），默认 `C.UTF-8` 命中 **4** 行（另 2 行在只改清单外的既有 Java 文件上），脚本退出码 **1**。**绿**（改后 `2f8c090`）：同命令 `LC_ALL=C` **ZERO-HIT**（台账两行在两种 locale 下均零命中）；默认 locale **2** 行且**全部**在白名单外 ⇒ 见「未覆盖」。脚本为 `.trae/tmp/wording-check-118.sh`（UTF-8 承载模式，命令行保持纯 ASCII），退出码 0/1/2 语义与 CI 结构同构 |
+| 伪影机制修正（本任务实测） | 原台账把伪影写成「把字节 `0x8E`/`0x9E` 当大小写等价」，**该描述不足以复现**：实测单分支字面量 rc=1 零命中、单字 rc=1 零命中，**仅在模式含多分支（`|`）时**才命中只改清单外那 2 行。故「字节等价」降级为被观测现象，「引擎在哪一层折叠」标注为**本机推断、未证实到引擎层**；该修正已同步写进被改写的两行表述与 TASK-118 handoff，不再冒充结论 |
+| 改写范围自证 | `git diff -U0` 实测：`PLAN.md` **仅第 353 行 1 行替换**；`TASK-106/handoff.md` **仅 97–98 两行**同一句换行重排（净 +2 行）；两者均未动其他既有行。改写把「被误判的词」改为**按字节书写**（`0xE5 0x9E 0x82`），故不可能再与该表内的词形成字面或分支等价关系；语义三点（字节被判等价 / 该文件未触碰且属上次 CI 绿已含内容 / 判为伪影非真命中）逐条保留 |
+| 契约自证 | 在途 `mailbox-contract.sh --baseline=0f31c18` 退出 **1**：TASK-118 段初版曾因「只改清单」小节夹带 CI 工作流的路径 token 被判「清单多报」，已修（该节现只留 4 个路径，其后另起子标题隔断）；其余 11 个历史任务（TASK-018/106/109~117）报在途不一致，成因是历史 handoff 正文含 `PLAN.md`/`README.md`/`pom.xml` 等公共文件路径与本任务改动集交叠，与既有「公共文件过冲」同源，与本任务改动无关。收口提交后 `mailbox-contract.sh`（**无参数**）退出 **0** |
+| 只改清单一致性 | 实际改动集（`git diff --name-only 0f31c18` + untracked 排除 `.trae/`）= `PLAN.md` · `TASK-106/handoff.md` · `TASK-118/spec.md` · `TASK-118/handoff.md`，与 handoff 声明**逐字一致**（无多报、无漏报）；未改 CI 工作流、未改契约脚本与统一验收入口、未动归档变更与内部文档、未动任何生产代码；全程未用 `git stash`、未 push、未建 PR |
+| 未覆盖 | ① 默认 locale（本机 `C.UTF-8`）下 CI 同款全量判据仍余 **2 条**，落点 `api/src/main/java/com/sportverify/api/mapmatch/dto/MapMatchResultDTO.java:17/36`——该文件在只改清单外，**未修、按未覆盖记账**（处置建议见 handoff「待主 agent 决定」第 1 条）；② CI 侧 step 级结论**未独立复核**（本机 `gh` 未登录），只以上次绿 run 的 head 上「该步骤已存在 + 触发内容已存在 + 该 run 两 job 全绿」三点间接判定；③ 本任务全部取证限于本机，CI 真伪须待下次 push |
+| 归档与后续 | 不自行归档：纯台账文本改写，无 spec 需求变更（不改主规格、不建 `spec/changes/` 三件套），台账两件套即满足契约判据 A。后续可选项：默认 locale 那 2 条伪命中的最小改法、以及本机双 locale 词面自检是否沉淀为仓内脚本（该脚本现位于不入库目录） |
+| 指导侧复验收 | 收口授权下放（指导侧不复跑）；执行侧自证：红 2/4 → 绿 0/2（`LC_ALL=C` 全量 ZERO-HIT）→ 伪影最小复现形态实测 → offline 284 零扰动（含首次环境坑 1 次的根因与处置）→ 契约在途 1（成因逐条拆开）/ 收口后 0 → 实际改动集与只改清单逐字一致，全部实测落档 |
