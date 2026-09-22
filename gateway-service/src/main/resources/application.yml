@@ -96,7 +96,7 @@ spring:
 
 # ===== 认证鉴权（add-jwt-auth，见 ADR-0007）=====
 # 网关是唯一外部入口：enabled=true 时强制校验 Bearer token，解析 userId 注入 X-User-Id、role 注入 X-Role 透传下游；
-# 白名单端点（/api/auth 发 token / /actuator 探针）放行；管理端与规则版本接口走角色校验。
+# 白名单端点（/api/auth 发 token / /actuator/health 健康探针）放行；管理端与规则版本接口走角色校验。
 # 注意：已删除无路由的 /internal/** 死配置（add-resilience-hardening）——服务间 Feign 不经网关；
 # 若将来误加 /internal 路由，死白名单会让安全边界瞬间塌陷。
 app:
@@ -108,10 +108,11 @@ app:
       # HS256 对称密钥（>=32 字节）：与 user-service 配置必须一致（本网关按同一密钥校验并注入 X-User-Id）
       # 本地默认值仅演示；生产必须经环境变量 JWT_SECRET 或配置中心统一注入
       secret: ${JWT_SECRET:sport-verify-hs256-secret-key-0123456789abcdef}
-    # 白名单：/api/auth/**（注册/登录/刷新）、/actuator/**（健康探针，本地演示）。
+    # 白名单：/api/auth/**（注册/登录/刷新）与健康探针 /actuator/health（精确匹配，narrow-actuator-exposure）。
+    # actuator 其余端点（metrics/env/prometheus 等）不经网关裸放行——监控按 ADR-0007 走内网直连，
+    # 经网关访问须携带有效 token（走鉴权分支）；matchesPrefixList 对无 /** 后缀的模式走精确匹配。
     # 已删除 /internal/**（无对应路由的死配置）；/admin/** 与 /verify/rules/** 走角色校验。
-    # 生产：actuator 应收敛（收窄 include 或管理端口隔离），见 ADR-0007 / README。
-    whitelist: /api/auth/**,/actuator/**
+    whitelist: /api/auth/**,/actuator/health
     admin:
       # 治理面角色校验开关：true=管理端/规则版本接口要求 role=ADMIN（普通用户 403/1002、未登录 401/1001）
       # 默认 true 关门；false=降级为裸放行（灰度观察，不建议生产）
