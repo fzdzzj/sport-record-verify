@@ -1,6 +1,5 @@
 package com.sportverify.leaderboard.service;
 
-import com.sportverify.api.event.RecordVerifyEvents;
 import com.sportverify.api.record.RecordStatus;
 import com.sportverify.api.record.dto.LeaderboardDTO;
 import com.sportverify.api.user.UserApi;
@@ -18,7 +17,6 @@ import lombok.extern.slf4j.Slf4j;
 import org.redisson.api.RLock;
 import org.redisson.api.RedissonClient;
 import org.springframework.cache.annotation.Cacheable;
-import org.springframework.cache.annotation.EnableCaching;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.data.redis.core.ZSetOperations.TypedTuple;
 import org.springframework.scheduling.annotation.Scheduled;
