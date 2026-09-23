@@ -1,0 +1,91 @@
+[
+  {
+    "number": 1,
+    "category": "阶段 1：观测缝抽取（行为中性，先于红轮落地）",
+    "task": "两侧消费者把 startConsumer 的「建实例 + 配置 + 订阅 + 注册监听」抽成 buildConsumer(ns)，startConsumer 只负责 start() 与字段赋值",
+    "steps": [
+      {
+        "step": "verify-service VerifyEventConsumer.buildConsumer(ns)（package-private，不 start()）",
+        "completed": true
+      },
+      {
+        "step": "leaderboard-service LeaderboardEventConsumer.buildConsumer(ns)（同构）",
+        "completed": true
+      },
+      {
+        "step": "行为中性取证：两侧定向 mvn-verify.sh --mode=offline --pl <模块> test → rc=0，88 / 50 与基线逐位一致"
+      }
+    ],
+    "passes": true
+  },
+  {
+    "number": 2,
+    "category": "阶段 2：先红（新判别式对旧实现必红）",
+    "task": "两侧测试类重写：新增「原生 maxReconsumeTimes=3」「失败路径零自建计数键」判别式，并撤销自建轨三条用例",
+    "steps": [
+      {
+        "step": "新增 buildConsumer_enablesNativeMaxReconsumeTimes3 → 基线红 expected: <3> but was: <-1>",
+        "completed": true
+      },
+      {
+        "step": "新增 handleMessage_failure_neverConsultsSelfBuiltRetryKey → 基线红 NeverWantedButInvoked getAtomicLong @ markRetryAndExceed",
+        "completed": true
+      },
+      {
+        "step": "新增 handleMessage_failureAfterSelfBuiltThreshold_rethrows → 基线红 Expected RuntimeException, nothing was thrown（旧实现第 4 次失败转自建 DLQ 并正常返回）",
+        "completed": true
+      },
+      {
+        "step": "撤销 retryExceeded_sendsToDlq / dlqSendFailure_swallows / retryCounterRedisError_stillRethrows（判据随口径变更消失，逐条清单见 handoff）",
+        "completed": true
+      },
+      {
+        "step": "红轮取证：verify rc=1 / Tests run: 88, Failures: 4；leaderboard rc=1 / Tests run: 50, Failures: 4"
+      }
+    ],
+    "passes": true
+  },
+  {
+    "number": 3,
+    "category": "阶段 3：后绿（原生重试落地 + 删双轨）",
+    "task": "两侧 setMaxReconsumeTimes(3)；删除 MAX_RETRY / retryKey / markRetryAndExceed / sendToDlq 与仅供自建 DLQ 的 RocketMQTemplate 依赖",
+    "steps": [
+      {
+        "step": "buildConsumer 内 setMaxReconsumeTimes(MAX_RECONSUME_TIMES=3)",
+        "completed": true
+      },
+      {
+        "step": "失败分支收敛为「删去重键 → rethrow（监听器返回 RECONSUME_LATER）」单条路径",
+        "completed": true
+      },
+      {
+        "step": "删除自建轨四件套（常量 + 三个方法）与 RocketMQTemplate 字段/构造参数；测试构造收窄为 4 参",
+        "completed": true
+      },
+      {
+        "step": "绿轮取证：两侧 rc=0，用例数与基线一致（88 / 50）"
+      }
+    ],
+    "passes": true
+  },
+  {
+    "number": 4,
+    "category": "阶段 4：变异验证与验收台账",
+    "task": "变异复现红 + 还原零差异；offline 全量 + 静态检查 + 词面 + 契约 + 台账两件套",
+    "steps": [
+      {
+        "step": "变异：临时摘除 setMaxReconsumeTimes(3) → 复现配置判别式红 → 还原 sha256sum -c OK + cmp 零差异"
+      },
+      {
+        "step": "offline 全量 test：逐模块用例数 + BUILD SUCCESS + 退出码"
+      },
+      {
+        "step": "静态检查：--static=leaderboard-service（删字段后不得新增违规）"
+      },
+      {
+        "step": "词面自检双 locale、契约在途 --baseline + 收口后无参数"
+      }
+    ],
+    "passes": false
+  }
+]
