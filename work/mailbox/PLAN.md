@@ -20,6 +20,21 @@
 `--mode` 判据见 `scripts/verify/README.md`）。下方 D12 那句"今后验收口径固定"作为作废史原文保留，
 其参数组合现由该脚本的 `--mode=offline` 表达。
 
+## 验收记录：`TASK-134`（2026-09-23，好友榜读取修复，未提交）
+
+| 项 | 内容 |
+| --- | --- |
+| 绑定修订 | 未提交工作树；开工基线 `9fef29119ba5a2b1c5c7bc528f1c54e1811afe21`。无本次 commit id，未把未提交改动表述为 commit 结论。 |
+| 目标与范围 | 仅 `leaderboard-service`：好友分页按 `PageResult.total` 取齐；好友榜按 500 条窗口分批扫描 ZSet，保持只显示好友、排序、过滤后 rank、服务降级空榜；明确不添加 `@Cacheable`。 |
+| 受控红绿 | 新增分页完整性回归后，Git Bash 改前定向测试 `rc=1`，`28` 例中 `2` 失败；最小修复后 `rc=0`，`28/0/0/0`。 |
+| 本地门槛来源 | Git Bash 调用 offline 目标入口：`--mode=offline --pl leaderboard-service test` `rc=0`，目标模块 `54/0/0/0`；offline 静态入口 `--mode=offline --static=leaderboard-service` `rc=0`，Checkstyle 0 violations，SpotBugs Error size 0，PMD 构建成功。 |
+| 仓库验收入口 | offline 目标模块测试与静态入口均已通过；均由 `D:\git\Git\bin\bash.exe` 调用仓库脚本。 |
+| 是否到达外部门槛 | **未达到**：未 push、未建 PR；online/CI 本轮未覆盖，无 CI run。 |
+| 契约 | Git Bash `bash scripts/verify/mailbox-contract.sh` 总体 `rc=1`，但 `TASK-134` 判据 B 明确通过；总体失败由既有在途任务与共享工作树交叠造成，不是 TASK-134 清单不一致。 |
+| 未覆盖/跳过 | 未新增真实 Redis/MySQL/RocketMQ IT；好友服务真实跨服务分页与生产规模性能未覆盖；online/CI 未覆盖。既存 `.trae/` 未触碰。 |
+| 未解决边界 | 最坏仍可能扫描整榜，但每次读取最多 500 条；好友集合仍汇总在内存；分页依赖 `total` 契约；缓存一致性未作产品决策且本任务不加缓存。 |
+
+
 ## 验收记录：`add-controlled-verify-entrypoint`（2026-09-21，按上方清单写法）
 
 | 项 | 内容 |
