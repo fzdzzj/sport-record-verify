@@ -605,3 +605,20 @@ run `35802403723`（head `eba0108`，2026-09-23 00:31 UTC）——**web/build �
 | 词面自检 | `LC_ALL=C` 与 `zh_CN.UTF-8` 均 ZERO-HIT（.trae/tmp/task129-wording.sh）；无 LC_ALL 默认 locale 2 命中为 TASK-118 起既登记的本机伪影（api 模块 DTO :17/:36，本任务未触碰），按未覆盖登记 |
 | 契约 | 在途 `--baseline=ae811e0` 首跑 TASK-129 判据 B 红，根因是本 handoff 早先的「文档化改动」标题命中 awk 截取词、说明节裸文件名 token 被判清单多报（TASK-127 同款坑），改标题隔断后复跑本任务仅余 `PLAN.md` 未落盘的预期中间态多报（.trae/tmp/task129-contract-inflight2.log；TASK-128 段 2 条「改动集未声明」为其历史清单扫到本任务新文件的既有交叠噪声）；收口提交后无参数复跑：**退出码 0**（.trae/tmp/task129-contract-final.log） |
 | 未决 | 无待裁定项（裁定按任务包口径落地）；未达外部门槛（未 push，仅本地实跑） |
+
+## 验收记录：TASK-130 性能热点与治理面现状侦察（2026-09-23，子 agent 纯侦察）
+
+| 项 | 内容 |
+| --- | --- |
+| 绑定修订 | 开工基线 `f2b58c3`（开工时 `git status` 仅 `?? .trae/`）；本条记录所在的收口提交，未 push |
+| 任务性质 | 纯侦察：**零代码/配置/规格改动**（只改 `work/` 下 4 个 md），无先红/后绿/变异环节 |
+| 核实结论（清单 4 项全部仍在） | ① **F05**：MapMatchService.java:110-126 逐点一次 ST_DWithin 原样（往返上界由 max-sampled-points=200 决定，原文「50」为示意值）；② **F06**：LeaderboardService.java:260 `reverseRangeWithScores(0,-1)` 原样（**原文行号 250-251 已漂移，订正为 259-260**；且 topFriends 无 @Cacheable，每请求付全量成本）；③ **F15~F17**：RecordLikeService.java:264-291 N+1 对账、:80 硬编码 FLUSH_BATCH=200、:329-339 readCount 无防击穿，**三条全部仍在**，且**未被 TASK-108 系列顺带解决**（该服务全史仅 4 笔提交，无一条命中）；④ **治理面**：InternalApiAuthFilter 只护 `/internal/**`，5 服务全覆盖但治理面路径（`/admin/**`→verify `/api/appeals/**`、`/verify/rules/**`→`/rules/**`、榜单日报）不在覆盖面内；角色校验唯一落点 AuthGlobalFilter:102-105，服务侧 `X-Role` 读取点 0、声明式鉴权 0 命中 |
+| 跨条目重大发现 | **TASK-103 台账虚报（七条声称改动全仓零落地）**：`git log --all -S` 对 6 个标识（fetchCandidateEdges / FRIEND_SCAN_BATCH / selectCountsByRecord / lock:like:count-init / idx_status_created / record.like.flush-batch）**全部只命中 `6650ae3`（台账提交自身）**，无任何代码提交；当前代码逐条反证（selectDistinctRecordIds 仍在 :68-69、FriendService 仍 @Transactional:151 等）；PLAN 无 TASK-103 验收记录。与 TASK-102（TASK-128 已核实）同类 |
+| 附带发现（登记不立项 → 本轮转立项建议） | **F08 残留**：gateway application.yml:158 仍 `show-details: always`（TASK-125 目标写「六个服务」但只改文件漏了网关该行），而 `/actuator/health` 在网关白名单内免 token → 匿名可读组件明细；**F18 仍在**：sql/02-record-db.sql:13-30 sport_record 无 idx_status_created；**好友榜静默截断**：listFriends(page=1,size=1000) 只取首页 |
+| 环境可行性 | **DB 侧实测不可行（记未覆盖）**：Docker daemon 未运行；`.env` 指向容器端口 3307/5433 均 CLOSED；本机 3306/5432 为原生 MySQL 8.0.44 / PostgreSQL 16.14（非本项目实例）且口令不符 → 无任何可达业务库或 scratch 库，报告量化一律标注为静态推演假设 |
+| 门槛来源 | 本地实跑 `bash scripts/verify/mvn-verify.sh --mode=offline test` → **rc=0 / BUILD SUCCESS / `20/30/33/80/81/50/6 = 300`**（Failures 0 / Errors 0 / Skipped 0），与 TASK-127 起收口锚点逐位一致**零扰动**（任务包所写 299 为过期锚点）。日志 `.trae/tmp/task130-offline.log` |
+| 未达外部门槛 | **未达**（未 push，仅本地实跑） |
+| 词面自检 | `LC_ALL=C` **ZERO-HIT**（CI 同款正则，`.trae/tmp/task130-wording.sh`，含本任务 4 文件直扫）；默认 locale 2 命中为 TASK-118 起既登记的本机伪影（`api/.../MapMatchResultDTO.java:17/36`，本任务未触碰），按未覆盖登记 |
+| 契约 | 在途 `--baseline=f2b58c3` → **`TASK-130：判据 B 通过（只改清单与实际改动集一致）`**（.trae/tmp/task130-contract-inflight.log；整体 rc=1 为 TASK-128/129 两笔历史的公共文件过冲噪声，本任务段无多报/未声明）；收口提交后无参数复跑结论见下方「契约实测回填」条 |
+| 立项建议（交主 agent 写任务包） | **建议立项**：F05 批量预筛（P1，叠 K 分块）、F06 分批取数（P1，含 rank 等价性说明）、F15+F16 合成「点赞规模化」（P1+P2）、F08 残留一行（P2）、F18 索引（P2）；**需用户拍板**：F17 防击穿口径（Caffeine 单飞 vs SETNX，需与 F13 既有结论对齐）、治理面方向（维持 ADR 边界并把凭证硬化扩到治理面路径 vs 服务侧二道防线——**「服务侧读 X-Role」为零增量假硬化，两方向都应排除**）、好友榜 >1000 截断是否按演示规模口径接受、TASK-103 台账虚报订正口径；**建议关闭**：F16 单列（并入 F15 同一变更）。逐项证据/量化假设/红绿判别式可行性见 tasks/TASK-130/handoff.md |
+| 未决 | 上表「需用户拍板」四项待裁定；scratch PostGIS / MySQL 语义 IT 与全栈直连实测本期未覆盖（环境不可用），已如实登记 |
