@@ -544,3 +544,22 @@ accept_twoWritesShareTransactionalMethod 断言 accept 带方法级 @Transaction
 
 F04 据此在 findings 台账标记为「已裁定维持权衡、不修」。若未来出现可复现的好友状态错乱缺陷，
 以缺陷工单重开（附复现路径），届时按方案 A 的扩权重派路径执行。
+
+## 外部门槛登记：TASK-124~126 + TASK-123 裁定（2026-09-23，指导侧亲笔）
+
+push `04c6bbc..eba0108`（13 个提交：TASK-125 四笔 → TASK-124 两笔 → TASK-126 六笔 + 裁定登记一笔）触发
+run `35802403723`（head `eba0108`，2026-09-23 00:31 UTC）——**web/build 两 job 全绿**（3m6s，含
+--static 门槛与词面自检；上一次 docs-only run `35746589858` 亦全绿，补记）。据此结清：
+
+- **TASK-124**：Sentinel 兜底路由 7 条补全 + 路由覆盖测试，随 build job 全量绿背书；
+- **TASK-125**：actuator 白名单收窄（/actuator/health 精确匹配）+ 六服务 show-details never +
+  ActuatorWhitelistNarrowTest，CI 词面/静态门槛全绿背书；spec 变更 narrow-actuator-exposure 在途待归档；
+- **TASK-126**：app.security.strict 开关 + 常量时间比较，全量 299（20/29/33/80/81/50/6）绿背书；
+  spec 变更 add-strict-secret-fail-fast 在途待归档；
+- **TASK-123**：指导侧裁定方案 B（维持 ADR-0009 权衡，F04 标记已裁定不修），无代码足迹；
+  裁定提交内含 TASK-124 台账词面自伤修复，该修复的红绿证据（修前双 locale 各 1 命中 → 修后双 locale
+  ZERO-HIT）由本 run 词面自检步骤绿最终实证。
+- 基线锚点自此为 **299 = 20/29/33/80/81/50/6**，后续任务包以 299 为基线。
+- 三条验收记录的「待下次 push 由 CI 复验」未决项自本登记起结清，按**已到达（run `35802403723`）**读。
+- 通用规则示例更新要求：「台账不得复制禁用词表原文」为第二次复发（TASK-118、TASK-124），
+  已写入后续任务包通用规则第 10 条示例。
