@@ -1,5 +1,9 @@
 package com.sportverify.verify.mq;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
+import com.sportverify.api.event.VerifyEventDTO;
+import com.sportverify.api.verify.Verdict;
 import com.sportverify.common.trace.TraceIds;
 import com.sportverify.verify.entity.VerifyEventOutbox;
 import com.sportverify.verify.mapper.VerifyEventOutboxMapper;
@@ -16,6 +20,7 @@ import java.util.List;
 import java.util.concurrent.TimeUnit;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyLong;
@@ -26,9 +31,11 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 /**
- * outbox relay 单元测试（F03：防重锁 / 投递成功标 SENT / 失败 retry+1 / 超阈值保留）。
+ * outbox relay 单元测试（F03：防重锁 / 投递成功标 SENT / 失败 retry+1 / 超阈值保留 / 行内 eventId 透传）。
  *
- * <p>纯 Mockito：Mapper / RocketMQTemplate / Redisson 全部 mock；
+ * <p>纯 Mockito：Mapper / Redisson 全 mock，RocketMQTemplate mock 但**生产者用真实对象**——
+ * relay 的发送细节只经 {@link VerifyEventProducer#syncSend} 一处，故这里顺便判定
+ * 「relay 按行内 topic/tag/payload 投递、重发不换 eventId」。
  * {@code batchSize}/{@code maxRetry} 经 ReflectionTestUtils 注入（同 @Value 默认值语义）。</p>
  */
 class VerifyOutboxRelayTest {
@@ -37,6 +44,7 @@ class VerifyOutboxRelayTest {
     private RocketMQTemplate rocketMQTemplate;
     private RedissonClient redissonClient;
     private RLock lock;
+    private VerifyEventProducer producer;
     private VerifyOutboxRelay relay;
 
     @BeforeEach
@@ -46,7 +54,9 @@ class VerifyOutboxRelayTest {
         redissonClient = mock(RedissonClient.class);
         lock = mock(RLock.class);
         when(redissonClient.getLock("verify:outbox:relay")).thenReturn(lock);
-        relay = new VerifyOutboxRelay(outboxMapper, rocketMQTemplate, redissonClient);
+        producer = new VerifyEventProducer(rocketMQTemplate,
+                new ObjectMapper().registerModule(new JavaTimeModule()));
+        relay = new VerifyOutboxRelay(outboxMapper, producer, redissonClient);
         ReflectionTestUtils.setField(relay, "batchSize", 100);
         ReflectionTestUtils.setField(relay, "maxRetry", 16);
     }
@@ -98,6 +108,27 @@ class VerifyOutboxRelayTest {
         verify(outboxMapper).markSent(1L);
         verify(outboxMapper, never()).incrRetry(anyLong());
         verify(lock).unlock();
+    }
+
+    /** 行内 eventId 透传：投递体里的 eventId 与行内 eventId 逐字一致（relay 不重新生成） */
+    @Test
+    @SuppressWarnings("unchecked")
+    void relay_resendsWithRowEventId_neverRegenerates() throws Exception {
+        stubLockAcquired();
+        // 按写侧真实语义造行：eventId 与 payload 都由生产者生成一次
+        VerifyEventOutbox pending = producer.newPendingRow(Verdict.PASSED, 7L, 100L);
+        pending.setId(3L);
+        when(outboxMapper.selectPendingBatch(100)).thenReturn(List.of(pending));
+        ArgumentCaptor<Message> msgCaptor = ArgumentCaptor.forClass(Message.class);
+
+        relay.relay();
+
+        verify(rocketMQTemplate).syncSend(anyString(), msgCaptor.capture());
+        String body = String.valueOf(msgCaptor.getValue().getPayload());
+        assertTrue(body.contains("\"eventId\":\"" + pending.getEventId() + "\""),
+                "投递体应沿用行内 eventId，实测 body=" + body);
+        assertEquals(pending.getPayload(), body);
+        verify(outboxMapper).markSent(3L);
     }
 
     /** 投递失败 → retry_count+1 留下轮，不标 SENT，不中断后续行 */

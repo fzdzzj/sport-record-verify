@@ -1,15 +1,12 @@
 package com.sportverify.verify.mq;
 
-import com.sportverify.common.trace.TraceIds;
 import com.sportverify.verify.entity.VerifyEventOutbox;
 import com.sportverify.verify.mapper.VerifyEventOutboxMapper;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.apache.rocketmq.spring.core.RocketMQTemplate;
 import org.redisson.api.RLock;
 import org.redisson.api.RedissonClient;
 import org.springframework.beans.factory.annotation.Value;
-import org.springframework.messaging.support.MessageBuilder;
 import org.springframework.scheduling.annotation.EnableScheduling;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
@@ -18,14 +15,18 @@ import java.util.List;
 import java.util.concurrent.TimeUnit;
 
 /**
- * outbox 事件投递 relay（F03 本地消息表补偿）。
+ * outbox 事件投递 relay（F03 本地消息表补偿）——判定事件的**唯一**发送出口。
  *
- * <p>定时扫 verify_event_outbox 的 PENDING 行 → syncSend 投递 → 成功标 SENT，
+ * <p>定时扫 verify_event_outbox 的 PENDING 行 → 经 {@link VerifyEventProducer#syncSend} 投递
+ * （行内 topic/tag/payload/eventId 原样使用，traceId 透传）→ 成功标 SENT，
  * 失败 retry_count+1 留下轮；超 {@code verify.outbox.max-retry}（默认 16）仅记 error
  * 告警并保留行供人工处理（不重投、不删除）。</p>
  *
  * <p>多实例防重：Redisson 锁 {@code verify:outbox:relay}，tryLock(0 等待)——
  * 拿不到锁说明另一实例正在跑，直接跳过本轮（周期短，无需等待）。</p>
+ *
+ * <p>判定链路不直发（见 VerifyOutboxService）：事件到达延迟由本 relay 周期（默认 5s）决定，
+ * 榜单侧定时结算纠偏仍是最终一致的兜底。</p>
  *
  * <p>本类同时承担 {@link EnableScheduling}：verify-service 此前无定时任务，
  * 启动类不在本任务改动清单内，故由 relay 自带调度开关。</p>
@@ -40,7 +41,7 @@ public class VerifyOutboxRelay {
     private static final String LOCK_KEY = "verify:outbox:relay";
 
     private final VerifyEventOutboxMapper outboxMapper;
-    private final RocketMQTemplate rocketMQTemplate;
+    private final VerifyEventProducer verifyEventProducer;
     private final RedissonClient redissonClient;
 
     /** 单轮批量上限 */
@@ -76,12 +77,8 @@ public class VerifyOutboxRelay {
                     continue;
                 }
                 try {
-                    var builder = MessageBuilder.withPayload(row.getPayload());
-                    // 透传落库时的 traceId 到消息 userProperty（对齐改造前生产端直发行为）
-                    if (row.getTraceId() != null && !row.getTraceId().isBlank()) {
-                        builder.setHeader(TraceIds.HEADER, row.getTraceId());
-                    }
-                    rocketMQTemplate.syncSend(row.getTopic() + ":" + row.getTag(), builder.build());
+                    // 唯一投递出口：行内 topic/tag/payload/eventId 原样交给生产者（重发不换 eventId）
+                    verifyEventProducer.syncSend(row);
                     outboxMapper.markSent(row.getId());
                     log.info("outbox 事件投递成功：id={}, eventId={}, tag={}",
                             row.getId(), row.getEventId(), row.getTag());

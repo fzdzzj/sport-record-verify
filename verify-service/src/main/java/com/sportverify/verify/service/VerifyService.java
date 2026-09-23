@@ -26,7 +26,6 @@ import com.sportverify.verify.entity.Appeal;
 import com.sportverify.verify.entity.VerificationResult;
 import com.sportverify.verify.mapper.AppealMapper;
 import com.sportverify.verify.mapper.VerificationResultMapper;
-import com.sportverify.verify.mq.VerifyEventProducer;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.BeanUtils;
@@ -41,11 +40,16 @@ import java.util.List;
  *
  * <p>职责：</p>
  * <ul>
- *   <li>判定主流程：预处理 + R1-R4 → 证据落 verification_result → 发事件 → Feign 回调 record 迁移状态；</li>
+ *   <li>判定主流程：预处理 + R1-R4 → 证据与事件待发行行同事务落库 → Feign 回调 record 迁移状态；</li>
  *   <li>灰度路由：规则集按 userId%100 采样——命中灰度走 rule_version 库内快照，未命中走基线；</li>
  *   <li>幂等：verification_result 主键 record_id + Caffeine 缓存，重复触发不重算；</li>
- *   <li>申诉：建申诉单（record_id 唯一）/ 管理员终判（乐观锁 + 回调 + 事件）。</li>
+ *   <li>申诉：建申诉单（record_id 唯一）/ 管理员终判（乐观锁 + 回调 + 事件待发行行）。</li>
  * </ul>
+ *
+ * <p>事件出口唯一（TASK-131 接线）：判定/终判事件不在本类直发，而是经
+ * {@link VerifyOutboxService} 与结果行同事务写 verify_event_outbox（PENDING），
+ * 由 {@code VerifyOutboxRelay} 定时唯一投递（规范「判定事件可靠投递」）。
+ * 代价是事件到达延迟由 relay 周期（默认 5s）决定，榜单侧定时结算纠偏兜最终一致。</p>
  */
 @Slf4j
 @Service
@@ -59,7 +63,7 @@ public class VerifyService {
     private final VerificationResultMapper verificationResultMapper;
     private final AppealMapper appealMapper;
     private final RecordApi recordApi;
-    private final VerifyEventProducer verifyEventProducer;
+    private final VerifyOutboxService verifyOutboxService;
     private final VerifyProperties verifyProperties;
     private final RuleVersionService ruleVersionService;
     private final Cache<String, Object> caffeineCache;
@@ -70,11 +74,14 @@ public class VerifyService {
      * <ol>
      *   <li>结果已终判且 record 状态已同步 → 返回缓存结果（不重算）；</li>
      *   <li>结果已终判但 record 仍 VERIFYING（历史回调失败）→ 仅补偿回调；</li>
-     *   <li>未终判 → 初始化占位 → 拉轨迹 → 引擎判定 → 落库 → 发事件 → 回调迁移。</li>
+     *   <li>未终判 → 初始化占位 → 拉轨迹 → 引擎判定 → 同事务落「证据 + 事件待发行行」
+     *       → 回调迁移（事件由 relay 唯一投递）。</li>
      * </ol>
      *
      * <p>无本地长事务（ADR-0009）：路径含 Feign 拉轨迹、MQ 发事件、回调 record 状态，
-     * 禁止把远程调用/消息发送包进本地事务，也不因此引入分布式事务框架。幂等占位 + 补偿回调保证最终一致。</p>
+     * 禁止把远程调用/消息发送包进本地事务，也不因此引入分布式事务框架。幂等占位 + 补偿回调保证最终一致。
+     * 判定结果与事件待发行行的两次 DB 写在 {@link VerifyOutboxService} 的同一事务内
+     * （只包本地写、不含远程调用），事件投递在事务外由 relay 完成。</p>
      *
      * <p>并发重入权衡（TASK-123 裁定哲学承续，2026-09-23 文档化接受）：本方法对同一 recordId
      * 不加互斥，MQ 消费重投与 Feign 直调降级（人工重放）并发时可双判定、双发事件、双回调。
@@ -117,11 +124,10 @@ public class VerifyService {
                 sportType == null ? SportType.RUNNING : sportType);
         result.setRecordId(recordId);
 
-        // 证据落库（record_id 主键 upsert；重复判定只覆盖不新增）
-        verificationResultMapper.upsert(toEntity(result));
-
-        // 发 VERIFIED / REJECTED 事件（Tag 区分，规范「校验事件与幂等」）
-        verifyEventProducer.publish(result.getVerdict(), recordId, record.getUserId());
+        // 证据落库 + 事件待发行行同事务写入（record_id 主键 upsert；重复判定只覆盖不新增）
+        // 事件不再在此同步直发：唯一出口是 relay（规范「判定事件可靠投递」）
+        verifyOutboxService.persistResultAndEvent(toEntity(result), result.getVerdict(),
+                recordId, record.getUserId());
 
         // 回调 record-service 迁移 VERIFYING → PASSED/REJECTED（乐观锁，冲突 3003 触发重试）
         callbackStatus(recordId, RecordStatus.VERIFYING.getCode(),
@@ -209,11 +215,15 @@ public class VerifyService {
 
     /**
      * 管理员终判（规范「终判改判」「终判维持拒绝」）：
-     * appeal PENDING → RE_PASSED/RE_CONFIRMED（乐观锁）→
-     * 回调 record 迁移 APPEALING → RE_PASSED/RE_CONFIRMED → 发 VERIFIED/REJECTED 事件。
+     * appeal PENDING → RE_PASSED/RE_CONFIRMED（乐观锁）+ 事件待发行行（同事务）→
+     * 回调 record 迁移 APPEALING → RE_PASSED/RE_CONFIRMED；事件由 relay 唯一投递。
      *
-     * <p>无本地长事务（ADR-0009）：申诉行更新后仍有 Feign 回调与 MQ；跨服务窗口为已知残余，
+     * <p>无本地长事务（ADR-0009）：终判行更新与 outbox 行在 {@link VerifyOutboxService}
+     * 的同一事务内（只包本地写），其后的 Feign 回调与 MQ 投递都在事务外。跨服务窗口为已知残余，
      * 本路径不用本地事务假装远程一起原子，也不上 Seata。依赖幂等回调与事件重放收敛。</p>
+     *
+     * <p>事件延迟语义（TASK-131 登记）：改判事件不再同步毫秒级到达，到达时间由 relay 周期
+     * （默认 5s）决定；榜单侧定时结算纠偏兜最终一致（不改 leaderboard 消费端）。</p>
      */
     public AppealDTO reviewAppeal(Long appealId, AppealReviewDTO dto) {
         Appeal appeal = appealMapper.selectById(appealId);
@@ -224,8 +234,11 @@ public class VerifyService {
             throw new BizException(ResultCode.APPEAL_STATUS_INVALID, "仅 PENDING 申诉单可终判");
         }
         int targetStatus = dto.isPass() ? AppealStatus.RE_PASSED.getCode() : AppealStatus.RE_CONFIRMED.getCode();
-        int rows = appealMapper.updateStatus(appealId, AppealStatus.PENDING.getCode(),
-                targetStatus, dto.getOperator(), dto.getRecheckResult());
+        Verdict verdict = dto.isPass() ? Verdict.PASSED : Verdict.REJECTED;
+        // 终判行更新 + 事件待发行行同事务（任一失败整体回滚；影响 0 行只表示并发冲突）
+        int rows = verifyOutboxService.updateAppealAndEvent(appealId, AppealStatus.PENDING.getCode(),
+                targetStatus, dto.getOperator(), dto.getRecheckResult(),
+                verdict, appeal.getRecordId(), appeal.getUserId());
         if (rows == 0) {
             throw new BizException(ResultCode.APPEAL_STATUS_INVALID, "并发冲突：申诉单状态已变更");
         }
@@ -245,9 +258,6 @@ public class VerifyService {
                 dto.isPass() ? RecordStatus.RE_PASSED.getCode() : RecordStatus.RE_CONFIRMED.getCode(),
                 record.getVersion());
 
-        // 发事件：改判通过 → VERIFIED；维持拒绝 → REJECTED
-        verifyEventProducer.publish(dto.isPass() ? Verdict.PASSED : Verdict.REJECTED,
-                appeal.getRecordId(), appeal.getUserId());
         return toDto(appeal);
     }
 

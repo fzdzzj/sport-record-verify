@@ -35,6 +35,24 @@ CREATE TABLE IF NOT EXISTS `appeal` (
 ) ENGINE = InnoDB
   DEFAULT CHARSET = utf8mb4 COMMENT ='申诉表';
 
+-- 校验事件本地消息表（F03：判定/终判事件与结果行同事务落 PENDING 行，relay 唯一投递）
+CREATE TABLE IF NOT EXISTS `verify_event_outbox` (
+    `id`          BIGINT       NOT NULL AUTO_INCREMENT COMMENT '自增ID',
+    `event_id`    VARCHAR(64)  NOT NULL COMMENT '事件ID（消费端 eventId 去重锚点；relay 重发沿用）',
+    `topic`       VARCHAR(128) NOT NULL COMMENT '目标 Topic（record-verify-events）',
+    `tag`         VARCHAR(64)  NOT NULL COMMENT '事件 Tag（VERIFIED / REJECTED）',
+    `payload`     JSON         NOT NULL COMMENT '事件体 JSON（VerifyEventDTO）',
+    `trace_id`    VARCHAR(64)  DEFAULT NULL COMMENT '写入时链路追踪ID（relay 投递透传到消息 userProperty）',
+    `status`      VARCHAR(16)  NOT NULL DEFAULT 'PENDING' COMMENT '状态：PENDING 待投递，SENT 已投递',
+    `retry_count` INT          NOT NULL DEFAULT 0 COMMENT '投递失败次数（超阈值保留行供人工处理）',
+    `created_at`  DATETIME     DEFAULT NULL COMMENT '创建时间',
+    `sent_at`     DATETIME     DEFAULT NULL COMMENT '投递成功时间',
+    PRIMARY KEY (`id`),
+    UNIQUE KEY `uk_event_id` (`event_id`),
+    KEY `idx_status_id` (`status`, `id`)
+) ENGINE = InnoDB
+  DEFAULT CHARSET = utf8mb4 COMMENT ='校验事件本地消息表';
+
 -- 规则版本表（规则+阈值快照，配合 Nacos 灰度，见 §7.4）
 CREATE TABLE IF NOT EXISTS `rule_version` (
     `id`         BIGINT      NOT NULL AUTO_INCREMENT COMMENT '版本ID',
