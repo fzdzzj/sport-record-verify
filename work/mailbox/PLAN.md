@@ -592,3 +592,16 @@ run `35802403723`（head `eba0108`，2026-09-23 00:31 UTC）——**web/build �
 | 词面自检 | `LC_ALL=C` ZERO-HIT；默认 locale 2 命中为 TASK-118 起既登记的本机伪影（api 模块 DTO，本任务未触碰） |
 | 契约 | 在途 `--baseline=c2479ad --diff-file=<本任务 4 文件>` → **`TASK-128：判据 B 通过（只改清单与实际改动集一致）`**（.trae/tmp/task128-contract-difffile.log；整体 rc=1 为 19 个历史任务在 diff-file 口径下的交叠噪声，非本任务）；收口提交后无参数复跑：**退出码 0**（`契约校验通过：判据 A 两件套齐（含 0 个待办进行中）+ 判据 B 清单一致`，.trae/tmp/task128-contract-final.log；首次前台跑曾被看门狗 SIGTERM 截断，后台重跑取到完整样本） |
 | 未决 | 待主 agent 裁定立项：① outbox 接线（VerifyService 两处 + VerifyOutboxService 真写 outbox 行 + sql DDL + producer catch 去留）② F09 去双轨 ③ TASK-102 handoff 虚报口径修订。差距原文见 tasks/TASK-128/handoff.md |
+
+## 验收记录：TASK-129 VerifyService 同 recordId 并发重入后果链核实（2026-09-23，子 agent 核实 + 文档化）
+
+| 项 | 内容 |
+| --- | --- |
+| 绑定修订 | 开工基线 `ae811e0`（开工时 `git status` 仅 `?? .trae/`）；`a5e666a` javadoc 权衡段 · `614668c` findings F22 裁定 + 台账两件套 · 本条记录所在的收口提交，未 push |
+| 任务性质 | 核实 + 文档化：VerifyService.java 仅 javadoc（15 行插入，零逻辑变更），无先红/后绿/变异环节 |
+| 核实结论 | **F22 已裁定文档化接受（2026-09-23）**：后果链四环节——① 并发双判定窗口实证（verify :79-118 无互斥；MQ 消费 eventId 去重拦不住同 recordId 重入，VerifyEventProducer :41 每次 UUID；Feign 直调入口 InternalVerifyController :42-46 无去重）；② 落库无冲突（initVerifying INSERT IGNORE / upsert ON DUPLICATE KEY 只覆盖，VerificationResultMapper :17-28），回调冲突路径 3003 = RECORD_STATUS_INVALID（ResultCode :44；SportRecordService :171 幂等跳过 / :175-179 乐观锁 rows==0 抛 3003）；③ 收敛：消费端删去重键 + RECONSUME_LATER 重投（VerifyEventConsumer :190-197），重入 verify 读终判走补偿回调（VerifyService :81-84/:131-142）；④ 榜单幂等：per-record Redisson 锁 + 锚点行 INSERT IGNORE/乐观 UPDATE，双 VERIFIED 事件只加分一次（LeaderboardService :128-154），结算任务 10min 纠偏兜底（:327-372）。**无双份加分可复现路径**——「冲突拒绝式收敛 + 消费幂等兜住」成立。窄窗备注（登记不立项）：灰度规则集中途变更可致一 VERIFIED 一 REJECTED，净效果零加分，属规则热更新既有最终一致设计 |
+| 文档化改动 | javadoc 补「并发重入权衡」段（三层兜底 + 重开条件，对齐 ADR-0009 表述风格）；findings F22 标裁定 + 重开条件（锚点行幂等或回调收敛链路失效/出现可复现错态时再立项可配锁）。未引入任何新互斥 |
+| 门槛来源 | 本地实跑 offline 全量两跑均 rc=0 / BUILD SUCCESS / `20/30/33/80/81/50/6 = 300`（首跑 .trae/tmp/task129-offline.log；收口修订终跑 .trae/tmp/task129-offline-final.log），与 TASK-127 锚点逐位一致零扰动（任务包 299 为过期锚点） |
+| 词面自检 | `LC_ALL=C` 与 `zh_CN.UTF-8` 均 ZERO-HIT（.trae/tmp/task129-wording.sh）；无 LC_ALL 默认 locale 2 命中为 TASK-118 起既登记的本机伪影（api 模块 DTO :17/:36，本任务未触碰），按未覆盖登记 |
+| 契约 | 在途 `--baseline=ae811e0` 首跑 TASK-129 判据 B 红，根因是本 handoff 早先的「文档化改动」标题命中 awk 截取词、说明节裸文件名 token 被判清单多报（TASK-127 同款坑），改标题隔断后复跑本任务仅余 `PLAN.md` 未落盘的预期中间态多报（.trae/tmp/task129-contract-inflight2.log；TASK-128 段 2 条「改动集未声明」为其历史清单扫到本任务新文件的既有交叠噪声）；收口提交后无参数复跑：**退出码 0**（.trae/tmp/task129-contract-final.log） |
+| 未决 | 无待裁定项（裁定按任务包口径落地）；未达外部门槛（未 push，仅本地实跑） |
