@@ -30,6 +30,7 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Set;
 import java.util.concurrent.TimeUnit;
+import java.util.stream.IntStream;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
@@ -44,6 +45,7 @@ import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
@@ -251,7 +253,7 @@ class LeaderboardServiceTest {
     void topFriend_filtersNonFriends() {
         when(userApi.listFriends(200L, 1L, 1000L)).thenReturn(Result.success(
                 new PageResult<>(1, 1000, 1, List.of(friend(100L)))));
-        when(zSetOps.reverseRangeWithScores(LeaderboardService.OVERALL_ZSET_KEY, 0, -1))
+        when(zSetOps.reverseRangeWithScores(LeaderboardService.OVERALL_ZSET_KEY, 0, 499L))
                 .thenReturn(tuples("300", 88.0, "100", 42.5, "200", 30.0));
 
         List<LeaderboardDTO> board = service.top("friend", 200L, 10);
@@ -259,6 +261,94 @@ class LeaderboardServiceTest {
         assertEquals(1, board.size());
         assertEquals(100L, board.get(0).getUserId());
         assertEquals(1, board.get(0).getRank());
+    }
+
+    /** 分页契约：好友总数超过单页 1000 时，继续读取后续页，避免静默截断。 */
+    @Test
+    void topFriend_readsAllFriendPages_whenFriendsExceedSinglePage() {
+        List<FriendDTO> firstPage = IntStream.rangeClosed(1, 1000)
+                .mapToObj(i -> friend((long) i))
+                .toList();
+        when(userApi.listFriends(200L, 1L, 1000L)).thenReturn(Result.success(
+                new PageResult<>(1, 1000, 1001, firstPage)));
+        when(userApi.listFriends(200L, 2L, 1000L)).thenReturn(Result.success(
+                new PageResult<>(2, 1000, 1001, List.of(friend(1001L)))));
+        when(zSetOps.reverseRangeWithScores(LeaderboardService.OVERALL_ZSET_KEY, 0, 499L))
+                .thenReturn(tuples("1001", 42.5));
+
+        List<LeaderboardDTO> board = service.top("friend", 200L, 10);
+
+        assertEquals(List.of(1001L), board.stream().map(LeaderboardDTO::getUserId).toList());
+        assertEquals(1, board.get(0).getRank());
+        verify(userApi).listFriends(200L, 2L, 1000L);
+    }
+
+    /** UserApiFallback 第二页为空时，不得把第一页的部分好友继续用于好友榜。 */
+    @Test
+    void topFriend_secondPageFallback_returnsEmptyInsteadOfPartialBoard() {
+        List<FriendDTO> firstPage = IntStream.rangeClosed(1, 1000)
+                .mapToObj(i -> friend((long) i))
+                .toList();
+        when(userApi.listFriends(200L, 1L, 1000L)).thenReturn(Result.success(
+                new PageResult<>(1, 1000, 1001, firstPage)));
+        // UserApiFallback 的 listFriends 降级形态：空 records，total=0。
+        when(userApi.listFriends(200L, 2L, 1000L)).thenReturn(Result.success(
+                new PageResult<>(2, 1000, 0, List.of())));
+        when(zSetOps.reverseRangeWithScores(LeaderboardService.OVERALL_ZSET_KEY, 0, 499L))
+                .thenReturn(tuples("1", 42.5));
+
+        List<LeaderboardDTO> board = service.top("friend", 200L, 10);
+
+        assertTrue(board.isEmpty());
+    }
+
+    /** 已收集数量小于 total 却提前收到短页时，不得返回不完整好友榜。 */
+    @Test
+    void topFriend_shortPageBeforeExpectedTotal_returnsEmptyInsteadOfPartialBoard() {
+        List<FriendDTO> shortFirstPage = IntStream.rangeClosed(1, 999)
+                .mapToObj(i -> friend((long) i))
+                .toList();
+        when(userApi.listFriends(200L, 1L, 1000L)).thenReturn(Result.success(
+                new PageResult<>(1, 1000, 1001, shortFirstPage)));
+        when(zSetOps.reverseRangeWithScores(LeaderboardService.OVERALL_ZSET_KEY, 0, 499L))
+                .thenReturn(tuples("1", 42.5));
+
+        List<LeaderboardDTO> board = service.top("friend", 200L, 10);
+
+        assertTrue(board.isEmpty());
+    }
+
+    /** 分批读取：好友位于榜单末尾时仍能命中，且 rank 保持为过滤后序号。 */
+    @Test
+    void topFriend_scansBoundedBatches_untilFriendAtLeaderboardEnd() {
+        when(userApi.listFriends(200L, 1L, 1000L)).thenReturn(Result.success(
+                new PageResult<>(1, 1000, 1, List.of(friend(9999L)))));
+        when(zSetOps.reverseRangeWithScores(LeaderboardService.OVERALL_ZSET_KEY, 0, 499L))
+                .thenReturn(rangeTuples(1, 500));
+        when(zSetOps.reverseRangeWithScores(LeaderboardService.OVERALL_ZSET_KEY, 500, 999L))
+                .thenReturn(rangeTuples(501, 1000));
+        when(zSetOps.reverseRangeWithScores(LeaderboardService.OVERALL_ZSET_KEY, 1000, 1499L))
+                .thenReturn(tuples("9999", 1.0));
+
+        List<LeaderboardDTO> board = service.top("friend", 200L, 10);
+
+        assertEquals(1, board.size());
+        assertEquals(9999L, board.get(0).getUserId());
+        assertEquals(1, board.get(0).getRank());
+        verify(zSetOps).reverseRangeWithScores(LeaderboardService.OVERALL_ZSET_KEY, 0, 499L);
+        verify(zSetOps).reverseRangeWithScores(LeaderboardService.OVERALL_ZSET_KEY, 500, 999L);
+        verify(zSetOps).reverseRangeWithScores(LeaderboardService.OVERALL_ZSET_KEY, 1000, 1499L);
+        verify(zSetOps, times(3)).reverseRangeWithScores(
+                eq(LeaderboardService.OVERALL_ZSET_KEY), anyLong(), anyLong());
+        verify(zSetOps, never()).reverseRangeWithScores(LeaderboardService.OVERALL_ZSET_KEY, 0, -1L);
+    }
+
+    private Set<TypedTuple<String>> rangeTuples(int startInclusive, int endInclusive) {
+        Set<TypedTuple<String>> set = new LinkedHashSet<>();
+        for (int id = startInclusive; id <= endInclusive; id++) {
+            set.add(TypedTuple.of(String.valueOf(id), (double) (endInclusive - id + 1)));
+        }
+        return set;
     }
 
     /** 规范差异「无好友或未上榜」：无好友 / 好友均无里程 / Feign 失败 → 空榜降级 */
@@ -275,7 +365,7 @@ class LeaderboardServiceTest {
         // 注意：对已 thenThrow 的桩重打桩必须用 doReturn（when 写法会先触发旧桩抛异常）
         doReturn(Result.success(new PageResult<>(1, 1000, 1, List.of(friend(100L)))))
                 .when(userApi).listFriends(200L, 1L, 1000L);
-        when(zSetOps.reverseRangeWithScores(LeaderboardService.OVERALL_ZSET_KEY, 0, 499))
+        when(zSetOps.reverseRangeWithScores(LeaderboardService.OVERALL_ZSET_KEY, 0, 499L))
                 .thenReturn(null);
         assertTrue(service.top("friend", 200L, 10).isEmpty());
     }

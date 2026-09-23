@@ -2,7 +2,9 @@ package com.sportverify.leaderboard.service;
 
 import com.sportverify.api.record.RecordStatus;
 import com.sportverify.api.record.dto.LeaderboardDTO;
+import com.sportverify.api.common.PageResult;
 import com.sportverify.api.user.UserApi;
+import com.sportverify.api.user.dto.FriendDTO;
 import com.sportverify.api.user.dto.UserDTO;
 import com.sportverify.leaderboard.entity.LeaderboardContribution;
 import com.sportverify.leaderboard.entity.LeaderboardDailySummary;
@@ -73,8 +75,10 @@ public class LeaderboardService {
     private static final int DEFAULT_TOP_N = 50;
     /** 报表单次查询上限（防 {@code size} 传成 10 万把整表拉进内存） */
     private static final int DAILY_REPORT_MAX_SIZE = 500;
-    /** 好友列表一次 Feign 拉取上限（演示规模 1000 用户：一次拉齐后内存过滤，不逐条远程调用） */
+    /** 好友列表分页大小：与 user-service 分页接口配合，逐页拉齐好友集合。 */
     private static final long FRIEND_FETCH_SIZE = 1000;
+    /** 好友榜 Redis 扫描批大小：每次只取有限窗口，命中 size 后立即停止。 */
+    private static final long FRIEND_SCAN_BATCH = 500;
     /** 锁等待上限（秒）：拿不到锁抛出让 MQ 重投（不跳过，入榜/回滚不可丢） */
     private static final long LOCK_WAIT_SECONDS = 3;
     /** 结算周期：10min（对账纠偏为低频兜底，热读层实时由事件维护） */
@@ -236,8 +240,8 @@ public class LeaderboardService {
     }
 
     /**
-     * 好友榜（规范差异「好友榜查询」）：Feign 一次拉齐好友列表 → ZSet 按好友过滤
-     * （内存过滤，不逐条远程调用；非好友与本人均被排除，只显示好友）。
+     * 好友榜（规范差异「好友榜查询」）：按 user-service 分页契约拉齐好友列表 → ZSet
+     * 分批按好友过滤（内存过滤，不逐条远程调用；非好友与本人均被排除，只显示好友）。
      *
      * <p>降级口径（产品决策，add-resilience-hardening）：user-service 不可用 → <b>返回空榜</b>，
      * 不选「不过滤」。不过滤会把总榜非好友泄露进好友榜（隐私/语义错误）；空榜仅短暂降级。
@@ -246,8 +250,7 @@ public class LeaderboardService {
     public List<LeaderboardDTO> topFriends(Long userId, int size) {
         List<Long> friendIds;
         try {
-            friendIds = userApi.listFriends(userId, 1, FRIEND_FETCH_SIZE).getData().getRecords()
-                    .stream().map(f -> f.getUserId()).toList();
+            friendIds = fetchAllFriendIds(userId);
         } catch (Exception e) {
             log.warn("好友列表拉取失败，好友榜降级为空榜：userId={}", userId, e);
             return List.of();
@@ -256,18 +259,58 @@ public class LeaderboardService {
             log.info("用户无好友，好友榜为空：userId={}", userId);
             return List.of();
         }
-        Set<TypedTuple<String>> tuples =
-                stringRedisTemplate.opsForZSet().reverseRangeWithScores(OVERALL_ZSET_KEY, 0, -1);
-        if (tuples == null || tuples.isEmpty()) {
+        if (size <= 0) {
             return List.of();
         }
+
         Set<Long> friendSet = new LinkedHashSet<>(friendIds);
-        // 按好友过滤（保持 ZSet 分数降序）后截取前 N；本人与非好友均被排除
-        List<TypedTuple<String>> filtered = tuples.stream()
-                .filter(t -> friendSet.contains(Long.valueOf(t.getValue())))
-                .limit(size)
-                .toList();
+        // 按榜单原有降序顺序分批过滤；凑满前 N 后停止，rank 仍是过滤后的序号。
+        List<TypedTuple<String>> filtered = new ArrayList<>(size);
+        for (long start = 0; ; start += FRIEND_SCAN_BATCH) {
+            Set<TypedTuple<String>> tuples = stringRedisTemplate.opsForZSet()
+                    .reverseRangeWithScores(OVERALL_ZSET_KEY, start, start + FRIEND_SCAN_BATCH - 1);
+            if (tuples == null || tuples.isEmpty()) {
+                break;
+            }
+            for (TypedTuple<String> tuple : tuples) {
+                if (friendSet.contains(Long.valueOf(tuple.getValue()))) {
+                    filtered.add(tuple);
+                    if (filtered.size() == size) {
+                        return assemble(filtered);
+                    }
+                }
+            }
+            if (tuples.size() < FRIEND_SCAN_BATCH) {
+                break;
+            }
+        }
         return assemble(filtered);
+    }
+
+    /** 按 user-service 的 PageResult.total 继续读取好友页，避免单页 1000 条静默截断。 */
+    private List<Long> fetchAllFriendIds(Long userId) {
+        List<Long> friendIds = new ArrayList<>();
+        long expectedTotal = -1;
+        long page = 1;
+        while (true) {
+            PageResult<FriendDTO> pageResult = userApi.listFriends(userId, page, FRIEND_FETCH_SIZE).getData();
+            if (pageResult == null || pageResult.getRecords() == null) {
+                return List.of();
+            }
+            if (page == 1) {
+                expectedTotal = pageResult.getTotal();
+            }
+            List<FriendDTO> records = pageResult.getRecords();
+            friendIds.addAll(records.stream().map(FriendDTO::getUserId).toList());
+            if (friendIds.size() >= expectedTotal) {
+                return friendIds;
+            }
+            // 空页或短页但仍未达到第一页声明的 total，说明分页结果不完整，不能返回部分好友榜。
+            if (records.isEmpty() || records.size() < FRIEND_FETCH_SIZE) {
+                return List.of();
+            }
+            page++;
+        }
     }
 
     /**
