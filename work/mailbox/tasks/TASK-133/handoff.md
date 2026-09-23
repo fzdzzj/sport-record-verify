@@ -167,7 +167,8 @@ compose 栈未起；`postgis/postgis:16-3.4` 镜像本地在位 → 起**临时�
 | 定向（红/绿/变异） | 三次 `--pl mapmatch-service test`：rc=1（9/3 红）→ rc=0（10/0）→ rc=1（10/4 变异） | `t133-red2.log` / `t133-green1.log` / `t133-mutation.log` |
 | 词面自检 | `LC_ALL=C`（CI 语义）**ZERO-HIT** rc=0；默认 locale 出现 `api/.../MapMatchResultDTO.java` 两行命中 = **本机 locale 伪影**（该文件本次未改，属既有已登记现象，判据以 `LC_ALL=C` 为准） | `.trae/tmp/wording-check-133.sh` 双 locale 各一次 |
 | 契约（在途） | `bash scripts/verify/mailbox-contract.sh --baseline=2b4cb8a` → 判据 A `两件套齐全：TASK-133`；**`TASK-133：判据 B 通过（只改清单与实际改动集一致）`**（7 项声明零多报、零未声明）。整体 rc=1 为公共文件 `PLAN.md` 过冲（历史段逐一报过冲项），非本任务清单不一致 | `.trae/tmp/t133-contract-inflight.log` |
-| 契约（收口后无参数） | 见 PLAN 验收记录 `<C>` 回填提交 | `.trae/tmp/t133-contract-final.log` |
+| 契约（收口后无参数，收口修订 `7552256`） | **rc=0** —— `契约校验通过（退出码 0）：判据 A 两件套齐（含 0 个待办进行中）+ 判据 B 清单一致`；TASK-133 段为「足迹不在工作树，视为已收口，不重审」（强证据取上文在途那次本任务段的 `判据 B 通过`） | `.trae/tmp/t133-contract-final.log` |
+| 终跑（收口修订） | `7552256` 上同命令 → **rc=0 / BUILD SUCCESS / `20/30/33/80/88/50/10 = 311`**（门槛数字绑定收口修订而非中间态） | `.trae/tmp/t133-offline-final.log` |
 
 ## 未决与后续
 
