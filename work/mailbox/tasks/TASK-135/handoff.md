@@ -10,7 +10,8 @@
 
 - 任务编号：`TASK-135`。编号核对结果：现有 `work/mailbox/tasks` 与 `PLAN.md` 已占用编号截至 `TASK-134`（另有历史空档，不属于当前连续待办）；本任务取首个未占用连续编号，不占用既有待办。
 - 开工基线：`a771da381389359439f1c7da5a19ac72e319c85b`。
-- 未 push、未建 PR、未提交；`.trae/` 是开工前已存在的未跟踪目录，本任务未触碰。
+- 实际业务/测试修订 commit：`2df9131`（`fix(leaderboard): 修正总榜缓存真实入口`）。
+- 未 push、未建 PR；`.trae/` 是开工前已存在的未跟踪目录，本任务未触碰。
 
 ## 编号澄清
 
@@ -114,4 +115,4 @@ bash scripts/verify/mvn-verify.sh --mode=offline --static=leaderboard-service
 
 ## 审核边界
 
-当前只提供未提交工作树的 diff 与上述本地证据，等待审核；不 push、不建 PR、不宣称 CI 通过。
+本任务业务/测试修订已绑定到 `2df9131`；本次仅做文档绑定订正，不改代码、不重跑 Maven。仍未 push、未建 PR，online/CI 未覆盖，不宣称 CI 通过。

@@ -20,11 +20,11 @@
 `--mode` 判据见 `scripts/verify/README.md`）。下方 D12 那句"今后验收口径固定"作为作废史原文保留，
 其参数组合现由该脚本的 `--mode=offline` 表达。
 
-## 验收记录：`TASK-135`（2026-09-23，总榜缓存真实入口，未提交）
+## 验收记录：`TASK-135`（2026-09-23，总榜缓存真实入口，已提交）
 
 | 项 | 内容 |
 | --- | --- |
-| 绑定修订 | 开工基线 `a771da381389359439f1c7da5a19ac72e319c85b`；当前为未提交工作树 diff，未 push、未建 PR。 |
+| 绑定修订 | 开工基线 `a771da381389359439f1c7da5a19ac72e319c85b`；实际业务/测试修订 commit `2df9131`（`fix(leaderboard): 修正总榜缓存真实入口`）；未 push、未建 PR。 |
 | 目标与范围 | 核实 Controller 正常入口的 Spring 缓存代理；把总榜缓存从 self-invocation 不可达的 `topOverall` 移到 `top` 的 overall 条件；好友榜不缓存。 |
 | 受控红绿 | 旧实现 Spring 代理判别式：`LeaderboardCacheInvocationTest` `1/1/0/0`，底层 ZSet wanted 1 / actual 2；修正后该测试 `3/0/0/0`，好友榜逐次调用与故障空榜同测通过。 |
 | 本地门槛来源 | `bash scripts/verify/mvn-verify.sh --mode=offline --pl leaderboard-service test` → `rc=0` / `BUILD SUCCESS` / 目标模块 `57/0/0/0`；因缓存入口说明与断言同步，`bash scripts/verify/mvn-verify.sh --mode=offline --static=leaderboard-service` → `rc=0`，Checkstyle 0 violations，SpotBugs Error size 0，PMD 成功。 |
@@ -33,7 +33,7 @@
 | 未覆盖/跳过 | 未跑真实 Redis Controller→缓存→ZSet IT、真实 user-service 跨服务调用、MySQL/RocketMQ IT、online/CI；未把这些写成通过。 |
 | 未解决边界 | 缓存 key 按入口规范化后的 topN（默认 50、上限 1000）复用；好友榜仍不缓存，好友关系变化的一致性未作产品决策。 |
 
-## 验收记录：`TASK-134`（2026-09-23，好友榜读取修复，未提交）
+## 验收记录：`TASK-134`（2026-09-23，好友榜读取修复，已提交）
 
 | 项 | 内容 |
 | --- | --- |
