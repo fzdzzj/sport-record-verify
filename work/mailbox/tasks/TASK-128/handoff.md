@@ -152,4 +152,5 @@ F13/F22 现状未逐条核实，不在本任务范围。
   日志 `.trae/tmp/task128-offline.log`。
 - **词面自检**（CI 同款正则 `.trae/tmp/task128-wording.sh`）：`LC_ALL=C` **ZERO-HIT**（rc=0）；
   默认 locale 2 命中均为 TASK-118 起登记的本机伪影（`api/.../MapMatchResultDTO.java:17/36`，本任务未触碰），如实登记按未覆盖计。
-- **契约**：在途 `--baseline=c2479ad` 判据 B 结果 + 收口提交后无参数 rc，见 PLAN.md 收口记录（收口时回填）。
+- **契约**：在途 `--baseline=c2479ad --diff-file=<本任务 4 文件>` → `TASK-128：判据 B 通过`（整体 rc=1
+  为历史任务交叠噪声）；收口提交后无参数 → **rc=0**。详见 PLAN.md 收口记录。

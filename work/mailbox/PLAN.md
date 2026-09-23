@@ -590,5 +590,5 @@ run `35802403723`（head `eba0108`，2026-09-23 00:31 UTC）——**web/build �
 | 附带发现 | TASK-102 handoff 虚报接线（git log -S 全历史无 VerifyService 调用证据）；TASK-102 spec 第 2/3 条（F09 去双轨、F22 重入锁）按代码现状未见落地 |
 | 门槛来源 | 本地实跑 offline 全量 rc=0 / BUILD SUCCESS / `20/30/33/80/81/50/6 = 300`，与 TASK-127 锚点逐位一致零扰动（任务包 299 为过期锚点） |
 | 词面自检 | `LC_ALL=C` ZERO-HIT；默认 locale 2 命中为 TASK-118 起既登记的本机伪影（api 模块 DTO，本任务未触碰） |
-| 契约 | 见下方回填（在途 --baseline + 收口后无参数） |
+| 契约 | 在途 `--baseline=c2479ad --diff-file=<本任务 4 文件>` → **`TASK-128：判据 B 通过（只改清单与实际改动集一致）`**（.trae/tmp/task128-contract-difffile.log；整体 rc=1 为 19 个历史任务在 diff-file 口径下的交叠噪声，非本任务）；收口提交后无参数复跑：**退出码 0**（`契约校验通过：判据 A 两件套齐（含 0 个待办进行中）+ 判据 B 清单一致`，.trae/tmp/task128-contract-final.log；首次前台跑曾被看门狗 SIGTERM 截断，后台重跑取到完整样本） |
 | 未决 | 待主 agent 裁定立项：① outbox 接线（VerifyService 两处 + VerifyOutboxService 真写 outbox 行 + sql DDL + producer catch 去留）② F09 去双轨 ③ TASK-102 handoff 虚报口径修订。差距原文见 tasks/TASK-128/handoff.md |
