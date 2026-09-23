@@ -86,12 +86,19 @@ add-auth-degrade-header-strip 的 spec-delta「白名单路径下的伪造头清
 ## 契约与词面
 
 - 契约（在途）：`bash scripts/verify/mailbox-contract.sh --baseline=415d36d` →
-  TASK-127 判据 A 两件套齐全、判据 B 通过（只改清单 15 项与实际改动集逐项一致），
-  结果回填本文件与 PLAN.md（实测为准）。
-- 契约（收口后）：收口提交后无参数复跑，退出码 0（实测回填）。
+  **TASK-127 判据 A 两件套齐全、判据 B 通过（只改清单 15 项与实际改动集逐项一致）**
+  （.trae/tmp/task127-contract-inflight2.log）。首轮在途曾 rc=1：清单列表后的说明段落仍在
+  截取块内，裸文件名 token（proposal.md 等）被判清单多报——把说明移出截取块（另起不含
+  「改动/清单」字样的标题）后复跑通过；整体在途 rc=1 的其余成分为 19 个历史任务公共文件
+  过冲，不属本任务。
+- 契约（收口后）：收口提交（d89fe15 / c221d94 / 2caa137）后无参数复跑 **退出码 0**：
+  `契约校验通过（退出码 0）：判据 A 两件套齐（含 0 个待办进行中）+ 判据 B 清单一致`
+  （.trae/tmp/task127-contract-final.log）。
 - 词面自检：CI 同款正则（全部 tracked 文本载体）、`LC_ALL=C` 与默认 locale 双跑，
-  判据以 LC_ALL=C 为准；默认 locale 仅余 TASK-118 起登记的 2 条本机伪影
-  （api 模块 DTO 两行，本任务未触碰）。
+  **双双 ZERO-HIT**（判据以 LC_ALL=C 为准；默认 locale 本轮实测 0 命中，既往登记的 api
+  模块 DTO 2 条伪影未复现，如实记录不据此销案）。
+- 终跑：收口修订全量 offline rc=0 / `20/30/33/80/81/50/6 = 300`，门槛数字绑定收口修订
+  （task127-final-full.log）。
 
 ## 提交
 
