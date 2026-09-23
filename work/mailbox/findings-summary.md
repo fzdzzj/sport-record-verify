@@ -16,10 +16,11 @@ P0=必修（安全/数据丢失）；P1=应修（可靠性/性能）；P2=建议
 
 ## P1 应修
 
-### F03 VERIFIED/REJECTED 事件发送失败即永久丢失（一致性）
+### F03 VERIFIED/REJECTED 事件发送失败即永久丢失（一致性）【仍在（outbox 组件已建但从未接线，2026-09-23 核实 TASK-128）】
 - 位置：verify-service VerifyEventProducer.java:57-60（catch 后仅 log）
 - 影响：判定 PASSED 但事件丢失 → leaderboard_contribution 无锚点行，结算任务以贡献表为权威也补不回来 → 榜单永久缺分。record→verify 方向有降级补偿（VerifyDegradeService），verify→leaderboard 方向没有。
 - 改法：verify_db 加本地消息表（outbox），同事务落「事件待发」行 + 定时 relay 重发；或改 RocketMQ 事务消息。
+- 核实（TASK-128，2026-09-23）：a048745（实为 TASK-102 产物，非 TASK-108）只新增了 outbox 组件文件（entity/mapper/relay/事务写入器 + 2 测试），VerifyService（:109/:234）与 VerifyEventProducer（:53-60 直发 + catch 吞异常）从未接线；全仓无代码写 verify_event_outbox 行，sql/ 无该表 DDL，运行日志实证表不存在（logs/verify.out:84）。relay 重发逻辑本身完整但扫永远空表。TASK-102 handoff 所称「VerifyService 改调 persistResultAndEvent」与提交事实不符。差距明细见 tasks/TASK-128/handoff.md。
 
 ### F04 好友锁在事务内，锁释放早于事务提交（并发）【已裁定维持权衡、不修（2026-09-23 指导侧，PLAN 裁定记录）】
 - 位置：user-service FriendService.java:151-191（@Transactional 方法内加 Redisson 锁，finally 释放时事务尚未提交）
@@ -47,10 +48,11 @@ P0=必修（安全/数据丢失）；P1=应修（可靠性/性能）；P2=建议
 - 影响：health 详情泄漏 DB/Redis 组件状态；metrics 对外可查。
 - 改法：网关白名单收窄到 `/actuator/health`（或整体移除、监控走内网直连）；show-details 改 when-authorized。
 
-### F09 自建 DLQ 与 RocketMQ 原生重试双轨 + 重试计数键泄漏（可靠性/工程）
+### F09 自建 DLQ 与 RocketMQ 原生重试双轨 + 重试计数键泄漏（可靠性/工程）【仍在（2026-09-23 核实 TASK-128）】
 - 位置：verify-service VerifyEventConsumer.java:52-54,225-233；leaderboard-service LeaderboardEventConsumer.java:55-57,215-224（两处复制同构代码）
 - 证据：返回 RECONSUME_LATER 时 broker 本身会按退避重投（默认 16 次后进 %DLQ%），代码又用 `verify:retry:{eventId}` 自计数 3 次投自建 topic；retryKey 的 AtomicLong **无 TTL**，随事件量无限堆积。
 - 改法：二选一（推荐用 broker 原生 maxReconsumeTimes + %DLQ%）；至少给 retryKey 设 24h TTL；两份消费者公共逻辑抽到 common。
+- 核实（TASK-128，2026-09-23）：两侧代码与原文引用行号逐一吻合零改动——verify 侧 :52 MAX_RETRY=3、:140 RECONSUME_LATER、:225-233 AtomicLong incrementAndGet 无 TTL、:236-245 sendToDlq；leaderboard 侧 :55/:126/:216-224/:227-236 同构。全仓 getAtomicLong 无任何 expire 调用。
 
 ### F10 JWT/内部接口密钥硬编码兜底（安全）
 - 位置：user-service JwtUtil.java:48；gateway application.yml:110；common InternalApiAuthFilter.java:41；api InternalApiFeignInterceptor.java:19

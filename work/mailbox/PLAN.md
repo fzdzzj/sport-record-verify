@@ -579,3 +579,16 @@ run `35802403723`（head `eba0108`，2026-09-23 00:31 UTC）——**web/build �
 | 词面自检 | CI 同款正则、双 locale：`LC_ALL=C` 全仓 **ZERO-HIT**；默认 locale 本轮实测同为 0 命中（既往登记的 api 模块 DTO 2 条伪影本轮未复现，如实记录不据此销案） |
 | 未覆盖 | ① 本次改动待下次 push 由 CI 复验；② 判别式的 conversionService bean 是对 Boot 生产转换语义的复刻（若未来 Boot 升级改变该机制，判别式形态需随之复核，测试注释已说明） |
 | 归档与后续 | 本任务即归档执行：收口后 `spec/changes/` 仅剩 archive/（22 个），TASK-125 handoff 两条未决（漂移①②）自本记录起结清 |
+
+## 验收记录：TASK-128 核实 F03/F09 事件可靠性现状（2026-09-23，子 agent 纯核实）
+
+| 项 | 内容 |
+| --- | --- |
+| 绑定修订 | 开工基线 `c2479ad`（开工时 `git status` 仅 `?? .trae/`，无并行在途足迹）；1 个收口提交 docs(mailbox)，未 push |
+| 任务性质 | 纯核实 + 台账更新，**零代码改动**，无先红/后绿/变异环节 |
+| 核实结论 | **F03 仍在**：a048745（实为 TASK-102 产物，非派发所称 TASK-108）只新增 outbox 组件 6 文件，VerifyService（:109/:234）与 VerifyEventProducer（:53-60 直发 + :57-60 catch 吞异常）从未接线；全仓无写 verify_event_outbox 行的代码，sql/ 无 DDL，运行日志实证表不存在。**F09 仍在**：双消费者 RECONSUME_LATER + 自建 DLQ 双轨与无 TTL retryKey 原样（VerifyEventConsumer :52/:140/:225-233/:236-245；LeaderboardEventConsumer :55/:126/:216-224/:227-236）。台账原判断正确，派发背景「已闭环」不成立 |
+| 附带发现 | TASK-102 handoff 虚报接线（git log -S 全历史无 VerifyService 调用证据）；TASK-102 spec 第 2/3 条（F09 去双轨、F22 重入锁）按代码现状未见落地 |
+| 门槛来源 | 本地实跑 offline 全量 rc=0 / BUILD SUCCESS / `20/30/33/80/81/50/6 = 300`，与 TASK-127 锚点逐位一致零扰动（任务包 299 为过期锚点） |
+| 词面自检 | `LC_ALL=C` ZERO-HIT；默认 locale 2 命中为 TASK-118 起既登记的本机伪影（api 模块 DTO，本任务未触碰） |
+| 契约 | 见下方回填（在途 --baseline + 收口后无参数） |
+| 未决 | 待主 agent 裁定立项：① outbox 接线（VerifyService 两处 + VerifyOutboxService 真写 outbox 行 + sql DDL + producer catch 去留）② F09 去双轨 ③ TASK-102 handoff 虚报口径修订。差距原文见 tasks/TASK-128/handoff.md |
