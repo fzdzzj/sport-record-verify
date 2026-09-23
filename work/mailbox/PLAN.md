@@ -563,3 +563,19 @@ run `35802403723`（head `eba0108`，2026-09-23 00:31 UTC）——**web/build �
 - 三条验收记录的「待下次 push 由 CI 复验」未决项自本登记起结清，按**已到达（run `35802403723`）**读。
 - 通用规则示例更新要求：「台账不得复制禁用词表原文」为第二次复发（TASK-118、TASK-124），
   已写入后续任务包通用规则第 10 条示例。
+
+## 验收记录：`归档三个 spec 变更并收敛两处 actuator 漂移（TASK-127，2026-09-23）`
+
+| 项 | 内容 |
+| --- | --- |
+| 绑定修订 | 开工基线 `415d36d`（开工时 `git status` 仅 `?? .trae/`，无并行在途足迹）；3 个分批提交（fix(gateway) / docs(spec) / docs(mailbox)），末位为本条记录所在的收口提交（**未 push**、未建 PR） |
+| 门槛来源 | 本地实跑，唯一入口 `bash scripts/verify/mvn-verify.sh --mode=offline test` → rc=0 / BUILD SUCCESS / 模块合计 `20/30/33/80/81/50/6 = 300`（Failures 0 / Errors 0 / Skipped 0）。基线 299（20/29/33/80/81/50/6）：gateway 29→30（+1 判别式），其余六模块逐位一致零扰动。生效模式 offline、依赖来源可判定（未触发退出码 3） |
+| 是否到达外部门槛 | 本次**不 push**（任务硬边界），无新外部 run；待下次 push 由 CI 复验，此处如实标注不作声称 |
+| 漂移②红绿取证 | 判别式：ApplicationContextRunner 不注入 whitelist 属性实例化 AuthGlobalFilter（注册 JwtTokenParser bean + 名为 conversionService 的 ApplicationConversionService bean 复刻 Boot 生产语义——裸 runner 对 @Value 的 List 不按逗号拆分，首轮红证实测为单元素整串，对齐后以最终形态重取红），断言生效白名单等于新默认值及 health 放行 / metrics 不放行 / login 放行三条行为判别。**红**：定向 `--pl gateway-service test` rc=1，`Tests run: 30, Failures: 1`，唯一红 `defaultWhitelistEqualsHealthProbeOnly:133->lambda:138`，`but was: ["/api/auth/**", "/actuator/**"]`。**绿**：@Value 默认值改为健康探针精确匹配 + 类注释同步 → 同命令 rc=0，`Tests run: 30, Failures: 0`。**变异验证**：修复态 cp + sha256 留底（`8a415b32…` / `6659a251…`）→ sed 临时还原旧默认值复红 rc=1（同一判别式）→ 字节级 cp 还原 → `sha256sum -c` 两文件 OK + cmp IDENTICAL；全程未用 `git stash` |
+| 漂移① | add-auth-degrade-header-strip 的 spec-delta 白名单场景 GIVEN 整段通配 → `/actuator/health`（并档前修正，TASK-125 登记的未决项结清）；同文件头部「本次不归档」说明同步为已归档事实（描述归档状态句，非需求原文）；需求 WHEN/SHALL 与 Scenario 语义零改写 |
+| 归档 | 三个 delta 按 MODIFIED/ADDED 原文逐字并入主规格「鉴权」域（网关统一鉴权 +2 场景、白名单收紧整节 5 场景替换、网关降级路径剥离身份头 / 密钥注入严格模式 / 内部接口密钥常量时间比较三条新增）；头部提案清单与变更历史各补三条；tasks.json 三个各补归档阶段（全 completed）；`git mv` 整目录入 `spec/changes/archive/`，收口后 `spec/changes/` 下在途 0 个 |
+| 契约自证 | 在途 `mailbox-contract.sh --baseline=415d36d`：TASK-127 判据 A 两件套齐全、判据 B 通过（只改清单 15 项与实际改动集逐项一致，含重命名落点新路径口径）；收口提交后无参数复跑退出码 **0**（实测回填，见下方契约回填行） |
+| 只改清单一致性 | 实际改动集（`git diff --name-only 415d36d` + untracked 排除 `.trae/`）＝ AuthGlobalFilter.java · ActuatorWhitelistNarrowTest.java · 主规格 spec.md · 三个变更目录 9 文件（重命名落点口径：proposal 3 份纯移动零改动、delta 3 份中 1 份漂移①修正、tasks.json 3 份补归档阶段）· TASK-127/spec.md · TASK-127/handoff.md · 本文件，与 handoff 声明逐字一致（15 项） |
+| 词面自检 | CI 同款正则、双 locale：`LC_ALL=C` 全仓 **ZERO-HIT**；默认 locale 本轮实测同为 0 命中（既往登记的 api 模块 DTO 2 条伪影本轮未复现，如实记录不据此销案） |
+| 未覆盖 | ① 本次改动待下次 push 由 CI 复验；② 判别式的 conversionService bean 是对 Boot 生产转换语义的复刻（若未来 Boot 升级改变该机制，判别式形态需随之复核，测试注释已说明） |
+| 归档与后续 | 本任务即归档执行：收口后 `spec/changes/` 仅剩 archive/（22 个），TASK-125 handoff 两条未决（漂移①②）自本记录起结清 |
