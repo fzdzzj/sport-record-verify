@@ -627,15 +627,15 @@ run `35802403723`（head `eba0108`，2026-09-23 00:31 UTC）——**web/build �
 
 | 项 | 内容 |
 | --- | --- |
-| 绑定修订 | 开工基线 `9e64196`（开工时 `git status` 仅 `?? .trae/`）；`d866ca0` outbox 接线 + 建表脚本 · `e660d4e` 变更三件套 · 本条记录所在的收口提交，未 push |
+| 绑定修订 | 开工基线 `9e64196`（开工时 `git status` 仅 `?? .trae/`）；`d866ca0` outbox 接线 + 建表脚本 · `e660d4e` 变更三件套 · `7333ed3` 台账两件套与 PLAN · 本条记录所在的契约实测回填提交（收口），未 push |
 | 任务性质 | 代码接线：`VerifyService` 两处发事件改经 `VerifyOutboxService` 同事务写 outbox 行，relay 成唯一投递出口，`sql/03-verify-db.sql` 补表 |
 | 红①（接线缺失实证） | `--mode=offline --pl verify-service test` → **rc=1 / BUILD FAILURE**：`org.mockito.exceptions.verification.NeverWantedButInvoked` … `Never wanted here: -> at VerifyEventProducer.publish(VerifyEventProducer.java:39)` / `But invoked here: -> at VerifyService.verify(VerifyService.java:124) with arguments: [PASSED, 1, 100]`，模块 `Tests run: 82, Failures: 1`（`.trae/tmp/task131-red1.log`）。行号 `:124` 即 TASK-128 记录的 `:105-109` 直发点（TASK-129 javadoc 插入所致漂移） |
 | 红②（DDL 缺失实证） | scratch 容器 `task131-scratch-mysql`（mysql:8.0.46，宿主 13318）：按基线 `sql/03-verify-db.sql` 初始化 → `mysql_apply_rc=0` 但 `information_schema` 查 `verify_event_outbox` = **0**，库内仅 appeal/rule_version/verification_result，脚本命中数 0（`.trae/tmp/task131-ddl-red.log`） |
 | 绿②（表结构交付） | 补 DDL 后同一路径重建 → 表存在 = **1**，10 列与实体逐条对齐、`uk_event_id` 唯一键 + `idx_status_id` 在位，脚本连跑两次均 **rc=0**（IF NOT EXISTS 幂等），脚本命中数 1（`.trae/tmp/task131-ddl-green.log`） |
 | 绿与变异 | 定向绿 `Tests run: 88, Failures: 0` / rc=0（`.trae/tmp/task131-green2.log`）；变异（注释 `VerifyOutboxService:45` 的 outbox insert）→ 复现 3 条红（`VerifyServiceTest` 2 条 + `VerifyOutboxServiceTest` 1 条，均 `Wanted but not invoked: verifyEventOutboxMapper.insert`）/ rc=1（`.trae/tmp/task131-mutation.log`）；还原后 `sha256sum -c` OK + `cmp` 零差异（`d79c2804…9b43`） |
-| 门槛来源 | 本地实跑 `bash scripts/verify/mvn-verify.sh --mode=offline test` → **rc=0 / BUILD SUCCESS / `20/30/33/80/88/50/6 = 307`**（Failures 0 / Errors 0 / Skipped 0）；开工基线同命令 rc=0 / **300**（`.trae/tmp/task131-offline-baseline.log`、终态 `.trae/tmp/task131-offline-final.log`）。用例数只增不减：verify 81→88（+7），其余模块逐位不变 |
+| 门槛来源 | 本地实跑 `bash scripts/verify/mvn-verify.sh --mode=offline test` → **rc=0 / BUILD SUCCESS / `20/30/33/80/88/50/6 = 307`**（Failures 0 / Errors 0 / Skipped 0）；开工基线同命令 rc=0 / **300**（`.trae/tmp/task131-offline-baseline.log`、终态 `.trae/tmp/task131-offline-final.log`；收口修订 `7333ed3` 终跑同命令 **rc=0 / 307**，`.trae/tmp/task131-offline-close.log`）。用例数只增不减：verify 81→88（+7），其余模块逐位不变 |
 | 是否到达外部门槛 | **未达**（未 push，仅本地实跑） |
 | 词面自检 | `LC_ALL=C` **ZERO-HIT**（CI 同款正则，`.trae/tmp/wording-check-131.sh`，`--untracked` 覆盖本任务新文件）；默认 locale 2 命中为 TASK-118 起既登记的本机伪影（`api/src/main/java/com/sportverify/api/mapmatch/dto/MapMatchResultDTO.java:17/36`，本任务未触碰），按未覆盖登记 |
-| 契约 | 在途 `--baseline=9e64196` → **`TASK-131：判据 B 通过（只改清单与实际改动集一致）`**（`.trae/tmp/task131-contract-inflight2.log`；整体 rc=1 为历史任务在公共文件 `PLAN.md`／本任务新文件上的既有交叠噪声：TASK-102/106/109/110/130 等段的「清单多报 + 改动集未声明」，本任务段零多报零未声明）；收口提交后无参数复跑结论见下方「TASK-131 契约复跑（收口后）」行 |
+| 契约 | 在途 `--baseline=9e64196` → **`TASK-131：判据 B 通过（只改清单与实际改动集一致）`**（`.trae/tmp/task131-contract-inflight2.log`；整体 rc=1 为历史任务在公共文件 `PLAN.md`／本任务新文件上的既有交叠噪声：TASK-102/106/109/110/130 等段的「清单多报 + 改动集未声明」，本任务段零多报零未声明）；收口提交 `7333ed3` 后无参数复跑 → **rc=0**（`契约校验通过（退出码 0）：判据 A 两件套齐（含 0 个待办进行中）+ 判据 B 清单一致`，`.trae/tmp/task131-contract-final.log`） |
 | 未覆盖 | 真 broker 端到端（relay → RocketMQ → leaderboard 消费）与全栈入榜时延本期未跑：判据形态为 mock MQ + 真 Mapper/写侧，relay 行内 eventId 透传由单测判定；「5s 周期延迟」为配置推演而非实测时延 |
 | 未决（交主 agent/用户） | ① 终判后 `verification_result.verdict` 是否随改判更新（本任务保持既有读语义，未擅自扩大）；② `spec/changes/wire-verify-outbox/` 归档按后续流程收口；③ 事件延迟口径（若演示/压测要毫秒级需调 relay 周期，属参数而非缺陷）；④ F09 消费端双轨重试归 TASK-132 |
