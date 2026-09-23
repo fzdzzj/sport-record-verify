@@ -141,7 +141,7 @@ leaderboard（`Tests run: 50, Failures: 4, Errors: 0, Skipped: 0`）同构 4 条
 
 ## offline 全量汇总
 
-`bash scripts/verify/mvn-verify.sh --mode=offline test` → **rc=0 / BUILD SUCCESS**，逐模块 `20/30/33/80/88/50/6 = 307`（Failures 0 / Errors 0 / Skipped 0）。开工基线同命令 **rc=0 / 307**（`.trae/tmp/task132-offline-baseline.log`），终态 `.trae/tmp/task132-offline-final.log`。
+`bash scripts/verify/mvn-verify.sh --mode=offline test` → **rc=0 / BUILD SUCCESS**，逐模块 `20/30/33/80/88/50/6 = 307`（Failures 0 / Errors 0 / Skipped 0）。开工基线同命令 **rc=0 / 307**（`.trae/tmp/task132-offline-baseline.log`），冻结修订 `.trae/tmp/task132-offline-final.log`，**收口修订（`b583059`）终跑同命令 rc=0 / 307**（`.trae/tmp/task132-offline-close.log`）——门槛数字绑定收口修订，与基线逐位一致。
 
 ## 静态检查（leaderboard-service，本仓唯一接入模块）
 
@@ -149,11 +149,14 @@ leaderboard（`Tests run: 50, Failures: 4, Errors: 0, Skipped: 0`）同构 4 条
 
 ## 词面自检
 
-脚本 `.trae/tmp/wording-check-132.sh`（CI 同款正则与排除，UTF-8 承载、命令行纯 ASCII）：`LC_ALL=C` 与默认 locale 双跑，结果见 PLAN 收口记录。
+脚本 `.trae/tmp/wording-check-132.sh`（CI 同款正则与排除，UTF-8 承载、命令行纯 ASCII），收口提交后在 tracked 载体上双跑：
+
+- `LC_ALL=C` → **ZERO-HIT**（rc=0）；
+- 默认 locale → 2 命中，全在 `api/src/main/java/com/sportverify/api/mapmatch/dto/MapMatchResultDTO.java:17/36`——即 TASK-118 起反复登记的本机 locale 伪影（该文件本任务未触碰，判据以 `LC_ALL=C` 为准），按**未覆盖**登记，不写成通过、也不写成用例红。
 
 ## 契约
 
-见 PLAN.md 收口记录（在途 `--baseline=5f89566` + 收口后无参数两跑）。
+在途 `bash scripts/verify/mailbox-contract.sh --baseline=5f89566`（`.trae/tmp/task132-contract-inflight.log`）：判据 A 两件套齐全；**`TASK-132：判据 B 通过（只改清单与实际改动集一致）`**——10 项声明零多报、零未声明。整体 rc=1 的成因是公共文件 `PLAN.md` 进改动集后，全部历史 handoff（各自声明过 `PLAN.md`）与其交叠而触发强校验，报出「改动集未声明：TASK-132/*」（即本任务自身文件对历史清单而言是新面孔），既有「公共文件过冲」现象，非本任务清单不一致。收口提交后无参数复跑结论见 PLAN 记录。
 
 ## 只改清单
 
