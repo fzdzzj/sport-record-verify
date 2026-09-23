@@ -619,6 +619,6 @@ run `35802403723`（head `eba0108`，2026-09-23 00:31 UTC）——**web/build �
 | 门槛来源 | 本地实跑 `bash scripts/verify/mvn-verify.sh --mode=offline test` → **rc=0 / BUILD SUCCESS / `20/30/33/80/81/50/6 = 300`**（Failures 0 / Errors 0 / Skipped 0），与 TASK-127 起收口锚点逐位一致**零扰动**（任务包所写 299 为过期锚点）。日志 `.trae/tmp/task130-offline.log` |
 | 未达外部门槛 | **未达**（未 push，仅本地实跑） |
 | 词面自检 | `LC_ALL=C` **ZERO-HIT**（CI 同款正则，`.trae/tmp/task130-wording.sh`，含本任务 4 文件直扫）；默认 locale 2 命中为 TASK-118 起既登记的本机伪影（`api/.../MapMatchResultDTO.java:17/36`，本任务未触碰），按未覆盖登记 |
-| 契约 | 在途 `--baseline=f2b58c3` → **`TASK-130：判据 B 通过（只改清单与实际改动集一致）`**（.trae/tmp/task130-contract-inflight.log；整体 rc=1 为 TASK-128/129 两笔历史的公共文件过冲噪声，本任务段无多报/未声明）；收口提交后无参数复跑结论见下方「契约实测回填」条 |
+| 契约 | 在途 `--baseline=f2b58c3` → **`TASK-130：判据 B 通过（只改清单与实际改动集一致）`**（.trae/tmp/task130-contract-inflight2.log；整体 rc=1 为历史任务（TASK-128/129 等）在公共文件 `PLAN.md` 上的既有交叠噪声，本任务段零多报零未声明）；收口提交 `a93c88b` 后无参数复跑：**退出码 0**（`契约校验通过：判据 A 两件套齐（含 0 个待办进行中）+ 判据 B 清单一致`，.trae/tmp/task130-contract-final.log） |
 | 立项建议（交主 agent 写任务包） | **建议立项**：F05 批量预筛（P1，叠 K 分块）、F06 分批取数（P1，含 rank 等价性说明）、F15+F16 合成「点赞规模化」（P1+P2）、F08 残留一行（P2）、F18 索引（P2）；**需用户拍板**：F17 防击穿口径（Caffeine 单飞 vs SETNX，需与 F13 既有结论对齐）、治理面方向（维持 ADR 边界并把凭证硬化扩到治理面路径 vs 服务侧二道防线——**「服务侧读 X-Role」为零增量假硬化，两方向都应排除**）、好友榜 >1000 截断是否按演示规模口径接受、TASK-103 台账虚报订正口径；**建议关闭**：F16 单列（并入 F15 同一变更）。逐项证据/量化假设/红绿判别式可行性见 tasks/TASK-130/handoff.md |
 | 未决 | 上表「需用户拍板」四项待裁定；scratch PostGIS / MySQL 语义 IT 与全栈直连实测本期未覆盖（环境不可用），已如实登记 |
