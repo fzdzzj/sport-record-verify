@@ -42,7 +42,7 @@ import java.util.concurrent.ConcurrentHashMap;
 @EnableCaching
 public class CacheConfig {
 
-    /** 与 {@code LeaderboardService#topOverall} 的 {@code @Cacheable} value 一致 */
+    /** 与 {@code LeaderboardService#top} 的 overall {@code @Cacheable} value 一致 */
     private static final String OVERALL_CACHE = "leaderboard:overall";
 
     /** 两层统一的 TTL */

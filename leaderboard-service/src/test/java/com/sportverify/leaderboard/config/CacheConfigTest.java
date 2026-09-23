@@ -33,7 +33,7 @@ import static org.mockito.Mockito.when;
  *   <li>{@code CacheConfig} 曾同时暴露 {@code caffeineCacheManager} 与 {@code redisCacheManager}
  *       两个 {@code CacheManager} bean 且无 {@code @Primary} —— 按类型注入当场歧义，
  *       只有起上下文才炸得出来，故用 {@link ApplicationContextRunner} 断言唯一解析；</li>
- *   <li>{@link LeaderboardService#topOverall} 的 {@code @Cacheable(cacheManager="hierarchicalCacheManager")}
+ *   <li>{@link LeaderboardService#top} 的 {@code @Cacheable(cacheManager="hierarchicalCacheManager")}（仅 overall 条件）
  *       指向的 bean 当时根本不存在，首次调用即 {@code NoSuchBeanDefinitionException}。
  *       单测直调方法绕过了缓存代理，所以永远不红；这里按注解里的名字真去容器里取一次；</li>
  *   <li>{@code CacheConfig} 曾用裸 {@code new ObjectMapper()} 顶掉 Boot 的自动装配
@@ -114,7 +114,7 @@ class CacheConfigTest {
 
     @Test
     void cacheableQualifierResolvesToARealBean() {
-        Cacheable cacheable = cacheableOnTopOverall();
+        Cacheable cacheable = cacheableOnTop();
         runner.run(context -> assertThat(context.containsBean(cacheable.cacheManager())).isTrue());
     }
 
@@ -207,11 +207,12 @@ class CacheConfigTest {
                 new CacheConfig.HierarchicalCacheManager(l1, l2);
     }
 
-    private static Cacheable cacheableOnTopOverall() {
+    private static Cacheable cacheableOnTop() {
         try {
-            return LeaderboardService.class.getMethod("topOverall", int.class).getAnnotation(Cacheable.class);
+            return LeaderboardService.class.getMethod("top", String.class, Long.class, Integer.class)
+                    .getAnnotation(Cacheable.class);
         } catch (NoSuchMethodException ex) {
-            throw new AssertionError("LeaderboardService#topOverall(int) 签名变了，缓存注解断言需同步", ex);
+            throw new AssertionError("LeaderboardService#top(String, Long, Integer) 签名变了，缓存注解断言需同步", ex);
         }
     }
 

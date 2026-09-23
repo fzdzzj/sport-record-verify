@@ -210,6 +210,10 @@ public class LeaderboardService {
      * @param userId 查询人（friend 榜必填：按其好友列表过滤；overall 忽略）
      * @param size   取前 N 名
      */
+    @Cacheable(value = "leaderboard:overall", cacheManager = "hierarchicalCacheManager",
+            key = "#size == null || #size <= 0 ? 50 : (#size > 1000 ? 1000 : #size)",
+            condition = "#type != null && 'overall'.equalsIgnoreCase(#type)",
+            unless = "#result == null || #result.isEmpty()")
     public List<LeaderboardDTO> top(String type, Long userId, Integer size) {
         int topN = (size == null || size <= 0) ? DEFAULT_TOP_N : Math.min(size, 1000);
         if ("overall".equalsIgnoreCase(type)) {
@@ -226,10 +230,9 @@ public class LeaderboardService {
 
     /**
      * 总榜（规范差异「总榜查询」）：ZREVRANGE 取前 N（按里程降序），批量补昵称。
-     * <p>二级缓存：L1 Caffeine + L2 Redis，TTL=5min，解决多实例不一致窗口。</p>
+     * <p>二级缓存挂在 {@link #top} 的 overall 正常入口；此方法由 {@code top} 内部调用，
+     * 避免 self-invocation 绕过 Spring 缓存代理。</p>
      */
-    @Cacheable(value = "leaderboard:overall", cacheManager = "hierarchicalCacheManager", key = "#size", condition = "#size > 0",
-            unless = "#result == null || #result.isEmpty()")
     public List<LeaderboardDTO> topOverall(int size) {
         Set<TypedTuple<String>> tuples =
                 stringRedisTemplate.opsForZSet().reverseRangeWithScores(OVERALL_ZSET_KEY, 0, size - 1L);
