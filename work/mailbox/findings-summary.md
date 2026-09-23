@@ -72,6 +72,7 @@ P0=必修（安全/数据丢失）；P1=应修（可靠性/性能）；P2=建议
 ### F20 服务未容器化：compose 只编排中间件，6 个服务靠宿主机 java -jar；缺 Dockerfile、缺服务级编排与健康检查。改法：multi-stage Dockerfile + compose 服务层（可选 profile）。
 ### F21 CI 缺口：无静态检查（spotless/checkstyle）、无依赖漏洞扫描（OWASP dependency-check）、无镜像构建。改法：按需增补 CI 步骤。
 ### F22 VerifyService.verify 同一 recordId 并发重入无互斥：双判定重复回调依赖 3003 冲突重试收敛。改法：可配 Redisson 锁或文档化接受。（VerifyService.java:79-118）
+  → **已裁定文档化接受（2026-09-23，TASK-129）**：后果链四环节逐条核实——① 双判定落库为 record_id 主键幂等写入（INSERT IGNORE 占位 + upsert 只覆盖不新增，VerificationResultMapper.java:17-28）；② record 回调状态已等目标态幂等跳过、乐观锁冲突返回 3003（SportRecordService.java:171/175-179，ResultCode.java:44），消费端删去重键重投、重入 verify 读终判走补偿回调收敛（VerifyEventConsumer.java:190-197、VerifyService.java:131-142）；③ 榜单侧 per-record 互斥锁 + 锚点行 INSERT IGNORE/乐观 UPDATE，双 VERIFIED 事件只加分一次（LeaderboardService.java:128-154）。**无双份加分可复现路径**，属冲突拒绝式收敛 + 消费幂等兜住。权衡说明已补入 VerifyService.verify javadoc（对齐 ADR-0009 表述风格）。**重开条件**：锚点行幂等或回调收敛链路被移除/实证失效，或出现可复现错态（重复加分/扣分），再立项可配 Redisson 锁。
 
 ## 维度总评
 - 架构：模块边界清晰、契约/实现分离到位；主要欠账是「事件可靠性」（F03/F09）与「锁-事务顺序」（F04）。
