@@ -75,6 +75,21 @@ public class VerifyService {
      *
      * <p>无本地长事务（ADR-0009）：路径含 Feign 拉轨迹、MQ 发事件、回调 record 状态，
      * 禁止把远程调用/消息发送包进本地事务，也不因此引入分布式事务框架。幂等占位 + 补偿回调保证最终一致。</p>
+     *
+     * <p>并发重入权衡（TASK-123 裁定哲学承续，2026-09-23 文档化接受）：本方法对同一 recordId
+     * 不加互斥，MQ 消费重投与 Feign 直调降级（人工重放）并发时可双判定、双发事件、双回调。
+     * 收敛不靠锁，靠既有三层机制兜住：</p>
+     * <ol>
+     *   <li>判定落库为 record_id 主键幂等写入：占位 INSERT IGNORE、终判 upsert 只覆盖不新增
+     *       （VerificationResultMapper.initVerifying/upsert），双判定不产生第二行；</li>
+     *   <li>record 侧状态回调：状态已等于目标态幂等跳过，乐观锁冲突（状态或版本已变更）
+     *       返回 3003 → 消费端删去重键交 MQ 退避重投，重入本方法读到终判走
+     *       {@link #reconcileCallback 补偿回调} 收敛；</li>
+     *   <li>榜单侧：per-record 互斥锁 + 贡献锚点行 INSERT IGNORE/乐观 UPDATE，重复 VERIFIED
+     *       事件只加分一次（LeaderboardService.applyVerified），无双份加分路径。</li>
+     * </ol>
+     * <p>重开条件：上述任一兜底被移除或实证失效，或出现可复现错态（重复加分/扣分），
+     * 再立项可配 Redisson 锁；当前无正确性缺陷实证，不做无实证优化。</p>
      */
     public VerdictResult verify(Long recordId) {
         VerdictResult cached = readCachedResult(recordId);
