@@ -24,7 +24,7 @@
 
 | 项 | 内容 |
 | --- | --- |
-| 绑定修订 | 未提交工作树；开工基线 `9fef29119ba5a2b1c5c7bc528f1c54e1811afe21`。无本次 commit id，未把未提交改动表述为 commit 结论。 |
+| 绑定修订 | 开工基线 `9fef29119ba5a2b1c5c7bc528f1c54e181afe21`；业务/测试/spec 修订绑定本地 commit `27399f04a606220e03a67eea2ff8ed4855e509c5`（`fix(leaderboard): 完善好友榜分页完整性`）。本行与 handoff 为后续记录补录，未 push。 |
 | 目标与范围 | 仅 `leaderboard-service`：好友分页按 `PageResult.total` 取齐；好友榜按 500 条窗口分批扫描 ZSet，保持只显示好友、排序、过滤后 rank、服务降级空榜；明确不添加 `@Cacheable`。 |
 | 受控红绿 | 新增分页完整性回归后，Git Bash 改前定向测试 `rc=1`，`28` 例中 `2` 失败；最小修复后 `rc=0`，`28/0/0/0`。 |
 | 本地门槛来源 | Git Bash 调用 offline 目标入口：`--mode=offline --pl leaderboard-service test` `rc=0`，目标模块 `54/0/0/0`；offline 静态入口 `--mode=offline --static=leaderboard-service` `rc=0`，Checkstyle 0 violations，SpotBugs Error size 0，PMD 构建成功。 |
