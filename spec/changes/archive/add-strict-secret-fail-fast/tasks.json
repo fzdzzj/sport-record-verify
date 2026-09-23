@@ -28,5 +28,10 @@
     "id": "TASK-126-06",
     "step": "分批 commit + PLAN.md 验收记录 + handoff 收口",
     "status": "pending"
+  },
+  {
+    "id": "TASK-126-07",
+    "step": "归档：spec-delta 需求原文逐字并入主规格「鉴权」域 + 目录移入 spec/changes/archive/（TASK-127 执行）",
+    "status": "completed"
   }
 ]

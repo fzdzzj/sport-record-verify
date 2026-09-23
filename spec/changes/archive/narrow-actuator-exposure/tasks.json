@@ -1,0 +1,74 @@
+[
+  {
+    "number": 1,
+    "category": "阶段 1：网关白名单收窄",
+    "task": "whitelist /actuator/** → /actuator/health（精确匹配）",
+    "steps": [
+      {
+        "step": "gateway application.yml whitelist 一行收窄 + 相邻注释同步",
+        "completed": true
+      },
+      {
+        "step": "新测试 ActuatorWhitelistNarrowTest（classpath yml 灌真实 whitelist，承 LeaderboardDailyAdminOnlyTest 先例）先红后绿",
+        "completed": true
+      },
+      {
+        "step": "变异验证：whitelist 临时改回 /actuator/** 复现红，还原 cmp 零差异",
+        "completed": true
+      }
+    ],
+    "passes": true
+  },
+  {
+    "number": 2,
+    "category": "阶段 2：health 详情收窄",
+    "task": "六个服务 show-details always → never",
+    "steps": [
+      {
+        "step": "gateway/user/verify/leaderboard/mapmatch 五个 yml + record application.properties 各一行",
+        "completed": true
+      },
+      {
+        "step": "health 仍返回 UP/status（端点本体保留，只收详情层）",
+        "completed": true
+      }
+    ],
+    "passes": true
+  },
+  {
+    "number": 3,
+    "category": "阶段 3：规范与台账",
+    "task": "三件套 + 台账两件套 + PLAN 收口",
+    "steps": [
+      {
+        "step": "spec-delta MODIFIED「网关统一鉴权」「白名单收紧」+ 新增场景（EARS）",
+        "completed": true
+      },
+      {
+        "step": "台账两件套 + PLAN.md 验收记录 + 契约收口",
+        "completed": true
+      }
+    ],
+    "passes": true
+  },
+  {
+    "number": 4,
+    "category": "阶段 4：归档",
+    "task": "归档并入主规格并移入 archive/（TASK-127）",
+    "steps": [
+      {
+        "step": "spec-delta 需求原文逐字并入 spec/specs/sport-record-verify/spec.md（EARS/Scenario 逐字搬移）",
+        "completed": true
+      },
+      {
+        "step": "主规格头部提案清单与变更历史补条目",
+        "completed": true
+      },
+      {
+        "step": "git mv 整目录移入 spec/changes/archive/",
+        "completed": true
+      }
+    ],
+    "passes": true
+  }
+]

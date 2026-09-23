@@ -40,6 +40,9 @@
 - update-perf-optimized-defaults（提交路径默认批量插入）
 - add-middleware-it-coverage（真中间件路径自动覆盖）
 - add-sharding-host-env-override（sharding 数据源 host 环境变量覆盖）
+- add-auth-degrade-header-strip（鉴权降级路径剥离身份头）
+- narrow-actuator-exposure（actuator 暴露面收窄）
+- add-strict-secret-fail-fast（密钥注入严格模式与常量时间比较）
 
 各提案的 spec-delta 中 ADDED 需求已全部合并进本规范，MODIFIED 需求按规则处理（见「服务划分」分组与「变更历史」）。
 
@@ -1985,9 +1988,16 @@ AND 不放行至下游
 
 #### Scenario: 白名单放行
 
-GIVEN 请求路径属白名单（/api/auth、/internal、/actuator）
+GIVEN 请求路径属白名单（/api/auth/** 与健康探针 /actuator/health）
 WHEN 网关过滤器处理
 THEN 跳过鉴权直接放行
+
+#### Scenario: actuator 非 health 端点走鉴权
+
+GIVEN 请求路径为 /actuator/health 以外的 actuator 子路径（如 /actuator/metrics、/actuator/env、/actuator/prometheus）
+WHEN 网关过滤器处理且请求无有效 token
+THEN 返回 401（1001）
+AND 不放行至下游
 
 ### Requirement: 用户数据隔离
 
@@ -2025,6 +2035,30 @@ AND 不启用网关鉴权
 GIVEN auth.enabled=true
 WHEN 请求受保护接口
 THEN 强制走网关鉴权与数据隔离
+
+### Requirement: 网关降级路径剥离身份头
+
+WHEN 请求未经过网关鉴权注入（鉴权开关关闭或路径命中白名单）,
+系统 SHALL 在透传前剥离外部携带的 `X-User-Id` 与 `X-Role` 头。
+
+#### Scenario: 降级开关下的伪造头清洗
+
+GIVEN `app.auth.enabled=false` 且外部请求携带 `X-User-Id` / `X-Role`
+WHEN 网关转发该请求
+THEN 下游收到的请求不含这两个外部头
+
+#### Scenario: 白名单路径下的伪造头清洗
+
+GIVEN 请求路径命中白名单（`/api/auth/**` 或 `/actuator/health`）且外部请求携带 `X-User-Id` / `X-Role`
+WHEN 网关转发该请求
+THEN 下游收到的请求不含这两个外部头
+
+#### Scenario: 鉴权路径的覆盖式注入不受影响
+
+GIVEN `app.auth.enabled=true` 且请求携带有效 token 与外部伪造的 `X-User-Id` / `X-Role`
+WHEN 网关过滤器处理
+THEN 下游收到的是 token 解析出的 `X-User-Id` / `X-Role`
+AND 剥离逻辑不作用于该分支
 
 ### Requirement: 用户角色模型
 
@@ -2080,7 +2114,7 @@ THEN 返回 401（1001）
 ### Requirement: 白名单收紧
 
 WHEN 网关过滤请求,
-系统 SHALL 不为管理端接口提供匿名放行；内部接口（`/internal/**`）SHALL 不对公网经网关路由暴露，且网关白名单 SHALL NOT 包含无对应路由的 `/internal/**` 死配置（避免未来误加 internal 路由时安全边界塌陷为可自提权）。Actuator 指标端点本地演示可经白名单暴露，生产 profile SHALL 收敛暴露面（收窄 include，或管理端口/内网抓取隔离）。
+系统 SHALL 不为管理端接口提供匿名放行；内部接口（`/internal/**`）SHALL 不对公网经网关路由暴露，且网关白名单 SHALL NOT 包含无对应路由的 `/internal/**` 死配置（避免未来误加 internal 路由时安全边界塌陷为可自提权）。网关白名单对 actuator SHALL 只放健康探针 `/actuator/health`（精确匹配，SHALL NOT 含 `/actuator/**` 整段通配）；actuator 其余端点（指标/环境等）经网关访问 MUST 走鉴权分支，监控抓取按 ADR-0007 走内网直连不经网关。
 
 #### Scenario: 管理端不匿名放行
 
@@ -2101,14 +2135,22 @@ AND 服务本地仍须通过共享密钥校验（见「内部接口共享密钥�
 GIVEN 网关应用配置已加载
 WHEN 读取 app.auth.whitelist
 THEN 列表不含 `/internal/**`
-AND 仍包含发 token 与探针所需前缀（如 `/api/auth/**`、`/actuator/**`）
+AND 仍包含发 token 所需前缀（`/api/auth/**`）与健康探针精确路径（`/actuator/health`）
 
-#### Scenario: 生产 actuator 收敛口径已文档化
+#### Scenario: 白名单无 actuator 整段通配
 
-GIVEN 运维阅读 README 或 ADR-0007/0003
-WHEN 部署生产 profile
-THEN 文档要求收敛 actuator 暴露（收窄 include 或管理端口隔离）
-AND 不将本地演示的 prometheus/metrics 公网可读配置直接用于生产
+GIVEN 网关应用配置已加载
+WHEN 读取 app.auth.whitelist
+THEN 列表不含 `/actuator/**`
+AND actuator 指标/环境端点经网关访问须携带有效 token
+
+#### Scenario: health 探针不泄组件明细
+
+GIVEN 任一服务（含网关）应用配置已加载
+WHEN 读取 management.endpoint.health.show-details
+THEN 值为 never
+AND /actuator/health 响应仅含整体 status，不含数据源/Redis/磁盘等组件明细
+AND health 端点本体与 include 列表（prometheus/metrics）保留（监控栈内网直连不受影响）
 
 ### Requirement: 内部接口共享密钥校验
 
@@ -2135,6 +2177,49 @@ GIVEN 部署生产环境
 WHEN 未注入 `INTERNAL_API_TOKEN`
 THEN 使用演示默认值属于不安全配置
 AND README/ADR-0007 明示生产必须注入
+
+### Requirement: 密钥注入严格模式
+
+WHEN 配置 `app.security.strict=true`,
+系统 SHALL 在启动期校验全部安全密钥项（JWT 签名密钥、内部接口共享密钥的收发两侧）：
+任一密钥项未显式注入（解析结果为 null 或等于本地演示默认串）时 SHALL 启动失败（fail-fast，
+抛 `IllegalStateException`），SHALL NOT 回落到硬编码演示默认值静默运行。
+
+#### Scenario: strict 模式下密钥缺失启动失败
+
+GIVEN `app.security.strict=true`
+WHEN 任一密钥项未注入（配置缺失，解析回落到演示默认串）
+THEN 应用上下文启动失败（`IllegalStateException`）
+AND 失败信息指明缺失的密钥配置项
+
+#### Scenario: strict 模式下密钥显式注入正常启动
+
+GIVEN `app.security.strict=true`
+WHEN 全部密钥项均已显式注入
+THEN 应用上下文正常启动
+AND 各密钥行为与默认模式一致
+
+#### Scenario: 默认模式零扰动
+
+GIVEN 未配置 `app.security.strict`（默认 false）
+WHEN 以本地演示默认值启动
+THEN 行为与引入本开关前逐位一致
+AND 演示默认值原样保留
+
+### Requirement: 内部接口密钥常量时间比较
+
+WHEN `InternalApiAuthFilter` 校验 `X-Internal-Token` 与配置密钥是否一致,
+系统 SHALL 使用常量时间比较（`MessageDigest.isEqual`）判定，
+SHALL NOT 使用 `String.equals` 等非常量时间比较；判定结果 SHALL 与等值比较语义等价
+（一致放行，不一致 403/1002）。
+
+#### Scenario: 常量时间比较行为等价
+
+GIVEN 内部接口密钥校验开启
+WHEN 请求携带与配置一致的 token
+THEN 放行（与既有行为一致）
+WHEN 请求携带不一致或缺失的 token
+THEN 拒绝（403/1002，与既有行为一致）
 
 ## Web 控制台
 
@@ -2609,3 +2694,6 @@ AND 下次读取回源到最新值
 - **add-resilience-hardening**：Feign 容错标准化 + 内部接口凭证硬化。全局默认超时 connect 1000ms / read 3000ms（此前未配置的客户端走 Feign 默认 10s/60s，慢依赖可拖死整条链路）；每个 Feign 契约要么有 fallbackFactory、要么显式标注「不可软降级」——降级决策是产品语义而非实现细节：好友榜选**空榜**（反对「不过滤」，否则总榜非好友会泄露进好友榜）、RecordApi/AuthApi **不可软降级**（无轨迹无法判定、不可伪造 token/成功，fallback 只把故障转成 4007/4006 驱动重试或 DLQ）。内部接口从「仅网内拓扑信任」升级为「共享密钥校验」：服务本地 `/internal/**` 校验 `X-Internal-Token`（`app.internal.token` / 环境变量 `INTERNAL_API_TOKEN`，默认值仅本地演示），Feign 出站拦截器自动注入；网关白名单删除无路由的 `/internal/**` 死配置（原本不是漏洞，但未来误加 internal 路由会塌陷为可自提权）。新增错误码 4006-4008。引用 docs/adr/0007。
 - **add-request-tracing**：请求贯穿标识，以 MDC 最小实现满足「一次请求可检索对齐」，保持 ADR-0003 决策不引入 SkyWalking/Zipkin/Sleuth。三层：① 网关 `RequestIdGlobalFilter` 保证存在 `X-Request-Id`（已有则沿用，否则生成 UUID），写响应头并透传下游（WebFlux 过滤器是 `GlobalFilter` 而非 Servlet Filter）；② 各业务服务 `TraceIdFilter` 写入 MDC 键 `traceId` 并在请求结束清理，统一日志 pattern `[%X{traceId}]`（record-service 经 properties 的 `logging.pattern.console`，故六服务口径一致）；③ MQ 侧 Producer 把 traceId 写入消息 userProperty（键 `X-Request-Id`）、Consumer 还原到 MDC 并在处理后清理，使 record→verify→leaderboard 跨服务异步链路共用同一 traceId。已知残余：verify→record 的 Feign 状态回调用例在 record 侧日志会生成新 traceId（MQ 主链路已串通）；traceId 刻意不打 Micrometer tag（高基数）。引用变更 spec/changes/archive/add-request-tracing/。
 - **add-controlled-verify-entrypoint**：统一验收入口与门槛接线，起于一次 Harness 评审（窗口 2026-08-22~09-21，150 会话 / 502 Task Episode）。为什么要唯一入口：D12 事故证明"漏 `-s` 的 mvn 命令"会给出可信的假绿（换规范口径后 leaderboard 连依赖都解析不了，整批"通过"作废），而修正后的口径当时只活在台账散文里，README 与 CI 沿用的正是被作废的那一类命令；入口因此承担两件事——命令拼写唯一定义 + **调用构建前先打印并校验生效依赖来源**（离线仓缺失时以独立退出码失败，不与用例红混记）。四条新门槛步骤的落地过程本身成了两条口径教训：其一，`compose config -q` "在 HEAD 实测 0 退出"是在有 `.env` 的开发机上量的，干净检出下六个服务的 `env_file: [.env]` 会让该步在解析阶段就失败——机器态当仓库态，与本变更要堵的是同一类错误，故新增「环境文件不入库时门槛仍可解析」场景；其二，词面自检原先只看 markdown，实测 4 处命中在 java/yml 注释里，扩围后改为覆盖全部公开文本载体。真库 IT 与前端检查从"存在但没有路径"变为可触发（IT 缺环境变量按未覆盖计，不得记为通过；前端以 `--frozen-lockfile` + type-check + build 上门槛）。收口纪律同步升级：验收记录必须绑定 commit 与门槛来源，外部门槛结论变化时当场更新，不留过期判断。归档同一轮补记：前端生成物一致性判据已落地——提交真实的 `typed-router.d.ts`（原提交是 11 行手写桩且承重），并以手写的 `web/src/vue-router-auto-shim.d.ts` 供 `vue-router/auto` 的类型（vue-router@4.6 把该类型入口留成空占位、unplugin-vue-router@0.19.2 不写它），前端门槛由三条命令扩为四条。引用变更 spec/changes/archive/add-controlled-verify-entrypoint/。
+- **add-auth-degrade-header-strip**：补齐「不校验时的身份边界」。降级开关（`app.auth.enabled=false`，默认）与白名单是网关的两条透传主路径，此前原样透传不动头——而网关 8080 是唯一对外入口，调用方自带 `X-User-Id` 即可冒充任意用户（连 token 都不需要）。本变更后两条透传路径在放行前剥离外部携带的 `X-User-Id`/`X-Role`，「不校验」只关掉鉴权判定，不等于把身份认定权交给调用方；鉴权开启分支维持覆盖式注入不受影响，剥离与注入互补构成完整身份认定口径。需求边界是**头**不是开关：开关默认值不变（本地演示与压测旧行为保留）。服务直连端口（127.0.0.1:8081-8085）的暴露面不在需求范围，属网络层职责。引用变更 spec/changes/archive/add-auth-degrade-header-strip/。
+- **narrow-actuator-exposure**：网关白名单对 actuator 只放健康探针 `/actuator/health`（精确匹配，SHALL NOT 含 `/actuator/**` 整段通配）——一通配即把 metrics/env/heapdump 等任意端点泄给未认证调用方；其余端点经网关 MUST 走鉴权分支，监控抓取按 ADR-0007 走内网直连不经网关（prometheus 六 target 均直连服务端口）。六服务 health `show-details` 收敛为 `never`：响应仅含整体 status，不含数据源/Redis/磁盘等组件明细；health 端点本体与 include 列表（prometheus/metrics）保留。引用变更 spec/changes/archive/narrow-actuator-exposure/。
+- **add-strict-secret-fail-fast**：密钥兜底默认的治理开关。`app.security.strict=true`（默认 false，本地演示零扰动）时启动期校验全部安全密钥项（JWT 签名密钥 user/gateway 两侧、内部接口共享密钥 common/api 收发两侧），任一项未显式注入（解析为 null 或等于演示默认串）即 fail-fast 抛 `IllegalStateException`，堵住「生产漏注入密钥静默回落公开仓字面值」的缺口；`InternalApiAuthFilter` 共享密钥比较改 `MessageDigest.isEqual` 常量时间比较（判定结果与等值比较语义等价：一致放行、不一致 403/1002）。引用变更 spec/changes/archive/add-strict-secret-fail-fast/。

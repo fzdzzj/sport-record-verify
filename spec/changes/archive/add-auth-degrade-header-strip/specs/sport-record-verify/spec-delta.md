@@ -1,7 +1,8 @@
 # 规范差异：sport-record-verify
 
 本文件包含对 `spec/specs/sport-record-verify/spec.md` 的规范变更（「网关鉴权」域内新增需求）。
-本次**不归档**：需求并入主规格由后续变更统一处理，本目录保留提案三件套与差异原文。
+已于 TASK-127 归档：需求已按原文并入主规格「鉴权」域（GIVEN 的白名单口径同步修正为
+`/actuator/health`，即 TASK-125 登记的漂移①）。
 
 ## ADDED Requirements
 
@@ -18,7 +19,7 @@ THEN 下游收到的请求不含这两个外部头
 
 #### Scenario: 白名单路径下的伪造头清洗
 
-GIVEN 请求路径命中白名单（`/api/auth/**` 或 `/actuator/**`）且外部请求携带 `X-User-Id` / `X-Role`
+GIVEN 请求路径命中白名单（`/api/auth/**` 或 `/actuator/health`）且外部请求携带 `X-User-Id` / `X-Role`
 WHEN 网关转发该请求
 THEN 下游收到的请求不含这两个外部头
 

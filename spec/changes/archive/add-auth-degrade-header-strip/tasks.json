@@ -1,0 +1,130 @@
+[
+  {
+    "number": 1,
+    "category": "阶段 1：规范与台账",
+    "task": "建提案三件套与任务台账",
+    "steps": [
+      {
+        "step": "spec/changes/add-auth-degrade-header-strip/proposal.md",
+        "completed": true
+      },
+      {
+        "step": "spec/changes/add-auth-degrade-header-strip/tasks.json",
+        "completed": true
+      },
+      {
+        "step": "spec/changes/add-auth-degrade-header-strip/specs/sport-record-verify/spec-delta.md",
+        "completed": true
+      },
+      {
+        "step": "work/mailbox/tasks/TASK-119/spec.md + handoff.md",
+        "completed": true
+      }
+    ],
+    "passes": true
+  },
+  {
+    "number": 2,
+    "category": "阶段 2：红证（实现前）",
+    "task": "先写清洗断言，证明判别式能红",
+    "steps": [
+      {
+        "step": "AuthGlobalFilterTest 补降级分支伪造头清洗用例",
+        "completed": true
+      },
+      {
+        "step": "AuthGlobalFilterTest 补白名单分支伪造头清洗用例",
+        "completed": true
+      },
+      {
+        "step": "AuthGlobalFilterTest 补鉴权分支覆盖式注入不受影响用例",
+        "completed": true
+      },
+      {
+        "step": "未实现剥离前定向复跑 gateway-service → 红（留失败断言原文与行号）",
+        "completed": true
+      }
+    ],
+    "passes": true
+  },
+  {
+    "number": 3,
+    "category": "阶段 3：实现",
+    "task": "透传分支剥离身份头",
+    "steps": [
+      {
+        "step": "透传分支 mutate 移除 X-User-Id / X-Role",
+        "completed": true
+      },
+      {
+        "step": "鉴权分支维持 headers.set 覆盖式注入不动",
+        "completed": true
+      },
+      {
+        "step": "类注释同步（透传分支剥离语义 + 覆盖范围）",
+        "completed": true
+      }
+    ],
+    "passes": true
+  },
+  {
+    "number": 4,
+    "category": "阶段 4：绿证与变异",
+    "task": "定向复跑 + 变异验证 + 全量复跑",
+    "steps": [
+      {
+        "step": "定向复跑 gateway-service → 绿，既有 19 条不回归",
+        "completed": true
+      },
+      {
+        "step": "临时删除剥离逻辑复现红，还原后 cmp 零差异",
+        "completed": true
+      },
+      {
+        "step": "--mode=offline test 全量 ≥285 全绿",
+        "completed": true
+      }
+    ],
+    "passes": true
+  },
+  {
+    "number": 5,
+    "category": "阶段 5：收口",
+    "task": "词面自检与契约校验",
+    "steps": [
+      {
+        "step": ".trae/tmp 脚本按 CI 同款 pathspec 复跑词面自检，范围零命中",
+        "completed": true
+      },
+      {
+        "step": "bash scripts/verify/mailbox-contract.sh 退出 0",
+        "completed": true
+      },
+      {
+        "step": "PLAN.md 追加验收记录",
+        "completed": true
+      }
+    ],
+    "passes": true
+  },
+  {
+    "number": 6,
+    "category": "阶段 6：归档",
+    "task": "归档并入主规格并移入 archive/（TASK-127）",
+    "steps": [
+      {
+        "step": "spec-delta 需求原文逐字并入 spec/specs/sport-record-verify/spec.md（EARS/Scenario 逐字搬移）",
+        "completed": true
+      },
+      {
+        "step": "主规格头部提案清单与变更历史补条目",
+        "completed": true
+      },
+      {
+        "step": "git mv 整目录移入 spec/changes/archive/",
+        "completed": true
+      }
+    ],
+    "passes": true
+  }
+]
