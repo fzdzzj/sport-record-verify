@@ -3,6 +3,9 @@ package com.sportverify.gateway.auth;
 import io.jsonwebtoken.Jwts;
 import io.jsonwebtoken.security.Keys;
 import org.junit.jupiter.api.Test;
+import org.springframework.boot.convert.ApplicationConversionService;
+import org.springframework.boot.test.context.runner.ApplicationContextRunner;
+import org.springframework.core.convert.ConversionService;
 import org.springframework.core.io.ClassPathResource;
 import org.springframework.http.HttpStatus;
 import org.springframework.mock.http.server.reactive.MockServerHttpRequest;
@@ -17,6 +20,7 @@ import java.util.Arrays;
 import java.util.Date;
 import java.util.List;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNull;
@@ -111,5 +115,33 @@ class ActuatorWhitelistNarrowTest {
         filter.filter(exchange, e -> Mono.empty()).block();
         assertEquals(HttpStatus.UNAUTHORIZED, exchange.getResponse().getStatusCode(),
                 "指标查询端点无 token 必须 401（走鉴权分支），实际=" + whitelist());
+    }
+
+    @Test
+    void defaultWhitelistEqualsHealthProbeOnly() {
+        // 判别式（TASK-127 漂移②）：ApplicationContextRunner 不注入任何 whitelist 属性实例化过滤器，
+        // 生效白名单必须等于新默认值 /api/auth/**,/actuator/health——
+        // @Value 默认值若仍是旧整段通配（yml 常在时运行时漂移不可见），此处当场变红
+        new ApplicationContextRunner()
+                // Boot 生产语境靠 finishBeanFactoryInitialization 先把名为 conversionService 的
+                // ConversionService bean 设进 beanFactory，@Value 的 List<String> 才按逗号拆分
+                // （裸 runner 不挂它时实测注入为单元素整串）——此处注册同名 bean 复刻生产语义
+                .withBean("conversionService", ConversionService.class,
+                        ApplicationConversionService::getSharedInstance)
+                .withBean(JwtTokenParser.class, () -> new JwtTokenParser(SECRET))
+                .withUserConfiguration(AuthGlobalFilter.class)
+                .run(context -> {
+                    assertThat(context).hasNotFailed();
+                    AuthGlobalFilter filter = context.getBean(AuthGlobalFilter.class);
+                    assertThat(ReflectionTestUtils.getField(filter, "whitelist"))
+                            .as("@Value 默认白名单必须是 /api/auth/**,/actuator/health（健康探针精确匹配）")
+                            .isEqualTo(List.of("/api/auth/**", "/actuator/health"));
+                    assertThat(whitelisted(filter, "/actuator/health"))
+                            .as("默认白名单下健康探针仍须放行").isTrue();
+                    assertThat(whitelisted(filter, "/actuator/metrics"))
+                            .as("默认白名单下指标端点不得放行（默认值收敛的判别点）").isFalse();
+                    assertThat(whitelisted(filter, "/api/auth/login"))
+                            .as("默认白名单下发 token 端点仍须放行").isTrue();
+                });
     }
 }

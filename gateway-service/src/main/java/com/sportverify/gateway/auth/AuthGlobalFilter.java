@@ -28,7 +28,8 @@ import java.util.List;
  *       缺失或无效 → HTTP 401 + body 1001，不放行至下游；</li>
  *   <li><b>透传</b>：解析出的 userId 以 {@code X-User-Id}、role 以 {@code X-Role} 头注入并<b>覆盖</b>
  *       同名头（外部伪造的同名头被冲掉，下游只信任网关注入值——内网信任边界）；</li>
- *   <li><b>白名单</b>：/api/auth/**（发 token 的端点）、/actuator/**（健康探针）直接放行；
+ *   <li><b>白名单</b>：/api/auth/**（发 token 的端点）、/actuator/health（健康探针，精确匹配）
+ *       直接放行，actuator 其余端点走鉴权分支；
  *       已删除无路由的 /internal/** 死配置（服务间 Feign 不经网关）；</li>
  *   <li><b>治理面角色校验</b>（add-admin-rbac）：/admin/** 与规则版本接口（/verify/rules/**）
  *       移除白名单裸放行，改为「进入过滤链 + 校验 role=ADMIN」——普通用户 403（1002）、
@@ -55,7 +56,7 @@ public class AuthGlobalFilter implements GlobalFilter, Ordered {
 
     /** 白名单路径前缀（逗号分隔；/** 通配到该前缀下的所有子路径）：
      *  管理端 /admin/** 与规则版本接口已移除（纳入角色校验，见治理面鉴权） */
-    @Value("${app.auth.whitelist:/api/auth/**,/actuator/**}")
+    @Value("${app.auth.whitelist:/api/auth/**,/actuator/health}")
     private List<String> whitelist;
 
     /** 治理面角色校验开关：false=管理端降级为裸放行（灰度观察），true=要求 role=ADMIN */
