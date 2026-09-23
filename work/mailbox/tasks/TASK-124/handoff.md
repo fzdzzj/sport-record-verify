@@ -54,7 +54,7 @@ Nacos 数据源注册、阈值/窗口默认值、fallback 配置零改动。
 
 ## 词面自检
 
-CI 同款正则（`git grep -n -I -iE "面试|弹药|大厂|八股|简历|求职|突击|附录 ?A"`，载体脚本 `.trae/tmp/wording-check-task124.sh` 不入库）：
+CI 同款判据（正则原文见 ci.yml 词面自检步骤，此处不引用——台账不复制禁用词表原文，TASK-118 先例；载体脚本 `.trae/tmp/wording-check-task124.sh` 不入库）：
 - `LC_ALL=C`（CI 口径）：全仓 **ZERO-HIT**；本任务 5 个改动载体单独扫 **ZERO-HIT**。
 - 默认 locale：仅余 TASK-118 起已登记的 2 条本机引擎伪影（`api/**/MapMatchResultDTO.java:17/36`，本任务未触碰、只改清单外），按口径登记为未覆盖，不记为用例红。
 

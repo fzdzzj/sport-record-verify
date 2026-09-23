@@ -525,3 +525,22 @@ Generated router types match committed；build 2m44s 全 7 步：入口 online v
 | 未覆盖 | ① api 侧 strict 判别未建独立测试（api 模块无测试基建 + 不新增依赖约束；实现与 common 逐字同型）；② 全量第一次 rc=1 的瞬时抖动根因未深挖（未复现第二次）；③ 默认 locale 词面伪影 2 条（清单外既有）；④ 未 push，待 CI 复验 |
 | 归档与后续 | **不自行归档**（按任务包边界）：三件套已建；届时 `spec/changes/` 未归档变更将达 3 个（add-auth-degrade-header-strip、narrow-actuator-exposure、本变更） |
 | 指导侧复验收 | 收口授权下放（指导侧不复跑）；执行侧自证：红（判别式 + 行号 + Tests run）→ 绿 rc=0 → 三判别式变异复红 → 字节级还原 cmp 零差异 → offline 299（+7 全部为本任务新增判别式）→ 词面 LC_ALL=C 零命中 → 契约 diff-file 口径判据 B 通过，全部实测落档（日志 `.trae/tmp/t126-*.log`，不入库） |
+
+## 裁定记录：TASK-123 停手冲突裁决（2026-09-23，指导侧亲笔）
+
+执行侧前置核实命中 ADR-0009 既有约定（`docs/adr/0009-事务边界.md:57` 禁止事项「不改 FriendService
+锁与事务的嵌套顺序」、`:32` 分类表「保持」、守卫测试 `FriendServiceTest.java:226`
+accept_twoWritesShareTransactionalMethod 断言 accept 带方法级 @Transactional），按任务包停止条款
+停手回传，未留任何工作树足迹。指导侧裁定采 **方案 B：维持 ADR-0009 权衡，关闭 TASK-123**。理由：
+
+1. **失效路径全部拒绝式收敛，无正确性缺陷实证**。释锁早于提交的窗口内，并发 createRequest 读到的
+   是旧已提交状态（申请仍 PENDING）——既有守卫「同向重复申请被拒」「反向 PENDING 已存在被拒」
+   在该状态下恰好照常拒绝；friendship 双插被规范化主键兜底（DuplicateKeyException 幂等），
+   accept/reject 竞态被 updateStatus 乐观流转（rows==0 → 5002）兜住。旧状态只会多拒不会漏放，
+   未见可复现的错误终态。
+2. **ADR-0009 是带守卫测试的已采纳决策**，推翻它需要实证级别的正确性论据；本项收益是并发窗口的
+   概率性优化，不构成推翻条件（「不做无实证的重构」）。
+3. 方案 A 的成本（修订两处 ADR + 备选否决节 + 重写守卫测试）远超收益，且开了「任务顺手改 ADR」的口子。
+
+F04 据此在 findings 台账标记为「已裁定维持权衡、不修」。若未来出现可复现的好友状态错乱缺陷，
+以缺陷工单重开（附复现路径），届时按方案 A 的扩权重派路径执行。

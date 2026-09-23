@@ -21,10 +21,11 @@ P0=必修（安全/数据丢失）；P1=应修（可靠性/性能）；P2=建议
 - 影响：判定 PASSED 但事件丢失 → leaderboard_contribution 无锚点行，结算任务以贡献表为权威也补不回来 → 榜单永久缺分。record→verify 方向有降级补偿（VerifyDegradeService），verify→leaderboard 方向没有。
 - 改法：verify_db 加本地消息表（outbox），同事务落「事件待发」行 + 定时 relay 重发；或改 RocketMQ 事务消息。
 
-### F04 好友锁在事务内，锁释放早于事务提交（并发）
+### F04 好友锁在事务内，锁释放早于事务提交（并发）【已裁定维持权衡、不修（2026-09-23 指导侧，PLAN 裁定记录）】
 - 位置：user-service FriendService.java:151-191（@Transactional 方法内加 Redisson 锁，finally 释放时事务尚未提交）
 - 影响：A accept 释放锁→B createRequest 拿到锁→读不到未提交的 friendship→建出冗余申请单（friendship 有唯一键兜底但申请单状态错乱）。
 - 改法：锁外提一层（Controller/Facade 先拿锁，再调 @Transactional 方法），或编程式事务模板包在锁内。
+- 裁定：ADR-0009 已把该顺序记为已知权衡并有守卫测试；窗口内失效路径均被「旧状态拒绝式守卫 + 唯一键 + 乐观流转」兜住，无正确性缺陷实证，维持权衡。出现可复现缺陷时按缺陷工单重开。
 
 ### F05 mapmatch 逐点一次 SQL（性能）
 - 位置：mapmatch-service MapMatchService.java:110-126（每个采样点一次 ST_DWithin 往返）
