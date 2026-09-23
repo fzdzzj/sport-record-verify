@@ -1,0 +1,90 @@
+[
+  {
+    "number": 1,
+    "category": "阶段 1：DDL 补齐",
+    "task": "sql/03-verify-db.sql 追加 verify_event_outbox 建表（按 TASK-102 spec:33 表结构）",
+    "steps": [
+      {
+        "step": "追加 id 自增 / event_id 唯一 / topic / tag / payload JSON / trace_id / status / retry_count / created_at / sent_at + IF NOT EXISTS",
+        "completed": true
+      },
+      {
+        "step": "红②：scratch 库（mysql:8.0.46，端口 13318）按 sql/ 重建 → information_schema 查表 = 0（表不存在）",
+        "completed": true
+      },
+      {
+        "step": "绿②：补 DDL 后同一路径重建 → 表存在 = 1，列与唯一键逐条核对，脚本连跑两次 rc=0（幂等）",
+        "completed": true
+      }
+    ],
+    "passes": true
+  },
+  {
+    "number": 2,
+    "category": "阶段 2：写侧接线（判定/终判同事务落 outbox）",
+    "task": "VerifyOutboxService 改为真写 outbox 行；VerifyService 两处发事件改经其事务方法",
+    "steps": [
+      {
+        "step": "VerifyEventProducer 拆写侧 newPendingRow（生成 eventId/topic/tag/payload/traceId，PENDING）",
+        "completed": true
+      },
+      {
+        "step": "VerifyOutboxService：persistResultAndEvent（upsert + outbox insert）/ updateAppealAndEvent（appeal 乐观锁更新 + outbox insert），均 @Transactional(rollbackFor=Exception)",
+        "completed": true
+      },
+      {
+        "step": "VerifyService.verify 与 reviewAppeal 改接 outbox 事务写入器；类内移除 producer 依赖",
+        "completed": true
+      },
+      {
+        "step": "红①：新增「判定主链路不再同步直发」断言 → 基线必红（NeverWantedButInvoked @ VerifyService.java:124）",
+        "completed": true
+      }
+    ],
+    "passes": true
+  },
+  {
+    "number": 3,
+    "category": "阶段 3：单一出口（relay 唯一投递 + eventId 稳定）",
+    "task": "relay 经 producer.syncSend 投递行内内容；删除判定链路同步直发与 catch-log 兜底",
+    "steps": [
+      {
+        "step": "VerifyEventProducer.syncSend（投递侧）唯一供 relay 调用；发送失败抛出不再吞异常；删除 publish 直发方法",
+        "completed": true
+      },
+      {
+        "step": "VerifyOutboxRelay 改经 producer.syncSend 投递，移除对 RocketMQTemplate 的直接依赖",
+        "completed": true
+      },
+      {
+        "step": "relay 用例补 eventId 透传断言（投递体 eventId 与行内逐字一致、payload 原样）",
+        "completed": true
+      }
+    ],
+    "passes": true
+  },
+  {
+    "number": 4,
+    "category": "阶段 4：验收与台账",
+    "task": "定向红绿 + 变异 + offline 全量 + 词面 + 契约 + 台账两件套",
+    "steps": [
+      {
+        "step": "定向 verify-service：红 82/1 → 绿 88/0（用例数 81 → 88）",
+        "completed": true
+      },
+      {
+        "step": "变异验证：临时摘除 outbox insert → 复现 3 条红（含接线判别式）→ 还原 sha256sum -c OK + cmp 零差异",
+        "completed": true
+      },
+      {
+        "step": "offline 全量 test：逐模块用例数 + BUILD SUCCESS + 退出码",
+        "completed": true
+      },
+      {
+        "step": "词面自检双 locale、契约在途 --baseline + 收口后无参数",
+        "completed": true
+      }
+    ],
+    "passes": true
+  }
+]
