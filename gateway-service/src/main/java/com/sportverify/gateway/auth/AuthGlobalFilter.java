@@ -31,7 +31,7 @@ import java.util.List;
  *   <li><b>白名单</b>：/api/auth/**（发 token 的端点）、/actuator/health（健康探针，精确匹配）
  *       直接放行，actuator 其余端点走鉴权分支；
  *       已删除无路由的 /internal/** 死配置（服务间 Feign 不经网关）；</li>
- *   <li><b>治理面角色校验</b>（add-admin-rbac）：/admin/** 与规则版本接口（/verify/rules/**）
+ *   <li><b>治理面角色校验</b>（add-admin-rbac）：/admin/**、规则版本接口（/verify/rules/**）与申诉复核别名（/verify/api/appeals/**）
  *       移除白名单裸放行，改为「进入过滤链 + 校验 role=ADMIN」——普通用户 403（1002）、
  *       未登录 401（1001）、ADMIN 放行；可配开关 {@code app.auth.admin.enabled} 保留灰度；</li>
  *   <li><b>降级开关</b>：{@code app.auth.enabled=false}（默认）时整体透传不校验，
@@ -63,8 +63,8 @@ public class AuthGlobalFilter implements GlobalFilter, Ordered {
     @Value("${app.auth.admin.enabled:true}")
     private boolean adminRoleCheckEnabled;
 
-    /** 治理面路径前缀（逗号分隔）：命中即要求 role=ADMIN；/verify/rules/** 即 RuleVersionController 外部路径 */
-    @Value("${app.auth.admin.paths:/admin/**,/verify/rules/**}")
+    /** 治理面路径前缀（逗号分隔）：命中即要求 role=ADMIN；包含 /verify/rules/** 与 /verify/api/appeals/** 外部别名 */
+    @Value("${app.auth.admin.paths:/admin/**,/verify/rules/**,/verify/api/appeals/**}")
     private List<String> adminPaths;
 
     /** 鉴权请求头 */
@@ -98,7 +98,7 @@ public class AuthGlobalFilter implements GlobalFilter, Ordered {
         }
 
         // —— 治理面角色校验（add-admin-rbac）：命中治理面路径但非 ADMIN → 403（1002）
-        //    /admin/** 与规则版本接口已从白名单移除，走到这里必是有效 token，剩余只判角色
+        //    /admin/**、规则版本接口与申诉复核别名已从白名单移除，走到这里必是有效 token，剩余只判角色
         if (adminRoleCheckEnabled && isAdminPath(path) && !ROLE_ADMIN.equals(identity.role())) {
             log.warn("网关治理面越权拒绝：path={}, userId={}, role={}", path, identity.userId(), identity.role());
             return reject(exchange, HttpStatus.FORBIDDEN, "{\"code\":1002,\"message\":\"无权限访问\"}");

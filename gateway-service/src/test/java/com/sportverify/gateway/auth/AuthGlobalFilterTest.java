@@ -42,7 +42,7 @@ class AuthGlobalFilterTest {
         ReflectionTestUtils.setField(filter, "authEnabled", true);
         ReflectionTestUtils.setField(filter, "whitelist",
                 List.of("/api/auth/**", "/actuator/**"));
-        ReflectionTestUtils.setField(filter, "adminPaths", List.of("/admin/**", "/verify/rules/**"));
+        ReflectionTestUtils.setField(filter, "adminPaths", List.of("/admin/**", "/verify/rules/**", "/verify/api/appeals/**"));
         ReflectionTestUtils.setField(filter, "adminRoleCheckEnabled", true);
     }
 
@@ -83,6 +83,12 @@ class AuthGlobalFilterTest {
     @Test
     void userRoleAdminPathReturns403() {
         MockServerWebExchange exchange = run("/admin/api/appeals/1/review", "Bearer " + token(1L, "USER"));
+        assertEquals(HttpStatus.FORBIDDEN, exchange.getResponse().getStatusCode());
+    }
+
+    @Test
+    void userRoleVerifyAppealAliasReturns403() {
+        MockServerWebExchange exchange = run("/verify/api/appeals/1/review", "Bearer " + token(3L, "USER"));
         assertEquals(HttpStatus.FORBIDDEN, exchange.getResponse().getStatusCode());
     }
 

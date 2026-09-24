@@ -20,6 +20,17 @@
 `--mode` 判据见 `scripts/verify/README.md`）。下方 D12 那句"今后验收口径固定"作为作废史原文保留，
 其参数组合现由该脚本的 `--mode=offline` 表达。
 
+## 验收记录：`TASK-136`（2026-09-24，治理面网关别名准入，第一阶段）
+
+| 项 | 内容 |
+| --- | --- |
+| 绑定修订 | 开工基线 `c57e69dab39875f79b81312b6453a596fa86272f`（`docs(mailbox): 订正 TASK-135 提交绑定`）；当前网关代码、测试与台账均仍在工作树，未形成新 commit；未 push、未建 PR。 |
+| 目标与范围 | 仅 `gateway-service`：将申诉复核别名 `/verify/api/appeals/**` 纳入治理面 `role=ADMIN` 判别式；保留原 `/admin/**`、`/verify/rules/**` 行为及现有 `/verify/**`、`/admin/**` 路由。 |
+| 受控红绿 | 原实现先执行裸 Maven `mvn -pl gateway-service -Dtest=AuthGlobalFilterTest test`，退出码 `1`：USER 别名判别式期望 `403`、实际 `null`，属辅助证据；修正后指导侧实跑仓库脚本 `bash scripts/verify/mvn-verify.sh --mode=offline --pl gateway-service test`，退出码 `0`，目标模块 `35/0/0/0`，`BUILD SUCCESS`。 |
+| 脚本入口口径 | 修正后主证据绑定指导侧已实跑的 `bash scripts/verify/mvn-verify.sh --mode=offline --pl gateway-service test`（`rc=0` / `35/0/0/0`）；裸 Maven 仅作辅助证据。脚本 `--mode=online`、CI、真实服务直连未覆盖。 |
+| 配置/契约 | 测试同时约束 `AuthGlobalFilter` 的代码默认 `adminPaths` 与 classpath 实际 `application.yml` 的 `app.auth.admin.paths`，并核对原 `/verify/**`、`/admin/**` 路由未变；Git Bash `bash scripts/verify/mailbox-contract.sh --baseline=HEAD` → 总体 `rc=1`，但 `TASK-136` 判据 A 两件套齐全、判据 B 通过；总体失败来自既有在途任务与共享工作树/历史清单交叠。 |
+| 未完成/未覆盖 | **服务直连凭证扩围仍未完成**：未改服务侧凭证机制，未覆盖直连服务端口绕过网关风险；未做真实 Nacos、下游 verify-service 联调、直连验证；online/CI 未覆盖。 |
+| 实际改动集 | `gateway-service/src/main/java/com/sportverify/gateway/auth/AuthGlobalFilter.java`、`gateway-service/src/main/resources/application.yml`、`gateway-service/src/test/java/com/sportverify/gateway/auth/AuthGlobalFilterTest.java`、`gateway-service/src/test/java/com/sportverify/gateway/auth/VerifyAppealReviewAdminOnlyTest.java`、本任务 `spec.md`/`handoff.md`、`work/mailbox/PLAN.md`。 |
 ## 验收记录：`TASK-135`（2026-09-23，总榜缓存真实入口，已提交）
 
 | 项 | 内容 |

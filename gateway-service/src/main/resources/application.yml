@@ -116,17 +116,17 @@ app:
     # 白名单：/api/auth/**（注册/登录/刷新）与健康探针 /actuator/health（精确匹配，narrow-actuator-exposure）。
     # actuator 其余端点（metrics/env/prometheus 等）不经网关裸放行——监控按 ADR-0007 走内网直连，
     # 经网关访问须携带有效 token（走鉴权分支）；matchesPrefixList 对无 /** 后缀的模式走精确匹配。
-    # 已删除 /internal/**（无对应路由的死配置）；/admin/** 与 /verify/rules/** 走角色校验。
+    # 已删除 /internal/**（无对应路由的死配置）；/admin/**、/verify/rules/** 与 /verify/api/appeals/** 走角色校验。
     whitelist: /api/auth/**,/actuator/health
     admin:
       # 治理面角色校验开关：true=管理端/规则版本接口要求 role=ADMIN（普通用户 403/1002、未登录 401/1001）
       # 默认 true 关门；false=降级为裸放行（灰度观察，不建议生产）
       enabled: true
-      # 治理面路径前缀：命中即要求 role=ADMIN；/verify/rules/** 即 verify-service RuleVersionController 外部路径
+      # 治理面路径前缀：命中即要求 role=ADMIN；包含 /verify/rules/** 与申诉复核别名 /verify/api/appeals/**
       # 榜单每日报表（某日全平台用户里程排行）属跨用户数据，仅 ADMIN 可读：
       # /leaderboard/api/leaderboard/daily 是外部路径（路由 Path=/leaderboard/** + StripPrefix=1
       # → leaderboard-service 的 /api/leaderboard/daily）；只列这一条，总榜/好友榜仍是用户面公开读接口
-      paths: /admin/**,/verify/rules/**,/leaderboard/api/leaderboard/daily
+      paths: /admin/**,/verify/rules/**,/verify/api/appeals/**,/leaderboard/api/leaderboard/daily
     sentinel:
       # 网关流控规则 Nacos 数据源（add-sentinel-dynamic-rules）：SentinelGatewayRuleConfig 注册的
       # NacosDataSource 指向该 dataId；Nacos 里规则 JSON 数组（每个元素为 GatewayFlowRule：resource/count/intervalSec/grade），
