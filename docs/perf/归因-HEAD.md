@@ -131,6 +131,11 @@ Redis 1~2、MQ 0（判定事件一律经 relay 异步投递）**。除 `persistR
 
 **top_class = 数据库**（六个候选中唯一选中；「一次只改一类」约束下的下一步对象即此类）。
 
+> TASK-140 订正（2026-09-25）：§4 的「池 10 排队 / T_tx ≈80ms」为排队模型**推断**口径；
+> 请求级物理连接获取等待已于 TASK-140 直接测得（同负载 connWait P50 527.1ms，内层池
+> 获取点计时），提交段应表述为 `beforeCommit→afterCommit` 区间而非 fsync 单项。历史
+> 原始数据不改动，详见 `docs/perf/复测-db-wait-evidence.md`。
+
 ## 5. 下一步假设（一句话，本任务不实施）
 
 若下一步只在「数据库」一类内动手：先对提交事务插桩量出 4 条 SQL 各自耗时、ShardingSphere

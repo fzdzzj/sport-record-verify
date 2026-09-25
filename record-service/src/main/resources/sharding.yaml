@@ -17,7 +17,9 @@ mode:
 
 dataSources:
   ds0:
-    dataSourceClassName: com.zaxxer.hikari.HikariDataSource
+    # TASK-140 提交归因诊断：池类为带物理连接获取计时的 Hikari 子类（测量默认关闭：
+    # 未武装线程零样本，只多一次 ThreadLocal 读；池参数 setter 全部继承，池语义不变）
+    dataSourceClassName: com.sportverify.record.config.TimingHikariDataSource
     driverClassName: com.mysql.cj.jdbc.Driver
     jdbcUrl: jdbc:mysql://${SHARDING_MYSQL_HOST:127.0.0.1}:${MYSQL_PORT:3306}/record_db?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai&useSSL=false&allowPublicKeyRetrieval=true
     username: root

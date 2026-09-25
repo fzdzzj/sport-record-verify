@@ -51,4 +51,23 @@ class MainShardingYamlDefaultsTest {
                 .filter(line -> line.contains("sql-show"))
                 .findFirst().orElse("(none)");
     }
+
+    /**
+     * TASK-140：内层池类必须是带物理连接获取计时的包装类（诊断位置）——
+     * ShardingSphere 按 dataSourceClassName 反射建池，回退成裸 HikariDataSource
+     * 会让 connWait 段静默失效（无样本但服务照常运行），故以文件判别式锁住接线。
+     */
+    @Test
+    void dataSourceClassName_wiredToTimingWrapper() throws IOException {
+        String yaml = readMainShardingYaml();
+        assertTrue(yaml.contains("dataSourceClassName: com.sportverify.record.config.TimingHikariDataSource"),
+                "主 sharding.yaml 的池类必须指向 TimingHikariDataSource（connWait 计时位置），"
+                        + "实得：" + extractLine(yaml, "dataSourceClassName"));
+    }
+
+    private String extractLine(String yaml, String keyword) {
+        return java.util.Arrays.stream(yaml.split("\r?\n"))
+                .filter(line -> line.contains(keyword))
+                .findFirst().orElse("(none)");
+    }
 }

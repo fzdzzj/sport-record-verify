@@ -232,6 +232,55 @@ class SportRecordServiceTest {
         verify(verifyApi, never()).triggerVerify(anyLong());
     }
 
+    /**
+     * TASK-140 connWait 归因桥接接线：计时开启时，首个 SQL（selectByRequestId）执行点
+     * 线程必须已武装（物理连接获取等待才会归到本请求），事务完结（afterCompletion，
+     * 含回滚语义）后解除；计时关闭时全程不武装。
+     */
+    @Test
+    void submit_txTimingOn_armsConnWaitBeforeFirstSql_disarmsAfterCompletion() {
+        when(sportRecordMapper.selectByRequestId("req-1")).thenReturn(null);
+        stubInsertReturnsId();
+        stubPublishSuccess();
+        boolean[] armedDuringFirstSql = {false};
+        doAnswer(inv -> {
+            armedDuringFirstSql[0] = SubmitTxTiming.connWaitArmed();
+            return null;
+        }).when(sportRecordMapper).selectByRequestId("req-1");
+
+        ReflectionTestUtils.setField(service, "txTimingEnabled", true);
+        TransactionSynchronizationManager.initSynchronization();
+        try {
+            service.submit(dto(1, 1));
+            assertTrue(armedDuringFirstSql[0], "首个 SQL 执行点线程必须已武装");
+            for (TransactionSynchronization s : TransactionSynchronizationManager.getSynchronizations()) {
+                s.afterCommit();
+                s.afterCompletion(TransactionSynchronization.STATUS_COMMITTED);
+            }
+            assertFalse(SubmitTxTiming.connWaitArmed(), "事务完结（含回滚）后必须解除武装");
+        } finally {
+            TransactionSynchronizationManager.clearSynchronization();
+            SubmitTxTiming.disarmConnWait();
+        }
+
+        // 计时关闭（产品默认）：同一请求全程不武装，零 ThreadLocal 写入
+        ReflectionTestUtils.setField(service, "txTimingEnabled", false);
+        TransactionSynchronizationManager.initSynchronization();
+        try {
+            boolean[] armedOnSecond = {true};
+            doAnswer(inv -> {
+                armedOnSecond[0] = SubmitTxTiming.connWaitArmed();
+                return null;
+            }).when(sportRecordMapper).selectByRequestId("req-2");
+            RecordSubmitDTO second = dto(1, 1);
+            second.setRequestId("req-2");
+            service.submit(second);
+            assertFalse(armedOnSecond[0], "计时关闭不得武装任何线程");
+        } finally {
+            TransactionSynchronizationManager.clearSynchronization();
+        }
+    }
+
     // ==================== 幂等 ====================
 
     /** 幂等前置命中：requestId 已有记录 → 直接返回原结果，不再落库 */

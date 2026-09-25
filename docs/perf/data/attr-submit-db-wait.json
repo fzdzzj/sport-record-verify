@@ -1,0 +1,110 @@
+{
+  "head": "eb624131674c2c0bff7bcd9257ffd4ce83c707fe",
+  "date": "2026-09-25",
+  "task": "TASK-140 measure-submit-db-wait-evidence",
+  "purpose": "evidence-grade correction + repeated same-load runs + request-level physical connection acquisition timing (no optimization)",
+  "loadBudget": {"newRuns": 3, "cap": 3, "labels": ["rpt1", "rpt2", "connwait"]},
+
+  "metricGate": {
+    "actuatorMetricsNames": 49,
+    "hikariDatasourceJdbcMetrics": 0,
+    "prometheusLines": 872,
+    "prometheusHikariDatasourceJdbcHits": 0,
+    "hikaricpConnectionsPendingProbe": 404,
+    "conclusion": "inner ShardingSphere-created Hikari pool is invisible to Spring metrics binding; no request-level pool-wait metric exists"
+  },
+
+  "repeatRunsTimingOff": [
+    {"label": "dbfoot-c100", "task": "TASK-139", "qps": 123.23, "p50ms": 711.45, "p95ms": 1332.35, "p99ms": 1713.44, "maxMs": 1959.83, "ok": 2000, "limited429": 0, "errors": 0, "freshness": "services fresh, mysql container carried over (warm)"},
+    {"label": "rpt1-c100", "qps": 121.4, "p50ms": 676.0, "p95ms": 2169.0, "p99ms": 2794.5, "maxMs": 3045.5, "ok": 2000, "limited429": 0, "errors": 0, "freshness": "services AND mysql container freshly started (cold)"},
+    {"label": "rpt2-c100", "qps": 166.8, "p50ms": 580.7, "p95ms": 796.4, "p99ms": 1036.3, "maxMs": 1345.7, "ok": 2000, "limited429": 0, "errors": 0, "freshness": "fully warm (75s settle after rpt1)"}
+  ],
+  "repeatRangeTimingOff": {
+    "qps": [121.4, 166.8],
+    "p50ms": [580.7, 711.45],
+    "p95ms": [796.4, 2169.0],
+    "p99ms": [1036.3, 2794.5],
+    "reading": "TASK-139 single-run deltas (QPS +1.9%, P50 -8.5%) fall inside this same-version dispersion; single before/after comparison is not causal evidence"
+  },
+
+  "instrumentedRun": {
+    "label": "connwait-c100",
+    "cmd": "record restarted with --record.submit.tx-timing-enabled=true; bash scripts/perf/run-perf.sh load 100 2000 connwait",
+    "qps": 148.5, "p50ms": 591.8, "p95ms": 1092.7, "p99ms": 1322.1, "maxMs": 1650.5,
+    "ok": 2000, "limited429": 0, "errors": 0,
+    "freshness": "record JVM fresh, DB warm",
+    "snapshot": {
+      "samples": 2000, "cap": 4096,
+      "connWait": {"n": 2000, "p50us": 527067, "p95us": 970905, "maxUs": 1597511},
+      "select": {"n": 2000, "p50us": 531719, "p95us": 981684, "maxUs": 1602547},
+      "insertMain": {"n": 2000, "p50us": 2268, "p95us": 7996, "maxUs": 133830},
+      "trackWrite": {"n": 2000, "p50us": 19601, "p95us": 59553, "maxUs": 307059},
+      "commit": {"n": 2000, "p50us": 24527, "p95us": 47199, "maxUs": 213528}
+    },
+    "snapshotSource": "logs/record.log SUBMIT_TX_TIMING line at samples=2000 (out of 2010 incl. warmup)"
+  },
+
+  "evidenceGrades": {
+    "directlyMeasured": [
+      "no existing pool metrics (metric gate)",
+      "request-level connWait = physical connection acquisition incl. Hikari pool wait (P50 527.1ms, n=2000)",
+      "select/insertMain/trackWrite mixed segments; commit interval (beforeCommit->afterCommit)",
+      "per-round QPS/P50/P95/P99/error rates and cross-round ranges"
+    ],
+    "derived": [
+      "select minus connWait at P50 ~4.7ms (paired same-population percentile difference; not isolated SQL execution)"
+    ],
+    "notSeparatelyMeasured": [
+      "fsync share of the commit interval",
+      "pure JDBC execution time per SQL / ShardingSphere parse share",
+      "pool-wait vs connection-establishment split inside connWait",
+      "universal pool-wait share percentages (only paired-population derived values exist)"
+    ]
+  },
+
+  "instrument": {
+    "property": "record.submit.tx-timing-enabled",
+    "default": false,
+    "files": [
+      "record-service/src/main/java/com/sportverify/record/config/TimingHikariDataSource.java",
+      "record-service/src/main/java/com/sportverify/record/config/TimingHikariDataSourcePoolMetaData.java",
+      "record-service/src/main/resources/META-INF/services/org.apache.shardingsphere.infra.datasource.pool.metadata.DataSourcePoolMetaData",
+      "record-service/src/main/java/com/sportverify/record/service/SubmitTxTiming.java",
+      "record-service/src/main/java/com/sportverify/record/service/SportRecordService.java",
+      "record-service/src/main/resources/sharding.yaml"
+    ],
+    "retentionCapPerSegment": 4096,
+    "retentionNote": "sliding window (oldest evicted); full 2010-request run un-evicted; snapshot exposes cap",
+    "shardingSphereWiringNotes": "5.4.1 strips dataSourceClassName key only for the literal HikariDataSource class name, so the key is bound as a custom prop for other classes; wrapper deliberately exposes no setDataSourceClassName (silently skipped) and is a plain DataSource owning an inner real HikariDataSource, avoiding the HikariCP dataSourceClassName delegate branch that applies MySQL default query props (netTimeoutForStreamingResults removed in HikariCP 5.x -> RuntimeException). Pool metadata TypedSPI registered so standard 'url' normalizes from yaml jdbcUrl; getters must pair with setters because StorageUnit reflects username/password back from the instance."
+  },
+
+  "mavenGate": {
+    "cmd": "bash scripts/verify/mvn-verify.sh --mode=offline --pl record-service test",
+    "exitCode": 0,
+    "recordServiceTests": 95,
+    "failures": 0, "errors": 0, "skipped": 0,
+    "deltaVsTask139": "+9 (SubmitTxTimingTest 5, SPI wiring 2, submit wiring 1, main-yaml pool-class 1)"
+  },
+
+  "capacity": {
+    "expectedTrackPointRows": 1809000,
+    "sportRecordCount": {"before": 26352, "after": 32382},
+    "diskAvailGB": 223,
+    "dbCleared": false,
+    "loadExitCodes": {"rpt1": 0, "rpt2": 0, "connwait": 0}
+  },
+
+  "nextSingleHypothesis": "submit latency is dominated by physical connection acquisition wait (measured P50 527ms) produced by pool-10 queuing over in-tx work (track multi-row INSERT ~20ms + commit interval ~25ms); further work should shrink in-tx work (track write or commit interval) and re-measure on the connWait baseline, not blind-tune pool size or flush settings",
+
+  "rawEvidence": [
+    "docs/perf/data/raw/dbfoot-c100-summary.json (TASK-139)",
+    "docs/perf/data/raw/rpt1-c100-summary.json",
+    "docs/perf/data/raw/rpt1-c100-raw.csv",
+    "docs/perf/data/raw/rpt2-c100-summary.json",
+    "docs/perf/data/raw/rpt2-c100-raw.csv",
+    "docs/perf/data/raw/connwait-c100-summary.json",
+    "docs/perf/data/raw/connwait-c100-raw.csv",
+    "docs/perf/data/raw/rpt-record-timingoff.log",
+    "docs/perf/data/raw/connwait-record-timingon.log"
+  ]
+}

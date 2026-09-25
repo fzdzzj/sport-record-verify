@@ -51,5 +51,10 @@
     "commitShare": "commit P50 28.9ms is the largest in-tx segment (redo fsync floor); NOT addressable in this change (innodb flush overlay explicitly out of scope)",
     "trackWriteShare": "trackWrite P50 22.6ms includes ShardingSphere multi-row INSERT parse/route + sql-show printing (30KB-class statement string per request); sql-show default-off (this change) removes the printing share"
   },
-  "snapshotSource": "logs/record.log SUBMIT_TX_TIMING line at samples=2000 (out of 2010 incl. warmup); snapshots are cumulative aggregates"
+  "snapshotSource": "logs/record.log SUBMIT_TX_TIMING line at samples=2000 (out of 2010 incl. warmup); snapshots are cumulative aggregates",
+  "correctionTask140": {
+    "date": "2026-09-25",
+    "evidenceGrade": "select segment is MIXED (physical connection acquisition wait + idempotency SELECT); reading.poolWaitShare 'confirmed by direct measurement' is downgraded to inference. commit segment is the beforeCommit->afterCommit interval (incl. network round-trip), NOT a pure fsync item; fsync share 未分离测得 (not separately measured). Per-segment P50s must not be summed into a per-request latency. Single before/after run with a double change cannot attribute gains to either item.",
+    "directMeasurement": "request-level connWait (physical connection acquisition incl. Hikari pool wait, measured at inner-pool acquisition point) P50 527.1ms under the same load, see docs/perf/复测-db-wait-evidence.md"
+  }
 }

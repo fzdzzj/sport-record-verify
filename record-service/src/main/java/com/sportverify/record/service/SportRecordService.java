@@ -84,6 +84,19 @@ public class SportRecordService {
         //    成功收口在 afterCommit（见 5.1），回滚丢弃不计样本
         SubmitTxTiming.Rec txRec = submitTxTiming.begin(txTimingEnabled);
 
+        // connWait 归因桥接（TASK-140，仅计时开启）：入口武装，事务完结（含回滚）的
+        // afterCompletion 解除；注册先于任何 SQL，覆盖幂等/重复键/异常全部退出路径。
+        // 仅本请求线程被武装，其他端点与后台线程不产生样本
+        if (txTimingEnabled) {
+            SubmitTxTiming.armConnWait(txRec);
+            TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+                @Override
+                public void afterCompletion(int status) {
+                    SubmitTxTiming.disarmConnWait();
+                }
+            });
+        }
+
         // 1. 幂等前置校验（唯一键冲突的兜底在 insert 捕获）；
         //    requestId 必填校验由控制器层 @Valid + DTO 注解承担，此处不再重复判空
         long tSelect = System.nanoTime();

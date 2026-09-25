@@ -1,0 +1,55 @@
+[
+  {
+    "number": 1,
+    "category": "冻结与口径订正",
+    "task": "固定 TASK-139 的证据边界，在同一作业内纠正历史归因措辞",
+    "steps": [
+      { "step": "记录开工 HEAD、既有脏项、运行时环境、TASK-139 原始数字与脚本样本；若 HEAD 变化则先核对而非覆盖", "completed": true },
+      { "step": "在 TASK-139 报告/摘要/handoff 追加订正：select 混合段、commit 区间非纯 fsync、分段 P50 不可直接相加、一次前后跑次与双重改动不能证明因果；原始数值不变", "completed": true }
+    ],
+    "passes": true
+  },
+  {
+    "number": 2,
+    "category": "数据源与测量门槛",
+    "task": "先证明诊断指标属于真实内层 Hikari 池且能回答请求级归因问题",
+    "steps": [
+      { "step": "核对 ShardingSphere 内层 Hikari 与外层 Spring DataSource 关系，读取运行时 actuator/metrics 或 Prometheus 的指标名、数据源标签、可用计时量及后台请求混入情况；留下脱敏命令和响应片段", "completed": true },
+      { "step": "逐项列出连接获取等待、SQL/JDBC 执行、提交区间是否有真实起止时间；仅池占用/待连接线程快照不足以宣称单请求等待比例；不能准确分离则写未覆盖与阻碍", "completed": true }
+    ],
+    "passes": true
+  },
+  {
+    "number": 3,
+    "category": "必要时的最小诊断",
+    "task": "只有现有指标缺失且位置可证时才加默认关闭的测量，不改业务决策",
+    "steps": [
+      { "step": "选择并记录能分别计时真实物理连接获取、SQL/JDBC 执行和事务 beforeCommit→afterCommit 的最小机制；若只能量代理层或借助未经证实的内部 API，停止插桩并登记未知", "completed": true },
+      { "step": "若实施插桩，新增单测证明关闭态业务行为不变、回滚不计成功样本、开启态内存有界且统计只包含所声明人群；复用 SubmitTxTiming 时修复无界保存", "completed": true },
+      { "step": "通过 bash scripts/verify/mvn-verify.sh --mode=offline --pl record-service test；若未改业务/测试代码则明确标注未运行该门槛及原因，不能冒称通过", "completed": true }
+    ],
+    "passes": true
+  },
+  {
+    "number": 4,
+    "category": "容量门槛与重复同负载",
+    "task": "在环境与容量可承受时重复当前配置，不做伪 A/B 归因",
+    "steps": [
+      { "step": "确认当前样本仍为每请求约 300 点、磁盘与库容量足以承受预计新增行；确认同一 HEAD/池 10/计时关/SQL-show 关/依赖版本/后台流量；不满足则记未覆盖、不清理数据", "completed": true },
+      { "step": "原始 TASK-139 dbfoot 若可比，新增两次 load 100 2000、各用不同 label；不可比则最多新增三次，累计本任务新增不超三轮（额外开启诊断的负载也算在内且不与关闭态混组）；任一负载失败只记退出码与原因，不反复试错", "completed": true },
+      { "step": "逐轮保留独立 QPS/P50/P95/P99/错误率与仪表读数，汇总波动范围；若指标为全服务聚合或不同人群，只能写总体关联，不能写单请求池等待比例或 fsync 占比", "completed": true }
+    ],
+    "passes": true
+  },
+  {
+    "number": 5,
+    "category": "一次作业收口",
+    "task": "形成一份可信度分层的结果，再统一做台账/契约/提交回传",
+    "steps": [
+      { "step": "写新测量报告及可解析摘要，明确已验证事实、推断、未知、P95 各轮范围与下一步唯一假设；本任务不改 SQL/池/JVM/刷盘", "completed": true },
+      { "step": "更新本三件套完成状态及 mailbox 两件套/PLAN，列清实际文件、失败与未覆盖；git diff --check、只改清单核对、仓库契约按实际退出码登记", "completed": true },
+      { "step": "只 stage 本任务路径，在同一作业内完成必要本地提交并回传哈希；不碰既有脏项，不 push、不建 PR，不把单次观测表述成性能因果证明", "completed": true }
+    ],
+    "passes": true
+  }
+]
