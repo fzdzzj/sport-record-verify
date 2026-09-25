@@ -53,5 +53,7 @@ rules:
           algorithm-expression: track_point_$->{user_id % 16}
 
 props:
-  # 开发期打印实际路由到的物理表，便于验证「分片路由正确」
-  sql-show: true
+  # SQL 展示默认关闭（TASK-139，规范「分片 SQL 展示默认关闭」）：热路径上不再打印
+  # ShardingSphere 逻辑 SQL 与实际 SQL（300 点多值 INSERT 单条语句字符串 ~30KB，
+  # 打印本身是真实的 CPU/IO 开销）。开发排查临时打开：环境变量 SS_SQL_SHOW=true
+  sql-show: ${SS_SQL_SHOW:false}

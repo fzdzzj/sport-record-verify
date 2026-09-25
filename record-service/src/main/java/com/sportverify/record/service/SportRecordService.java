@@ -41,7 +41,8 @@ import java.util.List;
  *
  * <p>职责：</p>
  * <ul>
- *   <li>提交：request_id 唯一键幂等 → 记录落单表 + 轨迹按 user_id%16 分片落库 → SUBMITTED→VERIFYING → 发 SUBMITTED 事件；</li>
+ *   <li>提交：request_id 唯一键幂等 → 记录直接以 VERIFYING 落单表 + 轨迹按 user_id%16 分片落库
+ *       → 提交后发 SUBMITTED 事件（提交事务内不再单独 UPDATE 出不可见的 SUBMITTED 中间态）；</li>
  *   <li>状态回调：verify 判定/终判后以乐观锁驱动迁移（冲突 3003）；</li>
  *   <li>轨迹查询：先经 sport_record 解析 user_id，再按 user_id 路由单分片；</li>
  *   <li>申诉：REJECTED→APPEALING（经 verify-api 建申诉单，record_id 唯一）。</li>
@@ -58,20 +59,36 @@ public class SportRecordService {
     private final VerifyApi verifyApi;
     private final VerifyDegradeService verifyDegradeService;
 
+    /** 提交事务分段计时开关（TASK-139 插桩，默认关闭；true 时日志周期打 SUBMIT_TX_TIMING snapshot） */
+    @Value("${record.submit.tx-timing-enabled:false}")
+    private boolean txTimingEnabled;
+
+    /** 分段计时聚合器（本服务为单例 bean，聚合跨请求；关闭态零开销） */
+    private final SubmitTxTiming submitTxTiming = new SubmitTxTiming();
+
     /**
      * 提交运动记录。
      *
      * <p>幂等：uk_request_id 唯一键，重复提交捕获 DuplicateKeyException 后
      * 返回原记录（接口层映射为 3004 + 原结果，规范「重复提交幂等」）。</p>
      *
-     * <p>本地事务边界（ADR-0009）：{@code @Transactional} 覆盖主记录 + 轨迹点 + 状态迁移；
-     * MQ/Feign 仅在 {@code afterCommit} 触发，轨迹写入失败不得发出校验事件。</p>
+     * <p>本地事务边界（ADR-0009）：{@code @Transactional} 覆盖主记录 + 轨迹点；
+     * 首次提交直接 INSERT VERIFYING / version=0，事务内不再对不可见的 SUBMITTED
+     * 中间态单独 UPDATE（TASK-139 缩短提交 DB 足迹）。MQ/Feign 仅在
+     * {@code afterCommit} 触发，轨迹写入失败不得发出校验事件。</p>
      */
     @Transactional(rollbackFor = Exception.class)
     public RecordSubmitResultDTO submit(RecordSubmitDTO dto) {
+        // 0. 分段计时（TASK-139 插桩，默认关闭）：把归因推断的 T_tx 拆成
+        //    select / insert 主表 / 轨迹写入 / updateStatus（若仍在）/ commit 各段；
+        //    成功收口在 afterCommit（见 5.1），回滚丢弃不计样本
+        SubmitTxTiming.Rec txRec = submitTxTiming.begin(txTimingEnabled);
+
         // 1. 幂等前置校验（唯一键冲突的兜底在 insert 捕获）；
         //    requestId 必填校验由控制器层 @Valid + DTO 注解承担，此处不再重复判空
+        long tSelect = System.nanoTime();
         SportRecord existing = sportRecordMapper.selectByRequestId(dto.getRequestId());
+        txRec.span("select", tSelect);
         if (existing != null) {
             log.info("重复提交幂等返回：requestId={}, recordId={}", dto.getRequestId(), existing.getId());
             return RecordSubmitResultDTO.of(existing.getId(), existing.getRequestId(),
@@ -81,7 +98,10 @@ public class SportRecordService {
         // 1.1 运动类型解析：缺省回退 RUNNING（历史默认）；枚举外取值拒绝（规范「未知类型拒绝」）
         Integer sportType = resolveSportType(dto.getSportType());
 
-        // 2. 落 sport_record 主表（单表，SUBMITTED 初始态）
+        // 2. 落 sport_record 主表（单表）：首次提交直接 INSERT status=VERIFYING / version=0，
+        //    不再先 INSERT SUBMITTED 再在同一事务里 UPDATE——那条 UPDATE 只写了其他连接
+        //    从未可见的中间态（规范「提交事务不落不可见中间态」）；SUBMITTED 保留为
+        //    历史行/回调路径的合法状态
         SportRecord record = new SportRecord();
         record.setRequestId(dto.getRequestId());
         record.setUserId(dto.getUserId());
@@ -90,9 +110,10 @@ public class SportRecordService {
         record.setEndTime(dto.getEndTime());
         record.setDistance(dto.getDistance());
         record.setDuration(dto.getDuration());
-        record.setStatus(RecordStatus.SUBMITTED.getCode());
+        record.setStatus(RecordStatus.VERIFYING.getCode());
         record.setVersion(0);
         record.setCreatedAt(LocalDateTime.now());
+        long tInsert = System.nanoTime();
         try {
             sportRecordMapper.insert(record);
         } catch (DuplicateKeyException e) {
@@ -104,9 +125,11 @@ public class SportRecordService {
             return RecordSubmitResultDTO.of(origin.getId(), origin.getRequestId(),
                     origin.getStatus(), true, "重复提交，返回原结果");
         }
+        txRec.span("insertMain", tInsert);
 
         // 3. 轨迹点分片落库：ShardingSphere 按 user_id 自动路由到 track_point_{user_id%16}
         //    （WHERE/INSERT 必须携带分片键 user_id；id 由 MP 雪花算法生成）
+        long tTrack = System.nanoTime();
         List<TrackPointDTO> points = dto.getPoints();
         if (points != null && !points.isEmpty()) {
             if (batchInsertEnabled) {
@@ -119,16 +142,29 @@ public class SportRecordService {
                 }
             }
         }
+        txRec.span("trackWrite", tTrack);
+        // 4.（已删除）原同一事务内 SUBMITTED→VERIFYING 的乐观锁 UPDATE：
+        //    提交事务内 SQL 少 1 条（TASK-139 缩短提交 DB 足迹）；updateStatus 方法本体
+        //    与回调/补偿路径的 SUBMITTED→VERIFYING 迁移保留
 
-        // 4. 状态机 SUBMITTED → VERIFYING（乐观锁；刚插入 version=0，冲突概率极低）
-        int rows = sportRecordMapper.updateStatus(record.getId(),
-                RecordStatus.SUBMITTED.getCode(), RecordStatus.VERIFYING.getCode(), 0);
-        if (rows == 0) {
-            throw new BizException(ResultCode.RECORD_STATUS_INVALID, "提交后状态迁移失败");
+        // 5.1 分段计时收口（TASK-139 插桩）：commit 段在真正提交前后取点；
+        //     本同步注册在事件发布之前，afterCommit 按注册序先收口再发事件，提交段不被 MQ 发送污染
+        if (txTimingEnabled) {
+            TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+                private long commitStart;
+
+                @Override
+                public void beforeCommit(boolean readOnly) {
+                    commitStart = System.nanoTime();
+                }
+
+                @Override
+                public void afterCommit() {
+                    txRec.span("commit", commitStart);
+                    txRec.flush();
+                }
+            });
         }
-        // 回填内存态（库内已乐观推进为 VERIFYING），使提交响应直接展示 VERIFYING
-        record.setStatus(RecordStatus.VERIFYING.getCode());
-        record.setVersion(1);
 
         // 5. 事务提交后异步发 SUBMITTED 事件进入校验流程（避免事务回滚导致孤儿事件）；
         //    不在请求线程 syncSend；失败回调里降级 Feign 直调（熔断保护，VerifyApiFallback 抛 4001）；

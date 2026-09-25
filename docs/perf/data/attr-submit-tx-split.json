@@ -1,0 +1,55 @@
+{
+  "head": "f5696fb8b70547e49b0ac6e2a5489e8fde8e10be",
+  "date": "2026-09-25",
+  "label": "split-c100",
+  "purpose": "TASK-139 submit transaction segment timing (instrumentation only, behavior unchanged)",
+  "instrument": {
+    "property": "record.submit.tx-timing-enabled",
+    "value": true,
+    "segments": ["select", "insertMain", "trackWrite", "updateStatus", "commit"],
+    "note": "select segment covers HikariCP pool wait + idempotency SELECT (pool of 10 under concurrency 100); commit segment covers actual commit incl. redo fsync; updateStatus segment exists only in pre-change code (SUBMITTED->VERIFYING optimistic-lock UPDATE inside submit transaction)"
+  },
+  "load": {
+    "cmd": "bash scripts/perf/run-perf.sh load 100 2000 split",
+    "concurrency": 100,
+    "total": 2000,
+    "ok": 2000,
+    "limited429": 0,
+    "errors": 0,
+    "wallSeconds": 16.675,
+    "qps": 119.94,
+    "p50ms": 752.68,
+    "p95ms": 1410.23,
+    "p99ms": 1551.68,
+    "maxMs": 2227.84
+  },
+  "baselineReference": {
+    "source": "docs/perf/data/raw/head-c100-summary.json",
+    "qps": 120.90,
+    "p50ms": 777.55,
+    "note": "split run within noise of TASK-138 baseline; behavior unchanged"
+  },
+  "segmentsP50us": {
+    "select": 681615,
+    "insertMain": 2859,
+    "trackWrite": 22551,
+    "updateStatus": 2083,
+    "commit": 28861
+  },
+  "segmentsFull": {
+    "select": {"n": 2000, "p50us": 681615, "p95us": 1276182, "maxUs": 2145273},
+    "insertMain": {"n": 2000, "p50us": 2859, "p95us": 10359, "maxUs": 101121},
+    "trackWrite": {"n": 2000, "p50us": 22551, "p95us": 57444, "maxUs": 254658},
+    "updateStatus": {"n": 2000, "p50us": 2083, "p95us": 8076, "maxUs": 40837},
+    "commit": {"n": 2000, "p50us": 28861, "p95us": 66370, "maxUs": 392012}
+  },
+  "reading": {
+    "txWorkP50usApprox": 56354,
+    "txWorkP50usApproxFormula": "insertMain + trackWrite + updateStatus + commit (excl. pool wait)",
+    "poolWaitShare": "select P50 681.6ms of ~738ms in-tx wall per request is HikariCP queue wait (pool 10, concurrency 100); TASK-138 inference (9/10 of observed P50 is pool wait, T_tx ~80ms) confirmed by direct measurement, in-tx work P50 ~56.5ms",
+    "updateStatusShare": "updateStatus P50 2.1ms is ~4% of in-tx work; removing it shrinks T_tx and hence pool-wait multiple, expected small QPS/P50 improvement",
+    "commitShare": "commit P50 28.9ms is the largest in-tx segment (redo fsync floor); NOT addressable in this change (innodb flush overlay explicitly out of scope)",
+    "trackWriteShare": "trackWrite P50 22.6ms includes ShardingSphere multi-row INSERT parse/route + sql-show printing (30KB-class statement string per request); sql-show default-off (this change) removes the printing share"
+  },
+  "snapshotSource": "logs/record.log SUBMIT_TX_TIMING line at samples=2000 (out of 2010 incl. warmup); snapshots are cumulative aggregates"
+}

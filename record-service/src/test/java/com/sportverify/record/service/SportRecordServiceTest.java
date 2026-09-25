@@ -18,6 +18,7 @@ import com.sportverify.api.verify.dto.VerificationResultDTO;
 import com.sportverify.common.result.Result;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.mockito.ArgumentCaptor;
 import org.springframework.dao.DuplicateKeyException;
 import org.springframework.test.util.ReflectionTestUtils;
 import org.springframework.transaction.support.TransactionSynchronization;
@@ -136,13 +137,48 @@ class SportRecordServiceTest {
 
     // ==================== 提交主路径 ====================
 
-    /** 显式 false → 逐条 INSERT：落主表 → 逐条写轨迹 → 状态迁移 VERIFYING → 发事件 */
+    /**
+     * 规范「提交事务不落不可见中间态」判别式：首次提交 INSERT 必须直接落
+     * status=VERIFYING / version=0，submit 路径对 updateStatus 的调用次数为 0
+     * （SUBMITTED 只作为历史行/回调路径的合法状态）；响应仍为 VERIFYING，
+     * afterCommit 仍发 SUBMITTED 事件。
+     *
+     * <p>updateStatus 打桩返回 1 行只为让旧实现（先 INSERT SUBMITTED 再 UPDATE）
+     * 走完全程，使红落在 INSERT 参数断言上而非迁移 0 行异常；新实现下该桩不被触碰
+     * （由下方 never() 判别式守卫）。</p>
+     */
     @Test
-    void submit_happyPath_batchDisabled_writesPointsAndTransitions() {
-        ReflectionTestUtils.setField(service, "batchInsertEnabled", false);
+    void submit_insertsVerifyingDirectly_andNeverCallsUpdateStatus() {
         when(sportRecordMapper.selectByRequestId("req-1")).thenReturn(null);
         when(sportRecordMapper.updateStatus(100L, RecordStatus.SUBMITTED.getCode(),
                 RecordStatus.VERIFYING.getCode(), 0)).thenReturn(1);
+        stubPublishSuccess();
+        stubInsertReturnsId();
+
+        inTx(() -> {
+            RecordSubmitResultDTO result = service.submit(dto(2, 1));
+            assertEquals(RecordStatus.VERIFYING.getCode(), result.getStatus(), "提交响应须为 VERIFYING");
+            assertFalse(result.isDuplicated());
+        }, true);
+
+        ArgumentCaptor<SportRecord> insertCaptor = ArgumentCaptor.forClass(SportRecord.class);
+        verify(sportRecordMapper).insert(insertCaptor.capture());
+        SportRecord inserted = insertCaptor.getValue();
+        assertEquals(RecordStatus.VERIFYING.getCode(), inserted.getStatus(),
+                "首次提交 INSERT 必须直接落 VERIFYING，不得先落 SUBMITTED 再 UPDATE");
+        assertEquals(0, inserted.getVersion());
+        verify(sportRecordMapper, never()).updateStatus(anyLong(), anyInt(), anyInt(), anyInt());
+        verify(recordEventProducer).publishSubmitted(eq(100L), eq(100L), any());
+    }
+
+    /**
+     * 显式 false → 逐条 INSERT：落主表（直接 VERIFYING）→ 逐条写轨迹 → 发事件。
+     * TASK-139 后 submit 路径不再有 SUBMITTED→VERIFYING 的 updateStatus。
+     */
+    @Test
+    void submit_happyPath_batchDisabled_writesPointsAndInsertsVerifying() {
+        ReflectionTestUtils.setField(service, "batchInsertEnabled", false);
+        when(sportRecordMapper.selectByRequestId("req-1")).thenReturn(null);
         stubPublishSuccess();
         stubInsertReturnsId();
 
@@ -155,10 +191,11 @@ class SportRecordServiceTest {
         }, true);
 
         // 分片前提：轨迹点必须携带 user_id 分片键（从记录归属人填充）
-        verify(sportRecordMapper).insert(any(SportRecord.class));
+        ArgumentCaptor<SportRecord> insertCaptor = ArgumentCaptor.forClass(SportRecord.class);
+        verify(sportRecordMapper).insert(insertCaptor.capture());
+        assertEquals(RecordStatus.VERIFYING.getCode(), insertCaptor.getValue().getStatus());
         verify(trackPointMapper, times(2)).insert(any(TrackPoint.class));
-        verify(sportRecordMapper).updateStatus(100L, RecordStatus.SUBMITTED.getCode(),
-                RecordStatus.VERIFYING.getCode(), 0);
+        verify(sportRecordMapper, never()).updateStatus(anyLong(), anyInt(), anyInt(), anyInt());
         verify(recordEventProducer).publishSubmitted(eq(100L), eq(100L), any());
     }
 
@@ -167,8 +204,6 @@ class SportRecordServiceTest {
     void submit_empty_sportTypeDefaultsToRunning_andBatchEnabled_usesBatchInsert() {
         ReflectionTestUtils.setField(service, "batchInsertEnabled", true);
         when(sportRecordMapper.selectByRequestId("req-1")).thenReturn(null);
-        when(sportRecordMapper.updateStatus(100L, RecordStatus.SUBMITTED.getCode(),
-                RecordStatus.VERIFYING.getCode(), 0)).thenReturn(1);
         stubPublishSuccess();
         stubInsertReturnsId();
 
@@ -264,8 +299,6 @@ class SportRecordServiceTest {
     @Test
     void submit_mqPublishFail_feignDirectCallTriggersVerify() {
         when(sportRecordMapper.selectByRequestId("req-1")).thenReturn(null);
-        when(sportRecordMapper.updateStatus(100L, RecordStatus.SUBMITTED.getCode(),
-                RecordStatus.VERIFYING.getCode(), 0)).thenReturn(1);
         stubPublishFailure();
         stubInsertReturnsId();
 
@@ -279,8 +312,6 @@ class SportRecordServiceTest {
     @Test
     void submit_mqAndFeignFail_degradeToManualReview() {
         when(sportRecordMapper.selectByRequestId("req-1")).thenReturn(null);
-        when(sportRecordMapper.updateStatus(100L, RecordStatus.SUBMITTED.getCode(),
-                RecordStatus.VERIFYING.getCode(), 0)).thenReturn(1);
         stubPublishFailure();
         when(verifyApi.triggerVerify(100L)).thenThrow(new RuntimeException("verify 熔断 OPEN"));
         stubInsertReturnsId();

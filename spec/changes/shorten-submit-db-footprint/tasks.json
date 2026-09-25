@@ -1,0 +1,67 @@
+[
+  {
+    "number": 1,
+    "category": "阶段 1：冻结与插桩",
+    "task": "冻结 TASK-138 基线，并加上默认关闭的提交事务分段计时",
+    "steps": [
+      { "step": "记录 git rev-parse HEAD，确认相对 f5696fb；对照 docs/perf/data/raw/head-c100-summary.json 的 120.90 / 777.55，不得覆盖 head-c100 原始文件", "completed": true },
+      { "step": "新增 record.submit.tx-timing-enabled 默认 false；为 true 时按段记录 select/insert/轨迹写入/updateStatus/commit，并周期性打可解析 snapshot 日志。不新增依赖、不新增业务 URL", "completed": true },
+      { "step": "计时开启、行为未改时用 bash scripts/perf/run-perf.sh load 100 2000 split 跑同一负载；从 snapshot 写出 docs/perf/data/attr-submit-tx-split.json。失败只完整尝试一次，记未覆盖", "completed": true }
+    ],
+    "passes": true
+  },
+  {
+    "number": 2,
+    "category": "阶段 2：判别式先红",
+    "task": "在改业务行为前加入必然失败的回归测试",
+    "steps": [
+      { "step": "SportRecordServiceTest：首次提交 INSERT 的 status 必须是 VERIFYING；submit 路径对 updateStatus 的调用次数必须是 0；响应仍为 VERIFYING；afterCommit 仍发 SUBMITTED；轨迹失败仍不发事件；重复提交仍不 insert", "completed": true },
+      { "step": "读取模块 src/main/resources/sharding.yaml，断言 sql-show 默认 false 或 ${SS_SQL_SHOW:false}，不得为字面量 true", "completed": true },
+      { "step": "先跑 bash scripts/verify/mvn-verify.sh --mode=offline --pl record-service test，记录行为红退出码与失败用例名，禁止用编译红冒充", "completed": true }
+    ],
+    "passes": true
+  },
+  {
+    "number": 3,
+    "category": "阶段 3：缩短提交 DB 足迹",
+    "task": "只做允许清单内的数据库类改动",
+    "steps": [
+      { "step": "submit 直接 INSERT VERIFYING version=0，删除同一事务内 SUBMITTED 到 VERIFYING 的 updateStatus；内存态与响应为 VERIFYING", "completed": true },
+      { "step": "保留 SportRecordMapper.updateStatus 与回调/补偿上的 SUBMITTED 到 VERIFYING；幂等与 DuplicateKeyException 分支不改", "completed": true },
+      { "step": "主 sharding.yaml 的 sql-show 改为 ${SS_SQL_SHOW:false}；不改 MYSQL_POOL_SIZE 默认 10", "completed": true }
+    ],
+    "passes": true
+  },
+  {
+    "number": 4,
+    "category": "阶段 4：测试转绿",
+    "task": "同一 Maven 入口转绿，用例只增不减",
+    "steps": [
+      { "step": "更新既有 submit 测试：去掉对 submit 路径 updateStatus 的 stub/verify，改为捕获 insert 参数 status=VERIFYING", "completed": true },
+      { "step": "保留 statusCallback_fromSubmittedToVerifying 等回调测试", "completed": true },
+      { "step": "bash scripts/verify/mvn-verify.sh --mode=offline --pl record-service test 退出码 0；回传模块用例数", "completed": true }
+    ],
+    "passes": true
+  },
+  {
+    "number": 5,
+    "category": "阶段 5：同一负载验收",
+    "task": "关计时后复测，对比 TASK-138，指标不动则停止",
+    "steps": [
+      { "step": "确认 tx-timing-enabled=false、MYSQL_POOL_SIZE 未注入、未叠加 docker-compose.perf.yml、未改 JVM", "completed": true },
+      { "step": "bash scripts/perf/run-perf.sh load 100 2000 dbfoot；记录 QPS/P50/P95/错误率。失败只完整尝试一次，记未覆盖，禁止编造", "completed": true },
+      { "step": "写出 docs/perf/复测-submit-tx.md：含 split 摘要、改动前后数字、是否改善、若未改善则停止叠加的结论。旧报告 137 QPS 必须标旧环境", "completed": true }
+    ],
+    "passes": true
+  },
+  {
+    "number": 6,
+    "category": "阶段 6：台账与一次收口",
+    "task": "勾选三件套、写 handoff/PLAN、一次作业内提交",
+    "steps": [
+      { "step": "tasks.json 按实跑勾选；补 work/mailbox/tasks/TASK-139/handoff.md 与 PLAN.md 验收记录；只改清单与实际改动集逐字一致", "completed": true },
+      { "step": "只 stage 本任务清单内文件；git commit -F UTF-8 文件；不 add -A，不提交归档 rename 与 add-verify-degrade-status-index，不 push", "completed": true }
+    ],
+    "passes": true
+  }
+]
