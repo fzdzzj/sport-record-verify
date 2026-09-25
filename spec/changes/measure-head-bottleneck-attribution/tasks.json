@@ -1,0 +1,65 @@
+[
+  {
+    "number": 1,
+    "category": "基线",
+    "task": "冻结当前 HEAD 的环境与负载定义",
+    "steps": [
+      { "step": "记录 git rev-parse HEAD、JDK 版本、MYSQL_PORT、中间件容器名与版本、是否已有服务进程", "completed": true },
+      { "step": "负载固定为现有脚本：bash scripts/perf/run-perf.sh load 100 2000 head；不改样本、不改 500/1000", "completed": true }
+    ],
+    "passes": true
+  },
+  {
+    "number": 2,
+    "category": "调用盘点",
+    "task": "静态数清一次提交和一次校验的外部调用",
+    "steps": [
+      { "step": "提交路径：从 SportRecordService.submit 数 SQL、Redis、Feign、MQ（含 afterCommit 异步发送）", "completed": true },
+      { "step": "校验路径：从 VerifyEventConsumer 到 VerifyEngine/R5OffRoadRule/MapMatchService.fetchCandidates 到 outbox，数 SQL、Redis、Feign、MQ", "completed": true },
+      { "step": "写成表格：路径 x SQL x Redis x HTTP x MQ x 事务范围；不得把历史报告数字填进本表冒充实测", "completed": true }
+    ],
+    "passes": true
+  },
+  {
+    "number": 3,
+    "category": "同一负载",
+    "task": "复跑提交接口 100 并发，能跑则记录，不能跑则未覆盖",
+    "steps": [
+      { "step": "优先用现有 bash scripts/perf/run-perf.sh start-services；禁止改 JVM 参数、禁止叠加 docker-compose.perf.yml", "completed": true },
+      { "step": "执行 load 100 2000 head；记录 QPS/P50/P95/P99/错误率；原始 CSV 留 docs/perf/data/raw/（gitignore，不入库）", "completed": true },
+      { "step": "起栈或压测失败只允许完整尝试一次，失败写入未覆盖原因和命令退出码，禁止编造 QPS", "completed": true }
+    ],
+    "passes": true
+  },
+  {
+    "number": 4,
+    "category": "校验链路",
+    "task": "能起则跑 quality，否则静态盘点即可",
+    "steps": [
+      { "step": "mapmatch/verify/MQ 可用时执行 bash scripts/perf/run-perf.sh quality head，记录拦截率/通过率/校验 P95", "completed": false },
+      { "step": "缺 mapmatch 或 quality 失败则校验运行时记未覆盖；R5 仍保留静态调用次数，不改 start-services 脚本", "completed": true }
+    ],
+    "passes": true
+  },
+  {
+    "number": 5,
+    "category": "归因",
+    "task": "只选一类因素并写报告，不实施优化",
+    "steps": [
+      { "step": "结合调用次数与（若有）延迟/吞吐/GC 日志，从业务规则、数据库、远程调用、锁、CPU、GC 六类中只选占比最高的一类", "completed": true },
+      { "step": "写出 docs/perf/归因-HEAD.md 与 docs/perf/data/attr-head-summary.json；文中必须区分旧报告与本 HEAD；写明下一步假设但禁止改代码", "completed": true },
+      { "step": "确认 git diff 不含任何业务 Java/SQL/服务配置；不调 JVM、不加索引、不改连接池", "completed": true }
+    ],
+    "passes": true
+  },
+  {
+    "number": 6,
+    "category": "收口",
+    "task": "台账与一次提交",
+    "steps": [
+      { "step": "补 work/mailbox/tasks/TASK-138/handoff.md 与 PLAN.md 验收记录，只改清单与实际改动集一致", "completed": true },
+      { "step": "只 stage 本任务清单内文件，一次 git commit -F；不 add -A，不提交归档 rename，不 push", "completed": true }
+    ],
+    "passes": true
+  }
+]

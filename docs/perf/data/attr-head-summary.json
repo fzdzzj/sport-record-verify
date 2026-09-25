@@ -1,0 +1,62 @@
+{
+  "head": "58cd1041bac14c24cc801c2d3e383b606d8cc91b",
+  "date": "2026-09-25",
+  "runtime_covered": true,
+  "load": {
+    "cmd": "bash scripts/perf/run-perf.sh load 100 2000 head",
+    "concurrency": 100,
+    "total": 2000,
+    "ok": 2000,
+    "limited429": 0,
+    "errors": 0,
+    "wallSeconds": 16.542,
+    "qps": 120.90,
+    "p50ms": 777.55,
+    "p95ms": 1188.55,
+    "p99ms": 1428.57,
+    "maxMs": 1987.60
+  },
+  "quality": {
+    "covered": false,
+    "reason": "mapmatch-service not in start-services stack and PostGIS down; R5 would degrade for all samples so intercept/pass rates would be invalid; not executed, not fabricated",
+    "interceptRate": null,
+    "passRate": null,
+    "verifyP95ms": null
+  },
+  "verifyPipeline": {
+    "records": 2010,
+    "allFinal": true,
+    "verdictPersistLatency": { "p50s": 15.0, "p95s": 17.0, "p99s": 18.0, "maxS": 18.0, "avgS": 15.2, "note": "sport_record.created_at -> verification_result.checked_at; queueing-dominated (consume ~60 msg/s vs arrival 121 msg/s)" },
+    "outbox": { "pending": 1012, "sent": 998, "relayCeilingRowsPerSec": 20 },
+    "r5": { "degraded": 2010, "realTimeouts": 9 }
+  },
+  "gc": {
+    "log": "logs/gc-record.log",
+    "pauseCount": 221,
+    "totalPauseMs": 960.5,
+    "maxSinglePauseMs": 2.3,
+    "wallShareApprox": "0.5%"
+  },
+  "calls": {
+    "submit": {
+      "entry": "SportRecordService.submit",
+      "sql": 4,
+      "redis": 0,
+      "http": 0,
+      "mq": 1,
+      "txScope": "single @Transactional covers all 4 SQL; MQ asyncSend registered afterCommit (outside tx)"
+    },
+    "verify": {
+      "entry": "VerifyEventConsumer.handleMessage -> VerifyService.verify -> VerifyEngine/R5OffRoadRule -> MapMatchApi(outbox relay side-channel)",
+      "sqlVerifySide": 5,
+      "sqlRecordSide": 5,
+      "redis": 2,
+      "http": 3,
+      "mq": 0,
+      "txScope": "no long tx (ADR-0009): initVerifying single stmt; persistResultAndEvent = 2 SQL in one tx; callback and relay outside tx; relay per-row autocommit"
+    }
+  },
+  "top_class": "数据库",
+  "nextStepHypothesis": "Instrument the submit tx to split per-SQL / ShardingSphere multi-row INSERT parse / commit fsync shares, then shorten per-request DB footprint (tx length and connection hold) within the database class only; not implemented in this task",
+  "oldReportNote": "136.8 QPS / P95 1.60s / 541ms / 28~63ms in docs/perf/压测报告.md are OLD-environment numbers (2026-09-12, pool 30 + composite index + 1g heap), not current-HEAD measurements"
+}
