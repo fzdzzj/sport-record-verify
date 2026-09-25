@@ -745,3 +745,21 @@ run `35802403723`（head `eba0108`，2026-09-23 00:31 UTC）——**web/build �
 | 交付物判别式 | 报告含环境快照 / 静态调用表（提交 4 SQL·0 Redis·0 HTTP·1 MQ 异步单事务；校验 verify 侧 ≤5 + record 侧 5 SQL·1~2 Redis·3 HTTP+R5 降级·事件经 relay，无本地长事务）/ 运行时或未覆盖声明；top_class 全文唯一；git diff 无业务 Java/SQL/服务配置 |
 | 契约 | 提交前无参数口径 rc=1（本机在途/残留与共享 PLAN.md 交叠，同历史任务成因）；`--diff-file` 口径 TASK-138 段 7 项逐字一致 + 1 项工具提取盲区（归因报告文件名含非 ASCII 字节，契约提取正则只收 ASCII 路径字符 → 词元「-HEAD.md」与真实路径对不上；TASK-018 `.editorconfig` 同类先例、TASK-114 曾以扩白名单收口，本任务无契约脚本改动权）；git 层逐字比对 8=8 单独证明；**收口提交后无参数复跑 rc=0**（实测输出见任务回传） |
 | 未解决边界 | 校验链路 15s 级延迟的每消息 ~300ms 同步链内部构成（HTTP vs SQL 份额）未拆分（无插桩手段）；outbox relay 20 行/s 批上限是设计参数，其提速属「一次只改一类」外的另一次变更；归档移名两批仍在工作树未跟踪态，等待指导侧另行收口 |
+
+## 验收记录：TASK-139 缩短提交事务 DB 足迹（只改数据库一类，2026-09-25）
+
+| 项 | 内容 |
+| --- | --- |
+| 绑定修订 | 开工基线 `f5696fb8b70547e49b0ac6e2a5489e8fde8e10be`（当时 HEAD，与任务书一致）；业务+测试+复测文档+规范三件套为本地提交 `bd34f81e9add7dea81436dbfb9f8fcefc43b8470`（`perf(record): 缩短提交事务 DB 足迹`，11 文件）；台账两件套与本记录为收口提交（`docs(mailbox): TASK-139 提交绑定与验收记录`，哈希由任务回传承载）。未 push、未建 PR |
+| 目标与范围 | 只缩短提交事务 DB 足迹：submit 直接 INSERT VERIFYING/version=0 删除同事务不可见中间态 UPDATE；主 sharding.yaml sql-show 改 `${SS_SQL_SHOW:false}`；默认关闭的分段计时插桩（拆 T_tx 用）。不改池/JVM/索引/刷盘，不碰 add-verify-degrade-status-index 与归档移名 |
+| 插桩拆段（split） | 计时开、行为未改：QPS 119.94 / P50 752.68ms（与基线同噪声带）；分段 P50 select 681.6ms（约 92% 为池等待）/ insertMain 2.9ms / trackWrite 22.6ms / updateStatus 2.1ms / commit 28.9ms——直接证实 TASK-138「9/10 是池排队、T_tx≈80ms」推断（事务内实测 ≈56.5ms），并量出 updateStatus 仅占事务内工作 ≈4%；commit 与 trackWrite 为事务内地板（`docs/perf/data/attr-submit-tx-split.json`） |
+| 受控红绿 | 红前生产代码保持基线+插桩态（纯增量）。红（唯一入口 `--mode=offline --pl record-service test`）**rc=1**：Tests run 86 / Failures 3 / Errors 0，三条新判别式全红（`submit_insertsVerifyingDirectly_andNeverCallsUpdateStatus:169` expected 0 but was 1 = INSERT 实参 SUBMITTED≠VERIFYING；`MainShardingYamlDefaultsTest:36/:45` 主 yaml 仍字面量 true），既有 83 条全绿。过程注记：首跑 rc=1 为 record 进程锁 jar 致 clean 失败（环境红作废）；二跑弱红（未打桩 updateStatus 返 0 行中止流程），补桩走全程后重跑取到目标断言红。绿：同入口 **rc=0** / record **86/0/0/0**（+3 只增不减）；package 复跑同数。全程无编译红冒充 |
+| 行为改动 | submit 直接 INSERT `status=VERIFYING, version=0`，删同事务 SUBMITTED→VERIFYING 的 UPDATE 与内存回填；响应仍 VERIFYING；afterCommit 仍发 SUBMITTED；轨迹失败仍不发事件；幂等与 DuplicateKeyException 不变；updateStatus 方法与回调/申诉/补偿路径保留。提交事务 SQL 4 条 → 3 条 |
+| 同一负载验收 | dbfoot（计时关、行为已改，一次成功）：**QPS 123.23 / P50 711.45ms / P95 1332.35ms / 错误率 0.00%**（2000/2000）。对比 TASK-138 120.90 / 777.55：**P50 −8.5%、QPS +1.9%，判定改善**（与插桩预测同量级）；P95 +12% 在噪声带内（行为未改的 split 跑 P95 即 1410ms）。计时确证关闭（SUBMIT_TX_TIMING 行数 0）、池 10 未注入、无 compose overlay、JVM 未动。**改善成立，按任务书就此停止叠加**（`docs/perf/复测-submit-tx.md`） |
+| 本地门槛来源 | 上行红绿实跑即门槛来源（唯一入口 offline）；`--mode=online` 与 CI 未跑，无依赖来源冲突需仲裁 |
+| 是否到达外部门槛 | **未达到**：本地已提交，未 push、未建 PR，无 CI run |
+| 旧报告口径 | 136.8（137 QPS）/ 1.6s / 541ms / 28~63ms 复测报告中一律标注「旧环境」（2026-09-12，含池 30 + 组合索引 + 1g 堆三项未启用优化），未写成当前结果 |
+| 契约 | 收口提交后无参数 `mailbox-contract.sh` **rc=0**（判据 A 两件套齐全 + 判据 B 清单一致；TASK-139 足迹不在工作树视为已收口）。git 层逐字比对 14=14；工具提取层对中文文件名交付物 1 项已知盲区（提取词元 `-submit-tx.md`，TASK-138 同类先例），以 git 层比对为准 |
+| 未覆盖/跳过 | quality 非本任务门槛未跑（mapmatch 缺席前提延续 TASK-138 口径）；500/1000 档禁止未跑；`SS_SQL_SHOW=true` 打开分支无单测（System.getenv 不可 mock 本机限制，默认关闭由主 yaml 判别式守住）；P95 尾部结论需多轮重复取分布，本任务按单跑噪声带口径不做反向结论 |
+| 剩余假设 | 剩余 P50 ≈711ms 由池 10 排队倍数支配，事务内地板为 commit 刷盘（P50 28.9ms）与轨迹多值 INSERT（P50 22.6ms）；再降属另立变更（缩轨迹写入/提交刷盘，或按归因口径在调用次数与事务范围降后再议池/刷盘） |
+| 只改清单一致性 | 实际改动集（`git diff --name-only --diff-filter=ACMR f5696fb`）= SportRecordService.java · SubmitTxTiming.java（新）· application.properties · sharding.yaml · SportRecordServiceTest.java · MainShardingYamlDefaultsTest.java（新）· attr-submit-tx-split.json（新）· 复测-submit-tx.md（新）· 规范三件套（3）· TASK-139/spec.md · TASK-139/handoff.md · PLAN.md，与 handoff「实际改动清单」逐字一致（14 项）；归档移名/.codex/.trae/add-verify-degrade-status-index 未触碰；未用 git stash、未 add -A、未 push |
