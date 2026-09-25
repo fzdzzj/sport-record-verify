@@ -20,6 +20,19 @@
 `--mode` 判据见 `scripts/verify/README.md`）。下方 D12 那句"今后验收口径固定"作为作废史原文保留，
 其参数组合现由该脚本的 `--mode=offline` 表达。
 
+## 验收记录：`TASK-137`（2026-09-25，点赞对账去 N+1 + flush 批次可配置，已提交）
+
+| 项 | 内容 |
+| --- | --- |
+| 绑定修订 | 开工/对照基线 `1d546ea08501a2577e6652bb2ebb2b814e3771ec`（当时 HEAD）。业务修订与测试绑定本地提交 `2f711d9444e389530ec81e9d878855fcf5a98ce2`（`fix(record): 点赞对账去 N+1，flush 批次改为可配置`，4 文件，+111/−16）；台账随收口提交入库（收口提交哈希由任务回传）。未 push、未建 PR。 |
+| 目标与范围 | 仅 `record-service`：F15 对账去 N+1（`selectDistinctRecordIds` + 逐 record `selectUserIdsByRecordId` → 一次 `selectRecordLikePairs` 批量 + 内存分组写 Redis）；F16 flush 批次可配置（`app.like.flush-batch`，默认 200，LRANGE 上界用配置值，不写死 199）。不加 Micrometer/队列上限/背压；不写「200/5s=40 ops/s」吞吐结论。 |
+| 受控红绿 | 红阶段主代码为纯增量脚手架（Mapper 新方法声明、Service 未接线字段、properties 配置行），既有行为路径未动，判别式为**行为红**：`bash scripts/verify/mvn-verify.sh --mode=offline --pl record-service test` → 退出码 `1`，record-service `Tests run: 83, Failures: 2, Errors: 0, Skipped: 0`（`reconcile_singleBatchQuery_fixesRedisFromDb`：`selectUserIdsByRecordId` 在对账路径被逐 record 调用，`NeverWantedButInvoked`；`flush_batchSizeConfigurable_takesOnlyConfiguredBatch`：LRANGE 实际上界 199 ≠ 配置期望 1）；上游 common `36/0/0/0`。后绿（同一命令，绑定最终工作树）：退出码 `0`、`BUILD SUCCESS`，record-service `83/0/0/0`（`RecordLikeServiceTest` `18/0/0/0`）、common `36/0/0/0`。 |
+| 本地门槛来源 | 上行 offline 实跑即门槛来源；`--mode=online` 与 CI 未跑，无 offline/online 依赖来源冲突需仲裁。 |
+| 是否到达外部门槛 | **未达到**：本地已提交，未 push、未建 PR，无 CI run。 |
+| 未覆盖/跳过 | 真实 Redis/MySQL 上对账/flush 联调 IT 未跑（无真中间件环境，`--it` 未执行），记**未覆盖**，未写成通过；`--pl record-service` 以外模块未重跑；record-service 无静态三件套门槛（checkstyle 规则集仅 leaderboard-service 配置），未跑 `--static`。 |
+| 契约 | 提交前实跑（`--baseline=1d546ea…`）：总体 `rc=1`（判据 A=0、判据 B=1）；**TASK-137 判据 A 通过（两件套齐全）、判据 B 通过（只改清单与实际改动集一致，7 文件）**；总体失败来自 TASK-136 历史清单重审（其业务文件已随基线提交、不在工作树，仅共享的 PLAN.md 被本任务再次修改触发交叠重审），与本任务清单不一致无关，按先例未代为订正。提交后无参数口径：工作树除 `.trae/` 外干净 → 改动集与清单无交叠、视为已收口；实际退出码由任务回传。 |
+| 未解决边界 | 旧两 Mapper 方法保留（判别式测试约束对账路径调用 0 次）；对账全表扫描规模仍随 record_like 线性增长（生产需增量游标/位图）；「空成员只删不 SADD」在批量分组结构下不可达，保留为防御分支；批次与周期是配置，不代表实测吞吐。 |
+
 ## 验收记录：`TASK-136`（2026-09-24，治理凭证扩围，第二阶段；第一阶段已提交）
 
 | 项 | 内容 |
