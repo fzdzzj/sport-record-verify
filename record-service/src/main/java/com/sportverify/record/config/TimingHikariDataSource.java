@@ -42,7 +42,10 @@ import java.util.logging.Logger;
  * <p>关闭路径：本类实现 {@link AutoCloseable}——ShardingSphere 5.4.1 池销毁
  * （{@code DataSourcePoolDestroyer}）仅按 {@code instanceof AutoCloseable} 判别并调用
  * {@code close()}，普通 DataSource 包装若不声明该接口则内层 Hikari 池在优雅关闭时
- * 不会被关闭（TASK-140 收口后修订）。YAML 属性实际转发（已核对，测试锁定）：
+ * 不会被关闭（TASK-140 收口后修订）。关闭语义对齐 {@code HikariDataSource}：
+ * {@code close()} 无论内层池是否已创建都标记关闭状态，之后 {@code getConnection()}
+ * 抛 {@link SQLException} 且不得经懒初始化重建池（否则优雅关闭后连接池会被重新打开，
+ * 收口后修订二补判别式）。YAML 属性实际转发（已核对，测试锁定）：
  * {@code jdbcUrl/username/password/maximumPoolSize/connectionTimeout/
  * initializationFailTimeout} 由包装类 setter 转发至内层池配置；{@code idleTimeout/
  * maxLifetime/minimumIdle/keepaliveTime} 由 ShardingSphere 池元数据默认值注入后同样
@@ -79,8 +82,12 @@ public class TimingHikariDataSource implements DataSource, AutoCloseable {
     /** 内层真实 Hikari 池：懒初始化，失败不留半初始化实例 */
     private volatile HikariDataSource pool;
 
+    /** 关闭状态：无论内层池是否已创建都标记（对齐 HikariDataSource 语义） */
+    private volatile boolean closed;
+
     @Override
     public Connection getConnection() throws SQLException {
+        ensureOpen();
         if (!SubmitTxTiming.connWaitArmed()) {
             return innerPool().getConnection();
         }
@@ -94,6 +101,7 @@ public class TimingHikariDataSource implements DataSource, AutoCloseable {
 
     @Override
     public Connection getConnection(String username, String password) throws SQLException {
+        ensureOpen();
         if (!SubmitTxTiming.connWaitArmed()) {
             return innerPool().getConnection(username, password);
         }
@@ -105,9 +113,22 @@ public class TimingHikariDataSource implements DataSource, AutoCloseable {
         }
     }
 
-    /** 关闭内层池（ShardingSphere 池销毁路径按 close 约定调用） */
+    /** 关闭后拒绝取连接并禁止懒重建：否则优雅关闭后的请求会把连接池重新打开 */
+    private void ensureOpen() throws SQLException {
+        if (closed) {
+            throw new SQLException("TimingHikariDataSource has been closed.");
+        }
+    }
+
+    /** 关闭状态（对齐 HikariDataSource：未建池时 close 同样标记） */
+    public boolean isClosed() {
+        return closed;
+    }
+
+    /** 关闭：先标记再关内层池；未建池时仅标记（此后取连接拒绝、不得懒重建） */
     @SuppressWarnings("PMD.UndefineMagicConstantRule")
     public void close() {
+        closed = true;
         HikariDataSource inner = pool;
         if (inner != null) {
             inner.close();

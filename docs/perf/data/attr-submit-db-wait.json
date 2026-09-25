@@ -12,6 +12,12 @@
     "wordingCorrections": "per-request paired select-vs-connWait difference is NOT retained by the aggregate snapshot; the former 'paired P50 delta ~4.7ms' and '~99.1%' comparisons removed as invalid; repeat range labeled MIXED operating conditions, all original numbers kept"
   },
 
+  "revision20260926": {
+    "scope": "final small revision, no measurement re-run",
+    "closeStateDiscriminator": "close() marks the wrapper closed even before the inner pool exists; getConnection() then throws SQLException and lazy re-creation is refused (HikariDataSource close semantics aligned) - prevents reopening the pool after graceful shutdown; tests: close_beforeInnerPoolCreated_marksClosed_andRejectsConnection + post-close rejection in outerClose test; isClosed() exposed",
+    "wordingUnification": "the three timing-off rounds ran the SAME jar (TASK-139 artifact, no wrapper; wrapper first shipped with the connwait round) under MIXED operating conditions - 'same-version repeats' / 'dispersion band' / freshness-attribution phrasing removed everywhere (report, correction section in the TASK-139 doc, summary JSON, ledger); original numbers kept"
+  },
+
   "metricGate": {
     "actuatorMetricsNames": 49,
     "hikariDatasourceJdbcMetrics": 0,
@@ -31,7 +37,7 @@
     "p50ms": [580.7, 711.45],
     "p95ms": [796.4, 2169.0],
     "p99ms": [1036.3, 2794.5],
-    "operatingConditions": "MIXED (dbfoot: warm mysql pool + fresh JVM; rpt1: fully cold, services and mysql container freshly started; rpt2: fully warm after 75s settle); the range is an observation interval under mixed operating conditions, not a single-condition dispersion band",
+    "operatingConditions": "MIXED, same jar across all three rounds (TASK-139 artifact, no wrapper class; the wrapper first shipped with the timing-on connwait round): dbfoot warm mysql pool + fresh JVM, rpt1 fully cold (services and mysql container freshly started), rpt2 fully warm after 75s settle. The range is an observation interval under mixed operating conditions, not a single-condition dispersion; differences must not be attributed to freshness or any single condition",
     "reading": "TASK-139 single-run deltas (QPS +1.9%, P50 -8.5%) fall inside this mixed-conditions observation interval; single before/after comparison is not causal evidence"
   },
 

@@ -5,6 +5,7 @@ import org.apache.shardingsphere.infra.datasource.pool.metadata.DataSourcePoolMe
 import org.junit.jupiter.api.Test;
 import org.springframework.test.util.ReflectionTestUtils;
 
+import java.sql.SQLException;
 import java.util.ServiceLoader;
 import java.util.stream.StreamSupport;
 
@@ -24,7 +25,9 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  * 真实建池时暴露，纯单测无法覆盖运行时行为，故用 ServiceLoader 直接验证注册存在且
  * 指向包装类（元数据内容委托 Hikari，由同义词表逐项断言）。关闭路径：池销毁
  * {@code DataSourcePoolDestroyer} 仅按 {@code instanceof AutoCloseable} 调用
- * {@code close()}，本组判别式锁定外层关闭必须关闭内层池。</p>
+ * {@code close()}，本组判别式锁定外层关闭必须关闭内层池；且 close 无论是否已建池
+ * 都标记关闭，此后取连接拒绝、不得经懒初始化重建（对齐 HikariDataSource 语义，
+ * 防优雅关闭后重开连接池）。</p>
  */
 class TimingHikariDataSourceWiringTest {
 
@@ -56,9 +59,9 @@ class TimingHikariDataSourceWiringTest {
                         + "包装类必须实现该接口，否则优雅关闭时内层 Hikari 池泄漏");
     }
 
-    /** 外层关闭必须关闭内层真实池（内层池存在时） */
+    /** 外层关闭必须关闭内层真实池（内层池存在时），且关闭后取连接被拒绝 */
     @Test
-    void outerClose_closesInnerPool() {
+    void outerClose_closesInnerPool() throws Exception {
         TimingHikariDataSource wrapper = newWrapperForPoolCreation();
         try {
             HikariDataSource inner = ReflectionTestUtils.invokeMethod(wrapper, "buildPool");
@@ -67,17 +70,25 @@ class TimingHikariDataSourceWiringTest {
             assertFalse(inner.isClosed());
             wrapper.close();
             assertTrue(inner.isClosed(), "外层 close 必须关闭内层真实 Hikari 池");
+            assertThrows(SQLException.class, wrapper::getConnection, "关闭后取连接必须拒绝");
         } finally {
             wrapper.close();
         }
     }
 
-    /** 内层池尚未创建时 close 必须为无副作用的 no-op（不能抛错、不能凭空建池） */
+    /**
+     * 关闭状态判别（收口后修订二）：未建池时 close 也必须标记关闭——此后取连接拒绝、
+     * 不得经懒初始化重建池，否则优雅关闭后的请求会把连接池重新打开
+     * （原 HikariDataSource.close() 未建池也标记关闭，本判别式对齐该语义）。
+     */
     @Test
-    void close_beforeInnerPoolCreated_isNoop() {
-        TimingHikariDataSource wrapper = new TimingHikariDataSource();
+    void close_beforeInnerPoolCreated_marksClosed_andRejectsConnection() {
+        TimingHikariDataSource wrapper = newWrapperForPoolCreation();
         wrapper.close();
+        assertTrue(wrapper.isClosed(), "close 必须标记关闭状态（即使内层池尚未创建）");
         assertNull(ReflectionTestUtils.getField(wrapper, "pool"), "close 不得触发内层池懒创建");
+        assertThrows(SQLException.class, wrapper::getConnection, "关闭后取连接必须拒绝");
+        assertNull(ReflectionTestUtils.getField(wrapper, "pool"), "关闭后取连接不得经懒初始化重建内层池");
     }
 
     /** YAML 属性转发核对：包装类 setter 必须逐项落入内层池配置（与 sharding.yaml 注释一致） */

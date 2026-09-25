@@ -19,7 +19,8 @@ dataSources:
   ds0:
     # TASK-140 提交归因诊断：池类是普通 DataSource 包装（内层懒持真实 HikariDataSource，
     # 在物理连接获取点计时；测量默认关闭，未武装线程零样本），实现 AutoCloseable 供
-    # ShardingSphere 池销毁路径（仅按 instanceof AutoCloseable）关闭内层池。
+    # ShardingSphere 池销毁路径（仅按 instanceof AutoCloseable）关闭内层池；close 无论
+    # 是否已建池都标记关闭，此后取连接拒绝、不得懒重建（对齐 HikariDataSource 语义）。
     # YAML 属性实际转发（已核对，测试锁定）：jdbcUrl/username/password/maximumPoolSize/
     # connectionTimeout/initializationFailTimeout 由包装类 setter 转发内层池；
     # idleTimeout/maxLifetime/minimumIdle/keepaliveTime 由 ShardingSphere 池元数据默认值
