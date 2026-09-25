@@ -13,7 +13,8 @@ import java.util.List;
  * 记录点赞 Mapper（record_db.record_like，联合主键 (record_id,user_id)）。
  *
  * <p>点赞行的<b>唯一写入方</b>是 flush 定时任务（批量 INSERT IGNORE / DELETE）；
- * 业务侧只经 Redis 计数，不直接写本表。对账/兜底读取走 COUNT(*) 与 DISTINCT 扫描。</p>
+ * 业务侧只经 Redis 计数，不直接写本表。对账读取走 {@link #selectRecordLikePairs()}
+ * 单次批量扫描，兜底读取走 COUNT(*)。</p>
  */
 public interface RecordLikeMapper extends BaseMapper<RecordLike> {
 
@@ -58,13 +59,27 @@ public interface RecordLikeMapper extends BaseMapper<RecordLike> {
 
     /**
      * 对账：某记录的点赞用户集合（用于重建 Redis 成员集，恢复幂等防重）。
+     *
+     * <p>对账已改走 {@link #selectRecordLikePairs()} 单次批量扫描；
+     * 本方法保留，对账路径对其调用须保持 0 次（判别式测试约束）。</p>
      */
     @Select("SELECT user_id FROM record_like WHERE record_id = #{recordId}")
     List<Long> selectUserIdsByRecordId(@Param("recordId") Long recordId);
 
     /**
      * 对账：全表去重记录 ID 扫描（演示规模可直接全扫；生产可改增量游标/位图）。
+     *
+     * <p>对账已改走 {@link #selectRecordLikePairs()} 单次批量扫描；
+     * 本方法保留，对账路径对其调用须保持 0 次（判别式测试约束）。</p>
      */
     @Select("SELECT DISTINCT record_id FROM record_like")
     List<Long> selectDistinctRecordIds();
+
+    /**
+     * 对账：一次取全表 (record_id, user_id) 对，内存按 record_id 分组后写 Redis
+     * （替代 DISTINCT record_id + 逐 record 查成员的 N+1 扫描；
+     * 演示规模可直接全扫，生产可改增量游标/位图）。
+     */
+    @Select("SELECT record_id, user_id FROM record_like")
+    List<RecordLike> selectRecordLikePairs();
 }

@@ -14,6 +14,7 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.redisson.api.RLock;
 import org.redisson.api.RedissonClient;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
@@ -76,8 +77,9 @@ public class RecordLikeService {
     /** 对账防重锁键（同样多实例仅一个执行） */
     static final String RECONCILE_LOCK_KEY = "lock:like:reconcile";
 
-    /** flush 每批消费上限（LRANGE 0..BATCH-1） */
-    private static final int FLUSH_BATCH = 200;
+    /** flush 每批消费上限（LRANGE 0..flushBatch-1）：可配置 app.like.flush-batch，默认 200 */
+    @Value("${app.like.flush-batch:200}")
+    private int flushBatch = 200;
     /** flush 周期：5s（最终一致窗口可控） */
     private static final long FLUSH_FIXED_DELAY_MS = 5_000;
     /** flush 首跑延迟：5s（启动后先给业务留写入窗口） */
@@ -192,7 +194,8 @@ public class RecordLikeService {
      * <ul>
      *   <li>Redisson 锁 {@code lock:like:flush}（lease=-1 走默认 30s 看门狗自动续期，
      *       与好友互加/榜单定时任务同款）→ 多实例仅一个执行，其余跳过本轮；</li>
-     *   <li>LRANGE 取一批 pending → 按 (record_id,user_id) 去重取<b>末次动作</b>
+     *   <li>LRANGE 取一批（批量上限可配置 {@code app.like.flush-batch}，默认 200）
+     *       pending → 按 (record_id,user_id) 去重取<b>末次动作</b>
      *       （同批内 like→unlike 净删、unlike→like 净插）→ 批量 INSERT IGNORE / DELETE；</li>
      *   <li>同一批 {@code batchInsertIgnore} + {@code batchDelete} 经 {@link TransactionTemplate}
      *       同一本地事务同进退（ADR-0009 唯一补点）；</li>
@@ -210,7 +213,7 @@ public class RecordLikeService {
             return;
         }
         try {
-            List<String> raw = stringRedisTemplate.opsForList().range(PENDING_QUEUE_KEY, 0, FLUSH_BATCH - 1);
+            List<String> raw = stringRedisTemplate.opsForList().range(PENDING_QUEUE_KEY, 0, flushBatch - 1);
             if (raw == null || raw.isEmpty()) {
                 return;
             }
@@ -254,8 +257,10 @@ public class RecordLikeService {
 
     /**
      * 对账纠偏（规范差异「对账纠偏」）：以 record_like 行为<b>权威源</b>，
-     * 扫描全表 DISTINCT record_id → 以 DB 行数覆盖 Redis 计数、按 DB 用户集合重建成员集
-     * （恢复幂等防重能力）。进程重启丢 Redis 计数/成员集后由本任务兜底收敛。
+     * 单次批量取全表 (record_id, user_id) 对、内存按 record_id 分组
+     * （替代 DISTINCT record_id + 逐 record 查成员的 N+1 扫描），
+     * 以 DB 行数覆盖 Redis 计数、按 DB 用户集合重建成员集（恢复幂等防重能力）。
+     * 进程重启丢 Redis 计数/成员集后由本任务兜底收敛。
      *
      * <p>已知权衡：pending 尚未落库的操作（窗口内）会被 DB 权威值覆盖，下一轮 flush +
      * 再下一轮对账后收敛——这正是「最终一致」的定义，写路径从不等待落库。</p>
@@ -269,13 +274,20 @@ public class RecordLikeService {
             return;
         }
         try {
-            List<Long> recordIds = recordLikeMapper.selectDistinctRecordIds();
+            // 一次批量取全表 (record_id, user_id)，内存按 record 分组
+            List<RecordLike> pairs = recordLikeMapper.selectRecordLikePairs();
+            Map<Long, List<Long>> usersByRecord = new LinkedHashMap<>();
+            for (RecordLike pair : pairs) {
+                usersByRecord.computeIfAbsent(pair.getRecordId(), k -> new ArrayList<>()).add(pair.getUserId());
+            }
             int corrected = 0;
-            for (Long recordId : recordIds) {
-                List<Long> userIds = recordLikeMapper.selectUserIdsByRecordId(recordId);
+            for (Map.Entry<Long, List<Long>> entry : usersByRecord.entrySet()) {
+                Long recordId = entry.getKey();
+                List<Long> userIds = entry.getValue();
                 // 1) 计数以 DB 行为准覆盖
                 stringRedisTemplate.opsForValue().set(countKey(recordId), String.valueOf(userIds.size()));
-                // 2) 重建成员集（DEL + SADD），恢复「重复点赞幂等」防线
+                // 2) 重建成员集（DEL + SADD），恢复「重复点赞幂等」防线；空成员只删不 SADD
+                //    （分组结果天然非空，保留空列表防御分支与旧行为语义对齐）
                 String usersKey = usersKey(recordId);
                 stringRedisTemplate.delete(usersKey);
                 if (!userIds.isEmpty()) {

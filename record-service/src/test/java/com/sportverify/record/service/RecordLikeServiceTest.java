@@ -17,6 +17,7 @@ import org.springframework.data.redis.core.ListOperations;
 import org.springframework.data.redis.core.SetOperations;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.data.redis.core.ValueOperations;
+import org.springframework.test.util.ReflectionTestUtils;
 import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.TransactionDefinition;
 import org.springframework.transaction.TransactionStatus;
@@ -26,6 +27,7 @@ import java.util.List;
 import java.util.concurrent.TimeUnit;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyLong;
@@ -34,6 +36,7 @@ import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -273,6 +276,32 @@ class RecordLikeServiceTest {
         verify(listOps, never()).trim(anyString(), anyLong(), anyLong());
     }
 
+    /** flush 批次可配置（app.like.flush-batch）：配置为 2 时只取队列头 [0,1]（上界不得写死 199） */
+    @Test
+    void flush_batchSizeConfigurable_takesOnlyConfiguredBatch() {
+        ReflectionTestUtils.setField(service, "flushBatch", 2);
+        when(listOps.range(RecordLikeService.PENDING_QUEUE_KEY, 0, 1)).thenReturn(List.of(
+                "{\"recordId\":1,\"userId\":100,\"action\":\"LIKE\"}",
+                "{\"recordId\":1,\"userId\":101,\"action\":\"LIKE\"}"));
+        when(recordLikeMapper.batchInsertIgnore(any())).thenReturn(1);
+
+        service.flushPendingLikes();
+
+        verify(listOps).range(RecordLikeService.PENDING_QUEUE_KEY, 0, 1);
+        verify(listOps).trim(RecordLikeService.PENDING_QUEUE_KEY, 2, -1);
+    }
+
+    /** 真实 application.properties 的批次键与默认值不得漂移（键名改写会让配置静默回落默认） */
+    @Test
+    void flush_batchConfigKeyPresentInRealApplicationProperties() throws Exception {
+        java.util.Properties props = new java.util.Properties();
+        try (java.io.InputStream in = getClass().getClassLoader().getResourceAsStream("application.properties")) {
+            assertNotNull(in, "application.properties should be on the test classpath");
+            props.load(in);
+        }
+        assertEquals("200", props.getProperty("app.like.flush-batch"));
+    }
+
     /** 删除写入失败 → 事务回滚且不 LTRIM；插入与删除经同一事务模板（ADR-0009） */
     @Test
     void flush_batchDeleteFails_doesNotTrimPending() {
@@ -295,22 +324,48 @@ class RecordLikeServiceTest {
 
     // ==================== 对账纠偏（最终一致） ====================
 
-    /** 规范差异「对账纠偏」：以 DB 行为准覆盖 Redis 计数 + 重建成员集 */
+    /**
+     * 规范差异「对账纠偏」判别式：一次批量取全表 (record_id, user_id)，内存分组后写 Redis。
+     * 旧 N+1 实现对每条 record 调一次 selectUserIdsByRecordId（两条记录 = 2 次）；
+     * 改后逐 record 查询为 0 次、批量查询恰 1 次，且 Redis 纠正结果与原逐条实现一致。
+     */
     @Test
-    void reconcile_fixesRedisFromDb() {
+    void reconcile_singleBatchQuery_fixesRedisFromDb() {
+        // 批量查询打桩（改后的唯一数据源）
+        when(recordLikeMapper.selectRecordLikePairs()).thenReturn(List.of(
+                likeRow(1L, 100L), likeRow(1L, 101L), likeRow(2L, 200L)));
+        // 旧 N+1 路径打桩：仅为让基线实现完整走一遍逐 record 查询，
+        // 使红相呈现「selectUserIdsByRecordId 被调 2 次」；改后这些打桩不再被使用（宽松模式无害）
         when(recordLikeMapper.selectDistinctRecordIds()).thenReturn(List.of(1L, 2L));
         when(recordLikeMapper.selectUserIdsByRecordId(1L)).thenReturn(List.of(100L, 101L));
         when(recordLikeMapper.selectUserIdsByRecordId(2L)).thenReturn(List.of());
 
         service.reconcileLikeCounts();
 
+        // 判别式：逐 record 成员查询 0 次（旧实现为每条 record 一次）、DISTINCT 扫描 0 次、批量查询恰 1 次
+        verify(recordLikeMapper, never()).selectUserIdsByRecordId(anyLong());
+        verify(recordLikeMapper, never()).selectDistinctRecordIds();
+        verify(recordLikeMapper, times(1)).selectRecordLikePairs();
+        // 计数以 DB 行数为准覆盖（record 1 = 2 行、record 2 = 1 行）
         verify(valueOps).set("like:count:1", "2");
-        verify(valueOps).set("like:count:2", "0");
+        verify(valueOps).set("like:count:2", "1");
+        // 成员集 DEL + SADD 重建
         verify(redis).delete("like:record:1:users");
         verify(setOps).add("like:record:1:users", "100", "101");
         verify(redis).delete("like:record:2:users");
-        // 记录 2 无点赞行 → 只清键不重建成员集
-        verify(setOps, never()).add(eq("like:record:2:users"), any(String[].class));
+        verify(setOps).add("like:record:2:users", "200");
+    }
+
+    /** 对账锁未获取 → 本轮跳过：不扫描、不写 Redis（多实例防重语义保持） */
+    @Test
+    void reconcile_lockNotAcquired_skip() throws InterruptedException {
+        doReturn(false).when(lock).tryLock(anyLong(), anyLong(), any(TimeUnit.class));
+
+        service.reconcileLikeCounts();
+
+        verify(recordLikeMapper, never()).selectRecordLikePairs();
+        verify(valueOps, never()).set(anyString(), anyString());
+        verify(lock, never()).unlock();
     }
 
     // ==================== 工具 ====================
@@ -322,5 +377,13 @@ class RecordLikeServiceTest {
         r.setStatus(status.getCode());
         r.setVersion(0);
         return r;
+    }
+
+    /** 构造对账批量查询返回的一条点赞行 */
+    private RecordLike likeRow(Long recordId, Long userId) {
+        RecordLike row = new RecordLike();
+        row.setRecordId(recordId);
+        row.setUserId(userId);
+        return row;
     }
 }
