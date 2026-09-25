@@ -17,10 +17,10 @@
   与驻留样本有界化（cap=4096，修复 TASK-139 开启态无界保留）。 Maven 门槛
   `bash scripts/verify/mvn-verify.sh --mode=offline --pl record-service test` **rc=0**，
   record-service **95/0/0/0**（86 → +9 只增不减）；package 复跑 BUILD SUCCESS。
-- **三轮同负载（计时关）**：dbfoot（TASK-139）/ rpt1 / rpt2——QPS 121.4~166.8、
-  P50 580.7~711.45ms、P95 796.4~2169.0ms、P99 1036.3~2794.5ms，全部 2000/2000、
-  0 限流 0 错误、退出码均 0。TASK-139 单次前后差（QPS +1.9% / P50 −8.5%）落在轮间
-  波动带内；P95 +12.1% 保持观察状态。
+- **三轮同负载（计时关，同 jar、混合运行条件）**：dbfoot（TASK-139）/ rpt1 / rpt2——
+  QPS 121.4~166.8、P50 580.7~711.45ms、P95 796.4~2169.0ms、P99 1036.3~2794.5ms，全部
+  2000/2000、0 限流 0 错误、退出码均 0。TASK-139 单次前后差（QPS +1.9% / P50 −8.5%）
+  落在该混合运行条件观测区间内；P95 +12.1% 保持观察状态。
 - **connwait 轮（计时开，独立组）**：`load 100 2000 connwait` 一次成功（QPS 148.5 /
   P50 591.8ms / P95 1092.7ms），**请求级物理连接获取等待直接测得：connWait P50 527.1ms /
   P95 970.9ms（n=2000，含 Hikari 池等待）**；commit 段 24.5ms 为提交区间（fsync 份额
@@ -174,3 +174,26 @@ ASCII 路径字符，该三行被提取为词元 `-db-wait-evidence.md`、`-subm
 - 本修订只改清单（相对 `184e61f`，7 项）：TimingHikariDataSource.java ·
   TimingHikariDataSourceWiringTest.java · sharding.yaml · 复测-db-wait-evidence.md ·
   attr-submit-db-wait.json · 本 handoff（本节追加）· PLAN.md。
+
+## 收口后修订二（追加，2026-09-26，同一作业；业务提交 `1c6f75ff7fc5ab1d06e7e5fe434c734a5ffd289a`，6 文件）
+
+- **关闭状态判别补反例**：原 close() 在内层池未创建时仅返回，后续 getConnection() 会
+  经懒初始化重新建池——优雅关闭后连接池可被重开（对照本地 HikariCP 5.0.1 字节码：
+  HikariDataSource.close() 未建池也标记关闭、之后 getConnection() 拒绝）。修复：
+  包装类增加关闭状态，close() 无论是否已建池都标记；关闭后取连接抛 SQLException 且
+  懒初始化被拒绝；暴露 `isClosed()`。判别测试
+  `close_beforeInnerPoolCreated_marksClosed_andRejectsConnection` 覆盖「关闭→标记→
+  取连接拒绝→仍不建池」全链，外层关闭测试补关闭后取连接拒绝断言。
+- **口径统一订正**：核对实跑记录确认 dbfoot / rpt1 / rpt2 三轮为**同 jar**（均为
+  TASK-139 产物、无包装类；包装类首次随计时开的 connwait 轮进入），但运行条件混合
+  （新鲜度三种状态）。全文订正：不再称「同版本重复跑次」「轮间波动带」，改为
+  「同负载重复跑次（同 jar、混合运行条件）的观测区间」，差异不单独归因于新鲜度或
+  任何单一条件（复测报告结论与重复节、复测-submit-tx.md 订正节、摘要 JSON
+  revision20260926、本概要、PLAN 记录同步；原始数字全部保留）。
+- **门槛实跑**：`mvn-verify.sh --mode=offline --pl record-service test` rc=0，
+  record **100/0/0/0**（用例数不变：替换 1 条 no-op 判别为关闭状态全链判别 + 外层
+  关闭测试补断言）。不跑大负载、不起栈（关闭语义由单测覆盖）、不 push、不建 PR。
+- 本修订只改清单（相对 `9f748521402ce7b1fc5859a4aa8a328dac1ad4f7`，8 项）：
+  TimingHikariDataSource.java · TimingHikariDataSourceWiringTest.java · sharding.yaml ·
+  复测-db-wait-evidence.md · 复测-submit-tx.md · attr-submit-db-wait.json ·
+  本 handoff（本节追加）· PLAN.md。

@@ -772,7 +772,7 @@ run `35802403723`（head `eba0108`，2026-09-23 00:31 UTC）——**web/build �
 | 目标与范围 | 订正 TASK-139 归因证据等级（select 混合段/commit 区间非 fsync 单项/分段 P50 不可相加/单次前后不成因果，原始数字不动）；只读实测指标可得性；默认关闭最小插桩（connWait 请求级获取等待 + SubmitTxTiming 有界化）；三轮内重复同负载记录波动。不改 SQL/池大小/索引/事务边界/JVM/刷盘，不实施优化 |
 | 指标门槛实测 | /actuator/metrics 49 项名称中 hikari/datasource/jdbc/pool 计量 0；prometheus 872 行 0 命中；hikaricp.connections.pending 直查 404——内层 Hikari 由 ShardingSphere 反射创建不经 Spring 绑定，现有指标无法回答请求级池等待 |
 | 最小插桩 | 默认关闭：TimingHikariDataSource（普通 DataSource 内持真 Hikari 池，物理获取点计时，未武装线程零样本）+ 池元数据 TypedSPI 注册（公共 SPI，非私有 API）+ SubmitTxTiming connWait 桥接与驻留样本有界化（cap=4096，修复 TASK-139 开启态无界保留）。起栈三次失败如实登记并逐一根因定位（见 handoff）：元数据未注册 NPE → HikariCP 委托分支 netTimeout 抛错 → getter 缺 username/password NPE；最终 health 200 起栈确证 |
-| 同一负载复测 | 计时关三轮：dbfoot（TASK-139 只读引用）123.23/711.45/1332.35/1713.44；rpt1 121.4/676.0/2169.0/2794.5（冷启动）；rpt2 166.8/580.7/796.4/1036.3（全暖）。全部 2000/2000、0 限流 0 错误、退出码 0。范围 QPS 121.4~166.8、P95 796.4~2169.0ms——TASK-139 单次前后差（QPS +1.9%/P50 −8.5%）落在轮间波动带内，P95 +12.1% 保持观察状态，不算因果百分比 |
+| 同一负载复测 | 计时关三轮（同 jar、混合运行条件）：dbfoot（TASK-139 只读引用）123.23/711.45/1332.35/1713.44；rpt1 121.4/676.0/2169.0/2794.5（冷启动）；rpt2 166.8/580.7/796.4/1036.3（全暖）。全部 2000/2000、0 限流 0 错误、退出码 0。范围 QPS 121.4~166.8、P95 796.4~2169.0ms——TASK-139 单次前后差（QPS +1.9%/P50 −8.5%）落在混合运行条件观测区间内，P95 +12.1% 保持观察状态，不算因果百分比，差异不单独归因于新鲜度 |
 | connwait 轮 | 计时开独立组（record 带 --record.submit.tx-timing-enabled=true 与 MYSQL_PORT=3307 单独重启）：QPS 148.5 / P50 591.8ms；connWait P50 527.1ms / P95 970.9ms（n=2000，直接测得，含池等待）；select 531.7ms（配对差 ≈4.7ms 为推导）；insertMain 2.3 / trackWrite 19.6 / commit 24.5ms（区间非 fsync 单项）（docs/perf/data/attr-submit-db-wait.json） |
 | 本地门槛来源 | 上行 Maven 实跑即门槛来源（唯一入口 offline，rc=0，record 95/0/0/0，86→+9 只增不减；package 复跑 BUILD SUCCESS）；--mode=online 与 CI 未跑 |
 | 是否到达外部门槛 | 未达到：本地已提交，未 push、未建 PR，无 CI run |
@@ -792,3 +792,14 @@ run `35802403723`（head `eba0108`，2026-09-23 00:31 UTC）——**web/build �
 | 本地门槛 | 唯一入口 mvn-verify.sh --mode=offline --pl record-service test rc=0，record 100/0/0/0（95→+5 只增不减）；package BUILD SUCCESS；启动验证：按回传先 stop-services 再起栈（四服务 health 200）后停栈；不重复跑大负载 |
 | 契约 | 收口修订提交后无参数 mailbox-contract.sh rc=0（TASK-140 足迹不在工作树视为已收口）；git 层逐字比对 7=7（相对 184e61f）；中文文件名交付物 1 项提取盲区先例延续 |
 | 只改清单一致性 | 实际改动集（git -c core.quotepath=false diff --name-only --diff-filter=ACMR 184e61f，台账暂存后）= TimingHikariDataSource.java · TimingHikariDataSourceWiringTest.java · sharding.yaml · 复测-db-wait-evidence.md · attr-submit-db-wait.json · TASK-140/handoff.md（追加节）· PLAN.md，与 handoff「收口后修订」节清单逐字一致（7 项）；归档移名/.codex/.trae/add-verify-degrade-status-index 未触碰；未用 git stash、未 add -A、未 push |
+
+## 验收记录：TASK-140 收口后修订二（关闭状态反例 / 口径统一，2026-09-26）
+
+| 项 | 内容 |
+| --- | --- |
+| 基线与提交 | 基线 9f748521402ce7b1fc5859a4aa8a328dac1ad4f7（收口后修订一提交，当时 HEAD）；业务+测试+交付物为本地提交 1c6f75ff7fc5ab1d06e7e5fe434c734a5ffd289a（fix(record): 池包装类关闭后拒绝取连接并统一三轮复测口径，6 文件）；handoff 追加节与本记录为台账提交（哈希由任务回传承载）。未 push、未建 PR，未跑大负载、未起栈（关闭语义由单测覆盖） |
+| 关闭状态反例 | 原实现 close() 在内层池未创建时仅返回，后续 getConnection() 会经懒初始化重开连接池（对照本地 HikariCP 5.0.1：HikariDataSource.close() 未建池也标记关闭、之后 getConnection() 拒绝）。修复：包装类加关闭状态，close() 无论是否已建池都标记；关闭后取连接抛 SQLException 且懒初始化被拒绝；暴露 isClosed()。判别测试 close_beforeInnerPoolCreated_marksClosed_andRejectsConnection 覆盖关闭→标记→取连接拒绝→仍不建池全链；外层关闭测试补关闭后取连接拒绝断言 |
+| 口径统一 | 核对实跑记录确认 dbfoot/rpt1/rpt2 三轮同 jar（均为 TASK-139 产物、无包装类；包装类首次随 connwait 轮进入）而运行条件混合（新鲜度三种状态）。全文订正：不再称「同版本重复跑次」「轮间波动带」，改为「同负载重复跑次（同 jar、混合运行条件）的观测区间」，差异不单独归因于新鲜度或任何单一条件；原始数字全部保留（复测报告、复测-submit-tx.md 订正节、摘要 JSON revision20260926、TASK-140 handoff 概要、PLAN 记录同步） |
+| 本地门槛 | 唯一入口 mvn-verify.sh --mode=offline --pl record-service test rc=0，record 100/0/0/0（用例数不变：1 条 no-op 判别替换为关闭状态全链判别 + 外层关闭测试补断言） |
+| 契约 | 台账收口修订提交后无参数 mailbox-contract.sh rc=0（TASK-140 足迹不在工作树视为已收口）；git 层逐字比对 8=8（相对 9f74852）；中文文件名交付物提取盲区先例延续 |
+| 只改清单一致性 | 实际改动集（git -c core.quotepath=false diff --name-only --diff-filter=ACMR 9f74852，台账暂存后）= TimingHikariDataSource.java · TimingHikariDataSourceWiringTest.java · sharding.yaml · 复测-db-wait-evidence.md · 复测-submit-tx.md · attr-submit-db-wait.json · TASK-140/handoff.md（追加节）· PLAN.md，与 handoff「收口后修订二」节清单逐字一致（8 项）；归档移名/.codex/.trae/add-verify-degrade-status-index 未触碰；未用 git stash、未 add -A、未 push |
