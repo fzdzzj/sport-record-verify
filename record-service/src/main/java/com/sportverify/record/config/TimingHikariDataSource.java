@@ -35,11 +35,22 @@ import java.util.logging.Logger;
  * <p>归因边界：仅当当前线程已被 {@link SubmitTxTiming#armConnWait} 武装（计时开启
  * 的提交请求）才记录 connWait 段；未武装线程（状态回调、点赞等其他端点与后台任务）
  * 不产生样本。计时边界 = 进入 getConnection 到返回物理连接（获取失败也记到异常抛出
- * 为止，样本随该请求回滚丢弃）；{@code getConnection(username, password)} 变体与
- * 本工程调用路径未使用的属性同样代理，计时口径相同。SQL/JDBC 执行与提交刷盘仍无法
- * 在本位置分离，见 TASK-140 报告。</p>
+ * 为止，样本随该请求回滚丢弃）；{@code getConnection(username, password)} 变体同样
+ * 代理并按相同口径计时。SQL/JDBC 执行与提交刷盘仍无法在本位置
+ * 分离，见 TASK-140 报告。</p>
+ *
+ * <p>关闭路径：本类实现 {@link AutoCloseable}——ShardingSphere 5.4.1 池销毁
+ * （{@code DataSourcePoolDestroyer}）仅按 {@code instanceof AutoCloseable} 判别并调用
+ * {@code close()}，普通 DataSource 包装若不声明该接口则内层 Hikari 池在优雅关闭时
+ * 不会被关闭（TASK-140 收口后修订）。YAML 属性实际转发（已核对，测试锁定）：
+ * {@code jdbcUrl/username/password/maximumPoolSize/connectionTimeout/
+ * initializationFailTimeout} 由包装类 setter 转发至内层池配置；{@code idleTimeout/
+ * maxLifetime/minimumIdle/keepaliveTime} 由 ShardingSphere 池元数据默认值注入后同样
+ * 转发；{@code driverClassName} 被 ShardingSphere 反射跳过（驱动由 URL 推断，与直接
+ * 使用 HikariDataSource 一致）；{@code dataSourceClassName} 键无对应 setter 被静默
+ * 跳过。</p>
  */
-public class TimingHikariDataSource implements DataSource {
+public class TimingHikariDataSource implements DataSource, AutoCloseable {
 
     private String jdbcUrl;
 
@@ -49,7 +60,8 @@ public class TimingHikariDataSource implements DataSource {
 
     private int maximumPoolSize = 10;
 
-    private int minimumIdle = -1;
+    /** 与 ShardingSphere 池元数据默认一致（生产必注入；-1 会被 HikariCP 5.x setter 拒绝） */
+    private int minimumIdle = 1;
 
     private long connectionTimeout = 30000;
 

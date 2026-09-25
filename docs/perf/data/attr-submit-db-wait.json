@@ -5,6 +5,13 @@
   "purpose": "evidence-grade correction + repeated same-load runs + request-level physical connection acquisition timing (no optimization)",
   "loadBudget": {"newRuns": 3, "cap": 3, "labels": ["rpt1", "rpt2", "connwait"]},
 
+  "revision20260925": {
+    "scope": "post-closeout revision, no measurement re-run",
+    "closePathFix": "TimingHikariDataSource now implements AutoCloseable (ShardingSphere DataSourcePoolDestroyer closes pools only via instanceof AutoCloseable, bytecode-verified); tests added: outer close closes inner real pool, AutoCloseable recognition, close-before-creation no-op; wrapper minimumIdle initial value 1 (-1 rejected by HikariCP 5.x setter)",
+    "yamlForwardingVerified": "jdbcUrl/username/password/maximumPoolSize/connectionTimeout/initializationFailTimeout forwarded via wrapper setters; idleTimeout/maxLifetime/minimumIdle/keepaliveTime arrive as ShardingSphere pool-metadata defaults then forwarded; driverClassName skipped by ShardingSphere reflection (driver inferred from URL); dataSourceClassName key has no setter and is silently skipped (structural guard test)",
+    "wordingCorrections": "per-request paired select-vs-connWait difference is NOT retained by the aggregate snapshot; the former 'paired P50 delta ~4.7ms' and '~99.1%' comparisons removed as invalid; repeat range labeled MIXED operating conditions, all original numbers kept"
+  },
+
   "metricGate": {
     "actuatorMetricsNames": 49,
     "hikariDatasourceJdbcMetrics": 0,
@@ -24,7 +31,8 @@
     "p50ms": [580.7, 711.45],
     "p95ms": [796.4, 2169.0],
     "p99ms": [1036.3, 2794.5],
-    "reading": "TASK-139 single-run deltas (QPS +1.9%, P50 -8.5%) fall inside this same-version dispersion; single before/after comparison is not causal evidence"
+    "operatingConditions": "MIXED (dbfoot: warm mysql pool + fresh JVM; rpt1: fully cold, services and mysql container freshly started; rpt2: fully warm after 75s settle); the range is an observation interval under mixed operating conditions, not a single-condition dispersion band",
+    "reading": "TASK-139 single-run deltas (QPS +1.9%, P50 -8.5%) fall inside this mixed-conditions observation interval; single before/after comparison is not causal evidence"
   },
 
   "instrumentedRun": {
@@ -49,16 +57,14 @@
       "no existing pool metrics (metric gate)",
       "request-level connWait = physical connection acquisition incl. Hikari pool wait (P50 527.1ms, n=2000)",
       "select/insertMain/trackWrite mixed segments; commit interval (beforeCommit->afterCommit)",
-      "per-round QPS/P50/P95/P99/error rates and cross-round ranges"
-    ],
-    "derived": [
-      "select minus connWait at P50 ~4.7ms (paired same-population percentile difference; not isolated SQL execution)"
+      "per-round QPS/P50/P95/P99/error rates and cross-round ranges under mixed operating conditions"
     ],
     "notSeparatelyMeasured": [
+      "per-request paired select-vs-connWait difference (per-request pairs are not retained by the aggregate snapshot; a difference of two P50s is not a per-request quantity)",
       "fsync share of the commit interval",
       "pure JDBC execution time per SQL / ShardingSphere parse share",
       "pool-wait vs connection-establishment split inside connWait",
-      "universal pool-wait share percentages (only paired-population derived values exist)"
+      "any pool-wait share percentage (TASK-139 92% or this round's two-percentile ratio alike; none is valid)"
     ]
   },
 
