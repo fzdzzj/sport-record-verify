@@ -780,3 +780,15 @@ run `35802403723`（head `eba0108`，2026-09-23 00:31 UTC）——**web/build �
 | 未覆盖/跳过 | 请求级 fsync 未分离测得（提交段为 beforeCommit→afterCommit 区间）；connWait 内池等待 vs 建连不区分；单条 SQL 纯 JDBC 执行与 ShardingSphere 解析份额未插桩（超最小低侵入约束按任务书停止）；池等待占比数字不作通用结论；quality 未跑（mapmatch 缺席先例）；500/1000 档禁止未跑 |
 | 剩余假设 | 提交请求延迟支配项为物理连接获取等待（直接测得 P50 527ms），来源是池 10 下按事务内工作（轨迹多值 INSERT ≈20ms + 提交区间 ≈25ms）排队；再优化应缩事务内工作并在 connWait 基线上复核，而非盲调池/刷盘 |
 | 只改清单一致性 | 实际改动集（git diff --name-only --diff-filter=ACMR eb62413，台账暂存后）= TimingHikariDataSource.java（新）· TimingHikariDataSourcePoolMetaData.java（新）· SportRecordService.java · SubmitTxTiming.java · META-INF/services 池元数据注册（新）· sharding.yaml · MainShardingYamlDefaultsTest.java · TimingHikariDataSourceWiringTest.java（新）· SportRecordServiceTest.java · SubmitTxTimingTest.java（新）· attr-submit-db-wait.json（新）· attr-submit-tx-split.json · 复测-db-wait-evidence.md（新）· 复测-submit-tx.md · 归因-HEAD.md · 规范三件套（3）· TASK-139/handoff.md（口径订正追加）· TASK-140/spec.md（新）· TASK-140/handoff.md（新）· PLAN.md，与 handoff「实际改动清单」逐字一致（22 项）；归档移名/.codex/.trae/add-verify-degrade-status-index 未触碰；未用 git stash、未 add -A、未 push |
+
+## 验收记录：TASK-140 收口后修订（关闭路径 / 转发核对 / 表述订正，2026-09-25）
+
+| 项 | 内容 |
+| --- | --- |
+| 基线与提交 | 基线 184e61f059c57b92c2cd3f2644b9d3322c5e9887（TASK-140 收口提交，当时 HEAD）；业务+测试+交付物为本地提交 1c032bdf28fb5a19ad9cb65473219f476cd65b7e（fix(record): 提交池包装类补 AutoCloseable 并订正转发注释与证据表述，5 文件）；handoff 追加节与本记录为收口修订提交（哈希由任务回传承载）。未 push、未建 PR，未重复跑大负载 |
+| 关闭路径修复 | ShardingSphere DataSourcePoolDestroyer 仅按 instanceof AutoCloseable 关闭（字节码核实）；TimingHikariDataSource 补实现 AutoCloseable，否则优雅关闭内层 Hikari 池泄漏。新判别测试：AutoCloseable 识别 / 外层关闭必须关闭内层真实池 / 建池前 close 为 no-op；minimumIdle 初始值 -1→1（HikariCP 5.x setter 拒负，红测先暴露，生产路径因元数据必注入未触发） |
+| YAML 转发核对 | 直达内层池：jdbcUrl/username/password/maximumPoolSize/connectionTimeout/initializationFailTimeout；元数据默认值注入后转发：idleTimeout/maxLifetime/minimumIdle/keepaliveTime；driverClassName 被 ShardingSphere 反射跳过（驱动由 URL 推断）；dataSourceClassName 键无 setter 静默跳过（结构守卫测试锁定防委托分支回归）；逐项断言测试 yamlProperties_forwardToInnerPoolConfig。sharding.yaml「Hikari 子类/setter 全部继承」不实注释订正 |
+| 表述订正 | 逐请求配对样本未保留（聚合 snapshot 只存各段分位）——删除「配对中位差 ≈4.7ms 推导值」与「≈99.1%」比较口径，两条独立 P50 之差不是单请求量，逐请求配对差记未分离测得；三轮范围（QPS 121.4~166.8、P50 580.7~711.45ms、P95 796.4~2169.0ms、P99 1036.3~2794.5ms）标注为混合运行条件观测区间，原始数字全部保留；报告与摘要 JSON 同步 |
+| 本地门槛 | 唯一入口 mvn-verify.sh --mode=offline --pl record-service test rc=0，record 100/0/0/0（95→+5 只增不减）；package BUILD SUCCESS；启动验证：按回传先 stop-services 再起栈（四服务 health 200）后停栈；不重复跑大负载 |
+| 契约 | 收口修订提交后无参数 mailbox-contract.sh rc=0（TASK-140 足迹不在工作树视为已收口）；git 层逐字比对 7=7（相对 184e61f）；中文文件名交付物 1 项提取盲区先例延续 |
+| 只改清单一致性 | 实际改动集（git -c core.quotepath=false diff --name-only --diff-filter=ACMR 184e61f，台账暂存后）= TimingHikariDataSource.java · TimingHikariDataSourceWiringTest.java · sharding.yaml · 复测-db-wait-evidence.md · attr-submit-db-wait.json · TASK-140/handoff.md（追加节）· PLAN.md，与 handoff「收口后修订」节清单逐字一致（7 项）；归档移名/.codex/.trae/add-verify-degrade-status-index 未触碰；未用 git stash、未 add -A、未 push |

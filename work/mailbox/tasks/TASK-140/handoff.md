@@ -149,3 +149,28 @@ ASCII 路径字符，该三行被提取为词元 `-db-wait-evidence.md`、`-subm
   UTF-8 文件；哈希由任务回传承载——台账无法承载自身提交哈希）。
 - 只 stage 清单内路径（未用 `git add -A`）；不 push、不建 PR；未用 git stash；开工前
   既有脏项（归档移名 / .codex / .trae / add-verify-degrade-status-index）保持原状。
+
+## 收口后修订（追加，2026-09-25，同一作业；业务提交 `1c032bdf28fb5a19ad9cb65473219f476cd65b7e`，5 文件）
+
+- **关闭路径修复**：`TimingHikariDataSource` 补实现 `AutoCloseable`——ShardingSphere
+  `DataSourcePoolDestroyer`（字节码核实）仅按 `instanceof AutoCloseable` 调用 close，
+  原实现（仅 DataSource）在优雅关闭路径不被识别，内层 Hikari 池泄漏。新增判别测试：
+  AutoCloseable 识别、**外层关闭必须关闭内层真实池**（buildPool 反射构建 + setField
+  注入 + close 后 `isClosed()` 断言）、建池前 close 为 no-op；`minimumIdle` 初始值
+  -1 → 1（-1 被 HikariCP 5.x setter 拒绝，红测先暴露，生产路径因元数据必注入未触发）。
+- **YAML 属性转发核对、注释订正**：直达内层池 jdbcUrl/username/password/maximumPoolSize/
+  connectionTimeout/initializationFailTimeout；idleTimeout/maxLifetime/minimumIdle/
+  keepaliveTime 由 ShardingSphere 池元数据默认值注入后同样转发；driverClassName 被
+  ShardingSphere 反射跳过（驱动由 URL 推断，同直接使用 Hikari）；dataSourceClassName
+  键无 setter 被静默跳过（`noSetDataSourceClassName` 结构守卫测试锁定）。sharding.yaml
+  原「Hikari 子类 / setter 全部继承」注释按实际实现订正；转发逐项由
+  `yamlProperties_forwardToInnerPoolConfig` 断言。
+- **证据表述订正**：逐请求配对样本未保留（聚合 snapshot 只存各段分位），删除「配对
+  中位差 ≈4.7ms 推导值」与「≈99.1%」比较口径——两条独立 P50 之差不是单请求量；
+  三轮范围标注为**混合运行条件**观测区间，原始数字全部保留（报告 + 摘要 JSON 同步）。
+- **门槛实跑**：`mvn-verify.sh --mode=offline --pl record-service test` rc=0，
+  record **100/0/0/0**（95 → +5）；package BUILD SUCCESS；启动验证按回传先停服务再
+  起栈（四服务 health 200，record 8082 200）后停栈。不重复跑大负载，未 push、未建 PR。
+- 本修订只改清单（相对 `184e61f`，7 项）：TimingHikariDataSource.java ·
+  TimingHikariDataSourceWiringTest.java · sharding.yaml · 复测-db-wait-evidence.md ·
+  attr-submit-db-wait.json · 本 handoff（本节追加）· PLAN.md。
