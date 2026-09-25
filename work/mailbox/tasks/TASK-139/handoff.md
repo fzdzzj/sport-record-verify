@@ -68,3 +68,14 @@ git 层逐字比对：`git diff --name-only --diff-filter=ACMR f5696fb8b70547e49
 - `bd34f81e9add7dea81436dbfb9f8fcefc43b8470` `perf(record): 缩短提交事务 DB 足迹`（11 文件：服务 + 插桩 + 配置 + 测试 ×2 + 交付物 ×2 + 三件套 ×3 + 中文文件名交付物经 `git add docs/perf` 整目录加入并以 `git status` 核对）。
 - 台账收口提交 `docs(mailbox): TASK-139 提交绑定与验收记录`（3 文件，`git commit -F` UTF-8 文件；哈希由任务回传承载——台账无法承载自身提交哈希）。
 - 只 stage 清单内路径（未用 `git add -A`）；不 push、不建 PR；未用 git stash；开工前既有脏项（归档移名 / .codex / .trae / add-verify-degrade-status-index）保持原状。
+
+## 口径订正（TASK-140 追加，2026-09-25；上文原始数字与结论均不改动）
+
+- 回传概要第 3 条「select 681.6ms（其中约 92% 为池 10 的排队等待）」超出当时计时点能
+  证明的范围：select 段是**混合段**（物理连接获取等待 + 幂等 SELECT），92% 属推断。
+  TASK-140 已用请求级 connWait 计时直接测得获取等待（同负载 P50 527.1ms，直接测得）。
+- 「commit 28.9ms（fsync 地板）」应表述为 `beforeCommit→afterCommit` **提交区间**；
+  fsync 份额未分离测得。
+- 各段独立 P50 不可相加为单请求延迟；「是否改善：P50 −8.5%、QPS +1.9%」是单次前/后
+  跑次 + 双重改动的合计观察，不构成对其中某一项的因果归因。
+- 完整订正与重复负载证据：`docs/perf/复测-db-wait-evidence.md`。

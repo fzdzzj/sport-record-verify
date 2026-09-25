@@ -763,3 +763,20 @@ run `35802403723`（head `eba0108`，2026-09-23 00:31 UTC）——**web/build �
 | 未覆盖/跳过 | quality 非本任务门槛未跑（mapmatch 缺席前提延续 TASK-138 口径）；500/1000 档禁止未跑；`SS_SQL_SHOW=true` 打开分支无单测（System.getenv 不可 mock 本机限制，默认关闭由主 yaml 判别式守住）；P95 尾部结论需多轮重复取分布，本任务按单跑噪声带口径不做反向结论 |
 | 剩余假设 | 剩余 P50 ≈711ms 由池 10 排队倍数支配，事务内地板为 commit 刷盘（P50 28.9ms）与轨迹多值 INSERT（P50 22.6ms）；再降属另立变更（缩轨迹写入/提交刷盘，或按归因口径在调用次数与事务范围降后再议池/刷盘） |
 | 只改清单一致性 | 实际改动集（`git diff --name-only --diff-filter=ACMR f5696fb`）= SportRecordService.java · SubmitTxTiming.java（新）· application.properties · sharding.yaml · SportRecordServiceTest.java · MainShardingYamlDefaultsTest.java（新）· attr-submit-tx-split.json（新）· 复测-submit-tx.md（新）· 规范三件套（3）· TASK-139/spec.md · TASK-139/handoff.md · PLAN.md，与 handoff「实际改动清单」逐字一致（14 项）；归档移名/.codex/.trae/add-verify-degrade-status-index 未触碰；未用 git stash、未 add -A、未 push |
+
+## 验收记录：TASK-140 提交链路 DB 等待归因与重复负载核验（只测量不优化，2026-09-25）
+
+| 项 | 内容 |
+| --- | --- |
+| 绑定修订 | 开工基线 eb624131674c2c0bff7bcd9257ffd4ce83c707fe（当时 HEAD，与任务书一致；业务代码与 TASK-139 bd34f81 逐字一致）；业务+测试+交付物+规范三件套为本地提交 b74f4fd2ca1efe268585c08e71255d3c89cd429b（perf(record): 提交链路 DB 等待归因测量与同负载复测，18 文件）；台账两件套与本记录为收口提交（docs(mailbox): TASK-140 提交绑定与验收记录，哈希由任务回传承载）。未 push、未建 PR |
+| 目标与范围 | 订正 TASK-139 归因证据等级（select 混合段/commit 区间非 fsync 单项/分段 P50 不可相加/单次前后不成因果，原始数字不动）；只读实测指标可得性；默认关闭最小插桩（connWait 请求级获取等待 + SubmitTxTiming 有界化）；三轮内重复同负载记录波动。不改 SQL/池大小/索引/事务边界/JVM/刷盘，不实施优化 |
+| 指标门槛实测 | /actuator/metrics 49 项名称中 hikari/datasource/jdbc/pool 计量 0；prometheus 872 行 0 命中；hikaricp.connections.pending 直查 404——内层 Hikari 由 ShardingSphere 反射创建不经 Spring 绑定，现有指标无法回答请求级池等待 |
+| 最小插桩 | 默认关闭：TimingHikariDataSource（普通 DataSource 内持真 Hikari 池，物理获取点计时，未武装线程零样本）+ 池元数据 TypedSPI 注册（公共 SPI，非私有 API）+ SubmitTxTiming connWait 桥接与驻留样本有界化（cap=4096，修复 TASK-139 开启态无界保留）。起栈三次失败如实登记并逐一根因定位（见 handoff）：元数据未注册 NPE → HikariCP 委托分支 netTimeout 抛错 → getter 缺 username/password NPE；最终 health 200 起栈确证 |
+| 同一负载复测 | 计时关三轮：dbfoot（TASK-139 只读引用）123.23/711.45/1332.35/1713.44；rpt1 121.4/676.0/2169.0/2794.5（冷启动）；rpt2 166.8/580.7/796.4/1036.3（全暖）。全部 2000/2000、0 限流 0 错误、退出码 0。范围 QPS 121.4~166.8、P95 796.4~2169.0ms——TASK-139 单次前后差（QPS +1.9%/P50 −8.5%）落在轮间波动带内，P95 +12.1% 保持观察状态，不算因果百分比 |
+| connwait 轮 | 计时开独立组（record 带 --record.submit.tx-timing-enabled=true 与 MYSQL_PORT=3307 单独重启）：QPS 148.5 / P50 591.8ms；connWait P50 527.1ms / P95 970.9ms（n=2000，直接测得，含池等待）；select 531.7ms（配对差 ≈4.7ms 为推导）；insertMain 2.3 / trackWrite 19.6 / commit 24.5ms（区间非 fsync 单项）（docs/perf/data/attr-submit-db-wait.json） |
+| 本地门槛来源 | 上行 Maven 实跑即门槛来源（唯一入口 offline，rc=0，record 95/0/0/0，86→+9 只增不减；package 复跑 BUILD SUCCESS）；--mode=online 与 CI 未跑 |
+| 是否到达外部门槛 | 未达到：本地已提交，未 push、未建 PR，无 CI run |
+| 契约 | 收口提交后无参数 mailbox-contract.sh rc=0（判据 A 两件套齐全 + 判据 B 清单一致；TASK-140 足迹不在工作树视为已收口）。git 层逐字比对 22=22；工具提取层对中文文件名交付物 3 项已知盲区（提取词元 -db-wait-evidence.md / -submit-tx.md / -HEAD.md，TASK-138/139 同类先例），以 git 层比对为准 |
+| 未覆盖/跳过 | 请求级 fsync 未分离测得（提交段为 beforeCommit→afterCommit 区间）；connWait 内池等待 vs 建连不区分；单条 SQL 纯 JDBC 执行与 ShardingSphere 解析份额未插桩（超最小低侵入约束按任务书停止）；池等待占比数字不作通用结论；quality 未跑（mapmatch 缺席先例）；500/1000 档禁止未跑 |
+| 剩余假设 | 提交请求延迟支配项为物理连接获取等待（直接测得 P50 527ms），来源是池 10 下按事务内工作（轨迹多值 INSERT ≈20ms + 提交区间 ≈25ms）排队；再优化应缩事务内工作并在 connWait 基线上复核，而非盲调池/刷盘 |
+| 只改清单一致性 | 实际改动集（git diff --name-only --diff-filter=ACMR eb62413，台账暂存后）= TimingHikariDataSource.java（新）· TimingHikariDataSourcePoolMetaData.java（新）· SportRecordService.java · SubmitTxTiming.java · META-INF/services 池元数据注册（新）· sharding.yaml · MainShardingYamlDefaultsTest.java · TimingHikariDataSourceWiringTest.java（新）· SportRecordServiceTest.java · SubmitTxTimingTest.java（新）· attr-submit-db-wait.json（新）· attr-submit-tx-split.json · 复测-db-wait-evidence.md（新）· 复测-submit-tx.md · 归因-HEAD.md · 规范三件套（3）· TASK-139/handoff.md（口径订正追加）· TASK-140/spec.md（新）· TASK-140/handoff.md（新）· PLAN.md，与 handoff「实际改动清单」逐字一致（22 项）；归档移名/.codex/.trae/add-verify-degrade-status-index 未触碰；未用 git stash、未 add -A、未 push |
