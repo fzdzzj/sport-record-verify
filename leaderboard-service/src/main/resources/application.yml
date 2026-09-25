@@ -70,6 +70,11 @@ mybatis-plus:
 
 # ===== 认证鉴权（add-jwt-auth，见 ADR-0007）=====
 app:
+  governance:
+    auth-enabled: true
+    # 生产必须注入 GOVERNANCE_TOKEN，无演示默认
+    token: ${GOVERNANCE_TOKEN:__GOVERNANCE_TOKEN_UNSET__}
+    protected-paths: /api/leaderboard/daily
   auth:
     # 鉴权降级开关：false=旧行为（好友榜查询人 userId 显式携带），true=以网关注入的 X-User-Id 认定身份
     # 默认 false 兼容本地调试与压测脚本；切换 true 前先验证验收项并更新压测脚本带 token

@@ -20,17 +20,19 @@
 `--mode` 判据见 `scripts/verify/README.md`）。下方 D12 那句"今后验收口径固定"作为作废史原文保留，
 其参数组合现由该脚本的 `--mode=offline` 表达。
 
-## 验收记录：`TASK-136`（2026-09-24，治理面网关别名准入，第一阶段）
+## 验收记录：`TASK-136`（2026-09-24，治理凭证扩围，第二阶段；第一阶段已提交）
 
 | 项 | 内容 |
 | --- | --- |
-| 绑定修订 | 开工基线 `c57e69dab39875f79b81312b6453a596fa86272f`（`docs(mailbox): 订正 TASK-135 提交绑定`）；当前网关代码、测试与台账均仍在工作树，未形成新 commit；未 push、未建 PR。 |
-| 目标与范围 | 仅 `gateway-service`：将申诉复核别名 `/verify/api/appeals/**` 纳入治理面 `role=ADMIN` 判别式；保留原 `/admin/**`、`/verify/rules/**` 行为及现有 `/verify/**`、`/admin/**` 路由。 |
-| 受控红绿 | 原实现先执行裸 Maven `mvn -pl gateway-service -Dtest=AuthGlobalFilterTest test`，退出码 `1`：USER 别名判别式期望 `403`、实际 `null`，属辅助证据；修正后指导侧实跑仓库脚本 `bash scripts/verify/mvn-verify.sh --mode=offline --pl gateway-service test`，退出码 `0`，目标模块 `35/0/0/0`，`BUILD SUCCESS`。 |
-| 脚本入口口径 | 修正后主证据绑定指导侧已实跑的 `bash scripts/verify/mvn-verify.sh --mode=offline --pl gateway-service test`（`rc=0` / `35/0/0/0`）；裸 Maven 仅作辅助证据。脚本 `--mode=online`、CI、真实服务直连未覆盖。 |
-| 配置/契约 | 测试同时约束 `AuthGlobalFilter` 的代码默认 `adminPaths` 与 classpath 实际 `application.yml` 的 `app.auth.admin.paths`，并核对原 `/verify/**`、`/admin/**` 路由未变；Git Bash `bash scripts/verify/mailbox-contract.sh --baseline=HEAD` → 总体 `rc=1`，但 `TASK-136` 判据 A 两件套齐全、判据 B 通过；总体失败来自既有在途任务与共享工作树/历史清单交叠。 |
-| 未完成/未覆盖 | **服务直连凭证扩围仍未完成**：未改服务侧凭证机制，未覆盖直连服务端口绕过网关风险；未做真实 Nacos、下游 verify-service 联调、直连验证；online/CI 未覆盖。 |
-| 实际改动集 | `gateway-service/src/main/java/com/sportverify/gateway/auth/AuthGlobalFilter.java`、`gateway-service/src/main/resources/application.yml`、`gateway-service/src/test/java/com/sportverify/gateway/auth/AuthGlobalFilterTest.java`、`gateway-service/src/test/java/com/sportverify/gateway/auth/VerifyAppealReviewAdminOnlyTest.java`、本任务 `spec.md`/`handoff.md`、`work/mailbox/PLAN.md`。 |
+| 绑定修订 | **第一阶段**已提交 `1f95654fb094a7457b7a4df11bf58301be385e00`（`fix(gateway): gate verify appeal alias by admin role`）；旧台账「未形成 commit」已订正。**第二阶段**对照基线同为 `1f95654`；业务修订、测试与本台账合并为**单一本地提交**（`fix(governance): gate direct service governance with dedicated gateway token`，哈希由任务回传）；未 push、未建 PR。 |
+| 目标与范围 | 独立头 `X-Gateway-Governance-Token`（不复用 `X-Internal-Token`）；网关剥离伪造头并仅对 ADMIN 治理路径注入；verify 保护 `/api/appeals/**`、`/rules/**`；leaderboard **精确**保护 `/api/leaderboard/daily`；不以 `X-Role` 作服务侧授权；保留 `/internal/**` Feign。 |
+| 受控红绿 | 先红（行为红）：verify/leaderboard 两份 yml 临时还原至基线 `1f95654`（无 `app.governance` 块，旧行为=服务不校验治理凭证），跑 `--pl verify-service test` 与 `--pl leaderboard-service test` → 退出码均 `1`，装配测试按预期红（无令牌治理路径 `expected: <403> but was: <200>`），证据后工作树逐字节恢复；「删类致编译失败」不记为行为红。后绿：过滤器/网关单测覆盖无令牌、伪造 `X-Role`、错/空令牌、注入与剥离、USER/ADMIN、auth/admin 关闭失败关闭、总榜与 `/internal` 不误伤、真实 yml 装配（`GovernanceWiringTest`×2）、逗号切分解析。整体：`bash scripts/verify/mvn-verify.sh --mode=offline --pl common,gateway-service,verify-service,leaderboard-service test` → 退出码 `0`、`BUILD SUCCESS`；common `36/0/0/0`、gateway `41/0/0/0`、verify `89/0/0/0`、leaderboard `59/0/0/0`。 |
+| 脚本入口口径 | 主证据为上述仓库脚本 offline；`--mode=online`、CI、真实跨服务/直连冒烟未覆盖。 |
+| 部署与剩余风险 | **网关先、服务后**；专用令牌**非签名**，持有者可复用。默认 `auth.enabled=false` 时治理路径失败关闭，会影响未带 JWT 的规则冒烟脚本（需显式鉴权+`GOVERNANCE_TOKEN`）。 |
+| 是否到达外部门槛 | **未达到**：本地已提交，未 push、未建 PR。 |
+| 未覆盖 | 真实 Nacos/网关→下游联调、服务端口直连、online/CI、compose 注释过时句与 `.env` 令牌注入运维说明（本轮未改 docker-compose）；网关侧无真实 yml 装配测试（WebFlux），`whitelist`/`admin.paths` 运行时命中由代码级解析测试约束。 |
+| 实际改动集 | `common/.../governance/*`（新，含列表绑定修复）、`gateway-service` AuthGlobalFilter（含列表绑定修复）+yml+相关测试、`verify-service`/`leaderboard-service` yml+`GovernanceWiringTest`（新）、`RuleVersionController` javadoc 订正、本任务 `spec.md`/`handoff.md`、`work/mailbox/PLAN.md`。 |
+
 ## 验收记录：`TASK-135`（2026-09-23，总榜缓存真实入口，已提交）
 
 | 项 | 内容 |

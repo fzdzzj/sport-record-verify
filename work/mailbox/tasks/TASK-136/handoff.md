@@ -2,81 +2,93 @@
 
 ## 结论
 
-TASK-136 第一阶段已完成网关治理面别名准入的最小修正：`/verify/api/appeals/**` 已纳入 `AuthGlobalFilter` 的管理员路径判别式，并同步写入实际 `application.yml` 配置。有效 USER JWT 在鉴权开启且管理员角色校验开启时被网关拒绝（403）；ADMIN JWT 对该别名通过过滤器并保留既有身份头注入行为。
+TASK-136 **第二阶段**（服务直连治理凭证扩围）已完成最小实现、offline 定向验证与真实 yml 装配验证，业务修订、测试与本台账合并为**单一本地提交**（提交主题 `fix(governance): gate direct service governance with dedicated gateway token`），**未 push、未建 PR**。第一阶段网关别名准入已绑定提交 `1f95654fb094a7457b7a4df11bf58301be385e00`（`fix(gateway): gate verify appeal alias by admin role`）；台账中旧句「当前业务/测试/台账修改仍在工作树，未形成新的 commit」仅适用于第一阶段收口前状态，现已订正。
 
-原 `/admin/**`、`/verify/rules/**` 行为保持；现有 `/verify/**` 和 `/admin/**` 路由未改。
+本阶段采用独立头 `X-Gateway-Governance-Token`，**不复用** `X-Internal-Token`，服务侧不以 `X-Role` 授权。专用令牌**不是签名**：持有者可复用是剩余风险。
 
 ## 编号、基线与外部状态
 
 - 任务编号：`TASK-136`。
-- 开工基线：`c57e69dab39875f79b81312b6453a596fa86272f`（`docs(mailbox): 订正 TASK-135 提交绑定`）。
-- 当前业务/测试/台账修改仍在工作树，未形成新的 commit；未 push、未建 PR。
+- 第二阶段开工/对照基线：`1f95654fb094a7457b7a4df11bf58301be385e00`。
+- 第二阶段业务修订、测试与本台账已合并为**单一本地提交**；**未 push、未建 PR**；提交哈希由任务回传（可 `git log --grep="gate direct service governance"` 查得）。
 - `.trae/` 为既有未跟踪目录，本任务未触碰。
+- 临时日志 `.tmp-task136-verify.log` 仅供本轮取证，勿入库。
 
-## 根因与最小修正
+## 路径与误保护边界（已核对）
 
-- `route-verify-service` 原已匹配 `/verify/**` 并 `StripPrefix=1`；本阶段没有新增路由。
-- 原 `app.auth.admin.paths` 与 `AuthGlobalFilter` 默认值均遗漏 `/verify/api/appeals/**`。
-- 原过滤器对该别名仅做 Bearer/JWT 校验，因未命中 `isAdminPath` 而继续透传；基线判别式实测响应状态为 `null`。
-- 修正只增加一个治理路径模式到代码默认值和实际 YAML，并补充对应红绿测试。
+| 治理目标 | 网关路径 | 服务本地 | 方法 | 校验 | 合法调用方 |
+| --- | --- | --- | --- | --- | --- |
+| 申诉终判 | `/admin/api/appeals/**`、`/verify/api/appeals/**` | `/api/appeals/**` | POST | 网关 JWT+ADMIN+注入治理令牌；服务校验治理令牌 | 经网关 ADMIN |
+| 规则版本 | `/verify/rules/**` | `/rules/**` | POST/PATCH | 同上 | 经网关 ADMIN |
+| 榜单日报 | `/leaderboard/api/leaderboard/daily` | `/api/leaderboard/daily`（精确） | GET | 同上 | 经网关 ADMIN |
 
-## 红绿证据（本轮不重复跑测试）
+不得误保护：`GET /api/leaderboard`（overall/friend）；现有 `/internal/**` + `X-Internal-Token` Feign 行为保持。盘点：api 模块 Feign 契约无直调上述三治理端点。
 
-### 原实现红测（辅助证据：裸 Maven）
+## 实现要点
 
-命令：
+- **网关**：入口统一 `remove(X-Gateway-Governance-Token)`；治理路径在 `auth.enabled=false` 或 `admin.enabled=false` 或令牌未配置时失败关闭；仅 ADMIN 治理路径注入配置令牌。
+- **服务**：`GovernanceApiAuthFilter`（common，`scanBasePackages=com.sportverify`）；`protected-paths` 空则对无治理面服务近似 no-op；缺/空/哨兵/错令牌 → 403；strict 且配置了保护路径时缺令牌启动失败。
+- **列表绑定运行时修复（装配测试暴露，本轮修正）**：`@Value` 注入 `List<String>` 在生产上下文不按逗号切分（Spring Boot 3.2.4 未注册 beanFactory ConversionService，`CustomCollectionEditor` 把整串当单元素），`protected-paths`/网关 `whitelist`/`admin.paths` 的 yml 配置将永不命中。两个过滤器均改为 `@Value` 收 String 原文、`@PostConstruct` 自行切分（去空白、丢空段），网关白名单/治理路径与治理保护在生产才真实生效；此为网关既有白名单/治理面路径的潜伏缺陷修正，属第二阶段端到端成立的前提。
+- **配置**：`GOVERNANCE_TOKEN`；服务 YAML 回落 `__GOVERNANCE_TOKEN_UNSET__`；网关回落空串；均无演示默认明文。
+- **部署顺序**：网关先（注入）→ verify/leaderboard 后（校验）。反向会阻断合法治理请求。
+
+## 红绿证据（本轮，行为红口径）
+
+先红（行为红：装配测试对基线 yml 实跑失败；「删类导致编译失败」不记为行为红。证据后随即逐字节恢复工作树）：
+
+- 把 verify / leaderboard 两份 `application.yml` 临时还原为基线 `1f95654` 版本（无 `app.governance` 配置块，即旧行为：服务不校验治理凭证），用仓库脚本分别跑 `--pl verify-service test` 与 `--pl leaderboard-service test` → 退出码均 `1`，新增装配测试按预期红：治理路径无令牌 `expected: <403> but was: <200>`；`GET /api/leaderboard` 放行断言在红绿两侧均通过（不受保护）。
+- 网关旧行为不再单独制造行为红：`adminCheckDisabledUserPasses`→`adminCheckDisabledGovernanceFailsClosed` 等判别式翻转已在测试中固定。
+
+后绿：
 
 ```text
-mvn -pl gateway-service -Dtest=AuthGlobalFilterTest test
+bash scripts/verify/mvn-verify.sh --mode=offline --pl common,gateway-service,verify-service,leaderboard-service test
 ```
 
-结果：退出码 `1`。`userRoleVerifyAppealAliasReturns403` 失败：期望 `403 FORBIDDEN`，实际 `null`。该结果证明原过滤器继续调用链，旧实现放行了 USER JWT 的别名请求。
+结果：退出码 `0`、`BUILD SUCCESS`；模块汇总 common `36/0/0/0`、gateway `41/0/0/0`、verify `89/0/0/0`、leaderboard `59/0/0/0`（api 无单测）。日志：`.tmp-task136-verify.log`。
 
-### 修正后已有绿测（指导侧仓库脚本 offline）
+定向覆盖（过滤器/网关单测，非真实跨进程）：
 
-命令：
+- 无令牌 / 伪造 `X-Role` / 错令牌 / 空令牌 → 403
+- 有效令牌放行三治理路径
+- 总榜路径与 `/internal/**` 不被治理过滤器保护
+- 网关剥离客户端伪造治理头并注入配置令牌；USER 路径不注入；USER 路径自带伪造治理头也被剥离（复核会话补测 `userPathForgedGovernanceTokenStripped`）
+- `auth.enabled=false` / `admin.enabled=false` / 缺治理令牌 → 治理失败关闭
+- strict + 有 protected-paths 缺令牌启动失败；无 protected-paths 的服务不因缺治理令牌启动失败
+- **真实 yml 装配**（verify/leaderboard `GovernanceWiringTest`：加载各服务 classpath 真实 application.yml 绑定 `protected-paths` 后驱动过滤器）：无令牌访问申诉/规则/日报 → 403；`GET /api/leaderboard` 不误伤
+- **逗号切分解析**（`initSplitsCommaSeparated*` 两测）：`@Value` String 原文 → 模式列表（去空白、丢空段）
 
-```text
-bash scripts/verify/mvn-verify.sh --mode=offline --pl gateway-service test
-```
-
-结果：退出码 `0`；目标模块 `35/0/0/0`（Failures/Errors/Skipped 均为 0）；`BUILD SUCCESS`。
-
-指导侧已亲自执行该仓库脚本入口；前序 agent 执行的 `mvn -pl gateway-service test` 同样为 `35/0/0/0`，仅作为辅助裸 Maven 证据。本轮台账订正不重复执行 Maven。
-
-### 脚本入口与外部覆盖边界
-
-- 修正后主证据是 `bash scripts/verify/mvn-verify.sh --mode=offline --pl gateway-service test`。
-- 脚本 `--mode=online`、CI、真实服务直连均未覆盖；不把 offline 结果升级为 online/CI 结论。
-
-## 配置与契约核对内容
-
-新增/更新测试约束了：
-
-- `AuthGlobalFilter` 的 `@Value` 默认路径包含 `/admin/**`、`/verify/rules/**`、`/verify/api/appeals/**`；
-- classpath 实际 `application.yml` 的 `app.auth.admin.paths` 同时包含上述路径；
-- `/verify/**`、`/admin/**` 原路由仍存在；
-- 使用实际 YAML 路径灌入过滤器后，别名 USER=403、ADMIN=放行；原 `/admin/**`、`/verify/rules/**` USER=403、ADMIN=放行。
+顺带修正：`LeaderboardDailyAdminOnlyTest` 在注入治理令牌前会因缺凭证对 ADMIN 误报 403；已补 `governanceToken` 测试夹具。复核会话另订正 `RuleVersionController` javadoc（删除已过时的「本服务不自行校验 token / 角色由 X-Role 授权」，服务侧现校验治理令牌）并清理本阶段触碰文件的末尾空行。
 
 ## 实际改动清单
 
+- `common/src/main/java/com/sportverify/common/governance/GovernanceApiHeaders.java`（新）
+- `common/src/main/java/com/sportverify/common/governance/GovernanceApiAuthFilter.java`（新）
+- `common/src/test/java/com/sportverify/common/governance/GovernanceApiAuthFilterTest.java`（新）
 - `gateway-service/src/main/java/com/sportverify/gateway/auth/AuthGlobalFilter.java`
 - `gateway-service/src/main/resources/application.yml`
 - `gateway-service/src/test/java/com/sportverify/gateway/auth/AuthGlobalFilterTest.java`
+- `gateway-service/src/test/java/com/sportverify/gateway/auth/LeaderboardDailyAdminOnlyTest.java`
 - `gateway-service/src/test/java/com/sportverify/gateway/auth/VerifyAppealReviewAdminOnlyTest.java`
+- `verify-service/src/main/resources/application.yml`
+- `verify-service/src/main/java/com/sportverify/verify/controller/RuleVersionController.java`
+- `verify-service/src/test/java/com/sportverify/verify/config/GovernanceWiringTest.java`（新）
+- `leaderboard-service/src/main/resources/application.yml`
+- `leaderboard-service/src/test/java/com/sportverify/leaderboard/config/GovernanceWiringTest.java`（新）
 - `work/mailbox/tasks/TASK-136/spec.md`
 - `work/mailbox/tasks/TASK-136/handoff.md`
 - `work/mailbox/PLAN.md`
 
-另有开工前已存在、未触碰的未跟踪目录：`.trae/`。
+未触碰：`.trae/`。另对本阶段触碰的过滤器主类与三份 yml 做了末尾空行清理。
 
-## 未完成与未覆盖
+## 未覆盖与已知影响（不得写成通过）
 
-- **服务直连凭证扩围仍未完成**：没有修改服务侧 token/凭证校验，也没有覆盖服务端口绕过网关的风险；不能声称该风险已解决。
-- 未执行真实 Nacos 服务发现、网关到 verify-service 的端到端联调或服务端口直连验证。
-- `app.auth.enabled` 仓库默认值仍为 `false`；本阶段测试场景显式设置为 `true`，`app.auth.admin.enabled` 场景显式开启。没有改变默认降级开关。
-- 脚本 online/CI 外部门槛未覆盖；未 push、未建 PR。
+- **真实跨服务 / 网关→下游联调 / 服务端口直连冒烟**：未跑。
+- **`--mode=online`、CI、push/PR**：未覆盖；**未达外部门槛**。
+- **仓库默认 `app.auth.enabled=false`**：治理路径现失败关闭；既有经网关、不带 JWT 的规则灰度冒烟（`scripts/smoke/smoke-a.sh` 等）在默认降级配置下会 403——属本阶段显式安全语义，需在开启鉴权并注入同一 `GOVERNANCE_TOKEN` 后重跑；不在本轮 offline 单测范围内。
+- **`docker-compose.services.yml` 头注释仍写「服务侧按约定不校验 token」**：已过时，本轮未改该文件（避免扩 scope）；后续文档微清理。
+- compose/`.env` 未预置 `GOVERNANCE_TOKEN`：上线/本地联调前必须显式注入，且不得把真实密钥写入台账。
 
 ## 契约状态
 
-本轮仅在台账写入完成后执行 mailbox 契约核对，不重复执行 Maven 测试。使用 Git Bash 执行：`bash scripts/verify/mailbox-contract.sh --baseline=HEAD`，退出码 `1`。`TASK-136` 判据 A 两件套齐全、判据 B 通过（只改清单与实际改动集一致）；总体失败来自既有在途任务 `TASK-018`、`TASK-106`、`TASK-109`、`TASK-132`、`TASK-133`、`TASK-134`、`TASK-135` 与共享工作树/历史清单交叠，输出同时显示本任务实际 7 项改动均已被 TASK-136 清单声明。首次从 PowerShell 直接调用 `bash` 因 WSL2 镜像缺失退出码 `1`，不作为契约判定；随后使用 `D:\git\Git\bin\bash.exe` 完成实际契约核对。
+提交后实跑（无参数，基线默认 HEAD）：工作树相对基线的改动集与回传清单**无交叠 → 视为已收口**（判据 B 口径），TASK-136 两件套齐全（判据 A）。提交前最后一轮在途核对（`--baseline=HEAD`）为：总体 `rc=1`，TASK-136 判据 B 通过，总体失败来自 TASK-135 在途清单过期（其改动早已提交 `2df9131`，属共享工作树/历史清单交叠，与本任务无关，未代为订正）。提交哈希、文件范围与契约退出码由任务回传。

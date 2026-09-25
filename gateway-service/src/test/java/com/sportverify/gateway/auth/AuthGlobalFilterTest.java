@@ -42,8 +42,9 @@ class AuthGlobalFilterTest {
         ReflectionTestUtils.setField(filter, "authEnabled", true);
         ReflectionTestUtils.setField(filter, "whitelist",
                 List.of("/api/auth/**", "/actuator/**"));
-        ReflectionTestUtils.setField(filter, "adminPaths", List.of("/admin/**", "/verify/rules/**", "/verify/api/appeals/**"));
+        ReflectionTestUtils.setField(filter, "adminPaths", List.of("/admin/**", "/verify/rules/**", "/verify/api/appeals/**", "/leaderboard/api/leaderboard/daily"));
         ReflectionTestUtils.setField(filter, "adminRoleCheckEnabled", true);
+        ReflectionTestUtils.setField(filter, "governanceToken", "test-governance-token");
     }
 
     /** 签发带指定 role 的 access token（JDK 默认密钥，与配置一致） */
@@ -131,13 +132,79 @@ class AuthGlobalFilterTest {
     }
 
     @Test
-    void adminCheckDisabledUserPasses() {
-        // 灰度降级：admin.enabled=false 时管理端退化为透传（不判角色），身份头照常注入
+    void adminCheckDisabledGovernanceFailsClosed() {
+        // TASK-136 第二阶段：admin.enabled=false 时治理目标失败关闭，不再裸放行
         ReflectionTestUtils.setField(filter, "adminRoleCheckEnabled", false);
+        MockServerWebExchange exchange = run("/admin/api/appeals/1/review", "Bearer " + token(6L, "USER"));
+        assertEquals(HttpStatus.FORBIDDEN, exchange.getResponse().getStatusCode());
+    }
+
+    @Test
+    void authDisabledGovernanceFailsClosed() {
+        ReflectionTestUtils.setField(filter, "authEnabled", false);
+        MockServerWebExchange exchange = run("/admin/api/appeals/1/review", "Bearer " + token(6L, "ADMIN"));
+        assertEquals(HttpStatus.FORBIDDEN, exchange.getResponse().getStatusCode());
+    }
+
+    @Test
+    void adminJwtInjectsGovernanceTokenAndStripsClientForgery() {
         AtomicReference<ServerWebExchange> captured = new AtomicReference<>();
-        MockServerWebExchange exchange = runCaptured("/admin/api/appeals/1/review", "Bearer " + token(6L, "USER"), captured);
+        MockServerWebExchange exchange = runCapturedWithIdentity(
+                "/admin/api/appeals/1/review",
+                "Bearer " + token(9L, "ADMIN"),
+                null,
+                null,
+                captured,
+                "forged-client-governance-token");
         assertEquals(null, exchange.getResponse().getStatusCode());
-        assertEquals("USER", captured.get().getRequest().getHeaders().getFirst(AuthGlobalFilter.HEADER_ROLE));
+        assertEquals("9", captured.get().getRequest().getHeaders().getFirst(AuthGlobalFilter.HEADER_USER_ID));
+        assertEquals("ADMIN", captured.get().getRequest().getHeaders().getFirst(AuthGlobalFilter.HEADER_ROLE));
+        assertEquals("test-governance-token",
+                captured.get().getRequest().getHeaders().getFirst(AuthGlobalFilter.HEADER_GOVERNANCE_TOKEN));
+    }
+
+    @Test
+    void userPathDoesNotInjectGovernanceToken() {
+        AtomicReference<ServerWebExchange> captured = new AtomicReference<>();
+        MockServerWebExchange exchange = runCaptured("/verify/1/submit", "Bearer " + token(5L, "USER"), captured);
+        assertEquals(null, exchange.getResponse().getStatusCode());
+        assertEquals(null, captured.get().getRequest().getHeaders().getFirst(AuthGlobalFilter.HEADER_GOVERNANCE_TOKEN));
+    }
+
+    @Test
+    void userPathForgedGovernanceTokenStripped() {
+        // 入口剥离对所有分支生效：普通用户路径即使自带伪造治理凭证，下游也必须见不到
+        AtomicReference<ServerWebExchange> captured = new AtomicReference<>();
+        MockServerWebExchange exchange = runCapturedWithIdentity(
+                "/verify/1/submit",
+                "Bearer " + token(5L, "USER"),
+                null,
+                null,
+                captured,
+                "forged-client-governance-token");
+        assertEquals(null, exchange.getResponse().getStatusCode());
+        assertEquals(null, captured.get().getRequest().getHeaders().getFirst(AuthGlobalFilter.HEADER_GOVERNANCE_TOKEN));
+    }
+
+    @Test
+    void initSplitsCommaSeparatedPathLists() {
+        // @Value 对 List 不做逗号切分：生产 yml 的白名单/治理路径必须经 init 自行解析，否则永不命中
+        AuthGlobalFilter fresh = new AuthGlobalFilter(parser);
+        ReflectionTestUtils.setField(fresh, "whitelistConfig", "/api/auth/**, /actuator/health");
+        ReflectionTestUtils.setField(fresh, "adminPathsConfig",
+                "/admin/**, ,/verify/rules/**,/verify/api/appeals/**,/leaderboard/api/leaderboard/daily");
+        fresh.init();
+        assertEquals(List.of("/api/auth/**", "/actuator/health"), ReflectionTestUtils.getField(fresh, "whitelist"));
+        assertEquals(
+                List.of("/admin/**", "/verify/rules/**", "/verify/api/appeals/**", "/leaderboard/api/leaderboard/daily"),
+                ReflectionTestUtils.getField(fresh, "adminPaths"));
+    }
+
+    @Test
+    void missingGovernanceTokenFailsClosedOnAdminPath() {
+        ReflectionTestUtils.setField(filter, "governanceToken", "");
+        MockServerWebExchange exchange = run("/verify/rules/versions", "Bearer " + token(1L, "ADMIN"));
+        assertEquals(HttpStatus.FORBIDDEN, exchange.getResponse().getStatusCode());
     }
 
     @Test
@@ -176,6 +243,13 @@ class AuthGlobalFilterTest {
     private MockServerWebExchange runCapturedWithIdentity(String path, String authorization,
                                                           String forgedUserId, String forgedRole,
                                                           AtomicReference<ServerWebExchange> captured) {
+        return runCapturedWithIdentity(path, authorization, forgedUserId, forgedRole, captured, null);
+    }
+
+    private MockServerWebExchange runCapturedWithIdentity(String path, String authorization,
+                                                          String forgedUserId, String forgedRole,
+                                                          AtomicReference<ServerWebExchange> captured,
+                                                          String forgedGovernanceToken) {
         MockServerHttpRequest.BaseBuilder<?> builder = MockServerHttpRequest.get(path);
         if (authorization != null) {
             builder.header("Authorization", authorization);
@@ -185,6 +259,9 @@ class AuthGlobalFilterTest {
         }
         if (forgedRole != null) {
             builder.header(AuthGlobalFilter.HEADER_ROLE, forgedRole);
+        }
+        if (forgedGovernanceToken != null) {
+            builder.header(AuthGlobalFilter.HEADER_GOVERNANCE_TOKEN, forgedGovernanceToken);
         }
         MockServerWebExchange exchange = MockServerWebExchange.from(builder);
         filter.filter(exchange, e -> {

@@ -19,8 +19,8 @@ import org.springframework.web.bind.annotation.RestController;
  *
  * <p>本控制器属治理面（add-admin-rbac，见 ADR-0007）：外部路径 {@code /verify/rules/**}
  * 已从网关白名单移除并纳入角色校验，仅 <b>ADMIN 角色</b> token 可访问（普通用户 403/1002、
- * 未登录 401/1001）；鉴权只依赖网关过滤（本服务不自行校验 token，角色由网关注入 X-Role）。
- * 三端点覆盖灰度发布全流程：创建（快照落库 + GRAY）→ 调灰度（0 = 秒级回滚）
+ * 未登录 401/1001）。服务侧校验网关治理专用凭证 {@code X-Gateway-Governance-Token}（TASK-136 第二阶段），
+ * 不以 {@code X-Role} 作授权依据。三端点覆盖灰度发布全流程：创建（快照落库 + GRAY）→ 调灰度（0 = 秒级回滚）
  * → 全量（100 + ACTIVE + 旧版本退役），返回体均携带最新版本信息与灰度比例。</p>
  */
 @RestController

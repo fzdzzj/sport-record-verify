@@ -73,6 +73,7 @@ class LeaderboardDailyAdminOnlyTest {
         ReflectionTestUtils.setField(filter, "whitelist", white);
         ReflectionTestUtils.setField(filter, "adminPaths", admin);
         ReflectionTestUtils.setField(filter, "adminRoleCheckEnabled", true);
+        ReflectionTestUtils.setField(filter, "governanceToken", "test-governance-token");
         return filter;
     }
 

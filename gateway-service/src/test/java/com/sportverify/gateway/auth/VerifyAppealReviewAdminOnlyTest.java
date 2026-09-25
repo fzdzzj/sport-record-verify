@@ -61,9 +61,9 @@ class VerifyAppealReviewAdminOnlyTest {
 
     /** 读取 AuthGlobalFilter @Value 的 fallback，约束代码默认路径本身不能漏掉别名。 */
     private static List<String> codeDefaultAdminPaths() throws NoSuchFieldException {
-        Field field = AuthGlobalFilter.class.getDeclaredField("adminPaths");
+        Field field = AuthGlobalFilter.class.getDeclaredField("adminPathsConfig");
         Value value = field.getAnnotation(Value.class);
-        assertTrue(value != null, "adminPaths 必须保留 @Value 配置入口");
+        assertTrue(value != null, "adminPathsConfig 必须保留 @Value 配置入口");
         String expression = value.value();
         int start = expression.indexOf(':') + 1;
         int end = expression.lastIndexOf('}');
@@ -86,6 +86,7 @@ class VerifyAppealReviewAdminOnlyTest {
         ReflectionTestUtils.setField(filter, "whitelist", List.of("/api/auth/**", "/actuator/health"));
         ReflectionTestUtils.setField(filter, "adminPaths", deployedAdminPaths());
         ReflectionTestUtils.setField(filter, "adminRoleCheckEnabled", true);
+        ReflectionTestUtils.setField(filter, "governanceToken", "test-governance-token");
         return filter;
     }
 

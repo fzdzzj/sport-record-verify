@@ -175,6 +175,11 @@ management:
       show-details: never
 
 app:
+  governance:
+    auth-enabled: true
+    # 生产必须注入 GOVERNANCE_TOKEN，无演示默认；strict 下缺则启动失败
+    token: ${GOVERNANCE_TOKEN:__GOVERNANCE_TOKEN_UNSET__}
+    protected-paths: /api/appeals/**,/rules/**
   internal:
     auth-enabled: true
     token: ${INTERNAL_API_TOKEN:local-demo-internal-token}
