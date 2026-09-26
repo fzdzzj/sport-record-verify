@@ -1,0 +1,113 @@
+{
+  "head": "997c789aa7420e2b33d3d6c0a23cf6066846cd04",
+  "date": "2026-09-26",
+  "label": "task143-stage-c100",
+  "purpose": "TASK-143 verify-event stage attribution on current HEAD (read-only measurement, no optimization)",
+  "coverage": {
+    "mode": "partial-four-services",
+    "servicesStarted": ["gateway:8080", "user:8081", "record:8082", "verify:8083"],
+    "servicesAbsent": ["leaderboard", "mapmatch"],
+    "postgis": "container Exited(255) for ~4 days",
+    "consequence": "leaderboard segment and real R5 quality NOT COVERED; R5 degraded on all 2010 samples",
+    "safetyGate": "satisfied (MySQL/RocketMQ/Redis healthy, disk free 220.8GB, no deliverable backlog)"
+  },
+  "environment": {
+    "mysql": "mysql:8.0.46 container sport-verify-mysql host:3307 data 3.0G",
+    "rocketmq": "apache/rocketmq:5.2.0 namesrv+broker healthy",
+    "redis": "redis:7.2-alpine healthy",
+    "nacos": "nacos/nacos-server:v2.3.2 healthy",
+    "diskFreeGB": 220.8,
+    "clockNote": "services are host processes sharing host wall clock; MySQL session tz CST (=host); Redis/RocketMQ report UTC but same absolute instant; DB timestamps DATETIME second precision",
+    "effectiveParams": {
+      "verify.outbox.batch-size": 100,
+      "verify.outbox.relay-interval-ms": 5000,
+      "verify.outbox.max-retry": 16,
+      "verify.consumer.threads": "32/40",
+      "verify.consumer.batchMaxSize": 8
+    },
+    "verifyJarSha256_16": "36768EA21359DB33",
+    "fingerprintFile": "docs/perf/data/raw/task143-env-fingerprint.txt"
+  },
+  "load": {
+    "cmd": "bash scripts/perf/run-perf.sh load 100 2000 task143-stage",
+    "exitCode": 0,
+    "runsExecuted": 1,
+    "concurrency": 100,
+    "total": 2000,
+    "warmupIncluded": 10,
+    "ok": 2000,
+    "limited429": 0,
+    "errors": 0,
+    "errRate": 0.0,
+    "wallSeconds": 15.162,
+    "qps": 131.91,
+    "p50ms": 704.89,
+    "p95ms": 1141.6,
+    "p99ms": 1452.75,
+    "maxMs": 1836.34,
+    "statusHistogram": {"200": 2000},
+    "rawPaths": [
+      "docs/perf/data/raw/task143-stage-c100-summary.json",
+      "docs/perf/data/raw/task143-stage-c100-raw.csv"
+    ]
+  },
+  "cohort": {
+    "mainRunId": "lt1790422566459",
+    "mainRecordIds": "40433..42432 (2000)",
+    "warmupRunId": "lt1790422566459w",
+    "warmupRecordIds": "40423..40432 (10)",
+    "joinKey": "record.request_id = runId + '-' + seq; eventId<->recordId from verify consume log; outbox payload.recordId",
+    "finalStatus": "all 2000 = PASSED(2), none left SUBMITTED/VERIFYING"
+  },
+  "segments": {
+    "metric": "milliseconds (log timestamps), per-stage paired samples, not summed across stages",
+    "pub_to_consume": {"n": 2000, "precision": "ms (cross-process)", "p50": 12466.5, "p95": 18277, "p99": 19064.1, "max": 19589, "fails": 0, "dups": 1, "missing": 0, "reading": "MIXED: MQ network delivery + consumer backlog; NOT pure MQ latency; early records near-instant, late records lag up to ~19s"},
+    "consume_to_callback": {"n": 2000, "precision": "ms (same process)", "p50": 327.5, "p95": 2854.8, "p99": 4145, "max": 23874, "fails": 0, "dups": 0, "missing": 0, "reading": "per-message verify compute + local persist + Feign callback; P95 elevated by R5 circuit-breaker 3s timeout; no pure SQL/HTTP split claimed"},
+    "callback_to_sent": {"n": 2000, "precision": "ms (same process)", "p50": 68805.5, "p95": 112817.2, "p99": 117480, "max": 117588, "fails": 0, "dups": 0, "missing": 0, "reading": "wait for outbox relay; DOMINANT stage in this event chain"},
+    "consume_to_sent": {"n": 2000, "precision": "ms", "p50": 68930.5, "p95": 113291, "p99": 117973.1, "max": 141277},
+    "pub_to_sent": {"n": 2000, "precision": "ms (cross-process)", "p50": 80376, "p95": 131414.1, "p99": 136940, "max": 150363}
+  },
+  "duplicates": {
+    "count": 1,
+    "recordId": 40533,
+    "note": "extra consume log line for same recordId (redelivery); first consume used as stage start, extra lines counted separately"
+  },
+  "outboxAccounting": {
+    "maxRetryEffective": 16,
+    "beforeLoad": {"deliverablePENDING": 0, "exhaustedPENDING": 0, "SENT": 20100},
+    "afterLoad": {"deliverablePENDING": 0, "exhaustedPENDING": 0, "SENT": 22110},
+    "oldestAge": {"deliverablePENDING": "N/A (count=0)", "exhaustedPENDING": "N/A (count=0)"},
+    "rowsRetryCountGt0": 0,
+    "thisRun": {
+      "rows": 2010,
+      "createdAtRange": "2026-09-26 19:36:10 .. 19:36:44",
+      "sentAtRange": "2026-09-26 19:36:11 .. 19:38:41",
+      "oldestCreatedToSentSeconds": 117,
+      "createRateRowsPerSec": 59.1,
+      "relayNetRateRowsPerSec": 13.4,
+      "relayTheoreticalCapRowsPerSec": 20,
+      "note": "PENDING total is not treated as a drainable backlog; deliverable vs exhausted split established"
+    }
+  },
+  "r5": {"samples": 2010, "degraded": 2010, "cause": "mapmatch unavailable / circuit-breaker degrade", "participated": false},
+  "bottleneckHypothesis": {
+    "single": "outbox relay delivery throughput dominates the judged-event-to-leaderboard chain (callback->SENT P50 68.8s); relay net rate ~13.4 rows/s vs outbox create rate ~59 rows/s",
+    "evidenceGrade": "directly measured (same-run paired samples + relay logs + second-precision DB range)",
+    "notClaimed": ["no query or business latency improvement claimed", "no pure MQ / pure SQL / pure HTTP single-item attribution", "cross-stage P50s not summed or subtracted"],
+    "nextStep": "build a same-load baseline for VerifyOutboxRelay delivery throughput to test the single hypothesis that raising relay throughput shortens callback->SENT; do NOT change relay period/batch, consumer threads, pool, SQL, index or JVM in this task"
+  },
+  "notCovered": [
+    "leaderboard consumption / SENT->leaderboard segment (leaderboard-service not started)",
+    "R5 quality / off-road ratio / mapmatch CPU (PostGIS+mapmatch not started)",
+    "cross-process clock alignment (host shared clock, no NTP calibration) - coarse reading only",
+    "millisecond DB breakdown (created_at/sent_at are second precision)",
+    "failure/retry path (zero failures this round; no fault injection)",
+    "500/1000 concurrency tiers (forbidden)",
+    "--it / --mode=online / CI"
+  ],
+  "oldEnvironmentNumbersNotUsed": {
+    "source": "TASK-138 (HEAD 58cd104, old stack)",
+    "values": ["submit->verdict 15~18s", "outbox PENDING 1012 / SENT 998"],
+    "note": "marked OLD environment only; not filled into this measurement"
+  }
+}

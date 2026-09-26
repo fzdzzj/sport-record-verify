@@ -1,0 +1,53 @@
+[
+  {
+    "number": 1,
+    "category": "冻结和计时边界",
+    "task": "冻结 TASK-143 基线并定义可关联阶段，不在测量前假定瓶颈",
+    "steps": [
+      { "step": "记录 HEAD=997c789aa7420e2b33d3d6c0a23cf6066846cd04、脏项和服务/中间件状态；读旧报告但不引用其 15s/1012 为当前值；记录各阶段键/时间来源/精度及重试反例", "completed": true },
+      { "step": "核对 LoadTest raw.csv 缺 runId/recordId；如需关联仅给 summary/stdout 增加 runId 并做定向测试，或采用能自证的只读关联方法；不可改请求负载语义或服务业务代码", "completed": true }
+    ],
+    "passes": true
+  },
+  {
+    "number": 2,
+    "category": "只读观测及安全门槛",
+    "task": "确认完整栈或明确局部覆盖，分开盘点 outbox 两类 PENDING",
+    "steps": [
+      { "step": "检查 MySQL、RocketMQ、Redis、gateway/user/record/verify/leaderboard、PostGIS/mapmatch 健康及路网数据、各进程时钟/时区；无榜单或 R5 时标局部覆盖，不编造完整质量指标", "completed": true },
+      { "step": "只读统计 outbox 可投递 PENDING、耗尽待人工 PENDING、SENT 的 count 与年龄及历史行干扰；核对 DB/mq 可用、既有积压与磁盘容量，不能安全关联则停，不清库", "completed": true }
+    ],
+    "passes": true
+  },
+  {
+    "number": 3,
+    "category": "单轮测量",
+    "task": "至多一次 c100×2000，不重跑凑可比结果",
+    "steps": [
+      { "step": "满足前置门槛后仅一次 bash scripts/perf/run-perf.sh load 100 2000 task143-stage（含内置 10 预热），记录退出码、HEALTH、环境指纹与 raw 路径；失败也计入预算", "completed": true },
+      { "step": "只读采集该轮 request_id/runId → recordId、SUBMITTED 发布与消费、verification_result/outbox created/sent、榜单 eventId 消费/贡献证据；逐段写来源、n、丢失/重试/重复、时钟精度与 backlog/排空率；能量才列 P50/P95/P99", "completed": true },
+      { "step": "停止自己启动的服务并恢复开工状态；不得清库、覆盖旧 raw 或在演示库灌故障行", "completed": true }
+    ],
+    "passes": true
+  },
+  {
+    "number": 4,
+    "category": "判读与报告",
+    "task": "区分直接测得、推断和未覆盖，只选择下一步一个待证假设",
+    "steps": [
+      { "step": "新建 docs/perf 报告和机器摘要；按共同 cohort 展示阶段数据及 outbox 可投递/待人工分别变化；任何跨进程时钟偏差/秒精度/部分栈缺席都降级结论", "completed": true },
+      { "step": "若证据不够，明确主瓶颈未确定与下一测量点；若能定位，仅提出单一下一变更假设，不在此作业调整 relay、消费线程、池、SQL、索引或 JVM", "completed": true }
+    ],
+    "passes": true
+  },
+  {
+    "number": 5,
+    "category": "一次作业内验证与收口",
+    "task": "完成三件套、唯一总览、台账、契约和本地提交",
+    "steps": [
+      { "step": "运行相关测试（如果仅文档/只读则说明不运行 Maven 的理由；若改 LoadTest，定向编译/测试与离线入口）；验证机器摘要 JSON、git diff --check、mailbox-contract.sh，分别记录退出码", "completed": true },
+      { "step": "勾选 tasks.json，补 TASK-143 spec/handoff 与 PLAN；更新现有未跟踪 work/mailbox/后端优化机会总览-2026-09-26.md 的 TASK-143 节并首次纳入清单提交；只 stage 本任务文件，可业务/台账两笔提交绑定哈希，不 add -A、不 push、不建 PR", "completed": true }
+    ],
+    "passes": true
+  }
+]
