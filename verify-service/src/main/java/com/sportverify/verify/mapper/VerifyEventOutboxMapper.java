@@ -14,10 +14,15 @@ import java.util.List;
 public interface VerifyEventOutboxMapper extends BaseMapper<VerifyEventOutbox> {
 
     /**
-     * 取一批待投递事件（按自增 id 顺序，先到先得；批量上限由 relay 配置）。
+     * 取一批待投递事件（按自增 id 顺序，先到先得；批量上限与重试上限由 relay 配置）。
+     *
+     * <p>资格条件含 {@code retry_count < maxRetry}：重试已耗尽的 PENDING 行不占发送批次，
+     * 避免较小 ID 的耗尽行占满查询上限后永久遮挡后续可投递行；耗尽行本身保留原状态与原数据
+     * 供人工处理（不删除、不重置计数、不改 eventId、不重投）。</p>
      */
-    @Select("SELECT * FROM verify_event_outbox WHERE status = 'PENDING' ORDER BY id LIMIT #{limit}")
-    List<VerifyEventOutbox> selectPendingBatch(@Param("limit") int limit);
+    @Select("SELECT * FROM verify_event_outbox WHERE status = 'PENDING' AND retry_count < #{maxRetry} " +
+            "ORDER BY id LIMIT #{limit}")
+    List<VerifyEventOutbox> selectPendingBatch(@Param("limit") int limit, @Param("maxRetry") int maxRetry);
 
     /**
      * 投递成功标记（条件含 status='PENDING'：并发下只生效一次，重复标记幂等）。

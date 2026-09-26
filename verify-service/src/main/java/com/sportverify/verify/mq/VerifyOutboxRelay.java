@@ -19,8 +19,9 @@ import java.util.concurrent.TimeUnit;
  *
  * <p>定时扫 verify_event_outbox 的 PENDING 行 → 经 {@link VerifyEventProducer#syncSend} 投递
  * （行内 topic/tag/payload/eventId 原样使用，traceId 透传）→ 成功标 SENT，
- * 失败 retry_count+1 留下轮；超 {@code verify.outbox.max-retry}（默认 16）仅记 error
- * 告警并保留行供人工处理（不重投、不删除）。</p>
+ * 失败 retry_count+1 留下轮；取批按当前上限 {@code verify.outbox.max-retry}（默认 16）过滤，
+ * 即 {@code retry_count < max-retry} 才算合格，耗尽行不占发送批次（避免较小 ID 的耗尽行
+ * 永久遮挡后续可投递行），行本身保留供人工处理（不重投、不删除）。</p>
  *
  * <p>多实例防重：Redisson 锁 {@code verify:outbox:relay}，tryLock(0 等待)——
  * 拿不到锁说明另一实例正在跑，直接跳过本轮（周期短，无需等待）。</p>
@@ -69,8 +70,10 @@ public class VerifyOutboxRelay {
             return; // 另一实例正在跑，周期短直接跳过
         }
         try {
-            List<VerifyEventOutbox> batch = outboxMapper.selectPendingBatch(batchSize);
+            List<VerifyEventOutbox> batch = outboxMapper.selectPendingBatch(batchSize, maxRetry);
             for (VerifyEventOutbox row : batch) {
+                // 防御性兜底：取批 SQL 已按当前上限过滤耗尽行；仅当运行中上限被下调等极端情况下
+                // 本批仍可能含新耗尽行，此时保留行、不投递不计数。
                 if (row.getRetryCount() != null && row.getRetryCount() >= maxRetry) {
                     log.error("outbox 事件超过最大重试次数，保留行供人工处理：id={}, eventId={}, topic={}, tag={}, retryCount={}",
                             row.getId(), row.getEventId(), row.getTopic(), row.getTag(), row.getRetryCount());

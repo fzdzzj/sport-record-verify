@@ -1,0 +1,52 @@
+[
+  {
+    "number": 1,
+    "category": "基线与强反例",
+    "task": "冻结当前代码和已存在的脏项，核对是否有自动移走耗尽行的路径",
+    "steps": [
+      { "step": "记录 HEAD=7d44134a52d187768452f8d2a60be86835eed735 及 git status；审查 mapper、relay、DDL、测试、历史手动处理路径；若存在反证停止", "completed": true },
+      { "step": "在 scratch MySQL 构造批次大小 N 的耗尽 PENDING 行 + ID 更大且仍可投递的一行，运行旧 SQL 得到行为红；记录查询结果与退出码，不向演示库写入坏行", "completed": true }
+    ],
+    "passes": true
+  },
+  {
+    "number": 2,
+    "category": "最小修复",
+    "task": "仅改变取批资格条件，不改变事件投递和重试语义",
+    "steps": [
+      { "step": "selectPendingBatch 增加 maxRetry 参数及 retry_count < maxRetry 条件，relay 传配置值；不删除耗尽行、不重置计数、不改 eventId、固定延迟与批次大小", "completed": true },
+      { "step": "在同一隔离数据执行新 SQL，证明后续可投递行进入前 N 条；记录 EXPLAIN 与查询代价，不能仅靠 Mock SQL 参数断言", "completed": true }
+    ],
+    "passes": true
+  },
+  {
+    "number": 3,
+    "category": "回归与门槛",
+    "task": "覆盖边界，保持失败、成功和互斥契约",
+    "steps": [
+      { "step": "新增/调整 Mapper 取批资格的可执行判别与 relay 单测：满批耗尽行、阈值-1/阈值、成功 SENT、失败递增、eventId 透传、锁失败跳过；先红后绿，不删除已有用例凑数", "completed": true },
+      { "step": "运行 bash scripts/verify/mvn-verify.sh --mode=offline --pl verify-service test 和必要的 scratch SQL/IT；记录用例数与退出码，环境缺失记未覆盖", "completed": true }
+    ],
+    "passes": true
+  },
+  {
+    "number": 4,
+    "category": "结论与边界",
+    "task": "记录饥饿修复与可能保留的扫描成本",
+    "steps": [
+      { "step": "报告已有 PENDING/SENT 历史数字并非本缺陷事故证据；说明耗尽行仍保留供人工、计数阈值条件与扫描大量耗尽行时的性能风险，禁称延迟已改善", "completed": true },
+      { "step": "只在发现实证规模退化时单列下一阶段候选方案，不在本任务添加索引、改库状态机或调参数", "completed": true }
+    ],
+    "passes": true
+  },
+  {
+    "number": 5,
+    "category": "一次作业内收口",
+    "task": "完成三件套、台账、契约、本地提交并集中回传",
+    "steps": [
+      { "step": "按事实勾选本 tasks.json，补 TASK-142 spec/handoff 与 PLAN；实际改动清单逐项对齐；运行 git diff --check 与 mailbox-contract.sh", "completed": true },
+      { "step": "只暂存本任务文件，必要时业务和台账两笔本地提交以绑定业务哈希；不 add -A、不碰既有脏项、不 push、不建 PR；一次回传测试/契约退出码及未覆盖", "completed": true }
+    ],
+    "passes": true
+  }
+]

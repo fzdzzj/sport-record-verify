@@ -37,6 +37,10 @@ import static org.mockito.Mockito.when;
  * relay 的发送细节只经 {@link VerifyEventProducer#syncSend} 一处，故这里顺便判定
  * 「relay 按行内 topic/tag/payload 投递、重发不换 eventId」。
  * {@code batchSize}/{@code maxRetry} 经 ReflectionTestUtils 注入（同 @Value 默认值语义）。</p>
+ *
+ * <p>TASK-142：取批资格（{@code retry_count < maxRetry} 排除耗尽行）的<strong>真实 SQL 行为红/绿</strong>
+ * 由隔离 scratch MySQL 上执行的 {@code work/mailbox/verification/task142-outbox-poison-sql.sql} 实证，
+ * 本类只判定 relay 是否把当前上限传给取批查询、以及放行后一可投递行的发送语义，不以 mock 列表冒充 SQL 红。</p>
  */
 class VerifyOutboxRelayTest {
 
@@ -84,9 +88,21 @@ class VerifyOutboxRelayTest {
 
         relay.relay();
 
-        verify(outboxMapper, never()).selectPendingBatch(anyInt());
+        verify(outboxMapper, never()).selectPendingBatch(anyInt(), anyInt());
         verify(rocketMQTemplate, never()).syncSend(anyString(), any(Message.class));
         verify(lock, never()).unlock();
+    }
+
+    /** 取批资格：relay 必须把当前批次上限与重试上限一起传给 Mapper（耗尽行由 SQL 过滤，不占批次） */
+    @Test
+    void relay_passesBatchSizeAndRetryThreshold_toBatchQuery() throws Exception {
+        stubLockAcquired();
+        when(outboxMapper.selectPendingBatch(100, 16)).thenReturn(List.of());
+
+        relay.relay();
+
+        verify(outboxMapper).selectPendingBatch(100, 16);
+        verify(lock).unlock();
     }
 
     /** 投递成功 → syncSend 到 topic:tag，traceId 透传到消息头，标记 SENT，释放锁 */
@@ -96,7 +112,7 @@ class VerifyOutboxRelayTest {
         stubLockAcquired();
         VerifyEventOutbox pending = row(1L, 0);
         pending.setTraceId("trace-abc");
-        when(outboxMapper.selectPendingBatch(100)).thenReturn(List.of(pending));
+        when(outboxMapper.selectPendingBatch(100, 16)).thenReturn(List.of(pending));
         ArgumentCaptor<String> dest = ArgumentCaptor.forClass(String.class);
         ArgumentCaptor<Message> msgCaptor = ArgumentCaptor.forClass(Message.class);
 
@@ -118,7 +134,7 @@ class VerifyOutboxRelayTest {
         // 按写侧真实语义造行：eventId 与 payload 都由生产者生成一次
         VerifyEventOutbox pending = producer.newPendingRow(Verdict.PASSED, 7L, 100L);
         pending.setId(3L);
-        when(outboxMapper.selectPendingBatch(100)).thenReturn(List.of(pending));
+        when(outboxMapper.selectPendingBatch(100, 16)).thenReturn(List.of(pending));
         ArgumentCaptor<Message> msgCaptor = ArgumentCaptor.forClass(Message.class);
 
         relay.relay();
@@ -136,7 +152,7 @@ class VerifyOutboxRelayTest {
     @SuppressWarnings("unchecked")
     void relay_sendFailure_incrRetryAndContinues() throws Exception {
         stubLockAcquired();
-        when(outboxMapper.selectPendingBatch(100)).thenReturn(List.of(row(1L, 0), row(2L, 0)));
+        when(outboxMapper.selectPendingBatch(100, 16)).thenReturn(List.of(row(1L, 0), row(2L, 0)));
         // syncSend 非 void：第一次抛异常（第 1 行投递失败），第二次返回成功（第 2 行不受影响）
         when(rocketMQTemplate.syncSend(anyString(), any(Message.class)))
                 .thenThrow(new RuntimeException("MQ 不可用"))
@@ -150,12 +166,12 @@ class VerifyOutboxRelayTest {
         verify(lock).unlock();
     }
 
-    /** 重试次数超阈值（≥16）→ 不投递不计数，仅告警保留行供人工处理 */
+    /** 重试次数超阈值（≥16）→ 不投递不计数，仅告警保留行供人工处理；取批已按当前上限过滤，本路径为防御性兜底 */
     @Test
     @SuppressWarnings("unchecked")
     void relay_retryExceeded_keepsRowForManual() throws Exception {
         stubLockAcquired();
-        when(outboxMapper.selectPendingBatch(100)).thenReturn(List.of(row(1L, 16)));
+        when(outboxMapper.selectPendingBatch(100, 16)).thenReturn(List.of(row(1L, 16)));
 
         relay.relay();
 
@@ -163,5 +179,42 @@ class VerifyOutboxRelayTest {
         verify(outboxMapper, never()).markSent(anyLong());
         verify(outboxMapper, never()).incrRetry(anyLong());
         verify(lock).unlock();
+    }
+
+    /** 阈值边界：retry_count=15（maxRetry-1）仍有资格，发送成功并标 SENT */
+    @Test
+    @SuppressWarnings("unchecked")
+    void relay_retryAtThresholdMinusOne_stillSends() throws Exception {
+        stubLockAcquired();
+        when(outboxMapper.selectPendingBatch(100, 16)).thenReturn(List.of(row(7L, 15)));
+
+        relay.relay();
+
+        verify(rocketMQTemplate).syncSend(anyString(), any(Message.class));
+        verify(outboxMapper).markSent(7L);
+        verify(outboxMapper, never()).incrRetry(anyLong());
+    }
+
+    /**
+     * 队首满批耗尽行被 SQL 过滤后，紧随其后的正常行进入本轮批次、被发送并沿用原 eventId。
+     *
+     * <p>此处取批结果按新 SQL 语义给出（{@code retry_count < 16} 过滤后的行）；
+     * 「旧 SQL 会把该行挡在批外」的<strong>实证在 scratch MySQL 脚本</strong>，不以本 mock 充当 SQL 红。</p>
+     */
+    @Test
+    @SuppressWarnings("unchecked")
+    void relay_liveRowAfterExhaustedHead_isSent() throws Exception {
+        stubLockAcquired();
+        VerifyEventOutbox live = row(101L, 0);
+        when(outboxMapper.selectPendingBatch(100, 16)).thenReturn(List.of(live));
+        ArgumentCaptor<Message> msgCaptor = ArgumentCaptor.forClass(Message.class);
+
+        relay.relay();
+
+        verify(rocketMQTemplate).syncSend(anyString(), msgCaptor.capture());
+        assertTrue(String.valueOf(msgCaptor.getValue().getPayload()).contains("\"eventId\":\"evt-101\""),
+                "应沿用行内原 eventId 投递，不重新生成");
+        verify(outboxMapper).markSent(101L);
+        verify(outboxMapper, never()).incrRetry(anyLong());
     }
 }
