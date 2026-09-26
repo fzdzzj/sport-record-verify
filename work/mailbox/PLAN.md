@@ -853,3 +853,22 @@ run `35802403723`（head `eba0108`，2026-09-23 00:31 UTC）——**web/build �
 | 是否到达外部门槛 | **未达到**：本地已提交，未 push、未建 PR，无 CI run |
 | 未覆盖/跳过 | 榜单消费/SENT->榜单段（leaderboard 未启动）；R5 质量/离路率/mapmatch CPU（PostGIS+mapmatch 未启动、全降级）；跨进程时钟校齐（未 NTP）；毫秒级 DB 细分（秒精度）；失败/重试路径（本轮零失败零重试、未注入故障）；500/1000 档（禁止）；--it/--mode=online/CI 未跑 |
 | 只改清单一致性 | 实际改动集（git -c core.quotepath=false diff --name-only --diff-filter=ACMR 997c789a，台账暂存后）= attr-verify-event-stage-lag.json（新）· 归因-事件分段-HEAD.md（新）· 规范三件套（3）· TASK-143/spec.md（新）· TASK-143/handoff.md（新）· PLAN.md · 后端优化机会总览-2026-09-26.md（既有未跟踪，首次纳入版本控制），与 handoff「实际改动清单」逐字一致（9 项；中文文件名交付物 2 项提取盲区先例延续）；归档移名/.codex/.trae/add-verify-degrade-status-index 未触碰；未用 git stash、未 add -A、未 push |
+
+## 验收记录：TASK-144 verify outbox relay 调度间隔单因素对照（A-B-B-A，未定/不改默认值，2026-09-26）
+
+| 项 | 内容 |
+| --- | --- |
+| 基线与提交 | 开工基线 8268aac8e7b2d1e542c04ddf526dbf834f87e0ad（与任务书一致）；规范三件套+新报告+机器摘要+TASK-143 三处文字订正为业务提交（perf(verify): outbox relay 调度间隔 A-B-B-A 对照报告与机器摘要（不改默认值），7 文件）；台账两件套+PLAN+总览为收口提交（docs(mailbox): TASK-144 提交绑定与验收记录，4 文件；哈希由任务回传承载）。未 push、未建 PR |
+| 覆盖与门槛 | 四服务栈 gateway/user/record/verify 起栈（health 200）；leaderboard/mapmatch 未在栈内、PostGIS Exited(255) → 榜单段与 R5 未覆盖（按 spec 只报局部链路）。MySQL 8.0.46/RocketMQ 5.2.0/Redis 7.2/Nacos 2.3.2 healthy；D: 空闲 220.7GB；每轮前可投递 PENDING=0 → 安全门槛满足。同一 jar 全程复用（sha256 36768EA2…，jarSwap=NONE） |
+| 生效配置证明 | application.yml 无 verify.outbox.* + Nacos verify-service.yml「config data not exist」→ @Value 默认 batch 100/周期 5000/初始延迟 10000/maxRetry 16；消费线程 32/40、单批 8、pull 0 四轮一致；唯一改动因素 = relay-interval-ms（A 默认 5000，B 追加 --verify.outbox.relay-interval-ms=500） |
+| TASK-143 独立复算 | 用未修改的 task143-stage-samples.csv 复算：SENT 长空档(>1s) 20 个、中位 5025ms（5017~5550）；完整百条批跨度中位 1327.5ms；净投递 ≈13.83 行/s（2000/144.6s，上限 20 行/s）。只作诊断，不断定单轮 CPU/纯 MQ/SQL |
+| 四轮负载（同 jar，A-B-B-A） | A1：QPS 130.91、callback→SENT P50 56769/P95 108068.2、relay 净 15.20、longGap 中位 5023ms（20 个）、消费失败/重复 2、relay 失败 0。B1：QPS 156.44、P50 19782/P95 32009.1、净 35.59、longGap 2 个、失败 0。B2：QPS 160.49、P50 18306/P95 31206.6、净 37.25、longGap 1 个、失败 0。A2：QPS 153.97、P50 59317/P95 112228.5、净 14.73、longGap 中位 5022ms（21 个）、失败 0。每轮 main 2000+预热 10=2010 条、同 run 配对 100%、排空至 PENDING=0 |
+| 可比性判定 | 四轮 QPS 中位 155.205；偏差 A1 −15.65%（超 ±15%）、B1 +0.80%、B2 +3.41%、A2 −0.80%；创建形态 A 两轮接近、B1 第三桶显著偏高 → 不完全可比；A1 另混入 2 条消费失败/重投（listPoints:42452/42435 读超时→RECONSUME_LATER→重投成功）。按预注册规则 → 结论记未定，不凑收益 |
+| 门槛读数（不据以决策） | B1/B2 的 callback→SENT P50 比两轮 A 中较好者(A1 56769ms)低 65.15%/67.75%、P95(32009.1/31206.6)不劣于 A 较好者(108068.2) → 数值上满足改善门槛；但可比性不成立，不改默认值 |
+| 决策与默认值 | **不改运行默认 relay-interval-ms（保持 @Value 默认 5000）**，不写入 classpath YAML，不补判别测试，不叠加批次/并发发送/SQL/MQ/池/JVM 任何参数。三件套组 3 第 2 步（写默认值）**未满足条件保持未勾** |
+| outbox 分账与语义 | 每轮前/排空后 可投递 PENDING 与 耗尽待人工 PENDING 均 0；全表 retry_count>0 本作业期间 0；relay 四轮 failLines=0/exhaustedLines=0、每轮 SENT 精确 +2010。不把 PENDING 总数当可排空积压 |
+| TASK-143 文字订正 | 只订正口径、数字未改：① SENT 不是榜单消费完成（收窄至「判定完成→outbox 标记 SENT 前」）；② 两个独立阶段 P50 的比值/大小关系不是逐请求占比；③ 净投递速率差的内部构成（批内逐行发送/DB 写入/锁与自身处理）尚未分离。文件：归因-事件分段-HEAD.md、attr-verify-event-stage-lag.json |
+| 本地门槛与退出码 | 决策为不改默认值 → 未改 Java/YAML/SQL，无编译/测试对象，不跑 Maven（唯一入口不适用）；负载 A1 wrapper exit 1（Git Bash 经 PowerShell pipe 的 echo 假象，load 本身 ok=2000/errors=0）、B1/B2/A2 exit 0；机器摘要 JSON ConvertFrom-Json rc=0；git diff --check rc=0；收口提交后无参数 mailbox-contract.sh rc=0 |
+| 是否到达外部门槛 | **未达到**：本地已提交，未 push、未建 PR，无 CI run |
+| 未覆盖/跳过 | CPU/GC/MQ broker/DB 资源指标未逐轮采样=未知；榜单消费/SENT→榜单段（leaderboard 未启动）；R5 质量/离路率/mapmatch CPU（PostGIS+mapmatch 未启动）；跨进程时钟未 NTP；毫秒级 DB 细分（秒精度）；maxRetry<=0/非法 retry_count/大规模耗尽行扫描成本；--it/--mode=online/CI 未跑；500/1000 档禁止 |
+| 只改清单一致性 | 实际改动集（git -c core.quotepath=false diff --name-only --diff-filter=ACMR 8268aac8，台账暂存后）= 复测-outbox-relay-调度间隔.md（新）· exp-outbox-relay-interval.json（新）· 归因-事件分段-HEAD.md（改）· attr-verify-event-stage-lag.json（改）· 规范三件套（3）· TASK-144/spec.md（新）· TASK-144/handoff.md（新）· PLAN.md · 后端优化机会总览-2026-09-26.md（改），与 handoff「实际改动清单」逐字一致（11 项；中文文件名交付物 3 项提取盲区先例延续）；归档移名/.codex/.trae/add-verify-degrade-status-index 未触碰；未用 git stash、未 add -A、未 push |
