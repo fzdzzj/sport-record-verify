@@ -820,3 +820,19 @@ run `35802403723`（head `eba0108`，2026-09-23 00:31 UTC）——**web/build �
 | 未覆盖/跳过 | pool10-r1 进程 CPU/内存未采集（采样命令 PowerShell 字符串插值缺陷；该轮请求/connWait/MySQL/GC 完整，A 臂由 pool10-r2 覆盖，未为补采样重跑负载避免超四次预算）；B 臂轮间 48% QPS 波动来源不可分离（缓冲池/JIT/后台 relay 等未控制，A 臂未现同量级波动故不归因一般噪声）；quality 未跑；单机单负载、三服务 JVM 四轮共用非全新态 |
 | 剩余假设 | 提交延迟支配项仍是物理连接获取等待（池 10 两轮 connWait P50 632/613ms，诊断开启、含建连不区分）；池 20 在本环境无一致收益且推高 MySQL 并发事务度——再优化应缩事务内工作（commit 区间 ≈30ms、trackWrite ≈21ms）而非调池；候选 20 若翻案需先能解释 B 臂轮间波动来源 |
 | 只改清单一致性 | 实际改动集（git -c core.quotepath=false diff --name-only --diff-filter=ACMR 8380e11，台账暂存后）= TimingHikariDataSource.java · TimingHikariDataSourceWiringTest.java · attr-submit-pool-capacity.json（新）· 复测-连接池容量对照.md（新）· 规范三件套（3）· TASK-141/spec.md（新）· TASK-141/handoff.md（新）· PLAN.md，与 handoff「实际改动清单」逐字一致（10 项）；归档移名/.codex/.trae/add-verify-degrade-status-index 未触碰；未用 git stash、未 add -A、未 push |
+
+## 验收记录：TASK-142 outbox 重试耗尽行堵住队首的取批资格修复（2026-09-26）
+
+| 项 | 内容 |
+| --- | --- |
+| 基线与提交 | 开工基线 7d44134a52d187768452f8d2a60be86835eed735（当时 HEAD，与任务书一致）；业务+测试+交付物+规范三件套为本地提交 6248ec926eb92350caebe495133767d7299af0c3（fix(verify): outbox 取批按重试上限过滤耗尽行，解除队首饥饿，9 文件）；台账两件套与本记录为收口提交（docs(mailbox): TASK-142 提交绑定与验收记录，哈希由任务回传承载）。未 push、未建 PR |
+| 反证检查（先做，结论：无反证） | verify-service 生产源码仅 1 处 @Scheduled（relay 自身）；全仓无 DELETE/清理 verify_event_outbox 的路径；无重置 retry_count 的路径（setRetryCount(0) 只在写侧 newPendingRow）；DDL 无触发器/事件 → 不存在「查询前自动移走耗尽行」的路径，继续修复 |
+| 行为红（scratch 真实 SQL） | 独立 scratch 容器 task131-scratch-mysql（mysql:8.0.46，宿主 13318，非 compose 实例）库 task142_outbox_scratch，DDL 取 sql/03-verify-db.sql 的 verify_event_outbox 逐字；种子 id1..100 PENDING retry=16、id101 retry=0、id102 retry=15、id103 retry=16、id104 SENT；旧 SQL（HEAD 的 selectPendingBatch 逐字）首轮 = 100 行 / min_id=1 / max_id=100 / contains_live=0 / returned_exhausted=100 → 遮挡复现。未向演示库写入坏行 |
+| Java 侧红 | 未修复实现上 mvn-verify.sh --mode=offline --pl verify-service test rc=1（Tests run 90 / F0 / E1）：新增 Mapper 取批资格契约单测 NoSuchMethodException selectPendingBatch(int,int)；该红为契约/反射红，行为红以 scratch SQL 为准，未用 Mockito 预制过滤列表冒充 SQL 红 |
+| 最小修复 | VerifyEventOutboxMapper.selectPendingBatch 增 AND retry_count < #{maxRetry} 与 @Param maxRetry（SQL 仍 status='PENDING' ORDER BY id LIMIT #{limit}）；VerifyOutboxRelay 传 selectPendingBatch(batchSize, maxRetry)；既有 retryCount>=maxRetry 跳过保留为防御性兜底。未删除/重置/改写耗尽行，未改 eventId、批次、周期、延迟、MQ 参数 |
+| 行为绿（同一 scratch 数据） | 新 SQL 首轮 = 2 行 event_ids=evt-live-0101,evt-bound-15（contains_live=1、bound15=1、bound16=0、sent=0）；耗尽行留库 101 行；判别脚本 task142-outbox-poison-check.sh 退出码 0（旧遮挡+新放行+边界/保留+源码接线四组断言）；Maven 唯一入口 offline verify-service test rc=0、Tests run 93 / F0 / E0 / S0（89→93，+4 只增不减：1 契约 + 3 relay）；git diff --check 无空白告警 |
+| EXPLAIN 与代价（只记录，不称提速） | 旧/新 SQL 均 possible_keys=idx_status_id 但实际 key=PRIMARY、rows=100：旧 filtered 99.04、ANALYZE 返回 100 行读 100 行；新 filtered 33.01、ANALYZE 返回 2 行读 104 行（需跳过前 100 条耗尽行）。口径：两查询均未走 idx_status_id，仍顺序扫描，耗尽行规模大时须扫过全部耗尽行 → 未测量吞吐/延迟，不声称过滤是查询优化；未加索引、未改状态机/批次/周期/MQ |
+| 是否到达外部门槛 | **未达到**：本地已提交，未 push、未建 PR，无 CI run |
+| 契约 | 收口提交后无参数 mailbox-contract.sh rc=0（判据 A 两件套齐全；TASK-142/141 等足迹不在工作树视为已收口，判据 B 跳过） |
+| 未覆盖/跳过 | 未加索引（(status,id) 仍在但实走 PRIMARY；大量耗尽行下顺序扫描成本可能升高，按停止边界不扩围，实证退化再立方案）；观测面下降——耗尽行不再每轮 log.error 告警，人工盘点需 SQL（status='PENDING' AND retry_count>=maxRetry），未新增盘点/告警接口；max-retry<=0 与库内非法 retry_count 语义未定义未防护（属既有阈值语义）；无常驻服务端到端实测（未启动 verify-service 对真 MySQL/RocketMQ 跑 relay 生产路径）；--it / --mode=online / CI 未跑；TASK-138 的 PENDING 1012 / SENT 998 未证明存在耗尽行，不作事故证据；多实例锁并发交错未新增判别 |
+| 只改清单一致性 | 实际改动集（git -c core.quotepath=false diff --name-only --diff-filter=ACMR 7d44134a，台账暂存后）= VerifyEventOutboxMapper.java · VerifyOutboxRelay.java · VerifyOutboxRelayTest.java · VerifyEventOutboxMapperSqlContractTest.java（新）· task142-outbox-poison-sql.sql（新）· task142-outbox-poison-check.sh（新）· 规范三件套（3）· TASK-142/spec.md（新）· TASK-142/handoff.md（新）· PLAN.md，与 handoff「实际改动清单」逐字一致（12 项）；归档移名/.codex/.trae/add-verify-degrade-status-index 未触碰；未用 git stash、未 add -A、未 push |
