@@ -60,10 +60,10 @@
     "finalStatus": "all 2000 = PASSED(2), none left SUBMITTED/VERIFYING"
   },
   "segments": {
-    "metric": "milliseconds (log timestamps), per-stage paired samples, not summed across stages",
+    "metric": "milliseconds (log timestamps), per-stage paired samples, not summed across stages; the ratio or size relation of two independent stage P50s is NOT a per-request share",
     "pub_to_consume": {"n": 2000, "precision": "ms (cross-process)", "p50": 12466.5, "p95": 18277, "p99": 19064.1, "max": 19589, "fails": 0, "dups": 1, "missing": 0, "reading": "MIXED: MQ network delivery + consumer backlog; NOT pure MQ latency; early records near-instant, late records lag up to ~19s"},
     "consume_to_callback": {"n": 2000, "precision": "ms (same process)", "p50": 327.5, "p95": 2854.8, "p99": 4145, "max": 23874, "fails": 0, "dups": 0, "missing": 0, "reading": "per-message verify compute + local persist + Feign callback; P95 elevated by R5 circuit-breaker 3s timeout; no pure SQL/HTTP split claimed"},
-    "callback_to_sent": {"n": 2000, "precision": "ms (same process)", "p50": 68805.5, "p95": 112817.2, "p99": 117480, "max": 117588, "fails": 0, "dups": 0, "missing": 0, "reading": "wait for outbox relay; DOMINANT stage in this event chain"},
+    "callback_to_sent": {"n": 2000, "precision": "ms (same process)", "p50": 68805.5, "p95": 112817.2, "p99": 117480, "max": 117588, "fails": 0, "dups": 0, "missing": 0, "reading": "wait for outbox relay; DOMINANT within the segment verdict-completed -> outbox marked SENT (ends at SENT; NOT leaderboard consumption)"},
     "consume_to_sent": {"n": 2000, "precision": "ms", "p50": 68930.5, "p95": 113291, "p99": 117973.1, "max": 141277},
     "pub_to_sent": {"n": 2000, "precision": "ms (cross-process)", "p50": 80376, "p95": 131414.1, "p99": 136940, "max": 150363}
   },
@@ -91,9 +91,9 @@
   },
   "r5": {"samples": 2010, "degraded": 2010, "cause": "mapmatch unavailable / circuit-breaker degrade", "participated": false},
   "bottleneckHypothesis": {
-    "single": "outbox relay delivery throughput dominates the judged-event-to-leaderboard chain (callback->SENT P50 68.8s); relay net rate ~13.4 rows/s vs outbox create rate ~59 rows/s",
+    "single": "outbox relay delivery throughput dominates the segment from verdict completion to outbox marked SENT (callback->SENT P50 68.8s); ends at SENT, NOT leaderboard consumption; relay net rate ~13.4 rows/s vs outbox create rate ~59 rows/s",
     "evidenceGrade": "directly measured (same-run paired samples + relay logs + second-precision DB range)",
-    "notClaimed": ["no query or business latency improvement claimed", "no pure MQ / pure SQL / pure HTTP single-item attribution", "cross-stage P50s not summed or subtracted"],
+    "notClaimed": ["no query or business latency improvement claimed", "no pure MQ / pure SQL / pure HTTP single-item attribution", "cross-stage P50s not summed or subtracted", "independent stage P50 ratio not treated as a per-request share", "internal composition of the relay net-rate gap (per-row send / DB work / lock overhead) NOT separated", "SENT is not leaderboard consumption completion"],
     "nextStep": "build a same-load baseline for VerifyOutboxRelay delivery throughput to test the single hypothesis that raising relay throughput shortens callback->SENT; do NOT change relay period/batch, consumer threads, pool, SQL, index or JVM in this task"
   },
   "notCovered": [

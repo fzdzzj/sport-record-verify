@@ -1,0 +1,42 @@
+[
+  {
+    "number": 1,
+    "category": "冻结与强反例核对",
+    "task": "冻结 HEAD/脏项，验证调度语义与上一轮证据边界",
+    "steps": [
+      { "step": "记录开工 HEAD=8268aac8e7b2d1e542c04ddf526dbf834f87e0ad 和 archive 移名、.codex/、.trae/、add-verify-degrade-status-index/；核对服务、中间件、磁盘与真实生效 fixedDelay/batchSize/maxRetry，不修改既有脏项", "completed": true },
+      { "step": "独立复算 TASK-143 同 run SENT 间隙和完整百条批跨度；区分日志近似、实际调度及不可分解的开销，不把独立 P50 比值称逐请求占比", "completed": true }
+    ],
+    "passes": true
+  },
+  {
+    "number": 2,
+    "category": "单因素受控对照",
+    "task": "同 jar A-B-B-A 最多四轮，只改变 relay fixedDelay",
+    "steps": [
+      { "step": "每轮在中间件/健康/容量正常、可投递 PENDING=0 且耗尽行分账的前提下，运行一次 c100×2000；A=5000ms、B=500ms，同一 jar，batchSize=100、maxRetry=16，其余配置固定；每轮排空、保留唯一 raw/log；失败也占预算", "completed": true },
+      { "step": "按同 run 的 recordId/eventId 配对 callback→SENT；记录每轮 n、P50/P95/P99、有效投递速率、批间/批内形态、提交 QPS 与错误、CPU/DB/MQ、失败/重试/重复及起止环境；四轮提交 QPS 相对中位数均在 ±15% 内且创建形态相近才可比，否则标未定", "completed": true }
+    ],
+    "passes": true
+  },
+  {
+    "number": 3,
+    "category": "条件式单因素决策",
+    "task": "只在双 B 重复收益与语义/资源门槛成立时落唯一默认配置",
+    "steps": [
+      { "step": "对照两轮 B 与两轮 A 中较好者：callback→SENT P50 每轮至少下降 20%、P95 不劣，且提交/回调/relay 无回归；若样本不完整、速率不可比或两轮矛盾，不推荐、不改默认值", "completed": true },
+      { "step": "仅若门槛成立，在 verify-service 实际 classpath YAML 写 relay-interval-ms=500 并加实际 YAML 绑定/默认值测试；运行 offline verify-service test；失败则不宣称通过，不能顺手调批次、并发、SQL、MQ/池/JVM", "completed": false }
+    ],
+    "passes": false
+  },
+  {
+    "number": 4,
+    "category": "报告与一次作业收口",
+    "task": "报告事实/推断/未覆盖并收口台账和本地提交",
+    "steps": [
+      { "step": "写 docs/perf 报告与 JSON 摘要：原始轮次、可比性、配对样本、停止/推荐结论和未覆盖；TASK-143 原报告/机器摘要只订正文义（SENT 非榜单端、独立 P50 非逐请求占比、净速率差的构成未分离），保留原始数字；更新统一总览", "completed": true },
+      { "step": "完成三件套、TASK-144 spec/handoff、PLAN 和实际文件清单；验证 JSON、git diff --check、mailbox-contract.sh；只有改 Java/YAML 或测试时运行 offline verify-service test 并记录实际退出码；仅 stage/本地提交本任务文件，不 stash/add -A/push/PR", "completed": true }
+    ],
+    "passes": true
+  }
+]

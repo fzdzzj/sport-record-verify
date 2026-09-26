@@ -1,0 +1,159 @@
+{
+  "task": "TASK-144",
+  "head": "8268aac8e7b2d1e542c04ddf526dbf834f87e0ad",
+  "date": "2026-09-26",
+  "label": "task144-outbox-relay-interval-abba",
+  "purpose": "single-factor controlled A-B-B-A test of verify.outbox.relay-interval-ms (A=5000ms, B=500ms); no optimization applied",
+  "changeId": "update-verify-outbox-relay-delay",
+  "reference": {
+    "task143Head": "997c789aa7420e2b33d3d6c0a23cf6066846cd04",
+    "recompute": {
+      "longGapsGt1s": 20,
+      "longGapMedianMs": 5025,
+      "longGapRangeMs": "5017..5550",
+      "fullHundredRowBatches": 18,
+      "batchSpanMedianMs": 1327.5,
+      "relayNetRateRowsPerSec": 13.83,
+      "note": "recomputed from unmodified task143-stage-samples.csv; confirms fixedDelay dominates inter-batch gaps but does NOT attribute per-round CPU / pure MQ / SQL cost"
+    }
+  },
+  "verdict": {
+    "result": "UNDETERMINED",
+    "recommended": false,
+    "defaultChanged": false,
+    "writtenToClasspathYaml": false,
+    "reason": "pre-registered comparability gate failed: round A1 submit QPS deviates -15.65% from the four-round median (limit +/-15%), and round A1 also mixed in 2 consume failures/redeliveries (record-service listPoints read timeout -> RecordApiFallback -> RECONSUME_LATER). Per rule 'QPS deviation beyond +/-15% or non-comparable creation shape => UNDETERMINED, do not manufacture a benefit'.",
+    "metricGateReadingNotUsedForDecision": "B1/B2 callback->SENT P50 are 65.15%/67.75% below the better A (A1), and P95 is not worse; direction/magnitude would satisfy the improvement gate, but comparability is invalid so no default change is made."
+  },
+  "environment": {
+    "verifyJarSha256": "36768EA21359DB3369C7589A90906FD8799EFA6916C2D0F99718B3B083397C65",
+    "verifyJarSameAsTask143": true,
+    "recordJarSha256": "197978FCBE52EBFAD36ABA9F76972BDB7EF169F5840CC29AFEDD55A292F1F7BE",
+    "jarSwapDuringRounds": "NONE",
+    "servicesStarted": ["gateway:8080", "user:8081", "record:8082", "verify:8083"],
+    "servicesAbsent": ["leaderboard", "mapmatch"],
+    "postgis": "container Exited(255) -> leaderboard segment and real R5 NOT COVERED",
+    "middleware": {
+      "mysql": "mysql:8.0.46 sport-verify-mysql host:3307",
+      "rocketmq": "apache/rocketmq:5.2.0 namesrv+broker",
+      "redis": "redis:7.2",
+      "nacos": "nacos/nacos-server:v2.3.2"
+    },
+    "diskFreeGB": 220.7,
+    "effectiveConfigProof": {
+      "applicationYmlHasVerifyOutboxKeys": false,
+      "nacosVerifyServiceYml": "config data not exist",
+      "authoritative": "@Value defaults: batch-size=100, relay-interval-ms=5000, relay-initial-delay-ms=10000, max-retry=16",
+      "consumerThreads": "32/40",
+      "consumerBatchMaxSize": 8,
+      "pullIntervalMs": 0,
+      "onlyChangedFactor": "relay-interval-ms (A=5000 default, B=500 injected via --verify.outbox.relay-interval-ms=500)"
+    },
+    "fingerprintFile": "docs/perf/data/raw/task144-env-fingerprint.txt"
+  },
+  "rounds": [
+    {
+      "label": "A1", "intervalMs": 5000,
+      "load": {"ok": 2000, "limited429": 0, "errors": 0, "wallSeconds": 15.278, "qps": 130.91, "p50ms": 663.50, "p95ms": 1328.50, "p99ms": 1848.58, "maxMs": 2224.38},
+      "ids": {"recordIds": "42433..44442", "outboxIds": "22111..24120"},
+      "cohort": {"records": 2010, "outboxLinked": 2010},
+      "callbackToSent": {"n": 2010, "p50": 56769, "p95": 108068.2, "p99": 113600.1, "max": 113789},
+      "relay": {"sentRows": 2010, "spanSec": 132.2, "netRateRowsPerSec": 15.20, "longGapsGt1s": 20, "longGapMedianMs": 5023, "batchGroups": 21, "batchSizes": "45,81,100x18,84", "groupsGe100": 18, "groupSpanMedianMs": 1234},
+      "outboxCreate": {"rows": 2010, "spanSec": 22, "rateRowsPerSec": 91.36, "bucket10s": [116, 1455, 439]},
+      "failures": {"consumeFailures": 2, "redeliveries": 2, "relayFailLines": 0, "relayExhaustedLines": 0, "fallback": "RecordApiFallback listPoints:42452/42435 read timeout -> RECONSUME_LATER -> success after ~26s"}
+    },
+    {
+      "label": "B1", "intervalMs": 500,
+      "load": {"ok": 2000, "limited429": 0, "errors": 0, "wallSeconds": 12.784, "qps": 156.44, "p50ms": 611.91, "p95ms": 877.80, "p99ms": 1086.12, "maxMs": 1446.75},
+      "ids": {"recordIds": "44443..46452", "outboxIds": "24121..26130"},
+      "cohort": {"records": 2010, "outboxLinked": 2010},
+      "callbackToSent": {"n": 2010, "p50": 19782, "p95": 32009.1, "p99": 33194.9, "max": 33462},
+      "relay": {"sentRows": 2010, "spanSec": 56.5, "netRateRowsPerSec": 35.59, "longGapsGt1s": 2, "longGapMedianMs": 1053, "batchGroups": 3, "batchSizes": "9,1,2000", "groupsGe100": 1, "groupSpanMedianMs": 53729},
+      "outboxCreate": {"rows": 2010, "spanSec": 23, "rateRowsPerSec": 87.39, "bucket10s": [99, 1084, 827]},
+      "failures": {"consumeFailures": 0, "redeliveries": 0, "relayFailLines": 0, "relayExhaustedLines": 0}
+    },
+    {
+      "label": "B2", "intervalMs": 500,
+      "load": {"ok": 2000, "limited429": 0, "errors": 0, "wallSeconds": 12.462, "qps": 160.49, "p50ms": 598.07, "p95ms": 770.04, "p99ms": 1123.50, "maxMs": 1496.41},
+      "ids": {"recordIds": "46453..48462", "outboxIds": "26131..28140"},
+      "cohort": {"records": 2010, "outboxLinked": 2010},
+      "callbackToSent": {"n": 2010, "p50": 18306, "p95": 31206.6, "p99": 32452.3, "max": 32610},
+      "relay": {"sentRows": 2010, "spanSec": 54.0, "netRateRowsPerSec": 37.25, "longGapsGt1s": 1, "longGapMedianMs": 1570, "batchGroups": 2, "batchSizes": "9,2001", "groupsGe100": 1, "groupSpanMedianMs": 52157},
+      "outboxCreate": {"rows": 2010, "spanSec": 22, "rateRowsPerSec": 91.36, "bucket10s": [103, 1331, 576]},
+      "failures": {"consumeFailures": 0, "redeliveries": 0, "relayFailLines": 0, "relayExhaustedLines": 0}
+    },
+    {
+      "label": "A2", "intervalMs": 5000,
+      "load": {"ok": 2000, "limited429": 0, "errors": 0, "wallSeconds": 12.990, "qps": 153.97, "p50ms": 614.40, "p95ms": 963.16, "p99ms": 1193.96, "maxMs": 2217.74},
+      "ids": {"recordIds": "48463..50472", "outboxIds": "28141..30150"},
+      "cohort": {"records": 2010, "outboxLinked": 2010},
+      "callbackToSent": {"n": 2010, "p50": 59317, "p95": 112228.5, "p99": 112942.9, "max": 118188},
+      "relay": {"sentRows": 2010, "spanSec": 136.5, "netRateRowsPerSec": 14.73, "longGapsGt1s": 21, "longGapMedianMs": 5022, "batchGroups": 22, "batchSizes": "41,63,100x19,6", "groupsGe100": 19, "groupSpanMedianMs": 1266},
+      "outboxCreate": {"rows": 2010, "spanSec": 22, "rateRowsPerSec": 91.36, "bucket10s": [102, 1372, 536]},
+      "failures": {"consumeFailures": 0, "redeliveries": 0, "relayFailLines": 0, "relayExhaustedLines": 0}
+    }
+  ],
+  "comparability": {
+    "qpsMedian": 155.205,
+    "qpsDeviationPct": {"A1": -15.65, "B1": 0.80, "B2": 3.41, "A2": -0.80},
+    "qpsLimitPct": 15,
+    "qpsWithinLimit": false,
+    "creationShapeComparable": false,
+    "creationShapeNote": "10s buckets of outbox created_at: A rounds 116/1455/439 and 102/1372/536 are close; B1 99/1084/827 third bucket notably higher",
+    "failuresMixedIn": true,
+    "failuresMixedInDetail": "A1 only: 2 consume failures + 2 redeliveries"
+  },
+  "metricGate": {
+    "betterP50ms": 56769,
+    "betterP50Round": "A1",
+    "B1": {"p50DeltaPct": -65.15, "p95NotWorse": true},
+    "B2": {"p50DeltaPct": -67.75, "p95NotWorse": true},
+    "improvementGateSatisfied": true,
+    "usedForDefaultChange": false
+  },
+  "intervalEffectProof": {
+    "A": "longGap median ~5022-5023ms; net rate 15.20/14.73 rows/s; complete 100-row batch SENT span median 1234/1266ms",
+    "B": "inter-SENT gap median 14ms; >1s gaps only 1-2; net rate 35.59/37.25 rows/s",
+    "note": "large consistent difference proves relay-interval-ms is the effective single variable"
+  },
+  "outboxAccounting": {
+    "maxRetryEffective": 16,
+    "perRoundBefore": {"deliverablePENDING": 0, "exhaustedPENDING": 0},
+    "perRoundAfterDrain": {"deliverablePENDING": 0, "exhaustedPENDING": 0},
+    "rowsRetryCountGt0DuringTask": 0,
+    "semanticsRegression": "none (eventId reuse, markSent +2010 per round, incrRetry not triggered by relay)"
+  },
+  "task143TextCorrections": {
+    "numbersUnchanged": true,
+    "files": ["docs/perf/归因-事件分段-HEAD.md", "docs/perf/data/attr-verify-event-stage-lag.json"],
+    "corrections": [
+      "SENT is not leaderboard consumption completion; scope narrowed to verdict-completed -> outbox marked SENT",
+      "ratio or size relation of two independent stage P50s is NOT a per-request share",
+      "internal composition of the net delivery-rate gap (per-row send / DB work / lock overhead) NOT separated"
+    ]
+  },
+  "exitCodes": {
+    "loadA1": 1,
+    "loadA1Note": "msys/Git Bash echo 'Bad file descriptor' false alarm via PowerShell pipe; load produced complete summary ok=2000/errors=0",
+    "loadB1": 0,
+    "loadB2": 0,
+    "loadA2": 0,
+    "jsonConvertFromJson": 0,
+    "gitDiffCheck": 0,
+    "mailboxContract": 0
+  },
+  "notCovered": [
+    "CPU / GC / MQ broker / DB resource metrics not sampled per round = UNKNOWN",
+    "leaderboard consumption / SENT->leaderboard segment (leaderboard not started)",
+    "R5 quality / off-road ratio / mapmatch CPU (PostGIS+mapmatch not started; A rounds fully degraded)",
+    "--it / --mode=online / CI",
+    "500/1000 concurrency tiers (forbidden)",
+    "maxRetry<=0 / illegal retry_count / large exhausted-row scan cost"
+  ],
+  "notClaimed": [
+    "no default config change (relay-interval-ms stays 5000)",
+    "no benefit claimed beyond the four-service partial stack",
+    "no per-request share from independent stage P50 ratio",
+    "A1 deviation and consume failures are likely cold-start/transient but pre-registered gate is not relaxed"
+  ]
+}
