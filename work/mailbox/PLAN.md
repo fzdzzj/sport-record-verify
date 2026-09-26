@@ -803,3 +803,20 @@ run `35802403723`（head `eba0108`，2026-09-23 00:31 UTC）——**web/build �
 | 本地门槛 | 唯一入口 mvn-verify.sh --mode=offline --pl record-service test rc=0，record 100/0/0/0（用例数不变：1 条 no-op 判别替换为关闭状态全链判别 + 外层关闭测试补断言） |
 | 契约 | 台账收口修订提交后无参数 mailbox-contract.sh rc=0（TASK-140 足迹不在工作树视为已收口）；git 层逐字比对 8=8（相对 9f74852）；中文文件名交付物提取盲区先例延续 |
 | 只改清单一致性 | 实际改动集（git -c core.quotepath=false diff --name-only --diff-filter=ACMR 9f74852，台账暂存后）= TimingHikariDataSource.java · TimingHikariDataSourceWiringTest.java · sharding.yaml · 复测-db-wait-evidence.md · 复测-submit-tx.md · attr-submit-db-wait.json · TASK-140/handoff.md（追加节）· PLAN.md，与 handoff「收口后修订二」节清单逐字一致（8 项）；归档移名/.codex/.trae/add-verify-degrade-status-index 未触碰；未用 git stash、未 add -A、未 push |
+
+## 验收记录：TASK-141 池生命周期并发修复与 MYSQL_POOL_SIZE 单因素对照（2026-09-26）
+
+| 项 | 内容 |
+| --- | --- |
+| 基线与提交 | 开工基线 8380e11d0ffde4342b1fdc9ff828adbbe191d197（当时 HEAD，与任务书一致）；业务+测试+交付物+规范三件套为本地提交 27077a43cc1d69a8dd7a23c8a85fb8d0aeb9965d（perf(record): 池包装关闭-建池并发协调修复与池容量单因素对照，7 文件）；台账两件套与本记录为收口提交（docs(mailbox): TASK-141 提交绑定与验收记录，哈希由任务回传承载）。未 push、未建 PR |
+| 安全前置 | 确定性交错判别（主线程占住包装类建池管程 + 线程状态条件等待，不靠睡眠碰运气）：未修复实现行为红——两重载在 close 完成后仍建出无人关闭的内层池（pool 字段非空：无参重载 HikariPool-4、凭据重载 HikariPool-5），其余 8 用例全绿。过程注记：首跑 connectionTimeout=200ms 低于 HikariConfig.validate 下限 250ms，buildPool 先抛 IllegalArgumentException 掩盖目标红，修正 250ms 后重跑才取到行为红（过程未当证据）。最小修复：innerPool 建池临界区内复查 closed；close 同一 synchronized(this) 读内层池引用、锁外关池；稳态取连接不持包装类锁；两重载与重复 close 幂等保留。修复后测试类 10/10（100→+3 只增不减） |
+| Maven 门槛 | 唯一入口 mvn-verify.sh --mode=offline --pl record-service test rc=0（103/0/0/0）；package rc=0 产出唯一实验 jar（SHA-256 197978fcbe52ebfad36aba9f76972bdb7ef169f5840cc29afedd55a292f1f7be）并四轮冻结复用；修复通过后才压测 |
+| 实验门槛 | 磁盘 D: 223G / C: 97G；max_connections=151、开工 Threads_connected=1；积压 SUBMITTED/VERIFYING=0、outbox PENDING=0；中间件 4 容器 healthy（nacos v2.3.2 / mysql 8.0.46 / redis 7.2 / rocketmq 5.2.0）；gateway/user/verify 四轮共用不重启（user/verify 首启漏带 MYSQL_PORT=3307 致健康 30s 超时，任何负载之前已修正）；record 每轮重启（3307 + tx-timing 开 + 每轮独立 GC 日志），仅轮换 MYSQL_POOL_SIZE；池生效佐证：负载中 record_db 连接数 10/20/20/10、Threads_connected 峰值 31/41/41/31 |
+| 四轮结果 | 全部 2000/0/0、load rc=0、一次成功无重试、排空到 0（5s 轮询 23/23/23/24 次）且轮间健康复查 200：pool10-r1 QPS 128.71/P50 709.39/connWait P50 632.0ms；pool20-r1 110.63/850.33/669.0；pool20-r2 163.70/543.25/433.9；pool10-r2 129.48/691.44/612.7。GC 147~167 次总 637~665ms、CPU 窗口 66.0~73.5s、WS 峰值 1185~1512MB，均无一致方向 |
+| 结论 | **不推荐**（本机、本负载、诊断开启条件下）：两轮 B 方向不一致（QPS 110.63/163.70 跨在两轮 A 128.71/129.48 两侧，P50 与 connWait 同样）→「方向一致且可区分」不成立，不得称值得进一步验证；一致代价信号：两轮 B 事务内 DB 段 P50 全部变慢 1.4~2 倍（commit 30.3/29.8→61.3/46.2ms、trackWrite 20.5/21.3→35.7/31.2ms、insertMain 2.65/2.66→4.11/3.81ms）、Threads_running 峰值 28/18 对 14/13；B 臂同条件复现失败（QPS 跨 48%）。反例 pool20-r2（单轮全面占优）被 pool20-r1（同池全面变差）同池否定。口径：connWait 含池等待与可能建连不称纯池排队；四轮诊断开启不得当生产默认关闭收益；TASK-140 527.1ms 标旧诊断轮非本次基线；未做独立 P50 相减；默认池容量未动 |
+| 本地门槛来源 | 上行红绿与四轮实跑即门槛来源（唯一入口 offline）；--mode=online 与 CI 未跑，无依赖来源冲突需仲裁 |
+| 是否到达外部门槛 | **未达到**：本地已提交，未 push、未建 PR，无 CI run |
+| 契约 | 收口提交后无参数 mailbox-contract.sh rc=0（判据 A 两件套齐全；TASK-141 足迹不在工作树视为已收口）；中文文件名交付物 1 项提取盲区先例延续（提取词元「复测-连接池容量对照.md」，以 git 层比对为准） |
+| 未覆盖/跳过 | pool10-r1 进程 CPU/内存未采集（采样命令 PowerShell 字符串插值缺陷；该轮请求/connWait/MySQL/GC 完整，A 臂由 pool10-r2 覆盖，未为补采样重跑负载避免超四次预算）；B 臂轮间 48% QPS 波动来源不可分离（缓冲池/JIT/后台 relay 等未控制，A 臂未现同量级波动故不归因一般噪声）；quality 未跑；单机单负载、三服务 JVM 四轮共用非全新态 |
+| 剩余假设 | 提交延迟支配项仍是物理连接获取等待（池 10 两轮 connWait P50 632/613ms，诊断开启、含建连不区分）；池 20 在本环境无一致收益且推高 MySQL 并发事务度——再优化应缩事务内工作（commit 区间 ≈30ms、trackWrite ≈21ms）而非调池；候选 20 若翻案需先能解释 B 臂轮间波动来源 |
+| 只改清单一致性 | 实际改动集（git -c core.quotepath=false diff --name-only --diff-filter=ACMR 8380e11，台账暂存后）= TimingHikariDataSource.java · TimingHikariDataSourceWiringTest.java · attr-submit-pool-capacity.json（新）· 复测-连接池容量对照.md（新）· 规范三件套（3）· TASK-141/spec.md（新）· TASK-141/handoff.md（新）· PLAN.md，与 handoff「实际改动清单」逐字一致（10 项）；归档移名/.codex/.trae/add-verify-degrade-status-index 未触碰；未用 git stash、未 add -A、未 push |
