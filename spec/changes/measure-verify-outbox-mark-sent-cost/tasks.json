@@ -1,0 +1,52 @@
+[
+  {
+    "number": 1,
+    "category": "基线、调用路径和反例",
+    "task": "冻结 TASK-145 基线并界定 markSent 的真实调用与证据边界",
+    "steps": [
+      {"step": "核对 HEAD、现有脏项、TASK-145 原始日志与报告；审查 mapper/relay/MyBatis/Hikari 调用路径、事务边界、诊断默认值；列出不能从全局指标归因的部分", "completed": true},
+      {"step": "用真实失败注入单测使旧计时在 markSent 抛错时出现重计/错归类的行为红；验证现有 lockHold 截点并记录其不含诊断日志和解锁", "completed": true}
+    ],
+    "passes": true
+  },
+  {
+    "number": 2,
+    "category": "诊断语义修正与有界分段",
+    "task": "在不改变投递行为的前提下校正计时并尝试安全配对 markSent 的下层时间",
+    "steps": [
+      {"step": "消除失败分支 send/mark 重复计时；精确定义锁内处理/完整占锁口径；默认关闭无额外 I/O/逐行诊断输出并明示或去除关闭态计时开销", "completed": true},
+      {"step": "审慎选择最小可用嵌套测量点，按同一次 markSent 调用配对、批内有界聚合与残差核对；无法安全隔离的 JDBC/提交/服务端 SQL 时间必须标未知，不引入无界队列/高基数标签/敏感日志", "completed": true}
+    ],
+    "passes": true
+  },
+  {
+    "number": 3,
+    "category": "判别、回归与运行前门槛",
+    "task": "先红后绿验证错误路径、开关及原投递语义",
+    "steps": [
+      {"step": "覆盖 syncSend 抛错、markSent 抛错、incrRetry 抛错、成功/空批/锁竞争/中断/解锁失败、同调用配对与清理；保留原 eventId、成功 SENT、失败递增语义并区分诊断可观测性与实际投递结果", "completed": true},
+      {"step": "用仓库统一入口运行 offline verify-service test 与 package，记录所有真实退出码和测试数；如插桩需真 DB，使用隔离 scratch 或受控环境证明接线，不以 Mockito 冒充生产装配", "completed": true}
+    ],
+    "passes": true
+  },
+  {
+    "number": 4,
+    "category": "条件式单轮实测与归因",
+    "task": "可安全测量时只做一轮同形态有限突发，不声称优化收益",
+    "steps": [
+      {"step": "起栈前确认参数/同 jar/进程存活/健康/可投递与耗尽 PENDING 分账；固定 c100×2000、5000ms、诊断开启；最多一轮，失败/中止计入预算且不补跑，不清库", "completed": true},
+      {"step": "收集同 run 关联、同调用/同批配对分段与残差、可投递积压/排空、可得 JVM/GC/Hikari/MySQL/MQ 资源；缺失标未知，严格区分可直接测得与推断，TASK-145 不作同 jar 前后收益对照", "completed": true}
+    ],
+    "passes": true
+  },
+  {
+    "number": 5,
+    "category": "一次作业收口",
+    "task": "按实际覆盖程度完成报告、台账、契约与本地提交",
+    "steps": [
+      {"step": "报告/机器摘要给出原始证据路径、行为红绿、唯一下一步待证因素和停止条件；三件套按实际结果勾选，若阶段因条件不满足未执行则标未覆盖，不虚标完成", "completed": true},
+      {"step": "补 TASK-146 spec/handoff、PLAN、机会总览和实际改动清单；校验 JSON、git diff --check、无参数 mailbox-contract.sh 与 git 层清单；只 stage 本任务文件，本地提交一次作业收口，未 push/PR，说明服务状态", "completed": true}
+    ],
+    "passes": true
+  }
+]

@@ -1,0 +1,139 @@
+{
+  "task": "TASK-146",
+  "changeId": "measure-verify-outbox-mark-sent-cost",
+  "head": "f1c9b6e46da641ab0079dba983aa2bf200d382f4",
+  "date": "2026-09-27",
+  "label": "task146-outbox-relay-marksent-cost",
+  "purpose": "correct relay diagnostic timing (send/mark double-count on failure; split lockProcessing vs lockHold) and measure per-row markSent in-batch cost with a default-off bounded diagnostic; one bounded burst c100x2000 at default relay-interval-ms=5000 with diagnostics ON; NO markSent optimization applied",
+  "verdict": {
+    "result": "MEASURED-NOT-OPTIMIZED",
+    "recommended": false,
+    "defaultChanged": false,
+    "reason": "TASK-146 only corrects the diagnostic timing and measures; no markSent optimization was implemented and no default value was changed. The single measured round used a DIFFERENT jar/diagnostic implementation than TASK-145, so its numbers are NOT an optimization before/after comparison.",
+    "nextSingleFactor": {
+      "factor": "per-row markSent internal cost composition (connection acquire / client JDBC execute / commit / server-side SQL / remaining client wait)",
+      "measuredOuterBoundary": "markSent is the largest locked segment: full-batch (rows=100) markMs P50 = 1053.5ms = 80.1% of lockProcessingMs P50 1314.5ms",
+      "evidence": "docs/perf/data/raw/task146-batch-segments.csv + docs/perf/data/raw/task146-verify.log",
+      "boundary": "markMs is a mixed client wall clock (connection acquire + MyBatis/JDBC prepare-execute + network round trip + server-side UPDATE + commit/mapping). It must NOT be called pure server-side SQL, pure fsync, or pure pool wait.",
+      "blocked": "No safe, default-off, bounded instrumentation could be paired to the SAME markSent call without changing connection/transaction/exception semantics -> internal composition remains UNKNOWN; scope not expanded to force a conclusion."
+    }
+  },
+  "environment": {
+    "verifyJarSha256": "B067BE288DB153C043190B80444D792DB5AA1B7990A58EBA9FA085145C9DC482",
+    "jarDifferentFromTask145": "95CC9207021162B55D6E140B5C4FC5130EBA1EB4F05A6EADADD645224EAA2670",
+    "singleRelayInstance": {
+      "pid": 36564,
+      "createdAt": "2026-09-27 00:35:07",
+      "ownsPort": 8083,
+      "proof": "diagnostic batch rows sum = success sum = 2010 = cohort; lockSkips = 0 throughout -> exactly one active relay instance delivered the whole cohort"
+    },
+    "duplicateStartArtifact": {
+      "detail": "a second JVM raced for port 8083 and FAILED at 2026-09-27 00:35:51 with 'Port 8083 was already in use'; it exited before the load window (load ran 00:37:23..00:37:38)",
+      "impact": "NONE on the measured round; interleaving is visible in logs/verify.log (see raw copy)",
+      "notACoveredFactor": true
+    },
+    "services": {
+      "started": ["gateway:8080", "user:8081", "record:8082", "verify:8083"],
+      "health": "verify /actuator/health HTTP 200 UP; gateway POST /record/api/records reachable (400 on empty body = routing OK)",
+      "absent": ["leaderboard", "mapmatch"],
+      "postgis": "not running -> leaderboard segment and real R5 NOT COVERED"
+    },
+    "middleware": {
+      "mysql": "mysql:8.0.46 sport-verify-mysql host:3307 (healthy)",
+      "rocketmq": "apache/rocketmq:5.2.0 namesrv+broker (healthy)",
+      "redis": "redis:7.2 (healthy)",
+      "nacos": "nacos/nacos-server:v2.3.2 (healthy)"
+    },
+    "effectiveConfigProof": {
+      "applicationYmlHasVerifyOutboxKeys": false,
+      "nacosVerifyServiceYml": "absent (GET /nacos/v1/cs/configs?dataId=verify-service.yml -> 404) -> optional:nacos import resolves to nothing",
+      "authoritative": "@Value defaults: batch-size=100, relay-interval-ms=5000, relay-initial-delay-ms=10000, max-retry=16, relay-diagnostics-window-ms=10000",
+      "scheduledSemantics": "@Scheduled(fixedDelayString=...) = wait AFTER the round finishes",
+      "onlyChangedFactor": "--verify.outbox.relay-diagnostics-enabled=true (default false)",
+      "unchanged": "batch, interval 5000, send concurrency, retry, lock, SQL/index, MQ, connection pool, JVM parameters",
+      "mysqlPort": 3307
+    },
+    "preLoadAccounting": {
+      "at": "2026-09-27 00:36:25.604",
+      "deliverablePENDING_lt16": 0,
+      "exhaustedPENDING_ge16": 0,
+      "SENT": 34390
+    }
+  },
+  "diagnostic": {
+    "enabledByDefault": false,
+    "bounded": "at most one summary line per non-empty batch; empty rounds and lock contention summarized at most once per relay-diagnostics-window-ms (default 10000ms)",
+    "fields": ["rows", "success", "failed", "exhausted", "lockWaitMs", "selectMs", "sendMs", "markMs", "incrRetryMs", "lockProcessingMs", "lockHoldMs", "residualMs", "emptyRounds", "lockSkips"],
+    "clock": "System.nanoTime() monotonic; when the switch is OFF no nanoTime sampling occurs at all (zero added timing cost / zero added I/O)",
+    "sensitiveContent": "none (no payload / eventId / token / SQL params / per-row identifiers)",
+    "semanticsUnchanged": "original per-row logging, exception propagation, retry, eventId, SENT and unlock paths unchanged",
+    "lockSemantics": {
+      "lockProcessingMs": "lock acquired -> batch loop finished (excludes summary output and unlock)",
+      "lockHoldMs": "lock acquired -> after unlock() returns (INCLUDES summary output and unlock)",
+      "observedGapMs": 1.0
+    },
+    "boundedProofOnRealService": "idle segments emitted exactly one empty-round summary per 10s window (emptyRounds=2 per window at 5s period), lockSkips=0",
+    "tests": {"total": 110, "relayDiagnosticsTest": 6, "verifyOutboxRelayTest": 19, "ciBaselineBefore": 104}
+  },
+  "round": {
+    "label": "task146-c100",
+    "intervalMs": 5000,
+    "load": {"ok": 2000, "limited429": 0, "errors": 0, "wallSeconds": 14.387, "qps": 139.02, "p50ms": 651.93, "p95ms": 1106.03, "p99ms": 1470.39, "maxMs": 1721.59, "statusHistogram": {"200": 2000}},
+    "cohort": {"size": 2010, "note": "main 2000 + built-in warmup 10", "sent": 2010, "success": 2010, "failed": 0, "exhausted": 0, "linkRatePct": 100},
+    "batchSegmentsMsP50": {
+      "allBatches": {"n": 22, "rows": 100, "lockWait": 0, "select": 6, "send": 253, "mark": 1048, "incrRetry": 0, "lockProcessing": 1308, "lockHold": 1308.5, "residual": 10.5},
+      "fullGe100": {"n": 18, "rows": 100, "lockWait": 0, "select": 5.5, "send": 255.5, "mark": 1053.5, "incrRetry": 0, "lockProcessing": 1314.5, "lockHold": 1315.5, "residual": 10.5, "markShareOfProcessingPct": 80.1, "sendShareOfProcessingPct": 19.4, "selectShareOfProcessingPct": 0.4, "residualShareOfProcessingPct": 0.8},
+      "shortLt100": {"n": 4, "rows": 52.5, "lockWait": 1, "select": 9.5, "send": 181, "mark": 964.5, "incrRetry": 0, "lockProcessing": 1164.5, "lockHold": 1166, "residual": 10.5}
+    },
+    "cycleClosure": {
+      "fixedWaitMs": 5000,
+      "periodP50Ms": 6320,
+      "note": "fixedDelay semantics: period ~= 5000 fixed wait + ~1315ms round (lockHold + summary + unlock); measured adjacent batch-line period P50 ~6.32s",
+      "lockHoldMinusLockProcessingMs": 1.0
+    },
+    "relay": {"rows": 2010, "success": 2010, "failed": 0, "exhausted": 0, "batchLines": 22, "lockSkipsTotal": 0, "emptyRoundsInBatches": 1, "firstSent": "2026-09-27 00:37:27.484", "lastSent": "2026-09-27 00:39:50.070", "spanSec": 142.586, "netRateRowsPerSec": 14.10, "batchShape": "8,35,70,100x?,97 (rows min 8 / max 100; 18 batches at 100)"},
+    "backlog": {
+      "deliverablePENDINGPeakObserved": 1571,
+      "peakObservedAt": "2026-09-27 00:38:08.935",
+      "realPeakNote": "first sample at 00:38:08.935; real peak between load end 00:37:41 and first sample is UNKNOWN (>= 1571)",
+      "exhaustedPENDINGPeak": 0,
+      "retryCountGt0AllAlong": 0,
+      "retryCountMax": 0,
+      "drainedTo": 0,
+      "drainedAt": "2026-09-27 00:39:54.379",
+      "SENTBefore": 34390,
+      "SENTAfter": 36400,
+      "sentDelta": 2010
+    }
+  },
+  "resourceReadings": {
+    "source": "verify-service /actuator/prometheus, snapshot taken POST-drain (not sampled during the run); cumulative values span process start 00:35:07 which INCLUDES the measured round",
+    "hikari": {"poolMax": 10, "poolMin": 10, "connectionsActiveNow": 0, "connectionsIdleNow": 10, "acquireCount": 8131, "acquireSumSeconds": 135.5576, "acquireMaxSeconds": 0.0065646, "usageCount": 8131, "usageSumSeconds": 135.743, "usageMaxSeconds": 0.003, "note": "acquire/usage max is a rolling window while count/sum are cumulative -> do NOT divide sum by count; these are POOL AGGREGATES across the whole process (consumer + relay + others), NOT pairable to a single markSent"},
+    "jvm": {"gcYoungCount": 28, "gcYoungPauseSumSeconds": 0.088, "heapEdenBytes": 20971520, "heapSurvivorBytes": 5556736, "heapOldBytes": 107609728, "processCpuUsageGauge": 0.0012372822, "note": "post-run idle snapshot; process_cpu_usage is an instantaneous gauge (not summable); GC counters are cumulative since instance start"},
+    "gmLog": "verify-service was started WITHOUT -Xlog:gc (start-services sets a GC log only for record-service) -> per-round verify GC log UNKNOWN",
+    "mysql": {"Threads_connected": 22, "Threads_running": 2, "Queries": 631915, "Innodb_data_fsyncs": 226941, "Innodb_os_log_fsyncs": 103353, "Uptime": 47079, "note": "container-global cumulative counters shared by record_db and verify_db -> NOT attributable to the outbox markSent path"},
+    "mq": {"status": "MQ_BROKER_STATUS_UNAVAILABLE", "note": "no mqadmin in the broker container; absence of exceptions is not used as broker evidence"}
+  },
+  "gaps": [
+    "markSent internal composition (connection acquire / JDBC execute / commit / server-side SQL / residual) = UNKNOWN; no safe pairable instrumentation",
+    "during-run JVM/GC/Hikari sampling not captured (only post-run snapshot); verify GC log not enabled",
+    "backlog real peak between 00:37:41 and 00:38:08 = UNKNOWN (>= 1571 observed)",
+    "multi-instance lock contention not covered (single instance; lockSkips=0)",
+    "leaderboard consumption / SENT->leaderboard segment (leaderboard not started); R5 off-road quality / mapmatch CPU (PostGIS+mapmatch not running)",
+    "--it / --mode=online / CI not run; 500/1000 concurrency tiers intentionally excluded"
+  ],
+  "evidence": {
+    "redLog": "docs/perf/data/raw/task146-red.log (rc=1, Tests run 110, Failures 2: relay_markSentFailure_doesNotAttributeMarkTimeToSend:378 sendMs=303/markMs=0; relay_lockHold_reportsCompleteHoldIncludingUnlock:407 lockHoldMs=0)",
+    "greenLog": "docs/perf/data/raw/task146-green.log (rc=0, 110/0/0/0, BUILD SUCCESS)",
+    "packageLog": "docs/perf/data/raw/task146-package.log (rc=0, 110/0/0/0, BUILD SUCCESS)",
+    "loadLog": "docs/perf/data/raw/task146-load.log (rc=0)",
+    "loadSummary": "docs/perf/data/raw/task146-c100-summary.json",
+    "loadRawCsv": "docs/perf/data/raw/task146-c100-raw.csv",
+    "batchSegmentsCsv": "docs/perf/data/raw/task146-batch-segments.csv",
+    "drainTsv": "docs/perf/data/raw/task146-drain.tsv",
+    "serviceLog": "docs/perf/data/raw/task146-verify.log",
+    "promSnapshot": "docs/perf/data/raw/task146-actuator-prom.txt",
+    "startServicesLog": "docs/perf/data/raw/task146-start-services.log"
+  },
+  "notAnOptimizationComparison": "TASK-146 jar sha256 B067BE... != TASK-145 jar sha256 95CC92...; numbers here are a measurement only and must NOT be presented as before/after optimization gain"
+}

@@ -39,7 +39,7 @@ class RelayDiagnosticsTest {
         assertFalse(d.enabled());
         assertTrue(d.lockSkipped().isEmpty(), "关闭时锁竞争汇总必须为空");
         assertTrue(d.emptyRound().isEmpty(), "关闭时空轮汇总必须为空");
-        assertTrue(d.batch(5, 5, 0, 0, 1, 2, 3, 4, 5, 20).isEmpty(),
+        assertTrue(d.batch(5, 5, 0, 0, 1, 2, 3, 4, 5, 20, 22).isEmpty(),
                 "关闭时批次汇总必须为空（不产生批次日志）");
     }
 
@@ -48,7 +48,7 @@ class RelayDiagnosticsTest {
         FakeClock clock = new FakeClock();
         RelayDiagnostics d = new RelayDiagnostics(true, WINDOW_NANOS, clock);
 
-        BatchSummary s = d.batch(3, 2, 1, 0, 1, 2, 30, 4, 5, 50).orElseThrow();
+        BatchSummary s = d.batch(3, 2, 1, 0, 1, 2, 30, 4, 5, 50, 60).orElseThrow();
 
         assertEquals(3, s.rows());
         assertEquals(2, s.success());
@@ -59,8 +59,9 @@ class RelayDiagnosticsTest {
         assertEquals(30, s.sendMs());
         assertEquals(4, s.markMs());
         assertEquals(5, s.incrRetryMs());
-        assertEquals(50, s.lockHoldMs());
-        // residual = 锁持有 - (取批 + 发送 + 标记 + 失败计数) = 50 - 41
+        assertEquals(50, s.lockProcessingMs());
+        assertEquals(60, s.lockHoldMs());
+        // residual = 锁内处理段 - (取批 + 发送 + 标记 + 失败计数) = 50 - 41
         assertEquals(9, s.residualMs());
         assertEquals(0, s.emptyRounds());
         assertEquals(0, s.lockSkips());
@@ -70,8 +71,8 @@ class RelayDiagnosticsTest {
     void batch_residualNeverNegative_whenSegmentsExceedHold() {
         RelayDiagnostics d = new RelayDiagnostics(true, WINDOW_NANOS, new FakeClock());
 
-        // 人为给出超过锁持有总时长的分段合计：残差必须钳到 0，不能出现负墙钟
-        BatchSummary s = d.batch(1, 1, 0, 0, 0, 100, 100, 100, 0, 5).orElseThrow();
+        // 人为给出超过锁内处理段总时长的分段合计：残差必须钳到 0，不能出现负墙钟
+        BatchSummary s = d.batch(1, 1, 0, 0, 0, 100, 100, 100, 0, 5, 6).orElseThrow();
 
         assertEquals(0, s.residualMs());
     }
@@ -91,7 +92,7 @@ class RelayDiagnosticsTest {
         assertTrue(d.emptyRound().isEmpty(), "窗口内空轮不逐轮输出");
 
         clock.advance(10);
-        BatchSummary s = d.batch(2, 2, 0, 0, 0, 1, 1, 1, 0, 5).orElseThrow();
+        BatchSummary s = d.batch(2, 2, 0, 0, 0, 1, 1, 1, 0, 5, 6).orElseThrow();
         assertEquals(1, s.emptyRounds(), "批次汇总带上自上次汇总以来的空轮计数");
         assertEquals(1, s.lockSkips(), "批次汇总带上自上次汇总以来的锁竞争计数");
 

@@ -23,14 +23,19 @@ import org.springframework.test.util.ReflectionTestUtils;
 
 import java.util.List;
 import java.util.concurrent.TimeUnit;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.Mockito.doAnswer;
+import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -336,5 +341,143 @@ class VerifyOutboxRelayTest {
         assertTrue(diag.get(0).contains("lockSkips=1"), diag.get(0));
         verify(outboxMapper, never()).selectPendingBatch(anyInt(), anyInt());
         verify(lock, never()).unlock();
+    }
+
+    // ---------- TASK-146：计时口径判别（先红后绿） ----------
+
+    /**
+     * 从诊断批次汇总行里取某个 {@code xxxMs=} 字段值（正则固定字段名，避免 lockProcessingMs/lockHoldMs 误配）。
+     */
+    private long extractMs(String summary, String field) {
+        Matcher m = Pattern.compile(Pattern.quote(field) + "=(\\d+)").matcher(summary);
+        assertTrue(m.find(), "诊断汇总缺少字段 " + field + "：" + summary);
+        return Long.parseLong(m.group(1));
+    }
+
+    /**
+     * 判别式（目标行为红）：{@code markSent} 抛错时，已计过的发送墙钟不得被重复归到发送，
+     * 失败标记尝试所耗墙钟应归属标记段。旧实现从 {@code sendStart} 重算，会把标记耗时错记到 {@code sendMs}。
+     */
+    @Test
+    void relay_markSentFailure_doesNotAttributeMarkTimeToSend() throws Exception {
+        enableDiagnostics();
+        stubLockAcquired();
+        when(outboxMapper.selectPendingBatch(100, 16)).thenReturn(List.of(row(1L, 0)));
+        when(rocketMQTemplate.syncSend(anyString(), any(Message.class))).thenReturn(null);
+        when(outboxMapper.markSent(1L)).thenAnswer(inv -> {
+            Thread.sleep(300);
+            throw new RuntimeException("markSent 失败");
+        });
+
+        relay.relay();
+
+        List<String> diag = diagnosticMessages();
+        assertEquals(1, diag.size(), "非空批次一条汇总：" + diag);
+        long sendMs = extractMs(diag.get(0), "sendMs");
+        long markMs = extractMs(diag.get(0), "markMs");
+        assertTrue(sendMs < 100,
+                "发送很快返回，失败的标记耗时不得错归到发送：sendMs=" + sendMs + " / " + diag.get(0));
+        assertTrue(markMs >= 200,
+                "标记失败尝试的耗时属标记段：markMs=" + markMs + " / " + diag.get(0));
+        verify(outboxMapper).incrRetry(1L);
+        verify(lock).unlock();
+    }
+
+    /**
+     * 判别式（目标行为红）：{@code lockHoldMs} 若宣称「完整占锁」，其终点必须在 {@code unlock()} 之后取得，
+     * 因而应包含解锁耗时；旧实现在 unlock 之前截取（仅锁内处理段），不得冒用「完整占锁」名。
+     */
+    @Test
+    void relay_lockHold_reportsCompleteHoldIncludingUnlock() throws Exception {
+        enableDiagnostics();
+        stubLockAcquired();
+        when(outboxMapper.selectPendingBatch(100, 16)).thenReturn(List.of(row(1L, 0)));
+        when(rocketMQTemplate.syncSend(anyString(), any(Message.class))).thenReturn(null);
+        when(outboxMapper.markSent(1L)).thenReturn(1);
+        doAnswer(inv -> {
+            Thread.sleep(300);
+            return null;
+        }).when(lock).unlock();
+
+        relay.relay();
+
+        List<String> diag = diagnosticMessages();
+        assertEquals(1, diag.size(), "非空批次一条汇总：" + diag);
+        long lockHoldMs = extractMs(diag.get(0), "lockHoldMs");
+        assertTrue(lockHoldMs >= 200,
+                "完整占锁须在解锁后取终点，应含解锁耗时：lockHoldMs=" + lockHoldMs + " / " + diag.get(0));
+    }
+
+    /** 成功行：发送段与标记段各自只累计一次，两段都为正且都在合理量级（无重复计入）。 */
+    @Test
+    void relay_success_countsSendAndMarkOnce() throws Exception {
+        enableDiagnostics();
+        stubLockAcquired();
+        when(outboxMapper.selectPendingBatch(100, 16)).thenReturn(List.of(row(1L, 0)));
+        when(rocketMQTemplate.syncSend(anyString(), any(Message.class))).thenAnswer(inv -> {
+            Thread.sleep(150);
+            return null;
+        });
+        when(outboxMapper.markSent(1L)).thenAnswer(inv -> {
+            Thread.sleep(150);
+            return 1;
+        });
+
+        relay.relay();
+
+        String summary = diagnosticMessages().get(0);
+        long sendMs = extractMs(summary, "sendMs");
+        long markMs = extractMs(summary, "markMs");
+        assertTrue(sendMs >= 100 && sendMs < 400, "sendMs 应为单次发送量级：" + sendMs);
+        assertTrue(markMs >= 100 && markMs < 400, "markMs 应为单次标记量级：" + markMs);
+    }
+
+    /** incrRetry 抛错：异常照原样传播，finally 仍释放锁，后续行不再处理。 */
+    @Test
+    @SuppressWarnings("unchecked")
+    void relay_incrRetryFailure_propagatesAfterUnlock() throws Exception {
+        enableDiagnostics();
+        stubLockAcquired();
+        when(outboxMapper.selectPendingBatch(100, 16)).thenReturn(List.of(row(1L, 0)));
+        when(rocketMQTemplate.syncSend(anyString(), any(Message.class)))
+                .thenThrow(new RuntimeException("MQ 不可用"));
+        when(outboxMapper.incrRetry(1L)).thenThrow(new RuntimeException("incrRetry 失败"));
+
+        assertThrows(RuntimeException.class, () -> relay.relay());
+
+        verify(lock).unlock();
+        verify(outboxMapper, never()).markSent(anyLong());
+    }
+
+    /** 锁获取被中断：置回中断位并跳过本轮，不查库、不投递、不解锁。 */
+    @Test
+    void relay_lockAcquireInterrupted_skipsWithoutUnlock() throws Exception {
+        when(lock.tryLock(0, TimeUnit.SECONDS)).thenThrow(new InterruptedException("interrupted"));
+        try {
+            relay.relay();
+
+            verify(outboxMapper, never()).selectPendingBatch(anyInt(), anyInt());
+            verify(lock, never()).unlock();
+            assertTrue(Thread.currentThread().isInterrupted(), "中断位应被置回");
+        } finally {
+            Thread.interrupted(); // 清理中断位，避免污染后续用例
+        }
+    }
+
+    /** 解锁异常：被吞并告警，成功投递结果不受影响（租期兜底释放语义不变）。 */
+    @Test
+    @SuppressWarnings("unchecked")
+    void relay_unlockFailure_isSwallowed_deliveryStillDone() throws Exception {
+        enableDiagnostics();
+        stubLockAcquired();
+        when(outboxMapper.selectPendingBatch(100, 16)).thenReturn(List.of(row(1L, 0)));
+        when(rocketMQTemplate.syncSend(anyString(), any(Message.class))).thenReturn(null);
+        when(outboxMapper.markSent(1L)).thenReturn(1);
+        doThrow(new RuntimeException("unlock 失败")).when(lock).unlock();
+
+        relay.relay();
+
+        verify(outboxMapper).markSent(1L);
+        verify(outboxMapper, never()).incrRetry(anyLong());
     }
 }

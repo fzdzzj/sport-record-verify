@@ -14,16 +14,23 @@ import java.util.function.LongSupplier;
  * 至多一条累计汇总，窗口内只累加计数，不逐轮打日志。计数在任一汇总输出后归零。</p>
  *
  * <p>耗时口径：{@code syncSend} 与 Mapper 各段是<strong>混合墙钟</strong>（含序列化、网络/代理、
- * 确认、连接获取与客户端等待），不得当作纯 MQ 或纯 SQL 执行耗时；{@code residualMs} 是
- * 锁持有总墙钟减去各段合计后的剩余量。</p>
+ * 确认、连接获取与客户端等待），不得当作纯 MQ 或纯 SQL 执行耗时。锁口径分两级、不得混称：
+ * {@code lockProcessingMs} 为<strong>锁内处理段</strong>（取锁成功→批次处理结束，尚不含摘要输出与解锁）；
+ * {@code lockHoldMs} 为<strong>完整占锁</strong>（取锁成功→{@code unlock()} 返回之后取终点）；
+ * {@code residualMs} = 锁内处理段减去各段合计后的剩余量（钳到非负）。</p>
  */
 final class RelayDiagnostics {
 
-    /** 一次非空批次的耗时与结果汇总（毫秒；residual = 锁持有 - 各段合计，非负）。 */
+    /**
+     * 一次非空批次的耗时与结果汇总（毫秒）。
+     *
+     * <p>{@code lockProcessingMs} = 锁内处理段；{@code lockHoldMs} = 完整占锁（终点在解锁之后）；
+     * {@code residualMs} = 锁内处理段 - (取批 + 发送 + 标记 + 失败计数)，非负。</p>
+     */
     record BatchSummary(int rows, int success, int failed, int exhausted,
                         long lockWaitMs, long selectMs, long sendMs, long markMs,
-                        long incrRetryMs, long lockHoldMs, long residualMs,
-                        long emptyRounds, long lockSkips) {
+                        long incrRetryMs, long lockProcessingMs, long lockHoldMs,
+                        long residualMs, long emptyRounds, long lockSkips) {
     }
 
     /** 空轮/锁竞争的有界汇总（自上次输出以来的累计计数）。 */
@@ -69,17 +76,19 @@ final class RelayDiagnostics {
     /**
      * 非空批次：输出一条汇总（含自上次汇总以来的空轮/竞争计数），并把计数归零。
      *
+     * @param lockProcessingMs 锁内处理段（取锁成功→批次处理结束，不含摘要输出与解锁）
+     * @param lockHoldMs       完整占锁（终点在 {@code unlock()} 返回之后取得）
      * @return 关闭时为空；开启时稳定给出非负分段耗时
      */
     Optional<BatchSummary> batch(int rows, int success, int failed, int exhausted,
                                  long lockWaitMs, long selectMs, long sendMs, long markMs,
-                                 long incrRetryMs, long lockHoldMs) {
+                                 long incrRetryMs, long lockProcessingMs, long lockHoldMs) {
         if (!enabled) {
             return Optional.empty();
         }
-        long residualMs = lockHoldMs - (selectMs + sendMs + markMs + incrRetryMs);
+        long residualMs = lockProcessingMs - (selectMs + sendMs + markMs + incrRetryMs);
         BatchSummary summary = new BatchSummary(rows, success, failed, exhausted,
-                lockWaitMs, selectMs, sendMs, markMs, incrRetryMs, lockHoldMs,
+                lockWaitMs, selectMs, sendMs, markMs, incrRetryMs, lockProcessingMs, lockHoldMs,
                 Math.max(0L, residualMs), emptyRounds, lockSkips);
         emptyRounds = 0;
         lockSkips = 0;
