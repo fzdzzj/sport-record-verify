@@ -1,0 +1,107 @@
+{
+  "task": "TASK-141",
+  "experiment": "submit-pool-capacity",
+  "date": "2026-09-26",
+  "baselineHead": "8380e11d0ffde4342b1fdc9ff828adbbe191d197",
+  "jarSha256": "197978fcbe52ebfad36aba9f76972bdb7ef169f5840cc29afedd55a292f1f7be",
+  "load": { "concurrency": 100, "total": 2000, "warmup": 10, "order": ["pool10-r1", "pool20-r1", "pool20-r2", "pool10-r2"] },
+  "constants": {
+    "txTimingEnabled": true,
+    "mysqlPort": 3307,
+    "mysqlMaxConnections": 151,
+    "sharedJvmUnrestarted": ["gateway", "user", "verify"],
+    "recordJvmRestartedEachRound": true
+  },
+  "prerequisiteFix": {
+    "issue": "TimingHikariDataSource close 与首次懒建池并发交错可建出无人关闭的内层池",
+    "redEvidence": "close_betweenEntryCheckAndFirstPoolCreation_rejectsAndLeavesNoPool 与 credentialOverloadSameBoundary 失败：close 完成后 pool 字段仍被置为新建 HikariDataSource（两重载各一次）",
+    "fix": "innerPool 建池临界区内复查 closed；close 在同一 synchronized(this) 内读内层池引用、锁外关池；稳态取连接不持包装类锁",
+    "greenEvidence": "TimingHikariDataSourceWiringTest 10/10；mvn-verify offline --pl record-service test rc=0（103/0/0/0）；package rc=0"
+  },
+  "rounds": [
+    {
+      "label": "pool10-r1",
+      "poolSize": 10,
+      "qps": 128.71,
+      "p50ms": 709.39,
+      "p95ms": 1253.32,
+      "p99ms": 1438.17,
+      "maxMs": 2422.52,
+      "ok": 2000, "limited429": 0, "errors": 0,
+      "connWaitUs": { "n": 2000, "p50": 631998, "p95": 1135346, "max": 2132989 },
+      "segmentsP50Us": { "select": 638006, "insertMain": 2649, "trackWrite": 20546, "commit": 30302 },
+      "gcPauses": 167, "gcTotalMs": 664.8, "gcMaxMs": 15.79,
+      "procCpuWindowSec": null, "procWsPeakMb": null,
+      "procSamplingNote": "CPU/内存未采集：采样命令 PowerShell 插值缺陷；请求/connWait/MySQL/GC 指标完整",
+      "threadsConnectedMax": 31, "threadsRunningMax": 14, "recordDbConnPeak": 10,
+      "drainPolls": 23, "loadExitCode": 0
+    },
+    {
+      "label": "pool20-r1",
+      "poolSize": 20,
+      "qps": 110.63,
+      "p50ms": 850.33,
+      "p95ms": 1679.21,
+      "p99ms": 1963.78,
+      "maxMs": 3451.11,
+      "ok": 2000, "limited429": 0, "errors": 0,
+      "connWaitUs": { "n": 2000, "p50": 668986, "p95": 1424766, "max": 3203315 },
+      "segmentsP50Us": { "select": 680390, "insertMain": 4105, "trackWrite": 35710, "commit": 61312 },
+      "gcPauses": 149, "gcTotalMs": 665.3, "gcMaxMs": 18.68,
+      "procCpuWindowSec": 66.0, "procWsPeakMb": 1322,
+      "threadsConnectedMax": 41, "threadsRunningMax": 28, "recordDbConnPeak": 20,
+      "drainPolls": 23, "loadExitCode": 0
+    },
+    {
+      "label": "pool20-r2",
+      "poolSize": 20,
+      "qps": 163.70,
+      "p50ms": 543.25,
+      "p95ms": 1007.72,
+      "p99ms": 1424.24,
+      "maxMs": 2049.20,
+      "ok": 2000, "limited429": 0, "errors": 0,
+      "connWaitUs": { "n": 2000, "p50": 433938, "p95": 787747, "max": 1725894 },
+      "segmentsP50Us": { "select": 444305, "insertMain": 3814, "trackWrite": 31175, "commit": 46223 },
+      "gcPauses": 147, "gcTotalMs": 653.1, "gcMaxMs": 16.31,
+      "procCpuWindowSec": 70.7, "procWsPeakMb": 1512,
+      "threadsConnectedMax": 41, "threadsRunningMax": 18, "recordDbConnPeak": 20,
+      "drainPolls": 23, "loadExitCode": 0
+    },
+    {
+      "label": "pool10-r2",
+      "poolSize": 10,
+      "qps": 129.48,
+      "p50ms": 691.44,
+      "p95ms": 1229.71,
+      "p99ms": 1477.20,
+      "maxMs": 2581.75,
+      "ok": 2000, "limited429": 0, "errors": 0,
+      "connWaitUs": { "n": 2000, "p50": 612672, "p95": 1054916, "max": 2511389 },
+      "segmentsP50Us": { "select": 619939, "insertMain": 2662, "trackWrite": 21279, "commit": 29778 },
+      "gcPauses": 162, "gcTotalMs": 637.2, "gcMaxMs": 13.54,
+      "procCpuWindowSec": 73.5, "procWsPeakMb": 1185,
+      "threadsConnectedMax": 31, "threadsRunningMax": 13, "recordDbConnPeak": 10,
+      "drainPolls": 24, "loadExitCode": 0
+    }
+  ],
+  "conclusion": {
+    "verdict": "not_recommended",
+    "verdictCn": "不推荐（本机、本负载、诊断开启条件下）",
+    "reasons": [
+      "两轮 B 方向不一致：QPS 110.63 与 163.70 分别差于和优于两轮 A（128.71/129.48），P50 与 connWait 同样跨在 A 臂两侧，「方向一致且可区分」不成立",
+      "一致代价信号：两轮 B 事务内 DB 段 P50 全部变慢（commit 30.3/29.8→61.3/46.2ms、trackWrite 20.5/21.3→35.7/31.2ms、insertMain 2.65/2.66→4.11/3.81ms），Threads_running 峰值 28/18 对 A 的 14/13",
+      "稳定性反转：A 臂复现紧密（QPS 差 0.6%、connWait P50 差 3%），B 臂同池重复 QPS 跨 48%",
+      "非错误性判定：四轮 2000/0/0、GC/CPU/内存无一致差异，不推荐依据是收益不可复现与单事务一致变慢，而非错误或资源故障"
+    ],
+    "counterEvidence": "pool20-r2 单轮全面优于两轮 A，但被 pool20-r1（同池、全面差于两轮 A）同池重复否定，单轮优势不构成因果"
+  },
+  "caveats": {
+    "connWaitMeaning": "connWait 为物理连接获取区间，含 Hikari 池内等待与可能建连，不区分二者，不等于纯池排队",
+    "diagnosticsOn": "四轮 tx-timing-enabled=true，数字不得当作生产默认关闭状态的收益或基线；TASK-140 connWait P50 527.1ms 为旧诊断轮、非本次同条件基线",
+    "noPercentileSubtraction": "未做独立 P50 相减；各段独立 P50 不可相加",
+    "uncontrolled": "B 臂轮间波动来源不可分离（缓冲池新鲜度/后台 relay/JIT 等候选未控制）；pool10-r1 CPU/内存未采集；gateway/user/verify JVM 四轮共用非全新态",
+    "dataGrowth": "四轮各落库 2010 条（含 10 预热），sport_record 32382→40422，track_point 约 +241 万行；未清库",
+    "noDefaultChange": "本变更未修改生产默认池容量（sharding.yaml 默认 10 未动），未改 JVM/SQL/索引/事务/MQ；实验后四服务已停、诊断仅以启动参数存在过"
+  }
+}

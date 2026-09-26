@@ -45,7 +45,11 @@ import java.util.logging.Logger;
  * 不会被关闭（TASK-140 收口后修订）。关闭语义对齐 {@code HikariDataSource}：
  * {@code close()} 无论内层池是否已创建都标记关闭状态，之后 {@code getConnection()}
  * 抛 {@link SQLException} 且不得经懒初始化重建池（否则优雅关闭后连接池会被重新打开，
- * 收口后修订二补判别式）。YAML 属性实际转发（已核对，测试锁定）：
+ * 收口后修订二补判别式）。close 与首次懒建池在同一 {@code synchronized(this)} 边界协调
+ * （TASK-141）：首次建池在临界区内复查关闭状态，close 在同一临界区内读取内层池引用——
+ * 「已通过入口检查但尚未建池」时发生 close，首次取连接在建池区被拒绝，不会留下由本
+ * 包装类新建且无人关闭的内层池；该锁只覆盖建池构造与 close 的引用读取，稳态取连接与
+ * 内层池 {@code getConnection}（最长 30s 的池内等待）不持本类锁。YAML 属性实际转发（已核对，测试锁定）：
  * {@code jdbcUrl/username/password/maximumPoolSize/connectionTimeout/
  * initializationFailTimeout} 由包装类 setter 转发至内层池配置；{@code idleTimeout/
  * maxLifetime/minimumIdle/keepaliveTime} 由 ShardingSphere 池元数据默认值注入后同样
@@ -125,27 +129,38 @@ public class TimingHikariDataSource implements DataSource, AutoCloseable {
         return closed;
     }
 
-    /** 关闭：先标记再关内层池；未建池时仅标记（此后取连接拒绝、不得懒重建） */
-    @SuppressWarnings("PMD.UndefineMagicConstantRule")
+    /** 关闭：先标记再关内层池；未建池时仅标记（此后取连接拒绝、不得懒重建）。
+     * 内层池引用必须在与首次建池相同的 {@code synchronized(this)} 边界内读取——否则
+     * 「已通过入口检查、尚未建池」的取连接会与 close 交错建出无人关闭的内层池（TASK-141）；
+     * 内层池关闭在锁外执行，不持包装类锁等待数据库资源。 */
     public void close() {
         closed = true;
-        HikariDataSource inner = pool;
+        HikariDataSource inner;
+        synchronized (this) {
+            inner = pool;
+        }
         if (inner != null) {
             inner.close();
         }
     }
 
-    private HikariDataSource innerPool() {
+    /** 懒建池：fast path 不加锁；建池临界区内复查关闭状态——close 完成后进入该区必须拒绝，
+     * 不得再建新池。锁只覆盖建池构造与 close 的引用读取，稳态取连接（内层池
+     * {@code getConnection} 最长 30s 池内等待）不持本类锁（TASK-141）。 */
+    private HikariDataSource innerPool() throws SQLException {
         HikariDataSource inner = pool;
-        if (inner == null) {
-            synchronized (this) {
-                if (pool == null) {
-                    pool = buildPool();
-                }
-                inner = pool;
-            }
+        if (inner != null) {
+            return inner;
         }
-        return inner;
+        synchronized (this) {
+            if (closed) {
+                throw new SQLException("TimingHikariDataSource has been closed.");
+            }
+            if (pool == null) {
+                pool = buildPool();
+            }
+            return pool;
+        }
     }
 
     private HikariDataSource buildPool() {

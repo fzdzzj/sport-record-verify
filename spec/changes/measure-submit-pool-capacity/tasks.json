@@ -1,0 +1,63 @@
+[
+  {
+    "number": 1,
+    "category": "冻结与风险确认",
+    "task": "冻结 HEAD/脏项/运行条件，先验证关闭交错反例",
+    "steps": [
+      { "step": "记录 HEAD、git status、服务与中间件状态、JDK、配置；保留已有归档移名、.codex、.trae 与 add-verify-degrade-status-index 原状，不 stash、不 add -A", "completed": true },
+      { "step": "基于同步/阻塞点构造可复现关闭与首次建池交错测试，先在原实现运行并记录行为红；不得把编译红或睡眠碰运气视作证据", "completed": true }
+    ],
+    "passes": true
+  },
+  {
+    "number": 2,
+    "category": "最小前置修复",
+    "task": "修复池生命周期，测试转绿后方可实验",
+    "steps": [
+      { "step": "让 close 与首次懒建池在同一生命周期边界协调；不能持锁等待 Hikari 获取连接；覆盖两个 getConnection 重载、未建池/已建池/重复 close", "completed": true },
+      { "step": "执行 bash scripts/verify/mvn-verify.sh --mode=offline --pl record-service test 以及 package，记录退出码与用例数；失败不压测", "completed": true }
+    ],
+    "passes": true
+  },
+  {
+    "number": 3,
+    "category": "实验门槛",
+    "task": "核实可比性、安全容量并冻结同一个 jar",
+    "steps": [
+      { "step": "记录 jar SHA-256、MySQL max_connections 和现有连接占用、磁盘余量（四轮约 2.4M 轨迹点）、MQ/verify/outbox 积压、Docker 与 JVM/DB 环境指纹；不足即停", "completed": true },
+      { "step": "选择固定预热、重启 record、积压排空与资源采样程序；两臂仅 MYSQL_POOL_SIZE=10/20 不同，tx-timing-enabled 在四轮均为 true，其余 JVM/SQL/索引/服务配置不变；如无法固定则记未覆盖", "completed": true }
+    ],
+    "passes": true
+  },
+  {
+    "number": 4,
+    "category": "单因素对照",
+    "task": "至多四轮 A-B-B-A 同负载实验，不以失败重试超预算",
+    "steps": [
+      { "step": "逐轮按 10/20/20/10 启动同 jar 的 record 并核实实际环境变量/health；跑 bash scripts/perf/run-perf.sh load 100 2000 唯一标签，各轮独立 raw 路径，不覆盖旧数据", "completed": true },
+      { "step": "每轮保留退出码、2000 请求成功/错误/限流、QPS/P50/P95/P99、诊断 connWait 样本数与分位、进程 CPU/内存/GC、MySQL 连接/线程与队列快照；下一轮前复查健康/积压/资源", "completed": true },
+      { "step": "任一可比性门槛失败停止后续负载，明确未覆盖；全部四轮之后关闭服务或恢复开工状态、禁用诊断并核对池配置回到原值", "completed": true }
+    ],
+    "passes": true
+  },
+  {
+    "number": 5,
+    "category": "证据与结论",
+    "task": "每轮结果、反例、资源风险与停止决定写入新报告",
+    "steps": [
+      { "step": "新增 docs/perf/ 本次实验报告和 data/ 下摘要 JSON；原始 raw/log 留在忽略目录，引用 TASK-140 的 527.1ms 须标旧诊断轮而非本次同条件基线", "completed": true },
+      { "step": "按两臂各两次结果区分可继续验证/不确定/不推荐；不将请求级 connWait 全称为纯池排队，不做独立 P50 相减，不改默认池上限、不承诺生产收益", "completed": true }
+    ],
+    "passes": true
+  },
+  {
+    "number": 6,
+    "category": "一次性收口",
+    "task": "更新规范三件套、台账、验证与本地提交",
+    "steps": [
+      { "step": "如实勾选本 tasks.json；建立 TASK-141 spec/handoff，更新 PLAN；实际只改清单逐项对齐；运行 git diff --check 和 mailbox-contract.sh，整体失败逐因记账", "completed": true },
+      { "step": "只暂存本任务文件，集中提交必要的代码/报告与台账（可两笔以绑定业务哈希）；记录提交哈希、退出码和未覆盖；不 push、不建 PR，不把无实验结果写成改善", "completed": true }
+    ],
+    "passes": true
+  }
+]
