@@ -1,0 +1,234 @@
+{
+  "task": "TASK-145",
+  "head": "28d277709d8020f49c6cff018652d1fe7c80975f",
+  "date": "2026-09-26",
+  "label": "task145-outbox-relay-batch-cost-ab",
+  "purpose": "decompose verify outbox relay per-round cost (lock/select/syncSend/markSent/incrRetry/hold) and bounded-burst backlog with a default-off bounded diagnostic; A=5000ms vs B=500ms, one round each; no optimization applied",
+  "changeId": "measure-verify-outbox-relay-cost",
+  "reference": {
+    "task143Head": "997c789a7420e2b33d3d6c0a23cf6066846cd04",
+    "task144Head": "8268aac8e7b2d1e542c04ddf526dbf834f87e0ad",
+    "task144Reading": "A callback->SENT P50 56769/59317ms net 15.20/14.73 rows/s; B P50 19782/18306ms net 35.59/37.25 rows/s; comparability gate failed (A1 QPS -15.65%, 2 consume failures) -> UNDETERMINED, default unchanged",
+    "note": "task143/144 used only as leads and consistency checks, not as repeated rounds of this task"
+  },
+  "verdict": {
+    "result": "MEASURED-NOT-OPTIMIZED",
+    "recommended": false,
+    "defaultChanged": false,
+    "writtenToClasspathYaml": false,
+    "reason": "TASK-145 only measures; two rounds cannot establish a reproducible gain, and the two arms are not comparable (submit QPS A 153.45 vs B 190.15, +23.9%; different wall and P50). Even though B is faster in this bounded burst, relay-interval-ms stays 5000 and no sustained-throughput improvement is claimed.",
+    "nextSingleFactor": {
+      "factor": "per-row markSent in-batch cost composition",
+      "evidence": "markSent is the largest locked segment in both arms (79.7% / 71.4% of lockHold P50) and in arm B is the largest segment of the whole round (1037ms / ~1941ms median steady full-batch period = ~53.4%, vs 500ms fixed wait = 25.8%)",
+      "boundary": "syncSend/markSent are mixed wall clocks (serialization/network/ack and connection/client wait respectively); they must not be called pure MQ or pure SQL"
+    }
+  },
+  "environment": {
+    "verifyJarSha256": "95CC9207021162B55D6E140B5C4FC5130EBA1EB4F05A6EADADD645224EAA2670",
+    "jarSwapDuringRounds": "NONE",
+    "jarNote": "same jar reused for both arms; the offline clean test removed target/*.jar afterwards, hash was captured at runtime",
+    "servicesStarted": ["gateway:8080", "user:8081", "record:8082", "verify:8083"],
+    "servicesAbsent": ["leaderboard", "mapmatch"],
+    "postgis": "container not running -> leaderboard segment and real R5 NOT COVERED",
+    "middleware": {
+      "mysql": "mysql:8.0.46 sport-verify-mysql host:3307",
+      "rocketmq": "apache/rocketmq:5.2.0 namesrv+broker",
+      "redis": "redis:7.2",
+      "nacos": "nacos/nacos-server:v2.3.2"
+    },
+    "effectiveConfigProof": {
+      "applicationYmlHasVerifyOutboxKeys": false,
+      "authoritative": "@Value defaults: batch-size=100, relay-interval-ms=5000, relay-initial-delay-ms=10000, max-retry=16",
+      "scheduledSemantics": "@Scheduled(fixedDelayString=...) = wait AFTER the round finishes",
+      "onlyChangedFactor": "relay-interval-ms (A=5000 default, B=500 injected via --verify.outbox.relay-interval-ms=500)",
+      "sameDiagnosticSwitchBothArms": "--verify.outbox.relay-diagnostics-enabled=true (default false)",
+      "unchanged": "batch, send concurrency, retry, lock, SQL/index, MQ, connection pool, JVM parameters",
+      "mysqlPortBothArms": 3307
+    },
+    "preconditioning": {
+      "perArm": "identical, up to c10x100, drained before measurement, excluded from cohort",
+      "labels": ["task145-A-pre", "task145-B-pre"],
+      "beforeMeasurement": {"deliverablePENDING": 0, "exhaustedPENDING": 0}
+    }
+  },
+  "diagnostic": {
+    "enabledByDefault": false,
+    "bounded": "at most one summary line per non-empty batch; empty rounds and lock contention summarized at most once per relay-diagnostics-window-ms (default 10000ms)",
+    "fields": ["rows", "success", "failed", "exhausted", "lockWaitMs", "selectMs", "sendMs", "markMs", "incrRetryMs", "lockHoldMs", "residualMs", "emptyRounds", "lockSkips"],
+    "clock": "System.nanoTime() monotonic",
+    "sensitiveContent": "none (no payload / eventId / token / per-row identifiers)",
+    "semanticsUnchanged": "original per-row logging, exception, unlock and eventId paths unchanged",
+    "boundedProofOnRealService": "arm A idle segment from 23:33:35 emitted exactly one empty-round summary every 10s; emptyRounds=2 per window at 5s period; lockSkips=0 throughout",
+    "tests": {"class": "RelayDiagnosticsTest", "count": 6, "relayTestCount": 13, "covered": ["success", "failure", "empty batch", "lock contention", "switch off"]}
+  },
+  "rounds": [
+    {
+      "label": "A", "intervalMs": 5000,
+      "load": {"ok": 2000, "limited429": 0, "errors": 0, "wallSeconds": 13.033, "qps": 153.45, "p50ms": 620.60, "p95ms": 881.75, "p99ms": 1189.99, "maxMs": 2034.28},
+      "ids": {"recordIds": "50583..52592", "outboxIds": "30261..32270"},
+      "cohort": {"records": 2010, "outboxLinked": 2010, "published": 2010, "consumed": 2010, "callback": 2010, "sent": 2010, "linkRatePct": 100},
+      "stages": {
+        "pubToConsume": {"n": 2010, "p50": 10616, "p95": 11437.1, "p99": 11622.4, "max": 12130},
+        "consumeToCallback": {"n": 2010, "p50": 163, "p95": 2612.3, "p99": 3424, "max": 4023},
+        "callbackToSent": {"n": 2010, "p50": 58008, "p95": 110480.8, "p99": 116220.1, "max": 116397},
+        "pubToSent": {"n": 2010, "p50": 68962.5, "p95": 120539.8, "p99": 126267.8, "max": 126493}
+      },
+      "cycleClosure": {
+        "periodMs": {"n": 21, "p50": 6315, "p95": 7221, "min": 5490, "max": 11122},
+        "fixedWaitMs": 5000,
+        "fixedWaitSharePct": 79.2,
+        "lockHoldMs": 1312,
+        "lockHoldSharePct": 20.8,
+        "markSentShareOfPeriodPct": 16.6,
+        "sendShareOfPeriodPct": 3.9,
+        "note": "period P50 6315 ~= 5000 fixed wait + 1312 lockHold (5000+1312=6312); MAX at 11122 coincides with the outbox creation burst"
+      },
+      "batchSegmentsMsP50": {
+        "fullGe100": {"n": 19, "lockWait": 0, "select": 5, "send": 246, "mark": 1046, "incrRetry": 0, "residual": 11, "lockHold": 1312, "sendSharePct": 18.8, "markSharePct": 79.7, "selectSharePct": 0.4, "residualSharePct": 0.8},
+        "shortLt100": {"n": 3, "lockWait": 1, "select": 6, "send": 89, "mark": 378, "incrRetry": 0, "residual": 4, "lockHold": 476},
+        "allBatches": {"n": 22, "lockWait": 0, "select": 5, "send": 245, "mark": 1044.5, "incrRetry": 0, "residual": 11, "lockHold": 1305.5}
+      },
+      "relay": {"rows": 2010, "success": 2010, "failed": 0, "exhausted": 0, "emptyBatchLines": 22, "lockSkipsTotal": 0, "emptyRoundsTotal": 0, "firstSent": "2026-09-26 23:36:02.063", "lastSent": "2026-09-26 23:38:19.883", "spanSec": 137.8, "netRateRowsPerSec": 14.58, "interSentGapMedianMs": 13, "longGapsGt1s": 21, "longGapMedianMs": 5025, "batchShape": "9,64,100x19,37"},
+      "backlog": {"deliverablePENDINGPeak": 1837, "peakAt": "2026-09-26 23:36:23", "exhaustedPENDINGPeak": 0, "retryCountGt0AllAlong": 0, "drainedTo": 0, "drainAt": "2026-09-26 23:38:19", "window": "2026-09-26 23:36:00 .. 2026-09-26 23:38:19"},
+      "createdBuckets5s": [42, 55, 219, 857, 837],
+      "sentBuckets5s": [9, 64, 4, 84, 12, 100, 100, 100, 26, 74, 100, 100, 100, 100, 100, 100, 84, 16, 100, 100, 100, 71, 29, 100, 100, 100, 37],
+      "sentBucketNote": "27 buckets, dominant 100/5s = the 100-row/6.3s-cycle ceiling"
+    },
+    {
+      "label": "B", "intervalMs": 500,
+      "load": {"ok": 2000, "limited429": 0, "errors": 0, "wallSeconds": 10.518, "qps": 190.15, "p50ms": 508.55, "p95ms": 620.14, "p99ms": 1028.01, "maxMs": 1503.30},
+      "ids": {"recordIds": "52703..54712", "outboxIds": "32381..34390"},
+      "cohort": {"records": 2010, "outboxLinked": 2010, "published": 2010, "consumed": 2010, "callback": 2010, "sent": 2010, "linkRatePct": 100},
+      "stages": {
+        "pubToConsume": {"n": 2010, "p50": 9938, "p95": 10299.6, "p99": 10501.8, "max": 11003},
+        "consumeToCallback": {"n": 2010, "p50": 169, "p95": 2108.1, "p99": 2560.6, "max": 3020},
+        "callbackToSent": {"n": 2010, "p50": 19343.5, "p95": 31840.3, "p99": 33068.7, "max": 33259},
+        "pubToSent": {"n": 2010, "p50": 29371.5, "p95": 42183.8, "p99": 43549, "max": 44045}
+      },
+      "cycleClosure": {
+        "periodMs": {"n": 30, "p50": 1894, "p95": 3518.7, "min": 578, "max": 6145},
+        "steadyFullBatchAdjacentPeriodMedianMs": 1941,
+        "fixedWaitMs": 500,
+        "fixedWaitSharePct": 25.8,
+        "lockHoldMs": 1452,
+        "lockHoldSharePct": 74.2,
+        "markSentShareOfPeriodPct": 53.4,
+        "sendShareOfPeriodPct": 16.7,
+        "note": "steady full-batch adjacent period median ~1941 ~= 500 fixed wait + 1452 lockHold (500+1452=1952)"
+      },
+      "batchSegmentsMsP50": {
+        "fullGe100": {"n": 18, "lockWait": 0, "select": 4, "send": 324, "mark": 1037, "incrRetry": 0, "residual": 76, "lockHold": 1452, "sendSharePct": 22.3, "markSharePct": 71.4, "selectSharePct": 0.3, "residualSharePct": 5.2},
+        "shortLt100": {"n": 13, "lockWait": 0, "select": 3, "send": 62, "mark": 315, "incrRetry": 0, "residual": 18, "lockHold": 396},
+        "allBatches": {"n": 31, "lockWait": 0, "select": 3, "send": 312, "mark": 984, "incrRetry": 0, "residual": 74, "lockHold": 1389}
+      },
+      "relay": {"rows": 2010, "success": 2010, "failed": 0, "exhausted": 0, "emptyBatchLines": 31, "lockSkipsTotal": 0, "emptyRoundsTotal": 0, "firstSent": "2026-09-26 23:40:41.236", "lastSent": "2026-09-26 23:41:35.336", "spanSec": 54.1, "netRateRowsPerSec": 37.15, "interSentGapMedianMs": 14, "longGapsGt1s": 1, "longGapMedianMs": 1040, "batchShape": "9,2,28,3,12,19,3,10,18,10,14,14,100x17,68"},
+      "backlog": {"deliverablePENDINGPeak": 1668, "peakAt": "2026-09-26 23:41:02", "exhaustedPENDINGPeak": 0, "retryCountGt0AllAlong": 0, "drainedTo": 0, "drainAt": "2026-09-26 23:41:35", "window": "2026-09-26 23:40:41 .. 2026-09-26 23:41:35"},
+      "createdBuckets5s": [43, 71, 515, 907, 474],
+      "sentBuckets5s": [42, 72, 71, 83, 174, 260, 248, 273, 242, 277, 243, 25],
+      "sentBucketNote": "12 buckets, peak ~250-277/5s ~= 50-55 rows/s"
+    }
+  ],
+  "outboxAccounting": {
+    "rowsTotalBothArms": 4020,
+    "cohortPerArm": 2010,
+    "maxRetryEffective": 16,
+    "relayFailLines": 0,
+    "relayExhaustedLines": 0,
+    "retryCountGt0DuringTask": 0,
+    "perRoundAfterDrain": {"deliverablePENDING": 0, "exhaustedPENDING": 0},
+    "createRateRowsPerSec": {"A": 87.39, "B": 95.71},
+    "createSpanSec": {"A": 23.0, "B": 21.0},
+    "dbCrossCheck": "Com_update exactly +4020 = 2x2010 in each arm (2010 markSent + 2010 record status updates) -> one successful mark per row, no resend",
+    "semanticsRegression": "none (eventId reuse, markSent +2010, incrRetry not triggered by relay)"
+  },
+  "resources": {
+    "armA": {
+      "window": "2026-09-26 23:35:40 .. 23:38:27 (uptime 151.6s -> 318.2s)",
+      "gcYoungCount": "3 -> 21 (+18)",
+      "gcPauseSumSec": "0.013 -> 0.082 (+0.069s over a 166.6s window)",
+      "gcAllocatedBytesTotal": "2.47463936E8 -> 1.537212408E9 (+1.29GB cumulative)",
+      "gcPromotedBytesTotal": "7552320 -> 62484184 (+54.9MB)",
+      "heapUsedMB": {"eden": "81.8 -> 12.6", "old": "58.3 -> 111.9"},
+      "hikari": {"active": "0 -> 0", "idle": "10 -> 10", "max": 10, "timeoutTotal": 0},
+      "threadsLive": "248 -> 216",
+      "processCpuUsageGauge": {"before": 0.0508, "after": 0.0123, "note": "instantaneous gauge, NOT summable"},
+      "mysqlGlobal": {"Queries": "+50690", "Com_update": "+4020", "Com_select": "+20241", "Innodb_rows_read": "+1032271", "Innodb_row_lock_waits": "7 -> 7", "Innodb_row_lock_time": "62 -> 62"}
+    },
+    "armB": {
+      "before": {"uptimeSec": 52.3, "gcYoungCount": 3, "gcPauseSumSec": 0.018, "gcAllocatedBytesTotal": 2.06e8, "threadsLive": 233, "hikari": "0/10"},
+      "after": "UNKNOWN",
+      "afterReason": "PROM_SCRAPE_FAILED - verify process had exited, cumulative counters destroyed",
+      "mysqlGlobal": {"Queries": "+50573", "Com_update": "+4020", "Com_select": "+20200", "Innodb_rows_read": "+915091"}
+    },
+    "mysqlScope": "SHOW GLOBAL STATUS cumulative values, NOT isolated per round",
+    "mqBroker": "UNAVAILABLE - `mqadmin: command not found` inside container (best-effort branch); recorded as MQ_BROKER_STATUS_UNAVAILABLE rather than 'no anomaly'",
+    "lockContention": "lockSkips and lockWaitMs are 0 throughout both arms -> zero Redisson verify:outbox:relay contention as a single instance; multi-instance contention NOT COVERED",
+    "samplingOverhead": "unknown; these are diagnostic-ON rounds and must not be compared causally against TASK-144 diagnostic-OFF numbers"
+  },
+  "comparability": {
+    "qpsA": 153.45,
+    "qpsB": 190.15,
+    "qpsDeltaPct": 23.9,
+    "wallSecondsA": 13.033,
+    "wallSecondsB": 10.518,
+    "p50A": 620.60,
+    "p50B": 508.55,
+    "preRegisteredGate": "none for TASK-145; ±15% was a TASK-144 rule",
+    "comparable": false,
+    "sameSourceStageDirectionalNote": "pub->consume P50 close (A 10616 / B 9938) while callback->SENT differs hugely (A 58008 / B 19343.5) -> the gap concentrates in the relay segment, not the MQ segment; not used for any default change",
+    "strongestCounterexample": "B flattened the creation burst into small dense batches, so no A-style '100-row batch + 6.3s gap' pulse appeared; but the burst window only sent 142 rows and 1868 rows still relied on full-batch draining. So 'B is faster' holds only for this bounded burst and does NOT prove no sustained backlog at the observed creation rate (87-96 rows/s >> B's 37 rows/s)."
+  },
+  "precision": {
+    "inProcessStages": "callback->SENT and consume->callback are same-process ms-level, credible",
+    "crossProcessStages": "pub->consume and pub->SENT are cross-process, not NTP-synchronized -> coarse reading only",
+    "dbTimestamps": "created_at/sent_at are second-resolution",
+    "correlation": "regex over fixed log patterns; no structured recordId field",
+    "rule": "independent stage P50s must not be subtracted/added/ratioed as per-request durations; period aggregation and same-run event latency are two separate scopes"
+  },
+  "anomaly": {
+    "verifyProcessExitArmB": "PID 52284 exited silently after drain confirmation (23:41:37) and before the after resource sample (23:41:47); empty verify-stderr.log, no exception stack, no shutdown hook output, no hs_err_pid*.log / replay_pid* anywhere in the repo, no java/verify entries in Windows Application log -> no JVM-crash evidence and no external-termination cause could be established",
+    "launchDifference": "A=bash nohup (survived the whole run), B=PowerShell Start-Process (disappeared after ~107s)",
+    "rawRecord": "docs/perf/data/raw/task145-anomaly-verify-process-exit.md",
+    "budget": "both rounds already spent; no makeup round run"
+  },
+  "exitCodes": {
+    "offlineVerifyServiceTest": 0,
+    "offlineVerifyServiceTestDetail": "Tests run: 104, Failures: 0, Errors: 0, Skipped: 0; BUILD SUCCESS",
+    "behaviorRedFirstRun": 1,
+    "behaviorRedDetail": "temporarily forcing RelayDiagnostics.batch() enabled check false -> Tests run: 104, Failures: 2, rc=1 (relay_diagnosticsDisabled_emitsNoDiagnosticSummary + disabledSwitch_isNoOp_andReportsNothing); precisely restored",
+    "environmentRed": "maven-clean-plugin could not delete verify-service/target/*.jar while the service held it -> clean failed; after stopping the service the rerun was rc=0 (environment red, not a test red)",
+    "contractCompileRed": "none this round (not claimed)",
+    "loadWrapper": "both rounds wrote a complete summary (ok=2000/errors=0); wrapper exit code was affected by a Git Bash-over-PowerShell-pipe 'echo: Bad file descriptor' artifact -> judged from summary.json + drain to deliverable/exhausted PENDING=0"
+  },
+  "changes": {
+    "modified": [
+      "verify-service/src/main/java/com/sportverify/verify/mq/VerifyOutboxRelay.java",
+      "verify-service/src/test/java/com/sportverify/verify/mq/VerifyOutboxRelayTest.java"
+    ],
+    "added": [
+      "verify-service/src/main/java/com/sportverify/verify/mq/RelayDiagnostics.java",
+      "verify-service/src/test/java/com/sportverify/verify/mq/RelayDiagnosticsTest.java",
+      "scripts/perf/relay-round-sampler.sh",
+      "docs/perf/拆解-outbox-relay-批内成本.md",
+      "docs/perf/data/exp-outbox-relay-batch-cost.json"
+    ],
+    "notTouched": ["运行默认 relay-interval-ms=5000", "batch", "send concurrency", "retry", "lock", "SQL/index", "MQ", "connection pool", "JVM parameters", "production YAML"]
+  },
+  "notCovered": [
+    "arm B after JVM/GC/memory/thread deltas = UNKNOWN (process exited)",
+    "MQ broker readings (both arms; mqadmin unavailable)",
+    "multi-instance lock contention (single instance only)",
+    "maxRetry<=0 / illegal retry_count / large exhausted-row scan cost",
+    "leaderboard consumption and SENT->leaderboard segment (leaderboard not started)",
+    "R5 quality / off-road ratio / mapmatch CPU (PostGIS + mapmatch not started)",
+    "--it / --mode=online / CI",
+    "500/1000 concurrency tiers (forbidden)"
+  ],
+  "notClaimed": [
+    "no default config change (relay-interval-ms stays 5000)",
+    "no sustained-throughput improvement claimed",
+    "no per-request share from independent stage P50 ratio",
+    "no pure MQ / pure SQL attribution for syncSend / markSent (mixed wall clocks)",
+    "diagnostic-ON rounds are not production-default-state benefit evidence"
+  ]
+}

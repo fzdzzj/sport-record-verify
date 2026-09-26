@@ -1,0 +1,53 @@
+[
+  {
+    "number": 1,
+    "category": "冻结与反证检查",
+    "task": "核对 TASK-144 证据、当前 relay 语义和环境安全边界",
+    "steps": [
+      {"step": "冻结开工 HEAD=28d277709d8020f49c6cff018652d1fe7c80975f 与既有 archive 移名/.codex/.trae/add-verify-degrade-status-index 脏项，确认 TASK-145 change ID 不冲突，不 stash、不 add -A、不清库", "completed": true},
+      {"step": "核对原始 callback/SENT、创建时间桶、A1 失败及实际配置；读取 relay、Mapper、Producer 和单测；确认不会把 B 的有限突发排空当作稳态吞吐", "completed": true},
+      {"step": "核查服务/中间件/磁盘、当前数据积压及测量额外数据成本；条件不安全则停止负载并交付未覆盖报告", "completed": true}
+    ],
+    "passes": true
+  },
+  {
+    "number": 2,
+    "category": "最小诊断与测试",
+    "task": "默认关闭的批次计时与可靠投递判别",
+    "steps": [
+      {"step": "只增加可开关、无界样本为零的周期级诊断，聚合 lock/select/syncSend/markSent/incrRetry/总时长及计数；不输出逐行标识/密钥、不增加远程调用；原异常、锁与 eventId 语义不变", "completed": true},
+      {"step": "覆盖成功/失败/空批/锁竞争/开关关闭和投递语义的单元判别，任何红证据据实区分行为、编译、契约或环境失败；运行 offline verify-service test 与需要时 package，记录真实退出码", "completed": true}
+    ],
+    "passes": true
+  },
+  {
+    "number": 3,
+    "category": "安全、有限的运行归因",
+    "task": "同 jar、同诊断开关下最多 A/B 两个 c100×2000 有限突发",
+    "steps": [
+      {"step": "提供只读资源采集办法；每轮记录 jar/进程、固定参数与采样可用性，确认可投递 PENDING=0、耗尽行分账及健康；每臂允许相同的至多 c10×100 预条件化并排空，额外请求不得混入测量 cohort", "completed": true},
+      {"step": "至多运行 A=5000ms、B=500ms 各一轮 c100×2000，失败/中止仍占预算；每轮同 run 关联、采样 CPU/内存/GC/MySQL/MQ 可得指标及积压形态，保存忽略目录原始日志，不清库、不擅自补跑", "completed": true}
+    ],
+    "passes": true
+  },
+  {
+    "number": 4,
+    "category": "归因与停止决策",
+    "task": "只选择下一项待证的主因素，不更改运行默认值",
+    "steps": [
+      {"step": "按同一周期做耗时闭合，分空/短/满批及固定空档，核对逐轮负载到达/投递桶、同 run callback→SENT 分位、积压峰值/排空及可靠投递；不从独立 P50 求差/比值、不把混合墙钟称纯 SQL/MQ", "completed": true},
+      {"step": "明确区分直接测得、推断、未知和最强反例；任何故障、资源缺测、非同质轮或积压异常均不得调默认值；所有情况下保留 5000ms 默认且最多提出一个下一步验证因素", "completed": true}
+    ],
+    "passes": true
+  },
+  {
+    "number": 5,
+    "category": "一次作业收口",
+    "task": "报告、台账、契约与本地提交集中完成",
+    "steps": [
+      {"step": "提交 docs/perf 报告与机器摘要、三件套状态、TASK-145 spec/handoff、PLAN 与统一总览；原始日志与采样只在 gitignored raw 目录，列实际修改清单与未覆盖项", "completed": true},
+      {"step": "核对 git diff --check、JSON、mailbox-contract.sh 无参数及只改清单；仅 stage/本地提交 TASK-145 文件，必要时业务/台账两笔，不 push、不建 PR；服务复原或停止并回传状态", "completed": true}
+    ],
+    "passes": true
+  }
+]
