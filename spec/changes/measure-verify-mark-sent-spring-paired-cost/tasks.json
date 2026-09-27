@@ -1,0 +1,52 @@
+[
+  {
+    "number": 1,
+    "category": "冻结基线与干净检出复核",
+    "task": "核对真实基线并用仅含 9fed299 的隔离检出复核测试不依赖未跟踪文件",
+    "steps": [
+      {"step": "核对 HEAD=9fed299、既有脏项、TASK-147/148 报告/JSON/测试源码/handoff/当前规范；记录未跟踪 VerifyEventOutboxMarkSentSpringProbeMysqlIT.java 归属不明且不并入 TASK-148 已提交证据", "completed": true},
+      {"step": "在隔离检出（仅已提交 9fed299）重跑唯一入口 offline verify-service test 与 TASK-148 条件式真库 IT，确认不依赖未跟踪 Java 文件；记录四计数/Skipped/退出码与真实 Mapper/SqlSessionTemplate/事务工厂/Hikari 类型；不能复现即判证据缺口并停止新测量", "completed": true}
+    ],
+    "passes": true
+  },
+  {
+    "number": 2,
+    "category": "受限 Spring 配对接线与 scratch 真库",
+    "task": "只沿用 TASK-147 的同一 test-only 探针",
+    "steps": [
+      {"step": "在专用 task149_marksent_scratch（仓库真实 DDL 机械改库名）用 Spring 注入真实 Mapper、SqlSessionTemplate/事务工厂/Hikari，仅 test-only 注册目标 statement 探针；列明与完整生产上下文的排除项", "completed": true},
+      {"step": "构造无插件对照与探针开启两个受限上下文，证明不污染生产 Bean/数据源/插件链和其他测试；不手工 new factory/openSession 冒充 Spring 路径", "completed": true}
+    ],
+    "passes": true
+  },
+  {
+    "number": 3,
+    "category": "同调用逐次配对测量",
+    "task": "小样本证明同调用外层/内层可逐次配对并求残余",
+    "steps": [
+      {"step": "预热 + 至少三轮有界小样本：同线程同一次 markSent 逐次记录外层 Mapper 墙钟、内层整个 StatementHandler.update 墙钟、更新行数、成功/失败；只对成功配对的同一调用求「外层减内层」残余，不把两组独立 P50 相减；记录样本数/缺配/多配", "completed": true},
+      {"step": "记录探针关闭的无插件对照、Hikari 水位、可取得的 GC/CPU 范围与轮间波动；复核状态/异常类型/独立连接可见性/连接归还未变；扰动不可接受即停止归因", "completed": true}
+    ],
+    "passes": true
+  },
+  {
+    "number": 4,
+    "category": "验证与有界报告",
+    "task": "只报告被真实接线覆盖的层，不冒称性能收益",
+    "steps": [
+      {"step": "运行唯一入口 offline verify-service test 与条件式真库 IT；记录退出码、测试数、Skipped、原始日志和失败分类；编译红/环境红/skip 不混称行为红", "completed": true},
+      {"step": "形成报告与低基数 JSON，明确装配同/异、可测与不可测边界、探针扰动、未知层与停止决策；不运行 c100×2000/常驻服务、不改生产参数", "completed": true}
+    ],
+    "passes": true
+  },
+  {
+    "number": 5,
+    "category": "一次作业收口",
+    "task": "三件套、台账、契约、本地提交集中完成",
+    "steps": [
+      {"step": "据实勾选三件套并建立 TASK-149 spec/handoff、PLAN/总览及只改清单，未覆盖不记为通过", "completed": true},
+      {"step": "核对 JSON、git diff --check、实际清单与无参数 mailbox 契约；只显式暂存本任务文件，按必要的逻辑本地提交，不 push/PR，既有脏项原样保留", "completed": true}
+    ],
+    "passes": true
+  }
+]

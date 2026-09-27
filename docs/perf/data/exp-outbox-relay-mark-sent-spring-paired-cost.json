@@ -1,0 +1,102 @@
+{
+  "task": "TASK-149",
+  "changeId": "measure-verify-mark-sent-spring-paired-cost",
+  "openRevision": "9fed299fd04b2218f7f30eaaca2a15b484b2597a",
+  "verdict": "GO-limited: same-thread same-call outer/inner split is repeatable and semantics are unchanged on a bounded small sample; this is NOT a license for SQL batching and NOT a throughput/latency claim",
+  "question": "In the TASK-148 restricted Spring-managed Mapper slice, can the same markSent call be split per-invocation into an outer mapper wall clock and an inner StatementHandler.update wall clock, with the residual computed only for that same successful paired call?",
+  "probe": "TASK-147 MarkSentProbe reused unchanged (test-only, exact MappedStatement.id filter com.sportverify.verify.mapper.VerifyEventOutboxMapper.markSent); no second probe, not registered in production plugin chain, production DataSource untouched",
+  "measuredBoundaries": {
+    "outer": "whole VerifyEventOutboxMapper.markSent wall clock on the calling thread",
+    "inner": "whole StatementHandler.update invocation wall clock (execute + getUpdateCount + KeyGenerator.processAfter)",
+    "residual": "outer - inner for the SAME successful paired call only; MIXED quantity",
+    "residualMustNotBeNamedAs": ["connection acquisition", "statement prepare/bind", "explicit commit", "pure server-side SQL", "fsync", "pool wait"],
+    "forbiddenMethod": "subtracting two independent P50 groups"
+  },
+  "wiring": {
+    "datasource": "com.zaxxer.hikari.HikariDataSource",
+    "template": "org.mybatis.spring.SqlSessionTemplate",
+    "sessionFactory": "org.apache.ibatis.session.defaults.DefaultSqlSessionFactory",
+    "transactionFactory": "org.mybatis.spring.transaction.SpringManagedTransactionFactory",
+    "mapperBean": "Spring MapperFactoryBean JDK proxy",
+    "baselinePluginCount": 0,
+    "probedPluginCount": 1,
+    "callsiteTransactional": false
+  },
+  "environment": {
+    "schema": "task149_marksent_scratch",
+    "ddlSource": "sql/03-verify-db.sql (schema name mechanically replaced)",
+    "mysql": "task131-scratch-mysql (mysql:8) host port 13318",
+    "demoDatabaseTouched": false,
+    "otherDataVolumesTouched": false
+  },
+  "gateCleanCheckout": {
+    "method": "git worktree --detach at the open revision; committed sources only",
+    "untrackedJavaInWorktree": false,
+    "offlineVerifyService": {"testsRun": 110, "failures": 0, "errors": 0, "skipped": 0, "exitCode": 0, "log": "docs/perf/data/raw/task149-gate-clean-offline.log"},
+    "conditionalScratchIt": {"testsRun": 5, "failures": 0, "errors": 0, "skipped": 0, "exitCode": 0, "log": "docs/perf/data/raw/task149-gate-clean-it.log"},
+    "conclusion": "the committed verify-service tests and the TASK-148 conditional scratch IT do not depend on the untracked Java file; new cost measurement authorized"
+  },
+  "measurement": {
+    "warmup": 30,
+    "measuredPerRound": 100,
+    "rounds": 3,
+    "authoritativeRunLog": "docs/perf/data/raw/task149-it.log",
+    "perRound": [
+      {"round": 1, "n": 100, "missing": 0, "multi": 0, "negative": 0,
+       "outer_p50_us": 10520, "outer_p95_us": 13606, "outer_p99_us": 15144,
+       "inner_p50_us": 9646, "inner_p95_us": 12936, "inner_p99_us": 13910,
+       "residual_p50_us": 1018, "residual_p95_us": 1447, "residual_p99_us": 1716,
+       "active_before": 0, "active_after": 0, "gc_count_delta": 0, "gc_time_ms_delta": 0, "cpu_ns_delta": 437500000},
+      {"round": 2, "n": 100, "missing": 0, "multi": 0, "negative": 0,
+       "outer_p50_us": 10365, "outer_p95_us": 13530, "outer_p99_us": 14755,
+       "inner_p50_us": 9548, "inner_p95_us": 12658, "inner_p99_us": 13950,
+       "residual_p50_us": 810, "residual_p95_us": 1334, "residual_p99_us": 1536,
+       "active_before": 0, "active_after": 0, "gc_count_delta": 0, "gc_time_ms_delta": 0, "cpu_ns_delta": 375000000},
+      {"round": 3, "n": 100, "missing": 0, "multi": 0, "negative": 0,
+       "outer_p50_us": 10291, "outer_p95_us": 12673, "outer_p99_us": 13794,
+       "inner_p50_us": 9557, "inner_p95_us": 11804, "inner_p99_us": 13246,
+       "residual_p50_us": 701, "residual_p95_us": 1030, "residual_p99_us": 1247,
+       "active_before": 0, "active_after": 0, "gc_count_delta": 0, "gc_time_ms_delta": 0, "cpu_ns_delta": 343750000}
+    ],
+    "baselineNoProbe": {"n": 100, "outer_p50_us": 9822, "outer_p95_us": 13227},
+    "rawPairLines": 300
+  },
+  "repeatability": {
+    "independentRuns": 3,
+    "residual_p50_us_perRun": [[1038, 910, 749], [934, 859, 516], [1018, 810, 701]],
+    "residual_p50_us_range": [516, 1038],
+    "unpairedAcrossRuns": 0,
+    "note": "residual is computed per paired call inside each run; the two group P50s were never subtracted from each other"
+  },
+  "perturbationsObserved": {
+    "baselineNoProbe_outer_p95_us_perRun": [216763, 12334, 13227],
+    "note": "the no-probe baseline tail is unstable across runs (one run showed a large p95 outlier); the baseline is therefore reported as raw observation and is not used as a subtractive control",
+    "probeDisturbsOutcomeOrCost": false
+  },
+  "semanticsUnchanged": [
+    "one target call returns rows=1 and yields exactly one probe sample",
+    "status becomes SENT and sent_at is set, immediately visible on an independent DriverManager connection",
+    "a real SQL failure is translated to the same exception type with and without the probe (org.springframework.jdbc.BadSqlGrammarException)",
+    "the failed call leaves exactly one failed sample and does not pollute the next call",
+    "Hikari active connections return to 0 after every call group"
+  ],
+  "tests": {
+    "offlineVerifyService": {"testsRun": 110, "failures": 0, "errors": 0, "skipped": 0, "exitCode": 0, "log": "docs/perf/data/raw/task149-offline.log"},
+    "conditionalScratchIt": {"testsRun": 4, "failures": 0, "errors": 0, "skipped": 0, "exitCode": 0, "log": "docs/perf/data/raw/task149-it.log"}
+  },
+  "unknown": [
+    "connection acquisition, prepare/bind, explicit commit per call",
+    "server-side SQL vs network vs fsync split",
+    "production P99 / throughput benefit",
+    "full production context (Nacos, MQ, Redis, Feign, scheduler, Web)",
+    "pool wait under production load",
+    "multi-instance relay lock contention"
+  ],
+  "productionChanges": false,
+  "largeLoadRun": false,
+  "c100x2000Run": false,
+  "sqlBatchingAuthorized": false,
+  "productionPluginChainChanged": false,
+  "mapperSqlOrIndexChanged": false,
+  "jvmOrPoolChanged": false
+}
