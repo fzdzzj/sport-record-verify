@@ -1,0 +1,51 @@
+[
+  {
+    "number": 1,
+    "category": "环境冻结与可逆端口释放",
+    "task": "确认 TASK-150 未覆盖前提并保护宿主 Redis 服务",
+    "steps": [
+      {"step": "核对 HEAD=02a16af、既有脏项及 TASK-150 原始证据；记录 Windows Redis 服务原状态/启动类型、6379 监听者、显见客户端与依赖、所有演示容器/Java 原状态；冲突或归属不清立即停止", "completed": true},
+      {"step": "仅在确认可恢复且无其他明确使用者时以服务管理器临时停止宿主 Redis，启动既有演示 Redis 容器；禁止杀进程、重建卷、修改 compose/启动类型或用宿主 Redis 替代演示容器", "completed": false}
+    ],
+    "passes": false
+  },
+  {
+    "number": 2,
+    "category": "真实测量前提",
+    "task": "单实例健康与同窗仪器预检",
+    "steps": [
+      {"step": "确认演示 MySQL 原卷和 verify_db 可投递/耗尽 PENDING 分账；P_S UPDATE/digest 已启用计时、无溢出；目标 digest 与其他 UPDATE 区分，留负载前原始快照", "completed": false},
+      {"step": "仅启动本轮必要的既有 Nacos/RocketMQ 与单实例四 Java 服务，核对健康、jar、默认 relay=5000、诊断开关及无其他实例/同 SQL 写入；任一前提失败不跑负载", "completed": false}
+    ],
+    "passes": false
+  },
+  {
+    "number": 3,
+    "category": "一次负载与计数配平",
+    "task": "沿用 TASK-150 同一问题和停止判据",
+    "steps": [
+      {"step": "最多一次 run-perf.sh load 100 2000（预热10），原始摘要写 task151 独立路径；记录负载退出码、资源、成功/失败/重试/锁跳过和 QPS/P50/P95，等 cohort 可投递 PENDING 排空", "completed": false},
+      {"step": "取 P_S 后快照和全部非空 relay 批次；仅在 digest 唯一、无干扰、完整窗口且 COUNT_STAR 增量=成功 markSent=批次成功行数时求 SUM_TIMER_WAIT 与 markMs 同窗总量比值，否则不可归因", "completed": false}
+    ],
+    "passes": false
+  },
+  {
+    "number": 4,
+    "category": "强制环境恢复",
+    "task": "不论实验结果均恢复本轮改变的环境",
+    "steps": [
+      {"step": "先停本轮 Java 与演示 Redis，再恢复宿主 Redis 原状态/启动类型并核验 6379；仅对本轮确知启动且未被他人接管的其他容器恢复起点状态，失败明确报告", "completed": true}
+    ],
+    "passes": false
+  },
+  {
+    "number": 5,
+    "category": "报告、台账与一次作业收口",
+    "task": "区分测得与未覆盖，完成可复核交付",
+    "steps": [
+      {"step": "报告/机器摘要固化原始路径、环境恢复结果、计数/单位/舍入和结论等级；无法测量不编造比值、不把 TASK-150 改为成功；无代码变化不声称 Maven 已跑", "completed": true},
+      {"step": "三件套据实勾选、TASK-151 spec/handoff、PLAN/总览、文件清单、JSON/git diff --check/无参数 mailbox-contract；只 stage 本任务文件，本地必要提交并集中回传，不 push/PR", "completed": true}
+    ],
+    "passes": false
+  }
+]

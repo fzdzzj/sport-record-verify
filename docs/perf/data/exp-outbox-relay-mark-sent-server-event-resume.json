@@ -1,0 +1,104 @@
+{
+  "task": "TASK-151",
+  "title": "resume: same-load-window MySQL server statement-event wall clock for verify_db markSent UPDATE",
+  "base_head": "02a16af312aed8792a44eb64d7ba57ad0c00067d",
+  "date": "2026-09-27",
+  "status": "uncovered_aborted",
+  "abort_reason": "no_privilege_to_pause_host_redis_service",
+  "load_executed": false,
+  "load_command": null,
+  "load_exit_code": null,
+  "ratio_server_event_total_over_outer_mark_total": null,
+  "server_statement_event_total_ms": null,
+  "outer_mark_total_ms": null,
+  "reconciliation": {
+    "performed": false,
+    "digest_unique": null,
+    "count_star_delta": null,
+    "successful_mark_sent": null,
+    "batch_success_rows_sum": null
+  },
+  "target": {
+    "schema": "verify_db",
+    "table": "verify_event_outbox",
+    "statement": "UPDATE verify_event_outbox SET status = 'SENT', sent_at = NOW() WHERE id = ? AND status = 'PENDING'",
+    "digest": "6b07036bdfeae6b8f12d602eb37af86bfe73e3f9dac3600006dfd8cde12b05b7",
+    "digest_identified_from": "scratch task147/148/149_marksent_scratch (aid only, not a demo snapshot; carried over from TASK-150, not re-verified on demo this round)",
+    "distinct_from_incr_retry": true
+  },
+  "host_redis_service": {
+    "name": "Redis",
+    "state_before": "Running",
+    "state_after": "Running",
+    "start_mode_before": "Auto",
+    "start_mode_after": "Auto",
+    "path": "D:\\develop1\\Redis-x64-3.0.504\\redis-server.exe --service-run redis.windows.conf",
+    "start_name": "NT AUTHORITY\\NetworkService",
+    "pid": 6684,
+    "parent_pid": 1996,
+    "version": "3.0.504",
+    "established_clients": "none"
+  },
+  "host_redis_pause_attempt": {
+    "authorized_action": "Stop-Service -Name Redis (temporary, reversible)",
+    "stop_service_error": "Service 'Redis (Redis)' cannot be stopped due to the following error: Cannot open Redis service on computer '.'",
+    "sc_stop_error": "[SC] OpenService FAILED 5: Access is denied",
+    "sc_exit_code": 5,
+    "is_admin": false,
+    "net_session": "System error 5 has occurred / Access is denied",
+    "outcome": "blocked (no privilege)"
+  },
+  "dependent_sessions": {
+    "other_session_repo": "D:\\code\\crmAndRag-merge-add-knowledge-admin-api",
+    "other_session_activity": "mvn -o -B -ntp clean verify + surefire fork + testcontainers-ryuk",
+    "depends_on_host_redis": false,
+    "evidence": "full-text grep redis/6379 -> only 4 incidental hits (docs/test fixtures), no application config; testcontainers uses random ports"
+  },
+  "demo_redis": {
+    "container": "sport-verify-redis",
+    "image": "redis:7.2-alpine",
+    "running_before": false,
+    "running_after": false,
+    "restart_policy": "no",
+    "port_bindings": {"6379/tcp": [{"HostIp": "", "HostPort": "6379"}]},
+    "started_this_round": false
+  },
+  "port_6379": {
+    "occupied_by": "windows_service Redis (redis-server.exe pid 6684)",
+    "listener_before": "0.0.0.0:6379 + [::]:6379 pid 6684",
+    "listener_after": "0.0.0.0:6379 + [::]:6379 pid 6684"
+  },
+  "demo_mysql": {
+    "container": "sport-verify-mysql",
+    "host_port": 3307,
+    "status": "Up (healthy)",
+    "started_this_round": false
+  },
+  "module_jars_precheck": {
+    "record-service": "present",
+    "user-service": "present",
+    "gateway-service": "present",
+    "verify-service": "missing (target cleaned by mvn-verify.sh clean)"
+  },
+  "services_started_this_round": false,
+  "maven_run": false,
+  "business_changes": false,
+  "environment_changed_by_this_round": false,
+  "restore_result": "unchanged (nothing to restore)",
+  "uncovered": [
+    "server-statement-event share under real relay load",
+    "SUM_TIMER_WAIT unit conversion and per-batch markMs sum",
+    "P_S window covering warmup+main",
+    "other-instance / concurrent same-SQL interference",
+    "verify_db deliverable/exhausted PENDING split re-check this round",
+    "stack health / same-jar / default relay=5000ms / bounded-diagnostics start-up check",
+    "full production context (Nacos/MQ/Redis/Feign/scheduling/Web)",
+    "multi-instance lock contention",
+    "online/CI gate"
+  ],
+  "evidence_raw": [
+    "docs/perf/data/raw/task151-00-env-start.txt",
+    "docs/perf/data/raw/task151-01-redis-pause.txt",
+    "docs/perf/data/raw/task151-02-restore.txt"
+  ]
+}
