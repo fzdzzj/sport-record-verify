@@ -1,0 +1,51 @@
+[
+  {
+    "number": 1,
+    "category": "无中断的硬门槛",
+    "task": "先证实管理员权限与 jar 可用，再考虑端口切换",
+    "steps": [
+      {"step": "核对 HEAD=9cf6d17、既有脏项与 TASK-150/151 未覆盖证据；确认当前会话已提升、具有服务控制权限，记录 6379/Windows Redis/客户端/依赖及其他会话状态；不具备权限即停止，不写新未覆盖提交", "completed": true},
+      {"step": "在宿主服务中断前经唯一入口离线 package 补齐 verify-service jar，记录退出码/测试数/产物与其他服务 jar；构建失败即停止，不动 Redis", "completed": true}
+    ],
+    "passes": true
+  },
+  {
+    "number": 2,
+    "category": "受控环境切换与前置",
+    "task": "可逆暂停宿主 Redis，验证真实单实例栈",
+    "steps": [
+      {"step": "仅在无已知依赖且能保证恢复时通过服务管理器临时暂停宿主 Redis，启动既有演示 Redis；不改启动类型、不杀进程、不重建容器/卷，并准备无论成功或失败的恢复路径", "completed": true},
+      {"step": "检查演示 MySQL 原卷、verify_db 可投递/耗尽 PENDING、P_S 开关/唯一 digest/溢出；必要中间件与单实例四服务健康、同一 jar/默认 5000ms/有界诊断；不满足不跑负载", "completed": true}
+    ],
+    "passes": true
+  },
+  {
+    "number": 3,
+    "category": "一次同窗负载与反例",
+    "task": "沿用 TASK-150 的问题和配平判据",
+    "steps": [
+      {"step": "前快照后最多一次 run-perf.sh load 100 2000，覆盖预热10、主体及 cohort 排空；留任务独有原始日志、批次、P_S 后快照、资源、重试、锁跳过、QPS/P50/P95、退出码", "completed": true},
+      {"step": "验证唯一 digest、无并发混入和 COUNT_STAR 增量=成功 markSent=批次成功行数，才换算 SUM_TIMER_WAIT 与 markMs 同窗总量/比值；任何不配平只报原始数和不可归因，不重跑", "completed": true}
+    ],
+    "passes": true
+  },
+  {
+    "number": 4,
+    "category": "强制恢复",
+    "task": "环境恢复优先于报告与提交",
+    "steps": [
+      {"step": "先停本轮 Java/演示 Redis，恢复宿主 Redis 原状态与启动类型并验证 6379；其他容器只恢复本轮确知改变且未被接管的状态；恢复失败置首报告", "completed": true}
+    ],
+    "passes": true
+  },
+  {
+    "number": 5,
+    "category": "有效作业收口",
+    "task": "只对实际执行负载的作业留存成果",
+    "steps": [
+      {"step": "实际测量时提交报告/机器摘要和 raw 路径，区分事实/推断/未知；预检即阻断时只口头回报，不新增空台账/提交", "completed": true},
+      {"step": "据实勾选三件套、TASK-152 spec/handoff、PLAN/总览及清单，JSON/git diff --check/无参数 mailbox-contract；仅 stage 本任务文件并本地提交，不 push/PR", "completed": true}
+    ],
+    "passes": true
+  }
+]
