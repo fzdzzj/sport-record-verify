@@ -37,8 +37,9 @@
 （`sendMs=303`、`markMs=0`）——303ms 标记耗时被错归发送。修复后转绿。
 
 **修正口径**：发送段与标记段各自 `try/catch`，成功与失败都**只累计本段墙钟一次**；锁口径分名
-`lockProcessingMs`（取锁成功→批次处理结束，不含摘要与解锁）与 `lockHoldMs`（取锁成功→`unlock()` 返回
-之后取终点，含摘要与解锁）。默认关闭时 `diagEnabled=false` → **零 `nanoTime` 采样、零额外 I/O**；
+`lockProcessingMs`（取锁成功→批次处理结束，不含摘要与解锁）与 `lockHoldMs`（取锁成功→`unlock()`
+调用返回或抛错被捕获**之后**、摘要输出**之前**取终点，含解锁调用、**不含**其后的摘要输出；解锁
+抛错被捕获时不代表锁已确实释放，**不得**称「完整占锁」）。默认关闭时 `diagEnabled=false` → **零 `nanoTime` 采样、零额外 I/O**；
 未新增逐事件日志/高基数标签/敏感字段；原 eventId/SENT/重试/异常传播/锁释放语义未改。
 
 ## MyBatis→JDBC→Hikari 接线审查与插桩判定
@@ -94,7 +95,7 @@
 （单位 ms，P50）
 
 - 满批 `markSent` 占锁内处理段 **80.1%**、`syncSend` 19.4%、`select` 0.4%、残差 0.8%。
-- **锁口径分名**：`lockHold − lockProcessing ≈ 1ms`（摘要输出 + 解锁）→ 两口径可区分、不再混称。
+- **锁口径分名**：`lockHold − lockProcessing ≈ 1ms`（解锁调用；**不含**其后的摘要输出，且不代表锁已释放）→ 两口径可区分、不再混称。
 - **周期闭合**：fixedDelay 语义；实测相邻批次行周期 P50 **≈6320ms** ≈ 5000ms 固定等待 + ~1315ms 轮次；
   锁内 `markSent` 占整周期 **≈16.7%**。残差为**余项** → `lockProcessing = select+send+mark+incrRetry+residual`
   是**恒等式**；有信息的是**占比**；各段独立中位数之和 **非**逐周期求和。

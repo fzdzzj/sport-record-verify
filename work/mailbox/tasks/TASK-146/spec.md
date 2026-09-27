@@ -13,7 +13,9 @@
    过程错归到发送；(b) 旧 `lockHoldMs` 在诊断日志与 `unlock()` 之前截取，不是完整占锁。
    红证据须是**目标行为断言失败**，不拿编译或环境失败冒充。
 2. **修正计时口径**：发送段与标记段各自只累计一次；区分「锁内处理段」（`lockProcessingMs`）
-   与「完整占锁」（`lockHoldMs`，须在解锁后取终点）；默认关闭时不产生额外计时开销与 I/O；
+   与解锁后计时段 `lockHoldMs`（终点在 `unlock()` 调用返回或抛错被捕获之后、摘要输出之前取得，
+   含解锁调用、不含其后的摘要输出；解锁抛错被捕获时不代表锁已确实释放，不得称「完整占锁」）；
+   默认关闭时不产生额外计时开销与 I/O；
    不新增逐事件日志、高基数标签或敏感字段；保持原 eventId、SENT、重试、异常传播与锁释放语义。
 3. **审查** verify-service 的 MyBatis→JDBC→Hikari 实际接线与事务边界；仅以**安全、默认关闭、
    有界**的方式取得与 relay **同一次 markSent 调用可配对**的下层读数；Mapper/JDBC 客户端墙钟
@@ -58,7 +60,9 @@ specs/sport-record-verify/spec-delta.md）。
   `max-retry=16`）；本轮**唯一改动** = `--verify.outbox.relay-diagnostics-enabled=true`（默认 false）。
 - 单实例佐证：诊断批次行 `rows` 合计 = `success` 合计 = cohort，`lockSkips` 全程 0。
 - 计时判别：`markSent` 抛错时不得把已成功的发送/失败的标记错归到发送；`lockHoldMs` 须含解锁。
-- 口径分名：`lockProcessingMs`（锁内处理段，不含摘要与解锁）vs `lockHoldMs`（完整占锁）。
+- 口径分名：`lockProcessingMs`（锁内处理段，不含摘要与解锁）vs `lockHoldMs`（解锁后计时段：
+  终点在 `unlock()` 调用返回/抛错被捕获之后、摘要输出之前，含解锁调用、不含其后的摘要输出；
+  不代表锁已释放，不得称「完整占锁」）。
 - 积压分账：**可投递 PENDING**（`retry_count < maxRetry`）与**耗尽待人工 PENDING**
   （`retry_count >= maxRetry`）分开；不把 PENDING 总数当可自然排空的积压。
 - 红证据分类：行为红 / 编译·契约红 / 环境红**据实区分、不混称**；只走唯一入口，记录真实退出码。
