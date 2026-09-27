@@ -1,0 +1,97 @@
+[
+  {
+    "number": 1,
+    "category": "基线与反证审查",
+    "task": "核实 TASK-147 边界与生产式 Spring 接线路径差异",
+    "steps": [
+      {
+        "step": "核对 HEAD=d878476、原有脏项、真实依赖/Mapper/数据源/事务配置及 TASK-147 IT；以本地源码/字节码确认 StatementHandler.update 计时边界",
+        "completed": true,
+        "evidence": "git rev-parse HEAD=d878476d51b120906c06720d59bb9c0404c47333；git status 原脏项记录；pom.xml/VerifyApplication/Mapper/application.yml/verify-service starter 核对；javap -c 本地 mybatis-3.5.16.jar 的 PreparedStatementHandler.update 确认 execute、getUpdateCount、KeyGenerator.processAfter。"
+      },
+      {
+        "step": "仅订正 TASK-147 报告/摘要中 execute()+getUpdateCount() 的过窄措辞；保留原始数字与隔离结论",
+        "completed": true,
+        "evidence": "TASK-147 报告 docs/perf/验证-outbox-markSent-下层计时可配对.md、JSON exp-outbox-relay-mark-sent-pairability.json、TASK-147 handoff/PLAN 与旧 IT 注释只订正边界文字；git diff 核对原始数字未变。"
+      }
+    ],
+    "passes": true,
+    "evidence": "阶段1：2/2 已按上述逐步证据验证。"
+  },
+  {
+    "number": 2,
+    "category": "受限 Spring 接线",
+    "task": "只沿用原目标限定的 test-only 探针",
+    "steps": [
+      {
+        "step": "在 scratch 真库用真实 DDL 和 Spring 注入 Mapper，核验 MyBatis-Plus starter 自动装配、SqlSessionTemplate/事务工厂及 Hikari；列出切片排除项，不手工建 factory/openSession",
+        "completed": true,
+        "evidence": "sql/03-verify-db.sql 机械替换库名后灌入 task131-scratch-mysql 的 task148_marksent_scratch；实际 Spring 类型输出见 docs/perf/data/raw/task148-it-711c0d1.log：MapperFactoryBean、SqlSessionTemplate、DefaultSqlSessionFactory、SpringManagedTransactionFactory、JdbcTransactionManager、HikariDataSource；由 MybatisPlusAutoConfiguration 构造，未 new factory/openSession；切片排除项见 TASK-148 报告。"
+      },
+      {
+        "step": "仅 test-only 注册目标 statement 探针并构造无插件基线，证明不污染生产 Bean/数据源/插件链和其他测试",
+        "completed": true,
+        "evidence": "同一受限 Spring 配置分别插件 Bean 0/1，复用 TASK-147 MarkSentProbe 类型且只 test-only；@MapperScan 注入真实 Mapper；URL/catalog 在调用前断言 scratch；真库 IT 5/0/0/0 rc=0。"
+      }
+    ],
+    "passes": true,
+    "evidence": "阶段2：2/2 已按上述逐步证据验证。"
+  },
+  {
+    "number": 3,
+    "category": "真库反例",
+    "task": "小样本证明或证伪配对与语义不变",
+    "steps": [
+      {
+        "step": "对照无显式事务目标调用的一调用一读数、状态/行数/独立连接可见性，以及开关关闭、非目标、连续调用",
+        "completed": true,
+        "evidence": "真库 IT @业务提交 711c0d1：一次 markSent→一条 target 样本，rows=1、PENDING→SENT+sent_at、独立 DriverManager 连接立即可见；关闭及非目标零、连续三调用三样本；5/0/0/0 rc=0，日志 docs/perf/data/raw/task148-it-711c0d1.log。"
+      },
+      {
+        "step": "制造 scratch 真实 SQL 失败，对照无插件异常类型、失败后样本清理和 Hikari 连接归还；反例或环境缺失则停止，不换方案",
+        "completed": true,
+        "evidence": "scratch 临时改名表导致真实 SQL 失败，Spring 基线/探针均为 BadSqlGrammarException；仅一条 failed 样本，恢复后下一次干净样本，双方 Hikari activeConnections=0。真库 5/0/0/0 rc=0；首两轮 config-data/Nacos 错误环境红分别 5/1/3/0 与 1/0/1/0，非行为红。"
+      }
+    ],
+    "passes": true,
+    "evidence": "阶段3：2/2 已按上述逐步证据验证。"
+  },
+  {
+    "number": 4,
+    "category": "验证与有界报告",
+    "task": "只报告 Spring 切片可行性，不优化、不跑大负载",
+    "steps": [
+      {
+        "step": "运行统一入口 offline verify-service test 与条件式真库 IT；记录退出码、测试数、Skipped、原始日志和失败分类",
+        "completed": true,
+        "evidence": "唯一入口 offline verify-service test @711c0d1 → Tests run:110 Failures:0 Errors:0 Skipped:0 BUILD SUCCESS rc=0，日志 docs/perf/data/raw/task148-offline-711c0d1.log。MAVEN_ARGS=-Dtest=VerifyEventOutboxMarkSentSpringMysqlIT -Dsurefire.failIfNoSpecifiedTests=false 同入口 scratch IT @711c0d1 → 5/0/0/0 BUILD SUCCESS rc=0；无变量的0-run不是通过。"
+      },
+      {
+        "step": "形成报告与低基数 JSON 摘要，明确装配同/异、计时边界、反例、未知层和停止决策，不运行 c100×2000/常驻服务",
+        "completed": true,
+        "evidence": "报告 docs/perf/验证-outbox-markSent-Spring接线可配对.md 与低基数 JSON docs/perf/data/exp-outbox-relay-mark-sent-spring-pairability.json（ConvertFrom-Json 成功）；明确只受限切片可配对、全生产上下文与成本拆分未知、未跑 c100×2000、无吞吐收益主张。"
+      }
+    ],
+    "passes": true,
+    "evidence": "阶段4：2/2 已按上述逐步证据验证。"
+  },
+  {
+    "number": 5,
+    "category": "一次作业收口",
+    "task": "三件套、台账、契约、本地提交集中完成",
+    "steps": [
+      {
+        "step": "据实勾选三件套并建立 TASK-148 spec/handoff、PLAN/总览及只改清单，未覆盖不记为通过",
+        "completed": true,
+        "evidence": "TASK-148 spec/handoff 已建；work/mailbox/PLAN.md、后端优化机会总览-2026-09-26.md 已追加受限结论，handoff 只改清单列实际文件；未改 spec/specs 主规范，不归档草案。"
+      },
+      {
+        "step": "验证 JSON、git diff --check、文件清单及无参数 mailbox-contract；仅 stage 本任务文件，必要时业务/台账两笔本地提交，不 push/PR，既有脏项原样保留",
+        "completed": true,
+        "evidence": "TASK-148 JSON ConvertFrom-Json 成功；git diff --cached --check 空输出，显式暂存仅本任务 ledger 8 文件；业务提交 711c0d1，台账提交初版 e7f69cc 后在仓库根执行无参数 bash scripts/verify/mailbox-contract.sh → 契约 A/B 通过、退出码0（docs/perf/data/raw/task148-mailbox-first.log）；任务自身最终 tasks 证据写回后再次无参数复核，最终 SHA/退出码见一次性回报。原有 archive 移名/.codex/.trae/add-verify-degrade-status-index 与新出现非本任务 SpringProbeMysqlIT.java 未暂存；未 push/PR。"
+      }
+    ],
+    "passes": true,
+    "evidence": "阶段5：2/2 已完成；无参数 mailbox-contract.sh 在 e7f69cc 上 rc=0，最终写回后复核。"
+  }
+]

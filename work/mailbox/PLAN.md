@@ -917,6 +917,15 @@ run `35802403723`（head `eba0108`，2026-09-23 00:31 UTC）——**web/build �
 | 未覆盖/跳过 | markSent 内部构成=未知；运行中 JVM/GC/Hikari 采样与 verify 逐轮 GC 日志（未开 -Xlog:gc）；积压真实峰值；多实例锁竞争（单实例 lockSkips=0）；maxRetry<=0/非法 retry_count/大规模耗尽行扫描；榜单消费/SENT→榜单段（leaderboard 未启动）；R5 质量/离路率/mapmatch CPU（PostGIS+mapmatch 未启动）；--it/--mode=online/CI 未跑；500/1000 档禁止 |
 | 只改清单一致性 | 业务提交（9）：VerifyOutboxRelay.java（改）· RelayDiagnostics.java（改）· VerifyOutboxRelayTest.java（改）· RelayDiagnosticsTest.java（改）· 拆解-outbox-relay-markSent-调用成本.md（新）· exp-outbox-relay-mark-sent-cost.json（新）· 规范三件套 proposal.md/tasks.json/spec-delta.md（新）；台账提交：TASK-146/spec.md（新）· TASK-146/handoff.md（新）· PLAN.md（改）· 后端优化机会总览-2026-09-26.md（改）。归档移名/.codex/.trae/add-verify-degrade-status-index 未触碰；未用 git stash、未 add -A、未 push |
 
+## 验收记录：TASK-148 Spring Mapper 路径的 markSent 探针配对（2026-09-27）
+
+| 项 | 内容 |
+| --- | --- |
+| 修订与裁决 | 开工 `d878476d51b120906c06720d59bb9c0404c47333`；业务提交 `711c0d1`，仅受限 Spring 切片的接线可配对，不是生产负载内部归因或优化收益；台账提交见本轮回报。 |
+| 装配/反例 | 专用 scratch MySQL + 仓库真实 DDL；仓库 MyBatis-Plus starter 自动装配 `SqlSessionTemplate`、`SpringManagedTransactionFactory`、`JdbcTransactionManager`、Hikari，真实 Mapper；无插件 0、原 TASK-147 test-only 探针 1；目标一次一条，关闭/非目标零、连续和真实失败后不串样本；状态/行数/独立连接可见性/异常类型与无插件基线相同，连接 active 回零。见 `docs/perf/验证-outbox-markSent-Spring接线可配对.md`。 |
+| 口径订正 | TASK-147 报告/JSON/测试注释与 handoff 原“严格 execute()+getUpdateCount()”订正为整个 `StatementHandler.update` 调用墙钟（含 `KeyGenerator.processAfter()`）；原始数字不动。 |
+| 门槛 | 唯一入口 offline verify-service `110/0/0/0`、条件真库 IT `5/0/0/0`，两者 BUILD SUCCESS、rc=0，测试 revision `711c0d1`；首次 Nacos/错误数据源与 import 检查均是环境红，未作行为红；IT 缺变量的 skip/0-run 不计通过。online/CI 未跑，未达外部门槛。 |
+| 未覆盖 | 完整 `VerifyApplication`/Nacos/MQ/Redis/Feign/调度/Web、relay 外层锁，连接获取/commit/服务端 SQL/fsync/网络拆分、生产容量/吞吐收益；未跑 c100×2000、未改默认值或生产插件。 |
 ## 验收记录：TASK-147 订正 relay 证据口径并在隔离环境验证 markSent 可配对测量（不优化、不跑负载，2026-09-27）
 
 | 项 | 内容 |
@@ -925,7 +934,7 @@ run `35802403723`（head `eba0108`，2026-09-23 00:31 UTC）——**web/build �
 | TASK-146 口径订正（保留原始数字） | (a) `lockHoldMs` 终点在 `unlock()` 调用返回（或抛错被捕获）**之后**、摘要日志**之前**取得——含解锁调用、**不含**其后的摘要输出，删去「包含摘要输出」表述；(b) `unlock()` 抛错被捕获时**不代表锁已确实释放**，不得无条件称「完整占锁」；(c) 1571 为首次采样以后「**观测到的峰值**」，首次采样晚于负载结束，真实峰值未知（≥1571），原值保留。订正位置：拆解报告、exp-…-cost.json、TASK-146 spec/handoff、PLAN、总览、3 个 Java 文件注释。无一处业务/数字被扩展 |
 | 装配审查（本仓实际） | Java 21 / MyBatis-Plus 3.5.7（mybatis-plus-spring-boot3-starter）/ Spring Boot 3.2.4 系；生产连接池 HikariDataSource；`VerifyOutboxRelay.relay()` **无 `@Transactional`**，逐行 `markSent`/`incrRetry` 为各自独立自动提交调用；目标 statement id = `com.sportverify.verify.mapper.VerifyEventOutboxMapper.markSent`；verify-service **无**自定义 MyBatis 插件或 DataSource Bean |
 | 唯一候选接线 | 恰好一种：**test-only MyBatis 插件**（`@Intercepts(@Signature(type=StatementHandler.class, method="update", args={Statement.class}))`），按 `MappedStatement.id` 精确限定 `…VerifyEventOutboxMapper.markSent`，**只注册在 IT 自建 `MybatisConfiguration`**（`configuration.addInterceptor`），**未注册生产配置、未替换生产 DataSource、未改全局插件链** |
-| 可测/不可测边界 | **可测=客户端层**：`PreparedStatement.execute()` + `getUpdateCount()` 的墙钟（样本含 rows 更新行数与 failed 标记）；**不可测**：连接获取、参数绑定/statement prepare、显式 commit、服务端 SQL 与网络往返拆分 |
+| 可测/不可测边界 | **可测=客户端层**：整个 `StatementHandler.update` 调用的墙钟（含 MyBatis `KeyGenerator.processAfter()`）（样本含 rows 更新行数与 failed 标记）；**不可测**：连接获取、参数绑定/statement prepare、显式 commit、服务端 SQL 与网络往返拆分 |
 | 同调用配对办法 | 一次目标 statement 执行向 THREAD-LOCAL 队列入列**恰好一条**样本；IT 清空→调用→排空；单线程（一次 markSent ↔ 一条样本）；非目标（`selectPendingBatch`/`incrRetry`）`id != TARGET_ID` → 不产样本；开关关闭（thread-local ENABLED=false）→ 零 `nanoTime` 采样 |
 | 最强反例（逐条未成立） | ① 插件在 MyBatis-Plus/Spring 装配下看不到同一次 markSent 子调用 → 未观测（6 用例目标调用全部配对）；② 改变连接复用/事务/auto-commit/异常类型/更新行数 → 未观测（逐项与无探针基线比对一致）；③ 无法关闭、关闭仍有读数 → 未观测（关闭态 0 读数）；④ 失败调用污染后续样本或非目标串样本 → 未观测（失败后恰一条干净样本、交错非目标不新增样本） |
 | 真库判别（隔离 scratch） | 容器 `task131-scratch-mysql`（mysql:8.0.46，宿主 13318→3306），schema `task147_marksent_scratch` 由 `sql/03-verify-db.sql` 机械改名生成（真实 DDL）；测试自建 HikariDataSource(maxPool 4) + `MybatisConfiguration` + `JdbcTransactionFactory` + `MybatisSqlSessionFactoryBuilder` + **真实 `VerifyEventOutboxMapper`** + test-only 探针；`openSession(true)`=auto-commit；**未触碰演示库/verify_db，未用 Mockito 预制读数** |

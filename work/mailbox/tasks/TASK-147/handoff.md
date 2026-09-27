@@ -55,7 +55,7 @@
 
 ## 可测边界 / 不能测段
 
-- **可测=客户端层**：`PreparedStatement.execute()` + `getUpdateCount()` 的**墙钟**；样本另带 `rows`
+- **可测=客户端层**：整个 `StatementHandler.update` 调用的**墙钟**（包含 JDBC 执行、更新行数读取及 MyBatis `KeyGenerator.processAfter()`）；样本另带 `rows`
   （更新行数）与 `failed` 标记。
 - **不能测**：连接获取（在 `update` 之前完成）、参数绑定 / statement prepare、显式 commit
   （`SqlSession.commit`）、**服务端 SQL 与网络往返的拆分**。
