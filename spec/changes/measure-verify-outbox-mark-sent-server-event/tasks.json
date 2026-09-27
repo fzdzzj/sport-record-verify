@@ -1,0 +1,52 @@
+[
+  {
+    "number": 1,
+    "category": "冻结基线与工具预检",
+    "task": "核对同窗服务端语句事件测量的可靠前提",
+    "steps": [
+      {"step": "确认 HEAD=b658b01、既有脏项/进程/容器/数据状态；演示库与 TASK-148 scratch 分开，核对目标 SQL digest 身份、Performance Schema 的 statement/sql/update 和 statements_digest 计时开关、overflow/其他同 SQL 调用风险", "completed": true},
+      {"step": "仅在没有冲突进程/端口时依次启动既有演示 MySQL→检查原卷和 PENDING→其他必要中间件→四 Java 服务；不得重建/清卷或启无关服务。确认单实例健康、jar/诊断开关/默认 relay 参数；不可用即停止，不改 MySQL instrumentation", "completed": false}
+    ],
+    "passes": false
+  },
+  {
+    "number": 2,
+    "category": "一次同负载窗口",
+    "task": "仅在前提成立时运行一次 c100×2000 归因轮",
+    "steps": [
+      {"step": "负载前留目标 digest COUNT_STAR/SUM_TIMER_WAIT、所有可能同 SQL digest、溢出与 MySQL/JVM 资源原始快照；固定 jar、池/MQ/SQL、5000ms 默认，只开启已有有界 relay 诊断", "completed": false},
+      {"step": "最多一次 run-perf.sh load 100 2000；覆盖预热 10 + 主体 2000，等可投递 PENDING 排空后留后快照、批次摘要、重试/锁跳过、负载 QPS/P50/P95 和数据增长；原始证据入 ignored raw", "completed": false}
+    ],
+    "passes": false
+  },
+  {
+    "number": 3,
+    "category": "配平与反例",
+    "task": "只在同窗计数闭合时计算聚合比值",
+    "steps": [
+      {"step": "验证 digest 唯一、COUNT_STAR 增量=成功 markSent 次数=非空批次成功和、cohort 全部排空且没有额外实例/失败重试；P_S 溢出/其他同 SQL/不配平即判不可归因", "completed": false},
+      {"step": "从原始批次逐条合计外层 markMs，与服务端 SUM_TIMER_WAIT 增量同窗比较；注明 P_S 单位、舍入/漏采边界，仅给聚合比值，不做独立分位数相减或差额单因归因", "completed": false}
+    ],
+    "passes": false
+  },
+  {
+    "number": 4,
+    "category": "有界报告与验证",
+    "task": "不改变业务，诚实区分有效与未覆盖",
+    "steps": [
+      {"step": "提交报告与机器摘要，写明快照原文路径、负载退出码、完整性与未知项；若未运行负载不得记测试通过或编造比值", "completed": true},
+      {"step": "无 Java/SQL/YAML 变化时不把 Maven 测试写为已跑；如实际改脚本须有对应判别及统一入口验证；检查 JSON 和 git diff --check", "completed": true}
+    ],
+    "passes": false
+  },
+  {
+    "number": 5,
+    "category": "一次作业收口",
+    "task": "三件套、台账、契约与本地提交集中完成",
+    "steps": [
+      {"step": "据实勾选三件套，建立 TASK-150 spec/handoff、PLAN/机会总览与只改清单；条件未满足记未覆盖而非 completed/passes", "completed": true},
+      {"step": "验证真实文件清单、无参数 mailbox-contract 与提交前后状态；仅 stage 本任务文件，必要时业务/台账本地提交，不 push/PR，既有脏项原状，集中回传", "completed": true}
+    ],
+    "passes": false
+  }
+]

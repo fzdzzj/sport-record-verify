@@ -1,0 +1,78 @@
+{
+  "task": "TASK-150",
+  "title": "same-load-window MySQL server statement-event wall clock for verify_db markSent UPDATE",
+  "base_head": "b658b01558b5a34c670b008bec027901b51804b6",
+  "date": "2026-09-27",
+  "status": "uncovered_aborted",
+  "load_executed": false,
+  "load_command": null,
+  "load_exit_code": null,
+  "ratio_server_event_total_over_outer_mark_total": null,
+  "server_statement_event_total_ms": null,
+  "outer_mark_total_ms": null,
+  "reconciliation": {
+    "performed": false,
+    "digest_unique": null,
+    "count_star_delta": null,
+    "successful_mark_sent": null,
+    "batch_success_rows_sum": null
+  },
+  "target": {
+    "schema": "verify_db",
+    "table": "verify_event_outbox",
+    "statement": "UPDATE verify_event_outbox SET status = 'SENT', sent_at = NOW() WHERE id = ? AND status = 'PENDING'",
+    "digest": "6b07036bdfeae6b8f12d602eb37af86bfe73e3f9dac3600006dfd8cde12b05b7",
+    "digest_identified_from": "scratch task147/148/149_marksent_scratch (aid only, not a demo snapshot)",
+    "distinct_from_incr_retry": true
+  },
+  "demo_mysql": {
+    "container": "sport-verify-mysql",
+    "host_port": 3307,
+    "data_volume": "sport-verify_mysql-data",
+    "version": "8.0.46",
+    "started_this_round": true
+  },
+  "performance_schema": {
+    "enabled": true,
+    "digests_size": 10000,
+    "digest_rows": 21,
+    "null_digest_rows": 0,
+    "statement_sql_update": { "enabled": true, "timed": true },
+    "statements_digest_consumer": true,
+    "verify_db_digests_pre": 0,
+    "instrumentation_modified": false
+  },
+  "precheck_outbox": {
+    "total": 36400,
+    "sent": 36400,
+    "deliverable_pending": 0,
+    "exhausted_pending": 0,
+    "retry_count_min": 0,
+    "retry_count_max": 0
+  },
+  "stop_reason": {
+    "kind": "port_conflict",
+    "port": 6379,
+    "owner": "windows_service Redis 3.0.504",
+    "demo_container": "sport-verify-redis (redis:7.2-alpine)",
+    "detail": "host 6379 held by pre-existing Windows Redis service; demo redis container cannot bind; per constraint do not start conflicted container; user decision = stop and record uncovered"
+  },
+  "uncovered": [
+    "server-statement-event share under real relay load",
+    "SUM_TIMER_WAIT unit conversion and per-batch markMs sum",
+    "P_S window covering warmup+main",
+    "other-instance / concurrent same-SQL interference",
+    "full production context (Nacos/MQ/Redis/Feign/scheduling/Web)",
+    "multi-instance lock contention",
+    "online/CI gate"
+  ],
+  "evidence_raw": [
+    "docs/perf/data/raw/task150-00-env-start.txt",
+    "docs/perf/data/raw/task150-01-ps-settings.txt",
+    "docs/perf/data/raw/task150-02-digest-identify.txt",
+    "docs/perf/data/raw/task150-03-verify-db-and-ps.txt",
+    "docs/perf/data/raw/task150-07-redis-port-conflict.txt"
+  ],
+  "business_changes": false,
+  "maven_run": false
+}
