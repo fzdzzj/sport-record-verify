@@ -45,9 +45,9 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  * 插件（{@link MarkSentProbe}），只注册在本测试自建的 {@link SqlSessionFactory} 上——
  * <strong>不</strong>接生产配置、<strong>不</strong>替换生产 DataSource、不写高基数/敏感日志。</p>
  *
- * <p><b>可测边界</b>：目标 statement 的<strong>客户端 JDBC 调用墙钟</strong>，即
- * {@code PreparedStatement.execute()} + {@code getUpdateCount()} 这段（含客户端 JDBC 处理、网络往返、
- * 服务端 UPDATE 与自动提交的隐式 commit）。<b>不可测</b>：连接获取（Hikari 取连接在
+ * <p><b>可测边界</b>：目标 statement 的<strong>整个 StatementHandler.update 调用墙钟</strong>，包含
+ * {@code PreparedStatement.execute()}、{@code getUpdateCount()} 及 MyBatis {@code KeyGenerator.processAfter()}（可含客户端 JDBC 处理、网络往返、
+ * 服务端 UPDATE 与自动提交的隐式 commit 相关等待）。<b>不可测</b>：连接获取（Hikari 取连接在
  * {@code update} 之前完成）、参数绑定/准备（在 {@code prepare} 阶段）、显式 {@code commit}（
  * {@code SqlSession.commit}）、以及服务端 SQL 执行与网络往返的<strong>拆分</strong>——本任务不得
  * 把该值称为纯服务端 SQL、纯 fsync 或纯池等待。</p>
@@ -366,7 +366,7 @@ class VerifyEventOutboxMarkSentProbeMysqlIT {
      *
      * <p>配对办法：目标 statement 每次 {@code update} 恰好入队一条样本，样本槽是
      * <strong>线程本地</strong>（测试同线程调用，故一一配对）；非目标 statement 不入队；探针关闭时
-     * 不做任何采样。客户端边界 = {@code PreparedStatement.execute()} + {@code getUpdateCount()}；
+     * 不做任何采样。计时边界 = 整个 {@code StatementHandler.update} 调用（含 MyBatis 后处理）；
      * 连接获取、参数绑定/准备、显式提交与服务端 SQL/网络往返拆分都在该层之外，记未知。</p>
      */
     @Intercepts(@Signature(type = StatementHandler.class, method = "update", args = {Statement.class}))

@@ -13,7 +13,7 @@
     "reason": "The one candidate (a test-only MyBatis StatementHandler.update interceptor filtered by MappedStatement.id == ...VerifyEventOutboxMapper.markSent, registered ONLY on the IT's own SqlSessionFactory) pairs one target call to exactly one lower-layer sample on real scratch MySQL with the real mapper annotation SQL, with non-target isolation, zero readings when off, ordered consecutive pairing, failure-exception type unchanged, scope cleanup, auto-commit visibility, update row counts, final state and connection release all equal to the no-probe baseline. This proves the LAYER is pairable in isolation; it does NOT prove the production Spring/Hikari assembly, does NOT locate a production bottleneck, and does NOT show any throughput gain.",
     "nextSingleFactor": {
       "factor": "per-row markSent internal cost composition (connection acquire / client JDBC execute / commit / server-side SQL / remaining client wait)",
-      "measuredLayer": "client JDBC statement execution wall clock (PreparedStatement.execute() + getUpdateCount()), pairing ONE call to ONE sample",
+      "measuredLayer": "whole StatementHandler.update invocation wall clock (execute, getUpdateCount, KeyGenerator.processAfter), pairing ONE call to ONE sample",
       "observedInThisLayer": "not measured here (no load); this task only proves the layer can be paired and does not change semantics",
       "stillUnknown": "separating connection acquire, explicit commit, and server-side SQL vs network round trip; and the same pairing under the production Spring/Hikari wiring (no verify-service Spring-context真库 IT precedent was introduced)",
       "boundary": "the lower-layer reading is a client JDBC call wall clock; it must NOT be called pure server-side SQL, pure fsync, pure pool wait, or commit time"
@@ -65,7 +65,7 @@
     "signature": "@Intercepts(@Signature(type = StatementHandler.class, method = \"update\", args = {Statement.class}))",
     "targetFilter": "com.sportverify.verify.mapper.VerifyEventOutboxMapper.markSent (exact id match)",
     "pairingMethod": "one target statement execution queues exactly one sample into a THREAD-LOCAL slot; the IT clears then calls then drains; single-threaded so one markSent <-> one sample",
-    "measurableClientBoundary": "PreparedStatement.execute() + getUpdateCount() wall clock; sample also carries rows (update count) and a failed flag",
+    "measurableClientBoundary": "whole StatementHandler.update invocation wall clock including MyBatis post-processing; sample also carries rows (update count) and a failed flag",
     "notMeasurable": [
       "connection acquire (completed before update)",
       "parameter binding / statement prepare (prepare phase)",
@@ -129,7 +129,7 @@
     "no change to markSent, Mapper SQL, indexes, transactions, default 5000ms, batch, retry, pool, MQ or JVM parameters",
     "--mode=online / CI not run; multi-instance lock contention not covered"
   ],
-  "notAnOptimizationComparison": "this task measures NO latency and changes NO default; the layer here is a client JDBC call wall clock proven pairable in isolation only, and must not be presented as a production bottleneck location or a throughput gain",
+  "notAnOptimizationComparison": "this task measures NO latency and changes NO default; the layer here is a StatementHandler.update invocation wall clock proven pairable in isolation only, and must not be presented as a production bottleneck location or a throughput gain",
   "evidence": {
     "report": "docs/perf/验证-outbox-markSent-下层计时可配对.md",
     "offlineLog": "docs/perf/data/raw/task147-offline.log",

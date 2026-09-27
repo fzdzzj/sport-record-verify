@@ -1,0 +1,32 @@
+{
+  "task": "TASK-148",
+  "baselineRevision": "d878476d51b120906c06720d59bb9c0404c47333",
+  "verdict": "pairable in restricted Spring-managed Mapper slice only",
+  "schema": "task148_marksent_scratch",
+  "ddlSource": "sql/03-verify-db.sql (schema name mechanically replaced)",
+  "measuredBoundary": "whole StatementHandler.update invocation wall clock, including execute/getUpdateCount/KeyGenerator.processAfter; not server-only SQL or fsync",
+  "testOnlyCandidate": "TASK-147 MarkSentProbe reused, exact MappedStatement.id filter, one interceptor bean only in probed context",
+  "wiring": {
+    "mapperFactory": "org.mybatis.spring.mapper.MapperFactoryBean",
+    "template": "org.mybatis.spring.SqlSessionTemplate",
+    "sessionFactory": "org.apache.ibatis.session.defaults.DefaultSqlSessionFactory via MybatisPlusAutoConfiguration",
+    "transactionFactory": "org.mybatis.spring.transaction.SpringManagedTransactionFactory",
+    "transactionManager": "org.springframework.jdbc.support.JdbcTransactionManager",
+    "dataSource": "com.zaxxer.hikari.HikariDataSource",
+    "baselinePluginCount": 0,
+    "probedPluginCount": 1,
+    "businessTransaction": false
+  },
+  "excluded": ["VerifyApplication component scan and application.yml/Nacos config", "MQ", "Redis/Redisson", "Feign", "scheduler", "resident Web/Actuator", "relay lock/batch"],
+  "realDbChecks": ["one target call one sample and returned rows/state/sent_at/independent connection visibility equal baseline", "off and non-target zero samples", "consecutive calls paired without cross-talk", "real SQL failure same translated exception type and clean next sample", "Hikari active connections return to zero"],
+  "translatedFailureType": "org.springframework.jdbc.BadSqlGrammarException",
+  "tests": {
+    "offlineVerifyService": {"testsRun": 110, "failures": 0, "errors": 0, "skipped": 0, "exitCode": 0, "log": "docs/perf/data/raw/task148-offline.log"},
+    "conditionalScratchIt": {"testsRun": 5, "failures": 0, "errors": 0, "skipped": 0, "exitCode": 0, "log": "docs/perf/data/raw/task148-it.log"},
+    "environmentFailuresBeforeValidSlice": ["application.yml/Nacos/default datasource override: rc=1, not behavior failure", "Nacos import check after config disabled: rc=1, not behavior failure"]
+  },
+  "unknown": ["full production context", "connection acquisition and explicit commit per call", "server SQL/network/fsync split", "production throughput and latency benefit", "online/CI"],
+  "productionChanges": false,
+  "largeLoadRun": false,
+  "demoDatabaseCleared": false
+}

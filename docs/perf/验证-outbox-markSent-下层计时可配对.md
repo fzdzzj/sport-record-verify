@@ -37,7 +37,7 @@
 | 面向 | 说明 |
 | --- | --- |
 | 同调用配对办法 | 目标 statement 每次 `update` 恰好入队**一条**样本；样本槽为**线程本地**（测试同线程调用），故一次 `markSent` ↔ 一条样本一一配对；`clear()` 后调用、`drain()` 校验条数 |
-| 可测（客户端）边界 | `PreparedStatement.execute()` + `getUpdateCount()` 这段墙钟（含客户端 JDBC 处理、网络往返、服务端 UPDATE、autocommit 的隐式提交）；同时样本带 `rows`（更新行数）与 `failed` 标记 |
+| 可测（客户端）边界 | 整个 `StatementHandler.update` 调用墙钟（包含 `execute()`、`getUpdateCount()` 及 MyBatis `KeyGenerator.processAfter()`；可含客户端 JDBC、网络往返、服务端 UPDATE 与 autocommit 隐式提交相关等待）；同时样本带 `rows`（更新行数）与 `failed` 标记 |
 | 不能测（记未知） | 连接获取（在 `update` 之前完成）、参数绑定/准备（`prepare` 阶段）、显式 `commit`（`SqlSession.commit`）、以及服务端 SQL 与网络往返的**拆分** |
 | 非目标隔离 | `id != TARGET_ID` 时直接 `proceed`、不入队；`selectPendingBatch`/`incrRetry` 不产生样本 |
 | 开关 | 线程本地 `ENABLED`；关闭时零采样（连 `nanoTime` 都不取） |
