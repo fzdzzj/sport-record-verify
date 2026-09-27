@@ -1,0 +1,52 @@
+[
+  {
+    "number": 1,
+    "category": "冻结基线与订正证据",
+    "task": "核对 TASK-146 原始证据及两处口径反例",
+    "steps": [
+      {"step": "确认 HEAD=767de7b、现有脏项、TASK-146 原始 CSV/采样时点及 VerifyOutboxRelay 的实际截点；区分 lockProcessing、解锁调用后的计时、摘要输出以及 unlock 抛错状态", "completed": true},
+      {"step": "只改不准确的注释/报告/机器摘要/必要台账：lockHold 不含随后摘要日志、解锁失败不保证释放、1571 仅为观测峰值且真实峰值未知；保留原始数值", "completed": true}
+    ],
+    "passes": true
+  },
+  {
+    "number": 2,
+    "category": "受限候选方案审查",
+    "task": "只选择一条测试专用接线，明确可测边界及反例",
+    "steps": [
+      {"step": "核对仓库实际依赖版本与 MyBatis-Plus/Spring/Hikari 装配、事务及自动提交路径；说明目标 statement id、线程/调用配对、非目标隔离、异常清理和无法观测的连接获取/提交部分", "completed": true},
+      {"step": "只选一个候选的 test-only 接线；不得在生产配置注册全局插件、替换 DataSource 或写高基数/敏感日志；若无法设计安全边界，记录反证并停止实现", "completed": true}
+    ],
+    "passes": true
+  },
+  {
+    "number": 3,
+    "category": "隔离真库证明或证伪",
+    "task": "在可用 scratch MySQL 上验证真实 Mapper 更新与诊断配对",
+    "steps": [
+      {"step": "使用独立 scratch schema/真实 DDL 和本仓真实 MyBatis Mapper 接线，以小样本证明目标一次调用对应一次更新及同调用嵌套读数；不碰 demo/verify_db、不运行常驻服务大负载", "completed": true},
+      {"step": "判别诊断开/关、非目标调用、失败/连续调用、更新行数、auto-commit/状态、异常和连接释放与无 probe 基线一致；不成功即撤回 probe，缺环境则如实记未覆盖", "completed": true}
+    ],
+    "passes": true
+  },
+  {
+    "number": 4,
+    "category": "测试与边界化结论",
+    "task": "只报告被真实接线覆盖的层，不冒称性能收益",
+    "steps": [
+      {"step": "运行仓库统一入口 offline verify-service test；如有测试代码/装配变化按需 package；记录退出码和测试数，失败分类，不以 mock 或编译红当真库行为红", "completed": true},
+      {"step": "报告目标/非目标配对结果、证据原始路径、不能归因的连接获取/提交/服务端 SQL、语义反例和下一停止/验证决策；不从独立 P50 求差、不外推持续吞吐、不再跑 c100×2000", "completed": true}
+    ],
+    "passes": true
+  },
+  {
+    "number": 5,
+    "category": "一次作业收口",
+    "task": "三件套、台账、契约与本地提交集中完成",
+    "steps": [
+      {"step": "新增 TASK-147 结果报告/摘要、spec/handoff 与 PLAN/机会总览；三件套仅对实际完成步骤勾选，条件未满足/试验失败记未覆盖或失败", "completed": true},
+      {"step": "核对 JSON、git diff --check、实际清单与 mailbox-contract.sh；只 stage 本任务文件，必要时业务和台账两笔本地提交，不 push/PR，保留既有脏项和服务状态并集中回传", "completed": true}
+    ],
+    "passes": true
+  }
+]

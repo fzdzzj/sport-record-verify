@@ -69,7 +69,7 @@
     "semanticsUnchanged": "original per-row logging, exception propagation, retry, eventId, SENT and unlock paths unchanged",
     "lockSemantics": {
       "lockProcessingMs": "lock acquired -> batch loop finished (excludes summary output and unlock)",
-      "lockHoldMs": "lock acquired -> after unlock() returns (INCLUDES summary output and unlock)",
+      "lockHoldMs": "lock acquired -> after the unlock() call returns (or throws and is caught), BEFORE the summary output (includes the unlock call, EXCLUDES the summary output that follows); a caught unlock() error does not prove the lock was actually released, so it must NOT be called a full hold or taken as proof of release",
       "observedGapMs": 1.0
     },
     "boundedProofOnRealService": "idle segments emitted exactly one empty-round summary per 10s window (emptyRounds=2 per window at 5s period), lockSkips=0",
@@ -88,7 +88,7 @@
     "cycleClosure": {
       "fixedWaitMs": 5000,
       "periodP50Ms": 6320,
-      "note": "fixedDelay semantics: period ~= 5000 fixed wait + ~1315ms round (lockHold + summary + unlock); measured adjacent batch-line period P50 ~6.32s",
+      "note": "fixedDelay semantics: period ~= 5000 fixed wait + ~1315ms round (lockHold already includes the unlock call, plus the summary output); measured adjacent batch-line period P50 ~6.32s",
       "lockHoldMinusLockProcessingMs": 1.0
     },
     "relay": {"rows": 2010, "success": 2010, "failed": 0, "exhausted": 0, "batchLines": 22, "lockSkipsTotal": 0, "emptyRoundsInBatches": 1, "firstSent": "2026-09-27 00:37:27.484", "lastSent": "2026-09-27 00:39:50.070", "spanSec": 142.586, "netRateRowsPerSec": 14.10, "batchShape": "8,35,70,100x?,97 (rows min 8 / max 100; 18 batches at 100)"},

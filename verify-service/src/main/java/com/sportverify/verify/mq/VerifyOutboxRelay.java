@@ -70,12 +70,14 @@ public class VerifyOutboxRelay {
     /**
      * 定时投递一轮（默认 5s；多实例经 Redisson 锁互斥）。
      *
-     * <p>诊断计时口径（TASK-146 校正）：当开关<strong>关闭</strong>时不做任何 {@code nanoTime} 采样，
+     * <p>诊断计时口径（TASK-146 校正、TASK-147 订正）：当开关<strong>关闭</strong>时不做任何 {@code nanoTime} 采样，
      * 不产生额外 I/O；开启时按行把「发送段」与「标记段」各自实际经过的墙钟<strong>各累计一次</strong>——
      * 发送成功/失败都只记发送段，标记成功/失败都只记标记段，失败分支<strong>不得</strong>从
      * {@code sendStart} 重算而把发送与标记重复归到发送。锁口径分两级：
-     * {@code lockProcessingMs} 是<strong>锁内处理段</strong>（取锁成功→批次处理结束，尚不含摘要输出与解锁）；
-     * {@code lockHoldMs} 是<strong>完整占锁</strong>（取锁成功→{@code unlock} 返回之后取终点）。</p>
+     * {@code lockProcessingMs} 是<strong>锁内处理段</strong>（取锁成功→批次处理结束，尚不含解锁与随后的摘要输出）；
+     * {@code lockHoldMs} 的终点在 {@code unlock()} 调用返回（或抛错被捕获）之后、摘要日志输出<strong>之前</strong>取得，
+     * 故含 {@code unlock()} 调用本身、<strong>不含</strong>其后的摘要输出；{@code unlock()} 抛错被捕获时不代表锁已确实释放，
+     * 该值不得无条件当作「完整占锁」或已释放的确证。</p>
      */
     @Scheduled(fixedDelayString = "${verify.outbox.relay-interval-ms:5000}",
             initialDelayString = "${verify.outbox.relay-initial-delay-ms:10000}")
@@ -185,7 +187,8 @@ public class VerifyOutboxRelay {
                 log.warn("outbox relay 锁释放异常（租期兜底释放）");
             }
             if (completed && diagEnabled) {
-                // 完整占锁终点：解锁返回之后取，故 lockHoldMs 含摘要输出与解锁；与处理段不得混称
+                // lockHoldMs 终点：解锁调用返回（或抛错被捕获）之后、摘要输出之前取；含解锁调用、不含其后的摘要输出；
+                // 解锁抛错不代表已释放，不得混称「完整占锁」或当作锁已释放的确证
                 long lockHoldNanos = System.nanoTime() - holdStart;
                 if (batch.isEmpty()) {
                     diag.emptyRound().ifPresent(s -> log.info(

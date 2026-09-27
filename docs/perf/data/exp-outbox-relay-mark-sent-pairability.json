@@ -1,0 +1,139 @@
+{
+  "task": "TASK-147",
+  "changeId": "prove-verify-outbox-mark-sent-attribution",
+  "head": "767de7b04f90c562d775f515f382e40d016556ce",
+  "date": "2026-09-27",
+  "label": "task147-outbox-relay-marksent-pairability",
+  "purpose": "correct TASK-146 evidence wording (lockHoldMs endpoint excludes the trailing summary; a caught unlock() error is not proof of release; 1571 is an observed peak) and, in an isolated scratch MySQL with the real mapper wiring, prove or disprove ONE test-only, target-call-limited instrumentation candidate for the per-call markSent lower-layer wall clock. No production plugin, no DataSource swap, no markSent optimization, no defaults changed, no large load.",
+  "verdict": {
+    "result": "PAIRING-PROVEN-IN-ISOLATION-NOT-PRODUCTION-ONLY",
+    "productionInstrumentationAdded": false,
+    "defaultChanged": false,
+    "recommendedForProductionNow": false,
+    "reason": "The one candidate (a test-only MyBatis StatementHandler.update interceptor filtered by MappedStatement.id == ...VerifyEventOutboxMapper.markSent, registered ONLY on the IT's own SqlSessionFactory) pairs one target call to exactly one lower-layer sample on real scratch MySQL with the real mapper annotation SQL, with non-target isolation, zero readings when off, ordered consecutive pairing, failure-exception type unchanged, scope cleanup, auto-commit visibility, update row counts, final state and connection release all equal to the no-probe baseline. This proves the LAYER is pairable in isolation; it does NOT prove the production Spring/Hikari assembly, does NOT locate a production bottleneck, and does NOT show any throughput gain.",
+    "nextSingleFactor": {
+      "factor": "per-row markSent internal cost composition (connection acquire / client JDBC execute / commit / server-side SQL / remaining client wait)",
+      "measuredLayer": "client JDBC statement execution wall clock (PreparedStatement.execute() + getUpdateCount()), pairing ONE call to ONE sample",
+      "observedInThisLayer": "not measured here (no load); this task only proves the layer can be paired and does not change semantics",
+      "stillUnknown": "separating connection acquire, explicit commit, and server-side SQL vs network round trip; and the same pairing under the production Spring/Hikari wiring (no verify-service Spring-context真库 IT precedent was introduced)",
+      "boundary": "the lower-layer reading is a client JDBC call wall clock; it must NOT be called pure server-side SQL, pure fsync, pure pool wait, or commit time"
+    }
+  },
+  "task146WordingCorrection": {
+    "preservedNumbers": true,
+    "item1_lockHoldEndpoint": {
+      "was": "lockHoldMs includes the summary output (report wrote 'summary output + unlock')",
+      "now": "lockHoldMs endpoint is taken AFTER the unlock() call returns (or throws and is caught) and BEFORE the summary log is printed: includes the unlock call, EXCLUDES the trailing summary output",
+      "codeTruth": "holdStart -> processingNanos (end of batch loop, before finally) -> finally { unlock() ; if (completed && diagEnabled) lockHoldNanos = nanoTime - holdStart; log.info(summary) }"
+    },
+    "item2_unlockFailure": {
+      "was": "unconditionally called lockHoldMs a 'full hold'",
+      "now": "a caught unlock() error does not prove the lock was actually released, so the elapsed time must NOT be called a 'full hold' or taken as proof of release; renamed to the post-unlock timing segment"
+    },
+    "item3_backlogPeak": {
+      "was": "already correct in report/JSON/PLAN/overview",
+      "now": "unchanged: 1571 is the observed peak after the FIRST sample @2026-09-27 00:38:08.935; the first sample is later than load end, so the real peak between 00:37:41 and 00:38:08 is UNKNOWN (>= 1571)"
+    },
+    "filesTouched": [
+      "docs/perf/拆解-outbox-relay-markSent-调用成本.md",
+      "docs/perf/data/exp-outbox-relay-mark-sent-cost.json",
+      "work/mailbox/tasks/TASK-146/handoff.md",
+      "work/mailbox/tasks/TASK-146/spec.md",
+      "work/mailbox/PLAN.md",
+      "work/mailbox/后端优化机会总览-2026-09-26.md",
+      "verify-service/src/main/java/com/sportverify/verify/mq/VerifyOutboxRelay.java",
+      "verify-service/src/main/java/com/sportverify/verify/mq/RelayDiagnostics.java",
+      "verify-service/src/test/java/com/sportverify/verify/mq/VerifyOutboxRelayTest.java"
+    ]
+  },
+  "assemblyReview": {
+    "javaVersion": 21,
+    "mybatisPlusVersion": "3.5.7",
+    "starter": "mybatis-plus-spring-boot3-starter",
+    "springBoot": "3.2.4 line (parent managed)",
+    "connectionPoolInProduction": "HikariDataSource (spring.datasource.hikari, initialization-fail-timeout -1)",
+    "relayTransaction": "VerifyOutboxRelay.relay() has NO @Transactional; each markSent/incrRetry is an independent auto-commit call",
+    "targetMappedStatementId": "com.sportverify.verify.mapper.VerifyEventOutboxMapper.markSent",
+    "customInterceptorOrDataSourceBeansInVerifyService": false
+  },
+  "candidate": {
+    "count": 1,
+    "kind": "test-only MyBatis plugin on StatementHandler.update, filtered by MappedStatement.id",
+    "registeredOnlyIn": "the IT's own MybatisConfiguration via configuration.addInterceptor(new MarkSentProbe())",
+    "productionConfigTouched": false,
+    "productionDataSourceReplaced": false,
+    "signature": "@Intercepts(@Signature(type = StatementHandler.class, method = \"update\", args = {Statement.class}))",
+    "targetFilter": "com.sportverify.verify.mapper.VerifyEventOutboxMapper.markSent (exact id match)",
+    "pairingMethod": "one target statement execution queues exactly one sample into a THREAD-LOCAL slot; the IT clears then calls then drains; single-threaded so one markSent <-> one sample",
+    "measurableClientBoundary": "PreparedStatement.execute() + getUpdateCount() wall clock; sample also carries rows (update count) and a failed flag",
+    "notMeasurable": [
+      "connection acquire (completed before update)",
+      "parameter binding / statement prepare (prepare phase)",
+      "explicit commit (SqlSession.commit)",
+      "splitting server-side SQL execution from network round trip"
+    ],
+    "nonTargetIsolation": "id != TARGET_ID -> proceed without queueing; selectPendingBatch/incrRetry produce no sample",
+    "switch": "thread-local ENABLED; when off, zero nanoTime sampling",
+    "exceptionCleanup": "try/catch/finally; on failure queues one sample failed=true rows=-1 and rethrows; scope cleaned via thread-local, no cross-talk into the next call"
+  },
+  "strongestCounterexamples": [
+    {"counterexample": "the plugin cannot see the same markSent subcall under the MyBatis-Plus/Spring assembly", "verdict": "NOT observed (all target calls paired in the 6 IT cases)"},
+    {"counterexample": "changes connection reuse / transaction / auto-commit / exception type / update row count", "verdict": "NOT observed (each compared to the no-probe baseline)"},
+    {"counterexample": "cannot be turned off, or off-state still yields readings", "verdict": "NOT observed (off state yields 0 samples)"},
+    {"counterexample": "a failed call pollutes later samples, or non-target calls cross-contaminate", "verdict": "NOT observed (after failure exactly one clean sample; interleaved non-target does not add samples)"}
+  ],
+  "scratchProof": {
+    "container": "task131-scratch-mysql",
+    "image": "mysql:8.0.46",
+    "hostPortToContainer": "13318->3306",
+    "schema": "task147_marksent_scratch",
+    "ddlSource": "sql/03-verify-db.sql mechanically renamed via sed 's/verify_db/task147_marksent_scratch/g'",
+    "demoOrVerifyDbTouched": false,
+    "testAssembly": "test-only HikariDataSource (maxPool 4) + MybatisConfiguration + JdbcTransactionFactory + MybatisSqlSessionFactoryBuilder + real VerifyEventOutboxMapper + test-only probe; openSession(true) = auto-commit",
+    "itClass": "verify-service/src/test/java/com/sportverify/verify/mapper/VerifyEventOutboxMarkSentProbeMysqlIT.java",
+    "cases": [
+      {"name": "targetCall_pairsExactlyOneLowerSample_andStateMatchesBaseline", "result": "pass", "checks": "one target call <-> one sample; sample.rows == markSent return; PENDING->SENT and sent_at set; rows+final state equal with/without probe; off state 0 readings"},
+      {"name": "nonTargetCalls_recordNoSample", "result": "pass", "checks": "selectPendingBatch/incrRetry produce no sample"},
+      {"name": "consecutiveCalls_pairInOrder_andInterleavedNonTargetDoesNotInsertSample", "result": "pass", "checks": "3 target calls -> 3 samples; interleaved non-target adds none; all 3 rows SENT"},
+      {"name": "autoCommitVisibility_isUnchangedByProbe", "result": "pass", "checks": "SENT visible on a separate connection before session commit; same with/without probe"},
+      {"name": "failedTargetCall_propagatesSameException_recordsOneSample_andCleansScope", "result": "pass", "checks": "real SQL failure (table temporarily renamed); exception type equal with/without probe; one failed=true sample; next call exactly one clean sample"},
+      {"name": "connectionRelease_matchesBaseline", "result": "pass", "checks": "Hikari activeConnections==0 and totalConnections equal with/without probe"}
+    ],
+    "itResult": {"testsRun": 6, "failures": 0, "errors": 0, "skipped": 0, "entryExitCode": 0},
+    "firstRunWasRedAndFixed": {
+      "detail": "the first run renamed the scratch table back with the wrong source (RENAME verify_event_outbox TO verify_event_outbox), leaving the table under the temporary name; 3 cases errored with 'Table ... verify_event_outbox doesn't exist', rc=1",
+      "fix": "helper changed to renameOutbox(from,to) plus a teardown guard that restores the temporary name if a failure interrupts mid-rename",
+      "rerun": "6/0/0/0 rc=0"
+    }
+  },
+  "entrypoints": {
+    "offlineTest": {"command": "bash scripts/verify/mvn-verify.sh --mode=offline --pl verify-service test", "testsRun": 110, "failures": 0, "errors": 0, "skipped": 0, "exitCode": 0, "ciBaselineBefore": 110, "note": "*IT is not collected by the default test phase, so the count stays at 110 (CI baseline only grows)"},
+    "realDbIt": {"command": "MAVEN_ARGS=\"-Dtest=VerifyEventOutboxMarkSentProbeMysqlIT -Dsurefire.failIfNoSpecifiedTests=false\" bash scripts/verify/mvn-verify.sh --mode=offline --pl verify-service test", "env": ["TASK147_IT_URL", "TASK147_IT_USER", "TASK147_IT_PASSWORD"], "exitCode": 0, "note": "still goes through the single entry; --it hardcodes leaderboard-service, so Maven 3.9 MAVEN_ARGS injects the target class selector instead of hand-typing mvn"}
+  },
+  "directlyMeasured": [
+    "target markSent call pairs 1:1 with exactly one lower-layer client-JDBC sample",
+    "non-target mappers do not produce samples",
+    "probe off produces zero readings",
+    "consecutive target calls pair in order; interleaved non-target adds none",
+    "a real failure keeps the same exception type and self-cleans scope",
+    "auto-commit visibility, update row counts, final state and connection release equal the no-probe baseline"
+  ],
+  "unknowns": [
+    "markSent production internal composition (connection acquire / commit / server-side SQL / network split)",
+    "the same pairing under the production Spring/Hikari wiring (this IT uses a test-only Hikari + standalone factory, not the production Spring assembly)",
+    "production capacity and throughput benefit"
+  ],
+  "gaps": [
+    "no c100x2000 or any resident-service large load was run",
+    "no production instrumentation registered; no production DataSource replaced; global plugin chain untouched",
+    "no change to markSent, Mapper SQL, indexes, transactions, default 5000ms, batch, retry, pool, MQ or JVM parameters",
+    "--mode=online / CI not run; multi-instance lock contention not covered"
+  ],
+  "notAnOptimizationComparison": "this task measures NO latency and changes NO default; the layer here is a client JDBC call wall clock proven pairable in isolation only, and must not be presented as a production bottleneck location or a throughput gain",
+  "evidence": {
+    "report": "docs/perf/验证-outbox-markSent-下层计时可配对.md",
+    "offlineLog": "docs/perf/data/raw/task147-offline.log",
+    "itLog": "docs/perf/data/raw/task147-it.log",
+    "itSource": "verify-service/src/test/java/com/sportverify/verify/mapper/VerifyEventOutboxMarkSentProbeMysqlIT.java"
+  }
+}

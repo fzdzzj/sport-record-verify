@@ -384,8 +384,9 @@ class VerifyOutboxRelayTest {
     }
 
     /**
-     * 判别式（目标行为红）：{@code lockHoldMs} 若宣称「完整占锁」，其终点必须在 {@code unlock()} 之后取得，
-     * 因而应包含解锁耗时；旧实现在 unlock 之前截取（仅锁内处理段），不得冒用「完整占锁」名。
+     * 判别式（目标行为红）：{@code lockHoldMs} 的终点必须在 {@code unlock()} 调用返回之后取得，因而应包含解锁耗时；
+     * 旧实现在 unlock 之前截取（仅锁内处理段）。该计时含解锁调用、<strong>不含</strong>其后的摘要输出；且当
+     * {@code unlock()} 抛错被捕获时不代表锁已确实释放，故本用例只断言真实计时边界，不声称「完整占锁」或已释放。
      */
     @Test
     void relay_lockHold_reportsCompleteHoldIncludingUnlock() throws Exception {
@@ -405,7 +406,7 @@ class VerifyOutboxRelayTest {
         assertEquals(1, diag.size(), "非空批次一条汇总：" + diag);
         long lockHoldMs = extractMs(diag.get(0), "lockHoldMs");
         assertTrue(lockHoldMs >= 200,
-                "完整占锁须在解锁后取终点，应含解锁耗时：lockHoldMs=" + lockHoldMs + " / " + diag.get(0));
+                "lockHoldMs 终点须在 unlock() 调用之后，应含解锁耗时（不代表已证实释放）：lockHoldMs=" + lockHoldMs + " / " + diag.get(0));
     }
 
     /** 成功行：发送段与标记段各自只累计一次，两段都为正且都在合理量级（无重复计入）。 */

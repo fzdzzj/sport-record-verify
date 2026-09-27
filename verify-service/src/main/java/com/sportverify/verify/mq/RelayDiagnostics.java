@@ -15,8 +15,10 @@ import java.util.function.LongSupplier;
  *
  * <p>耗时口径：{@code syncSend} 与 Mapper 各段是<strong>混合墙钟</strong>（含序列化、网络/代理、
  * 确认、连接获取与客户端等待），不得当作纯 MQ 或纯 SQL 执行耗时。锁口径分两级、不得混称：
- * {@code lockProcessingMs} 为<strong>锁内处理段</strong>（取锁成功→批次处理结束，尚不含摘要输出与解锁）；
- * {@code lockHoldMs} 为<strong>完整占锁</strong>（取锁成功→{@code unlock()} 返回之后取终点）；
+ * {@code lockProcessingMs} 为<strong>锁内处理段</strong>（取锁成功→批次处理结束，尚不含解锁与随后的摘要输出）；
+ * {@code lockHoldMs} 的终点在 {@code unlock()} 调用返回（或抛错被捕获）之后、摘要日志输出<strong>之前</strong>取得，
+ * 故含 {@code unlock()} 调用本身、不含其后的摘要输出；{@code unlock()} 抛错被捕获时不代表锁已确实释放，
+ * 该值不得无条件称为「完整占锁」或当作已释放的确证；
  * {@code residualMs} = 锁内处理段减去各段合计后的剩余量（钳到非负）。</p>
  */
 final class RelayDiagnostics {
@@ -24,7 +26,8 @@ final class RelayDiagnostics {
     /**
      * 一次非空批次的耗时与结果汇总（毫秒）。
      *
-     * <p>{@code lockProcessingMs} = 锁内处理段；{@code lockHoldMs} = 完整占锁（终点在解锁之后）；
+     * <p>{@code lockProcessingMs} = 锁内处理段；{@code lockHoldMs} = 取锁成功到 {@code unlock()} 调用之后（返回或抛错被捕获）、
+     * 摘要输出之前的经过时间（含解锁调用、不含摘要输出；解锁抛错不代表已释放）；
      * {@code residualMs} = 锁内处理段 - (取批 + 发送 + 标记 + 失败计数)，非负。</p>
      */
     record BatchSummary(int rows, int success, int failed, int exhausted,
@@ -76,8 +79,8 @@ final class RelayDiagnostics {
     /**
      * 非空批次：输出一条汇总（含自上次汇总以来的空轮/竞争计数），并把计数归零。
      *
-     * @param lockProcessingMs 锁内处理段（取锁成功→批次处理结束，不含摘要输出与解锁）
-     * @param lockHoldMs       完整占锁（终点在 {@code unlock()} 返回之后取得）
+     * @param lockProcessingMs 锁内处理段（取锁成功→批次处理结束，不含解锁与随后的摘要输出）
+     * @param lockHoldMs       取锁成功→{@code unlock()} 调用之后（返回或抛错被捕获）、摘要输出之前的经过时间（含解锁调用，不含摘要输出）
      * @return 关闭时为空；开启时稳定给出非负分段耗时
      */
     Optional<BatchSummary> batch(int rows, int success, int failed, int exhausted,
