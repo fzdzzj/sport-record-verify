@@ -67,10 +67,13 @@
   "outer_mark_total_ms": 36183,
   "unattributed_remainder_ms": 9432.480474,
   "rounding_boundary": {
-    "reported": 0.739312,
-    "server_total_truncated_whole_ms": 0.739297,
-    "server_total_rounded_whole_ms": 0.739325,
-    "band_half_width": 0.000014
+    "kind": "per-batch markMs floor, not server-total rounding",
+    "batch_count": 22,
+    "logged_outer_total_ms": 36183,
+    "outer_nanos_total_as_ms_interval": "[36183, 36205)",
+    "ratio_from_logged_values": 0.739311818423016,
+    "ratio_interval_from_batch_floor_only": "(0.738862574948212, 0.739311818423016]",
+    "excludes": "runtime contention, P_S timer accuracy and other measurement uncertainty"
   },
   "reconciliation": {
     "performed": true,
