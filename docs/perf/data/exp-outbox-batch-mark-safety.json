@@ -1,0 +1,140 @@
+{
+  "task": "TASK-153",
+  "changeId": "prove-verify-outbox-batch-mark-safety",
+  "head": "abfc477c1cad64c4885125e7cf10830fdc94e540",
+  "date": "2026-09-27",
+  "label": "task153-outbox-batch-end-mark-sent-semantics",
+  "purpose": "Adjudicate ONLY whether 'mark SENT once at batch end' (batching the per-row conditional markSent of the F03 outbox relay) can enter a performance experiment under the EXISTING spec semantics. Not an optimization: no production relay/Mapper change, no switch, no c100x2000 load, no default change, no throughput/P99 claim. Counterexample-first: per-row baseline vs a test-only simulated batch-end update on an isolated scratch MySQL with the real DDL and the real Mapper SQL, with programmably simulated sends (never Mockito-faked DB results).",
+  "verdict": {
+    "result": "NO-GO",
+    "stopProductionBatching": true,
+    "productionCodeChanged": false,
+    "defaultsChanged": false,
+    "switchAdded": false,
+    "loadRun": false,
+    "restrictedGo": false,
+    "reasons": [
+      "Unauthorized duplicate-delivery window widening: crash after all 3 rows were broker-accepted shows baseline next-round re-send scope = 1 row (the in-flight one) vs candidate = 3 rows (= whole batch, upper bound = batch-size 100); a second instance's real selectPendingBatch also selects the already-delivered-but-unmarked rows.",
+      "SENT visibility delayed: baseline independent-connection snapshots between sends are [SENT,PENDING,PENDING] then [SENT,SENT,PENDING]; candidate keeps the whole batch [PENDING,PENDING,PENDING] until batch end.",
+      "sent_at time semantics drift: baseline drift from that row's send-completion moment = 0s,0s with a 4s gap between rows; candidate drift = 3s,3s with a 0s gap (whole batch flattened), contradicting the DDL comment 'sent_at = 投递成功时间'.",
+      "Aggregate-only attribution: per-row markSent returns 0/1 per row; the batch conditional UPDATE returns only an aggregate count (2 ids, 1 hit -> 1, cannot tell which row missed), and on a real SQL failure the whole batch of already-delivered rows stays PENDING (re-send scope = whole batch) with a different exception type than the per-row path.",
+      "Consumer-side SETNX / business anchors do NOT constitute authorization: the spec authorizes only 'same eventId re-delivered -> business executes once'; it does not authorize the delivery side to enlarge the duplicate window, and dedup removes side-effect duplication, not the extra network re-delivery, the extra next-round load, or the in-DB indistinguishability of delivered vs not-delivered rows."
+    ],
+    "note": "Consumer-side idempotency was explicitly NOT treated as authorization; the four difference classes above each hit the task's stop conditions."
+  },
+  "baselineFacts": {
+    "selectSql": "SELECT * FROM verify_event_outbox WHERE status = 'PENDING' AND retry_count < #{maxRetry} ORDER BY id LIMIT #{limit}",
+    "markSentSql": "UPDATE verify_event_outbox SET status = 'SENT', sent_at = NOW() WHERE id = #{id} AND status = 'PENDING'",
+    "incrRetrySql": "UPDATE verify_event_outbox SET retry_count = retry_count + 1 WHERE id = #{id} AND status = 'PENDING'",
+    "relayLoop": "per-row ascending by id; syncSend success -> immediate conditional markSent; send failure -> incrRetry + continue; mark failure -> incrRetry + counted failed; exhausted guard keeps row untouched",
+    "relayTransaction": "VerifyOutboxRelay.relay() has NO @Transactional; each markSent/incrRetry is an independent auto-commit call",
+    "crashModel": "relay catches only Exception, so an Error escapes; at most the single in-flight row can be 'sent but unmarked' in the baseline",
+    "relayOnlyReaderOfStatus": true,
+    "sentAtReadByProduction": false,
+    "eventId": "generated and stored at outbox insert time; relay re-sends reuse the row's eventId byte-for-byte",
+    "defaults": {"batchSize": 100, "maxRetry": 16, "relayIntervalMs": 5000},
+    "consumerIdempotency": "eventId SETNX (24h TTL) plus business anchors (verification_result PK, leaderboard_contribution.record_id PK state machine)"
+  },
+  "classification": {
+    "specHardConstraints": [
+      "判定事件经待发行表投递: PENDING row first, then relay delivers and marks SENT; consumer's eventId equals the row's eventId byte-for-byte",
+      "投递失败保留行: failure -> retry_count+1 and stays PENDING for next round; above threshold keep the row for manual handling, never silently drop",
+      "事件幂等消费: same eventId re-delivered -> SETNX dedup, business executes once",
+      "判定/终判事件 SHALL NOT be sent synchronously on the decide thread; relay is the sole exit"
+    ],
+    "existingObservationsNoSpecText": [
+      "SENT becomes visible on a separate connection immediately after that row's send returns (per-row auto-commit)",
+      "sent_at is approximately that row's send-completion moment",
+      "at most 1 row is 'sent but unmarked' at a crash (the in-flight one)",
+      "markSent returning 0 rows is discarded by relay and still counted as success"
+    ],
+    "stillNeedsProductDecision": [
+      "widening the duplicate-delivery window from <=1 row to <=batch-size",
+      "changing sent_at from per-row delivery-completion time to a batch-end timestamp (affects docs/perf/归因-*.md lag analysis)",
+      "delaying SENT visibility to batch end and losing per-row attribution of the batch mark (ops/manual-handling view)"
+    ]
+  },
+  "candidate": {
+    "existsOnlyInTest": true,
+    "protocol": "sendPhaseBatchEnd: same select SQL/order/exhausted-guard/failure incrRetry as the production relay, but successful rows are NOT marked during the send phase; after the phase a test-only batch conditional UPDATE (UPDATE ... SET status='SENT', sent_at=NOW() WHERE status='PENDING' AND id IN (...), via PreparedStatement; deliberately NOT added to the production mapper) marks the set of successfully sent ids",
+    "batchSqlKeepsPendencyCondition": true
+  },
+  "designedCounterexamples": [
+    {"id": "C1", "counterexample": "crash after the k-th send and before the batch-end mark widens the next-round re-scan scope", "verdict": "CONFIRMED", "evidence": "baseline nextRound=[crash-e3]; candidate nextRound=[crash-e1, crash-e2, crash-e3]; extraReSendRows=2; row's eventId unchanged; no new rows inserted"},
+    {"id": "C2", "counterexample": "already-delivered-but-unmarked rows are indistinguishable to a second instance -> duplicate delivery plus aggregate mark loses attribution", "verdict": "CONFIRMED", "evidence": "secondInstanceSelection=[multi-e1, multi-e2]; second instance marks row 1 on a separate connection; batch aggregate affected=1, cannot identify which row was already marked"},
+    {"id": "C3", "counterexample": "mixed batch: a failed send is marked SENT or interrupts later rows", "verdict": "NOT CONFIRMED", "evidence": "both paths: failed row stays PENDING, retry_count 0->1, sent_at NULL; exhausted row untouched; candidateSent=2 (excludes failed and exhausted); nextRound=[mix-e2] both paths"},
+    {"id": "C4", "counterexample": "one real batch UPDATE SQL failure leaves all delivered rows PENDING", "verdict": "CONFIRMED", "evidence": "real failure via temporary table rename; batchFailureType=java.sql.SQLSyntaxErrorException vs singleFailureType=org.apache.ibatis.exceptions.PersistenceException; rows f1/f2 stay PENDING and nextRound=[cond-e3, cond-e4] (= whole batch); single path re-sends only the same one row on next round in its equivalent case"},
+    {"id": "C5", "counterexample": "conditional UPDATE '0 rows / partial hit' cannot be attributed per row at batch granularity", "verdict": "CONFIRMED", "evidence": "aggregateAffected=1 for [1 PENDING + 1 already-SENT id]; all-SENT batch 0; nonexistent id 0; existing relay behavior kept: markSent 0-row return discarded, summary 'success=1, failed=0'"},
+    {"id": "C6", "counterexample": "sent_at drifts from the row's own send-completion moment and the batch is flattened", "verdict": "CONFIRMED", "evidence": "baseline drift=0s,0s, baseline gap=4s; candidate drift=3s,3s, candidate gap=0s (each simulated send holds 3000ms)"},
+    {"id": "C7", "counterexample": "exhausted rows are selected or marked by the candidate", "verdict": "NOT CONFIRMED", "evidence": "exhaustedRow test: next-round real select SQL returns empty; candidate send phase returns 0 ids; empty batch UPDATE affects 0 rows; row untouched by both paths"}
+  ],
+  "scratchProof": {
+    "container": "task131-scratch-mysql",
+    "image": "mysql:8.0.46",
+    "hostPortToContainer": "13318->3306",
+    "schema": "task153_batch_scratch",
+    "ddlSource": "sql/03-verify-db.sql mechanically renamed via sed 's/verify_db/task153_batch_scratch/g'",
+    "schemaGuard": "IT asserts SELECT DATABASE() == task153_batch_scratch and TASK153_IT_URL contains the schema name",
+    "demoOrExistingScratchTouched": false,
+    "existingScratchUnchanged": {"task147": 6, "task148": 6, "task149": 130},
+    "testAssembly": "test-only HikariDataSource (maxPool 6) + MybatisConfiguration(mapUnderscoreToCamelCase=true) + JdbcTransactionFactory + MybatisSqlSessionFactoryBuilder + real VerifyEventOutboxMapper + real VerifyOutboxRelay (batchSize=100/maxRetry=16 via ReflectionTestUtils; RedissonClient/RLock mocked to always acquire)",
+    "itClass": "verify-service/src/test/java/com/sportverify/verify/mapper/VerifyEventOutboxBatchMarkSafetyMysqlIT.java",
+    "sendSimulation": "mock RocketMQTemplate.syncSend with a programmable policy: inject send failure by eventId, hold 3000ms per send, read DB wall clock between sends, or throw SimulatedProcessExit (extends Error, not caught by relay)",
+    "notAnE2e": "sends are simulated; this IT is NOT a full MQ/Redis end-to-end verification"
+  },
+  "measuredEvidence": {
+    "visibility": {"baseline.snapshots": "[[PENDING,PENDING,PENDING],[SENT,PENDING,PENDING],[SENT,SENT,PENDING]]", "candidate.snapshots": "[[PENDING,PENDING,PENDING],[PENDING,PENDING,PENDING],[PENDING,PENDING,PENDING]]"},
+    "crashCounterexample": {"baseline.nextRound": "[crash-e3]", "candidate.nextRound": "[crash-e1,crash-e2,crash-e3]", "extraReSendRows": 2, "reSendEventIdsUnchanged": true},
+    "sentAt": {"baseline.driftSeconds": "0,0", "candidate.driftSeconds": "3,3", "baseline.gapSeconds": 4, "candidate.gapSeconds": 0},
+    "secondInstance": {"selection": "[multi-e1,multi-e2]", "batchAggregateAffected": 1},
+    "mixedBatch": {"baseline.nextRound": "[mix-e2]", "candidate.nextRound": "[mix-e2]"},
+    "conditional": {"batchFailureType": "java.sql.SQLSyntaxErrorException", "singleFailureType": "org.apache.ibatis.exceptions.PersistenceException", "aggregateAffected": 1, "zeroRowStillCountedSuccess": "rows=1, success=1, failed=0 (relay discards the markSent return value)"},
+    "preservedCounterexampleState": {"rows": [{"id": 1, "eventId": "crash-e1", "status": "PENDING", "retryCount": 0, "sentAt": null}, {"id": 2, "eventId": "crash-e2", "status": "PENDING", "retryCount": 0, "sentAt": null}, {"id": 3, "eventId": "crash-e3", "status": "PENDING", "retryCount": 0, "sentAt": null}], "nextRoundRealSelectReturns": ["crash-e1", "crash-e2", "crash-e3"]}
+  },
+  "mutationRed": {
+    "mutation": "revert the candidate protocol to mark per-row during the send phase",
+    "result": "exactly 5 of 7 tests failed (all discriminating ones): visibilityBetweenSends, crashAfterLastSend, secondInstance, sentAt, mixedBatch; the 2 non-discriminating tests stayed green (conditionalUpdate's real-failure row state, exhaustedRow)",
+    "counts": "Tests run: 7, Failures: 5, Errors: 0, Skipped: 0",
+    "exitCode": 1,
+    "reGreenAfterRevert": {"testsRun": 7, "failures": 0, "errors": 0, "skipped": 0, "exitCode": 0}
+  },
+  "entrypoints": {
+    "realDbIt": {"command": "MAVEN_ARGS=\"-Dtest=VerifyEventOutboxBatchMarkSafetyMysqlIT -Dsurefire.failIfNoSpecifiedTests=false\" bash scripts/verify/mvn-verify.sh --mode=offline --pl verify-service test", "env": ["TASK153_IT_URL", "TASK153_IT_USER", "TASK153_IT_PASSWORD"], "testsRun": 7, "failures": 0, "errors": 0, "skipped": 0, "exitCode": 0, "log": "docs/perf/data/raw/task153-03-it-run.log"},
+    "mutationRed": {"testsRun": 7, "failures": 5, "errors": 0, "skipped": 0, "exitCode": 1, "log": "docs/perf/data/raw/task153-04-it-mutation-red.log"},
+    "reGreen": {"testsRun": 7, "failures": 0, "errors": 0, "skipped": 0, "exitCode": 0, "log": "docs/perf/data/raw/task153-05-it-regreen.log"},
+    "noEnvSkip": {"testsRun": 7, "failures": 0, "errors": 0, "skipped": 7, "exitCode": 0, "log": "docs/perf/data/raw/task153-06-it-noenv-skip.log", "note": "missing-env skip is NOT recorded as a pass"},
+    "offlineRegular": {"command": "bash scripts/verify/mvn-verify.sh --mode=offline --pl verify-service test", "testsRun": 110, "failures": 0, "errors": 0, "skipped": 0, "exitCode": 0, "ciBaselineBefore": 110, "note": "*IT is not collected by the default test phase; count equals the pre-existing baseline", "log": "docs/perf/data/raw/task153-07-offline-regular.log"},
+    "counterexampleOnlyRerun": {"testsRun": 1, "failures": 0, "errors": 0, "skipped": 0, "exitCode": 0, "log": "docs/perf/data/raw/task153-08-counterexample-run.log"}
+  },
+  "discipline": {
+    "perfClaim": "none - no latency/throughput/P99 number is reported; the only static fact is 'up to batch-size per-row markSent calls could become one batch UPDATE', and that merge is not semantically admissible",
+    "task152Usage": "the 73.93% admin-window markSent wall-clock share is a cost share, NOT recoverable benefit, and is NOT used as a batching-benefit input; TASK-152 readings were not modified",
+    "remote": "no push, no PR; local commits only, staged explicitly"
+  },
+  "directlyMeasured": [
+    "crash counterexample: next-round re-send scope 1 row (baseline) vs 3 rows (candidate) with the real select SQL, row eventIds unchanged",
+    "SENT visibility on a separate connection between sends: per-row immediate (baseline) vs whole-batch delayed (candidate)",
+    "sent_at drift and flattening under a 3s-per-send simulation",
+    "second instance selection and batch aggregate attribution",
+    "conditional UPDATE 0-row / partial-hit / real SQL failure behavior on both paths",
+    "failed and exhausted rows handled identically by both paths in the mixed batch",
+    "mutation red: 5/7 discriminating tests fail when the candidate reverts to per-row marking; 7/7 green after revert"
+  ],
+  "unknowns": [
+    "exact window durations under the production Spring/Hikari assembly and a real broker network",
+    "quantified effect of the widened duplicate window on consumer-side SETNX hit rate under real traffic",
+    "window superposition under real multi-instance lock contention",
+    "quantified impact of the sent_at change on docs/perf/归因-*.md lag analysis"
+  ],
+  "gaps": [
+    "sends are simulated; no real RocketMQ/Redis end-to-end",
+    "no c100x2000 or any resident-service load; no capacity comparison",
+    "replacements such as a SENDING intermediate state were out of scope and would need their own spec authorization",
+    "--mode=online / CI not run"
+  ],
+  "evidence": {
+    "report": "docs/perf/判别-outbox-批末标记SENT-语义边界.md",
+    "rawDir": "docs/perf/data/raw/task153-01-scratch-prestate.log .. task153-09-counterexample-state.log",
+    "itSource": "verify-service/src/test/java/com/sportverify/verify/mapper/VerifyEventOutboxBatchMarkSafetyMysqlIT.java"
+  }
+}
