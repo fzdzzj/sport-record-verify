@@ -176,7 +176,7 @@ done
 echo '== G4b EOF 换行符（spec 末字节应为 0a）=='
 tail -c 2 "$SPEC" | od -An -tx1
 echo '== G6 CI 词面自检双 locale（均须 ZERO_HIT）=='
-RE='面试|弹药|大厂|八股|简历|求职|突击|附录 ?A'
+RE='面[试]|弹[药]|大[厂]|八[股]|简[历]|求[职]|突[击]|附[录] ?A'   # 指导侧 C4 订正：以字符类拆开，与 ci.yml:74 的正则匹配同一批字符串（实测命中行号 diff rc=0），但本行自身不再含被禁字面量，故本文件入库后 G6 仍可 ZERO_HIT
 for loc in C zh_CN.UTF-8; do
   if LC_ALL=$loc git grep -n -I -iE "$RE" -- ':!spec/changes/archive/**' ':!docs/internal/**' ':!.github/workflows/ci.yml' > .trae/tmp/g6-$loc.txt 2>&1; then
     echo "G6_$loc=HITS lines=$(wc -l < .trae/tmp/g6-$loc.txt)"

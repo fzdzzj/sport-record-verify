@@ -1069,3 +1069,15 @@ run `35802403723`（head `eba0108`，2026-09-23 00:31 UTC）——**web/build �
 - **3 深 MODIFIED 链**：需求「relay 可选诊断不得改变可靠投递语义」由 measure-verify-outbox-relay-cost ADDED，再被 measure-verify-outbox-mark-sent-cost MODIFIED，再被 prove-verify-outbox-mark-sent-attribution MODIFIED ⇒ 后续必须按此顺序合并、终态取最后一个 MODIFIED（对应代码事实：VerifyOutboxRelay 的 relay-diagnostics-enabled:false 与 relay-diagnostics-window-ms:10000 已实现）。
 - **对既有基线需求的 MODIFIED**：shorten-submit-db-footprint MODIFIED「轨迹提交幂等」（主规格 L735 起），属提交路径而非 outbox，须单独一轮。
 - **下一轮首候选**：fix-verify-outbox-poison-head-of-line（10/10 全绿、纯 ADDED 2 条需求、零 MODIFIED ⇒ 冲突风险最低，且能把 outbox 章节补齐到与当前代码一致）。
+
+## 指导侧订正记录：TASK-158 的 G6 内生冲突（C4）
+
+- **缺陷归属＝指导侧任务书自身**：`work/mailbox/tasks/TASK-158/spec.md` L179 原样内嵌 CI 词面门的正则字面量，而只改清单第 6 项要求把该 spec.md 入库 ⇒「C3 入库」与「G6 收口 ZERO_HIT」不可同时成立。执行侧开工/中间态 0 命中（两件套当时未 tracked）、收口态双 locale 各 1 行命中，**未做规避、如实披露、停手待处置**，判定与处置均正确。
+- **处置**：L179 改为字符类等价形式（`面[试]|弹[药]|大[厂]|八[股]|简[历]|求[职]|突[击]|附[录] ?A`）——脚本可运行、匹配集合不变，该行自身不再含被禁字面量。spec.md 其余 212 行一字未动。
+- **否决**：给 `ci.yml` 加 `:!work/mailbox/**` 排除。`ci.yml` L65–L67 明写该门**故意**由「扩展名白名单」扩为「全部 tracked 文本」，并注明白名单是自设盲区（曾让 4 处命中长期躲在 java/yml 注释里）；`work/mailbox/` 未被 `.gitignore` 声明为不公开，与 `docs/internal/**` 的排除理由不同类 ⇒ 加排除等于重开刚堵上的盲区，属**用削弱门槛掩盖任务书缺陷**。
+- **等价性实测（Level A）**：7 行样本（含「附录」紧接 A、以及两者之间夹一个空格这两种形态），旧式/新式**命中同样 6 行**、命中行号 `diff` **rc=0**；新式源码行 **SELF_MATCH=NO**、旧式 **OLD_SELF_MATCH=YES**（根因隔离复现）。脚本 `.trae/tmp/eqtest.sh`。
+- **教训（升格为后续任务书通用红线）**：**任何要入库的文档都不得原样内嵌词面门的正则字面量**；需要引用时用字符类拆开，或改写为「见 `.github/workflows/ci.yml` L74」。**TASK-159 起的任务书按此写**，且任务书的 G6 门槛必须在「两件套已 tracked」的收口态上定义，不得以开工态 0 命中当作通过。
+- **C4 后复验（指导侧亲跑）**：G6 双 locale **ZERO_HIT**；`git diff --check` **rc=0**；无参 `mailbox-contract.sh` **rc=0**；`mvn-verify.sh --mode=offline test` **rc=0 / BUILD SUCCESS**、模块 **36/41/33/103/110/59/10** 与 C3 后指导侧复跑逐位一致（C4 零代码改动）。
+- **C4 不改变 TASK-158 的结论**：不变式已恢复、主规格 L47 断言由假变真（原文逐字未动，`-ceq` 实测 oldL47 == newL49 为 True，仅因头部清单 +2 行而位移至 L49）；仍**未 push、未达外部门槛**。
+- **顺带查出的第二个 harness 陷阱（指导侧本轮亲踩）**：`git grep` 的 `--untracked` **必须置于 pattern 之前**；写作 `git grep -n -I -iE "$RE" --untracked -- <pathspec>` 时 git 会把 `--untracked` 当成 revision，报 `fatal: unable to resolve revision` 并返回 **rc=128**（本机 git 2.20.1.windows.1 实测）。而 `if git grep ...; then HITS else ZERO_HIT` 这类写法把 **rc=128（工具错误）与 rc=1（无匹配）同等看待**，产出**假 ZERO_HIT**。⇒ 词面门必须**三态判定**：`rc=0` 有命中 / `rc=1` 无命中 / **其他 rc ＝ 工具错误，判为门槛失败而非通过**。本条与既有 `grep -c $'\r$'` 假读数同列任务书红线，**TASK-159 起写入任务书**。
+- **口径登记（不追溯订正）**：本文件 TASK-131 记录声称以 `--untracked` 覆盖当轮新文件；该脚本位于 `.trae/tmp/`（忽略路径）已不存在，**历史声称无法复核**。但 TASK-131 产物此后已入库，TASK-152~158 与指导侧多轮 G6 均在 tracked 全量上复扫为 ZERO_HIT ⇒ 无存活漏网命中，仅登记口径缺陷，不开追溯订正。
