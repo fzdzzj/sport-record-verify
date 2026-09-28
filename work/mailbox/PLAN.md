@@ -1081,3 +1081,59 @@ run `35802403723`（head `eba0108`，2026-09-23 00:31 UTC）——**web/build �
 - **C4 不改变 TASK-158 的结论**：不变式已恢复、主规格 L47 断言由假变真（原文逐字未动，`-ceq` 实测 oldL47 == newL49 为 True，仅因头部清单 +2 行而位移至 L49）；仍**未 push、未达外部门槛**。
 - **顺带查出的第二个 harness 陷阱（指导侧本轮亲踩）**：`git grep` 的 `--untracked` **必须置于 pattern 之前**；写作 `git grep -n -I -iE "$RE" --untracked -- <pathspec>` 时 git 会把 `--untracked` 当成 revision，报 `fatal: unable to resolve revision` 并返回 **rc=128**（本机 git 2.20.1.windows.1 实测）。而 `if git grep ...; then HITS else ZERO_HIT` 这类写法把 **rc=128（工具错误）与 rc=1（无匹配）同等看待**，产出**假 ZERO_HIT**。⇒ 词面门必须**三态判定**：`rc=0` 有命中 / `rc=1` 无命中 / **其他 rc ＝ 工具错误，判为门槛失败而非通过**。本条与既有 `grep -c $'\r$'` 假读数同列任务书红线，**TASK-159 起写入任务书**。
 - **口径登记（不追溯订正）**：本文件 TASK-131 记录声称以 `--untracked` 覆盖当轮新文件；该脚本位于 `.trae/tmp/`（忽略路径）已不存在，**历史声称无法复核**。但 TASK-131 产物此后已入库，TASK-152~158 与指导侧多轮 G6 均在 tracked 全量上复扫为 ZERO_HIT ⇒ 无存活漏网命中，仅登记口径缺陷，不开追溯订正。
+
+## 验收记录：TASK-159 并入 fix-verify-outbox-poison-head-of-line 纯 ADDED delta 并归档（2026-09-29，执行 agent，纯文档零代码）
+
+| 项 | 内容 |
+| --- | --- |
+| 绑定修订 | 开工基线 `da6e3ee`（全 SHA `da6e3ee350f60c323561ed3fe1e9d98a6f2e3941`，开工 `git rev-parse` 逐位核对一致；`git rev-list --left-right --count origin/main...main` = `0	2`，`310b2f1`/`da6e3ee` 未推送）。2 笔分批提交：C1 `e0c3ae4`（并入：主规格 3 编辑点 + poison 台账文件补归档 task number 6 + 移名 3 文件）、C2 本笔（台账：PLAN 验收记录 + TASK-159 两件套入库）。全程未 push、未建 PR、未 `git stash`、未 `git add -A`/`add .`（逐路径 add） |
+| 门槛来源 | 本地实跑，唯一入口 `bash scripts/verify/mvn-verify.sh --mode=offline test`：开工基线 + C1 并入后各一次（逐位一致，见 G5 行）；C2 后收口复跑与全量自检读数随 handoff 补记落库于本笔提交。生效模式 offline |
+| 是否到达外部门槛 | **未达外部门槛**（本次不 push，待下次授权由 CI 复验） |
+| G0 代码↔delta 一致性（只读，硬） | 5 处锚点开工与 C1 后 HEAD 实测全成立：`VerifyEventOutboxMapper.java` L23-L25 取批 SQL 资格条件含 `retry_count < #{maxRetry}` 且 `selectPendingBatch(@Param("limit") int limit, @Param("maxRetry") int maxRetry)`、L19-L21 javadoc 明写「耗尽行本身保留原状态与原数据供人工处理（不删除、不重置计数、不改 eventId、不重投）」；`VerifyOutboxRelay.java` L55 `private int maxRetry;`、L118 `batch = outboxMapper.selectPendingBatch(batchSize, maxRetry);`（relay 把自身上限传入 Mapper）、L125 兜底 `row.getRetryCount() >= maxRetry`、L157 `outboxMapper.markSent(row.getId())`——并入未装进假需求 |
+| G1 逐字判据（硬） | 自检脚本 blk 提取 + EOL 归一 cmp：Q1「重试耗尽事件不得阻塞后续可投递事件」delta=22/22 spec=22/22、cmp rc=**0**；Q2「饥饿修复须验证真实取批条件」delta=15/15 spec=15/15、cmp rc=**0**；两标题 occurrences=**1**/1；blk 与 sed 行号区间（3,24 / 26,40）交叉核对 rc=0 ×2。开工态两判据如实报红（spec=0/22 与 0/15、cmp rc=1），证明脚本非恒绿 |
+| G2 集合不变式（硬） | 头部清单 40 → **41**、`spec/changes/archive` 目录 **42 → 43**；`comm -23` 恰 2 行 = `add-microservice-skeleton`、`add-sharding-host-parameterization`（例外说明行原文未动，仍为真）；`comm -13` 空 |
+| G3 主规格零删除（硬，本轮最强判据） | `git diff -U0 da6e3ee..HEAD -- spec/specs/sport-record-verify/spec.md` 全部 @@ 行原文 = `@@ -47,0 +48 @@`、`@@ -986,0 +988,39 @@ AND 超过阈值（默认 16）仅记录告警并保留行供人工处理，SHAL`、`@@ -2765,0 +2806 @@ AND 下次读取回源到最新值`——3 个 hunk **全为纯插入形态**（旧区间长度全 0，hunks_with_deletion=**0**）；主规格 2765 → **2806** 行（+39 需求块 +1 清单 +1 变更历史）。blob 以 i/lf 存储（autocrlf=true 检出为 CRLF），执行侧另做字节级区域校验：未动区域逐字一致、新文件全 CRLF 零裸 LF |
+| G4 行尾完整性（硬） | 主规格 CR=**2806** LF=**2806** bareLF=**0**、无 BOM、末字节 `0d 0a`（tr 计数法，未用 grep/awk 行尾断言）；PLAN.md CR=**0**（全程 LF）；G4b 游离 CR 字节偏移移名前后均不变：spec-delta **2108**（末行 L40）、proposal **3966**（末行 L25）——R100 字节保真佐证，未顺手「修」游离 CR |
+| G5 offline 双跑零扰动（硬） | 第一次（开工基线）rc=0 / BUILD SUCCESS / Total 01:53、逐模块 **36/41/33/103/110/59/10**；第二次（C1 并入后）rc=0 / BUILD SUCCESS / Total 01:52、逐模块 **36/41/33/103/110/59/10**——两次汇总行 `diff` 实证逐位一致，Failures/Errors/Skipped 全 0；C2 后收口第三次复跑读数随 handoff 补记落库 |
+| G6 词面自检（三态 + 正向对照，硬） | 正则现场从 ci.yml 提取（长度 **26**、非空断言通过；其字面量不入任何要入库的文档）；CI 原样形态（LC_ALL/LANG 真 unset）与 `C`、`zh_CN.UTF-8`、`C.UTF-8` 四形态全部 **ZERO_HIT rc=1**（无任一 TOOL_ERROR）；正向对照探针含 9 种被禁形态（形态清单不在此转录以免自造命中载体）→ **rc=0 命中 9/9**，探针已删、`git status --porcelain` 复核无残留；开工态与 C1 后态均零命中（TASK-159 两件套当时未 tracked），收口态（两件套入库后）读数随 handoff 补记落库 |
+| G7 空白与提交 | `git diff --check` rc=**0**（开工/中途各次实测均 0）；C1 `git show --check` 干净；C2 见 handoff 补记 |
+| G8 契约 | 在途（开工，TASK-159 仅 spec）`--open TASK-159` **rc=0**（已声明，列入待办放行；`--baseline=da6e3ee` 形态同 rc=0）；无参/`--baseline` 的中途与收口复跑读数随 handoff 补记落库 |
+| 只改清单一致性 | 实际改动集（`git diff --name-only da6e3ee..HEAD` + untracked）= 主规格 1 + archive 侧 3 + 台账 3 = **7 路径**，与 handoff「只改清单」逐项一致（第 3 项索引操作使移名成形：R100 ×2、R077 ×1）；proposal/delta 2 blob 与起点逐字一致（双侧 blob id 相等实测）；`spec/changes/` 其余 18 个在途目录零触碰（`add-verify-degrade-status-index` 4 文件未跟踪、原样未动）；`work/mailbox/tasks/TASK-156/**`、`TASK-157/**`、`TASK-158/**`、`docs/perf/**`、`VerifyEventOutboxMapper.java`、`VerifyOutboxRelay.java`、`verify-service/src/test/**` 只读未动；未创建 `.mvn/maven.config`、未设 `MAVEN_OPTS`、未裸用 mvn；`.trae` 被 `.gitignore` 忽略未入库 |
+| 未覆盖/后续 | ① 本轮 2 笔提交未 push、未过 CI：外部门槛**未达**（G9），不得把 offline 绿表述为外部门槛绿；② 18 个在途 delta 均未并入主规格（自核表见下），下一轮合并难点与首候选见下；③ 本轮不构成对饥饿缺陷的事故证据：结论只到「代码路径与 SQL 可确认此条件推导」，尚无真实运行时饥饿事件或新增红测证据，TASK-138 的 outbox PENDING 1012/SENT 998 系另一场景计数、未证明当时存在耗尽行，不得冒充本缺陷事故证据；本轮亦不构成查询耗时改善的声称：既有 `(status,id)` 索引仍服务顺序扫描、可能需扫过大量耗尽行，本轮未跑任何 SQL/负载实验；④ 纯文档任务不构成任何性能结论，不翻案 TASK-153/154 的 NO-GO、不改写 TASK-152/156 的任何数字；⑤ TASK-158 已登记的 21 个游离 CR 文件仍在：本任务 poison 侧 spec-delta 与 proposal 各含 1 个（本轮 R100 字节保真移名未动），其余分布在别的在途目录，后续每轮单独处理；⑥ `PLAN.md` 既有行（含 L4）零改动（`git diff --numstat` 仅追加，见补记），未据任何既有行推出新结论 |
+
+**TASK-159 欠账登记表（18 个在途目录，执行侧自核：steps/allPass 用自检脚本末段 python 实跑复核，tracked 用 `git ls-files` 实数）**
+
+| 目录 | steps | passes 全绿 | tracked |
+| --- | --- | --- | --- |
+| add-verify-degrade-status-index | 0/6 | 否 | 0（未跟踪，从未启动，共 4 文件未跟踪） |
+| measure-head-bottleneck-attribution | 14/15 | 是 | 3 |
+| measure-submit-db-wait-evidence | 13/13 | 是 | 3 |
+| measure-submit-pool-capacity | 13/13 | 是 | 3 |
+| measure-verify-event-stage-lag | 11/11 | 是 | 3 |
+| measure-verify-mark-sent-admin-window | 9/9 | 是 | 3 |
+| measure-verify-mark-sent-spring-paired-cost | 10/10 | 是 | 3 |
+| measure-verify-outbox-mark-sent-cost | 10/10 | 是 | 3 |
+| measure-verify-outbox-mark-sent-server-event | 5/10 | 否 | 3 |
+| measure-verify-outbox-relay-cost | 11/11 | 是 | 3 |
+| prove-verify-mark-sent-wait-attribution | 10/10 | 是 | 3 |
+| prove-verify-outbox-batch-mark-safety | 10/10 | 是 | 3 |
+| prove-verify-outbox-mark-sent-attribution | 10/10 | 是 | 3 |
+| prove-verify-outbox-mark-sent-spring-wiring | 10/10 | 是 | 3 |
+| prove-verify-outbox-relay-concurrency-scaling | 10/10 | 是 | 3 |
+| resume-verify-outbox-mark-sent-server-event | 4/9 | 否 | 3 |
+| shorten-submit-db-footprint | 17/17 | 是 | 3 |
+| update-verify-outbox-relay-delay | 7/8 | 否 | 3 |
+
+即：**14 个已完成但从未并入主规格、从未归档**（含 shorten-submit-db-footprint 这类已改代码的实质变更），3 个未全绿（measure-verify-outbox-mark-sent-server-event 5/10、resume-verify-outbox-mark-sent-server-event 4/9、update-verify-outbox-relay-delay 7/8），1 个未启动（add-verify-degrade-status-index）。注意 steps=N/M 与 allPass 是**两个独立维度**：`measure-head-bottleneck-attribution` steps=14/15 却 allPass=True，登记时两者都要报，不得把 allPass=True 读成「步骤全做完」。下一轮合并难点与纪律：
+
+- **3 深 MODIFIED 链**：需求「relay 可选诊断不得改变可靠投递语义」由 measure-verify-outbox-relay-cost ADDED，再被 measure-verify-outbox-mark-sent-cost、prove-verify-outbox-mark-sent-attribution successive MODIFIED ⇒ 必须按序并入、终态取最后一个。
+- **对既有基线需求的 MODIFIED**：shorten-submit-db-footprint MODIFIED「轨迹提交幂等」（属提交路径而非 outbox），须单独一轮。
+- **未全绿与未启动目录一律不得并入**：add-verify-degrade-status-index（steps 0/6）、measure-verify-outbox-mark-sent-server-event（5/10）、resume-verify-outbox-mark-sent-server-event（4/9）、update-verify-outbox-relay-delay（7/8）。
+- **游离 CR**：TASK-158 已登记的 21 个游离 CR 文件继续存在（本任务 poison 侧 2 个随 R100 移名字节保真保留），其余分布在别的在途目录，后续每轮单独处理。
+
+**TASK-159 补记（收口实测，提交后补录）**
+
+- G5 第三次（收口，C2 后）：rc=0 / BUILD SUCCESS / Total 02:49、逐模块 36/41/33/103/110/59/10，与开工基线（01:53）、C1 后复跑（01:52）逐位一致（diff 实证），Failures/Errors/Skipped 全 0 ⇒ 三跑零扰动成立。
+- G6 收口态（TASK-159 两件套已 tracked）：四形态（CI 原样 / C / zh_CN.UTF-8 / C.UTF-8）全 ZERO_HIT rc=1、正向对照 rc=0 命中 9/9、探针已删——无 TASK-158 型内生冲突。
+- G8 收口：无参 rc=0（判据 A 两件套齐、含 0 个待办进行中，TASK-159 足迹不在工作树视为已收口）；--baseline=da6e3ee 复跑 rc=1（判据 A=0），TASK-159 自身过冲恰 4 条 = ?? spec/changes/add-verify-degrade-status-index/ 的既有未跟踪 4 文件（清单多报 0 条，过冲仅来自既有脏项），其余为历史任务对主规格/PLAN 的公共文件交叠（TASK-127 既知模式，不属本任务）。
+- 纯追加与原样入库实证：git diff --numstat da6e3ee..HEAD -- work/mailbox/PLAN.md = 56 insertions / 0 deletions（验收记录节 49 行 + 本补记 7 行含分隔空行）；TASK-159 任务书出库 cmp 工作树逐字节一致；收口态 origin/main...main = 0	4；git status --porcelain 仅剩 ?? spec/changes/add-verify-degrade-status-index/。
