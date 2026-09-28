@@ -49,4 +49,15 @@
     ],
     "passes": true
   }
+,
+  {
+    "number": 6,
+    "category": "阶段 6：归档",
+    "task": "归档并入主规格并移入 archive/（TASK-159 C1）",
+    "steps": [
+      { "step": "spec-delta 两条 ADDED 需求逐字并入主规格：插入「判定事件可靠投递」块之后、「规则阈值可配置」之前（22 行 + 15 行 + 块间空行，行尾幂等配方转 CRLF，与 delta L3-L24/L26-L40 EOL 归一后逐字一致），头部提案清单与变更历史各补 1 条（2765→2806 行，零删除）", "completed": true },
+      { "step": "目录移入 spec/changes/archive/：proposal.md 与 spec-delta.md R100 逐字移名（字节保真，不修游离 CR），tasks.json 因本追加（number 6 归档阶段，2 steps 全 completed、passes true）相似度低于 100；逐路径暂存，不用 git add -A", "completed": true }
+    ],
+    "passes": true
+  }
 ]

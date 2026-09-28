@@ -45,6 +45,7 @@
 - add-strict-secret-fail-fast（密钥注入严格模式与常量时间比较）
 - wire-verify-outbox（判定事件事务内 outbox 与 relay 唯一投递）
 - adopt-native-mq-retry（消费重试与死信改走 RocketMQ 原生）
+- fix-verify-outbox-poison-head-of-line（修复重试耗尽行占满取批队首、令后续可投递事件永久不可见的投递饥饿）
 
 各提案的 spec-delta 中 ADDED 需求已全部合并进本规范，MODIFIED 需求按规则处理（见「服务划分」分组与「变更历史」）。
 清单外合法例外（2 项）：add-microservice-skeleton（主规格由其落地生成，属基线生成而非并入）；add-sharding-host-parameterization（TASK-115 冲突停手未并入，后由 add-sharding-host-env-override 以独立 ADDED 并入，本目录仅作历史存档）。archive 目录集合减去本头部清单恰为该 2 项。
@@ -983,6 +984,45 @@ GIVEN relay 投递某行失败
 WHEN 处理该行
 THEN retry_count+1 且 status 保持 PENDING 留下轮重试
 AND 超过阈值（默认 16）仅记录告警并保留行供人工处理，SHALL NOT 静默丢弃
+
+### Requirement: 重试耗尽事件不得阻塞后续可投递事件
+WHEN relay 按 ID 顺序批量读取待投递判定事件,
+系统 SHALL 仅将仍可重试的 PENDING 行计入本轮批次，并保留已耗尽行供人工处理；系统 SHALL NOT 因较小 ID 的耗尽行占满查询上限而永久阻止后续可投递行。
+
+#### Scenario: 队首全部重试耗尽
+GIVEN 前 100 条最小 ID 的 PENDING 行 `retry_count=16`、上限为 16
+AND 第 101 条 PENDING 行 `retry_count=0`
+WHEN relay 以批次上限 100 查询并发送
+THEN 第 101 条进入本轮可投递批次并沿用原 eventId 发送
+AND 前 100 条仍保留原数据供人工处理且不重投
+
+#### Scenario: 达到阈值的边界
+GIVEN 上限为 16，存在 `retry_count=15` 与 `retry_count=16` 的 PENDING 行
+WHEN relay 取一批事件
+THEN 前者仍有资格发送或失败后增加重试次数
+AND 后者不发送、不重复增加重试次数但保留待人工处理
+
+#### Scenario: 正常投递语义保持
+GIVEN 没有达到重试上限的事件与可用的分布式锁
+WHEN relay 发送成功或发送失败
+THEN 成功行仍按原有条件标为 SENT，失败行仍按原有条件增加 retry_count
+AND topic、tag、payload、eventId 与 traceId 的透传语义保持不变
+
+### Requirement: 饥饿修复须验证真实取批条件
+WHEN 验收 relay 批次资格条件的变更,
+系统 SHALL 在真实执行的 SQL 及同一组隔离数据上证明旧查询遮挡和新查询放行，并说明过滤耗尽行的查询代价边界。
+
+#### Scenario: SQL 前后对照
+GIVEN 隔离库中先写入满批耗尽行、最后写入可投递行
+WHEN 以相同 `limit` 和重试阈值分别执行旧查询与新查询
+THEN 旧查询不返回可投递行而新查询返回
+AND 验证仅作用于隔离数据，不修改演示库真实事件
+
+#### Scenario: SQL 性能证据不足
+GIVEN 只观察到选择结果正确或 EXPLAIN 访问路径改变
+WHEN 出具结论
+THEN 系统仅报告可靠投递修复与实际观察到的 SQL 计划/时间
+AND 不将查询过滤声称为已证实的吞吐或延迟优化
 
 ### Requirement: 规则阈值可配置
 
@@ -2763,3 +2803,4 @@ AND 下次读取回源到最新值
 - **add-strict-secret-fail-fast**：密钥兜底默认的治理开关。`app.security.strict=true`（默认 false，本地演示零扰动）时启动期校验全部安全密钥项（JWT 签名密钥 user/gateway 两侧、内部接口共享密钥 common/api 收发两侧），任一项未显式注入（解析为 null 或等于演示默认串）即 fail-fast 抛 `IllegalStateException`，堵住「生产漏注入密钥静默回落公开仓字面值」的缺口；`InternalApiAuthFilter` 共享密钥比较改 `MessageDigest.isEqual` 常量时间比较（判定结果与等值比较语义等价：一致放行、不一致 403/1002）。引用变更 spec/changes/archive/add-strict-secret-fail-fast/。
 - **wire-verify-outbox**：判定事件可靠投递（事务性 outbox）。判定/终判结果与事件待发行行（verify_db.verify_event_outbox，status=PENDING，eventId 写入时生成）同事务落库，任一步失败整体回滚；判定路径不同步直发事件，relay 为唯一投递出口（延迟上界=relay 周期，默认 5s），投递失败 retry_count+1 保留行下轮重试，超过阈值（默认 16）仅记录告警并保留行供人工处理、SHALL NOT 静默丢弃；eventId 随行保存、relay 重发沿用行内 eventId，使消费端幂等键在重试间稳定。引用变更 spec/changes/archive/wire-verify-outbox/。
 - **adopt-native-mq-retry**：消费重试与死信改走 RocketMQ 原生。消费者以客户端参数 maxReconsumeTimes=3 声明重试上限（连同首次共最多消费 4 次），失败由 broker 按退避重投；超次消息进入该消费组内建死信队列 %DLQ%<consumerGroup>，不再向自建死信 topic record-verify-events-dlq 投递；业务代码不自建重试计数键、不读不写任何自建重试键。合并口径（delta L3-L7 原文提示）：本 delta 的 MODIFIED 按目标态整段书写、已包含 wire-verify-outbox 对同一需求（校验事件与幂等）的修改，两变更先后并入得到同一终态，建议先并入 wire-verify-outbox 以避免中间态引用尚不存在的需求；本轮即按此顺序执行。引用变更 spec/changes/archive/adopt-native-mq-retry/。
+- **fix-verify-outbox-poison-head-of-line**：修复取批队首被重试耗尽行堵塞造成的投递饥饿。缺陷：selectPendingBatch 按 `status='PENDING' ORDER BY id LIMIT limit` 取最早一批，relay 对 `retry_count >= maxRetry` 的行只告警并 continue，队首被耗尽行占满时后续可投递行永久不可见。修复：取批资格条件增加 `retry_count < maxRetry`，由 relay 传入其当前上限；耗尽行保留原状态与原数据供人工处理（不删除、不重置计数、不改 eventId、不重投）。反过度声称（继承 proposal 原文口径）：代码路径与 SQL 可确认此条件推导，尚无真实运行时饥饿事件或新增红测证据，实施时必须先证明；TASK-138 曾测得另一场景下 outbox PENDING 1012/SENT 998，但未证明当时存在耗尽行，不得拿它冒充本缺陷的事故证据；既有 (status,id) 索引仍可服务顺序扫描，但可能需扫描大量耗尽行，不得声称这一步改善查询耗时。引用变更 spec/changes/archive/fix-verify-outbox-poison-head-of-line/。
