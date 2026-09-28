@@ -44,8 +44,10 @@
 - narrow-actuator-exposure（actuator 暴露面收窄）
 - add-strict-secret-fail-fast（密钥注入严格模式与常量时间比较）
 - wire-verify-outbox（判定事件事务内 outbox 与 relay 唯一投递）
+- adopt-native-mq-retry（消费重试与死信改走 RocketMQ 原生）
 
 各提案的 spec-delta 中 ADDED 需求已全部合并进本规范，MODIFIED 需求按规则处理（见「服务划分」分组与「变更历史」）。
+清单外合法例外（2 项）：add-microservice-skeleton（主规格由其落地生成，属基线生成而非并入）；add-sharding-host-parameterization（TASK-115 冲突停手未并入，后由 add-sharding-host-env-override 以独立 ADDED 并入，本目录仅作历史存档）。archive 目录集合减去本头部清单恰为该 2 项。
 
 ## 工程结构
 
@@ -901,6 +903,9 @@ WHEN 校验流程产生状态变化,
 系统 SHALL 经 RocketMQ 发布 SUBMITTED/VERIFIED/REJECTED 事件，并 SHALL 以 eventId 去重保证消费幂等。
 判定/终判事件（VERIFIED/REJECTED）SHALL NOT 在判定线程同步直发：SHALL 与结果行同事务写入本地消息表后由 relay 唯一投递（见「判定事件可靠投递」）；
 eventId SHALL 在 outbox 写入时生成并保存，relay 重发 SHALL 沿用行内 eventId，使消费端幂等键在重试间稳定。
+消费失败的重投与超次入死信 SHALL 由 RocketMQ 原生重试承载：消费者 SHALL 以客户端参数 `maxReconsumeTimes=3` 声明重试上限，
+超次消息 SHALL 进入该消费组的内建死信队列 `%DLQ%<consumerGroup>`；
+业务代码 SHALL NOT 自建重试计数键，也 SHALL NOT 向自建死信 topic 投递。
 
 #### Scenario: 触发校验事件
 
@@ -923,11 +928,19 @@ WHEN 消费者处理
 THEN SETNX 去重
 AND 业务仅执行一次
 
+#### Scenario: 重试上限走 MQ 原生
+
+GIVEN 消费者以 maxReconsumeTimes=3 启动
+WHEN 消费失败返回 RECONSUME_LATER
+THEN 由 broker 按退避重投，连同首次共最多消费 4 次
+AND 业务代码不写入、不读取任何自建重试计数键
+
 #### Scenario: 失败进死信
 
-GIVEN 消费失败达到重试阈值
+GIVEN 消费失败达到重试上限（broker 侧 reconsumeTimes >= 3）
 WHEN 消费者无法处理
-THEN 消息进入 record-verify-events-dlq
+THEN 消息进入该消费组的内建死信队列 `%DLQ%<consumerGroup>`
+AND 消息不再投递到自建死信 topic record-verify-events-dlq
 AND 可人工排查
 
 ### Requirement: 判定事件可靠投递
@@ -2749,3 +2762,4 @@ AND 下次读取回源到最新值
 - **narrow-actuator-exposure**：网关白名单对 actuator 只放健康探针 `/actuator/health`（精确匹配，SHALL NOT 含 `/actuator/**` 整段通配）——一通配即把 metrics/env/heapdump 等任意端点泄给未认证调用方；其余端点经网关 MUST 走鉴权分支，监控抓取按 ADR-0007 走内网直连不经网关（prometheus 六 target 均直连服务端口）。六服务 health `show-details` 收敛为 `never`：响应仅含整体 status，不含数据源/Redis/磁盘等组件明细；health 端点本体与 include 列表（prometheus/metrics）保留。引用变更 spec/changes/archive/narrow-actuator-exposure/。
 - **add-strict-secret-fail-fast**：密钥兜底默认的治理开关。`app.security.strict=true`（默认 false，本地演示零扰动）时启动期校验全部安全密钥项（JWT 签名密钥 user/gateway 两侧、内部接口共享密钥 common/api 收发两侧），任一项未显式注入（解析为 null 或等于演示默认串）即 fail-fast 抛 `IllegalStateException`，堵住「生产漏注入密钥静默回落公开仓字面值」的缺口；`InternalApiAuthFilter` 共享密钥比较改 `MessageDigest.isEqual` 常量时间比较（判定结果与等值比较语义等价：一致放行、不一致 403/1002）。引用变更 spec/changes/archive/add-strict-secret-fail-fast/。
 - **wire-verify-outbox**：判定事件可靠投递（事务性 outbox）。判定/终判结果与事件待发行行（verify_db.verify_event_outbox，status=PENDING，eventId 写入时生成）同事务落库，任一步失败整体回滚；判定路径不同步直发事件，relay 为唯一投递出口（延迟上界=relay 周期，默认 5s），投递失败 retry_count+1 保留行下轮重试，超过阈值（默认 16）仅记录告警并保留行供人工处理、SHALL NOT 静默丢弃；eventId 随行保存、relay 重发沿用行内 eventId，使消费端幂等键在重试间稳定。引用变更 spec/changes/archive/wire-verify-outbox/。
+- **adopt-native-mq-retry**：消费重试与死信改走 RocketMQ 原生。消费者以客户端参数 maxReconsumeTimes=3 声明重试上限（连同首次共最多消费 4 次），失败由 broker 按退避重投；超次消息进入该消费组内建死信队列 %DLQ%<consumerGroup>，不再向自建死信 topic record-verify-events-dlq 投递；业务代码不自建重试计数键、不读不写任何自建重试键。合并口径（delta L3-L7 原文提示）：本 delta 的 MODIFIED 按目标态整段书写、已包含 wire-verify-outbox 对同一需求（校验事件与幂等）的修改，两变更先后并入得到同一终态，建议先并入 wire-verify-outbox 以避免中间态引用尚不存在的需求；本轮即按此顺序执行。引用变更 spec/changes/archive/adopt-native-mq-retry/。

@@ -74,18 +74,38 @@
     "task": "变异复现红 + 还原零差异；offline 全量 + 静态检查 + 词面 + 契约 + 台账两件套",
     "steps": [
       {
-        "step": "变异：临时摘除 setMaxReconsumeTimes(3) → 复现配置判别式红 → 还原 sha256sum -c OK + cmp 零差异"
+        "step": "变异：临时摘除 setMaxReconsumeTimes(3) → 复现配置判别式红 → 还原 sha256sum -c OK + cmp 零差异。收口复跑（HEAD=58cd104，备份/还原走 cp+sha256，未用 git stash）：verify 侧变异前 sha256 0855e22a…（与冻结修订留底一致），--pl verify-service test → rc=1 / Tests run: 89, Failures: 1，仅 buildConsumer_enablesNativeMaxReconsumeTimes3:83 expected: <3> but was: <-1>；还原 sha256sum -c OK + cmp 零差异 + git diff HEAD 零差异。leaderboard 侧变异前 sha256 8a34c0f7…，--pl leaderboard-service test → rc=1 / Tests run: 59, Failures: 1，仅同判别式 :86；还原同上",
+        "completed": true
       },
       {
-        "step": "offline 全量 test：逐模块用例数 + BUILD SUCCESS + 退出码"
+        "step": "offline 全量 test：逐模块用例数 + BUILD SUCCESS + 退出码。收口复跑（HEAD=58cd104）：bash scripts/verify/mvn-verify.sh --mode=offline test → rc=0 / BUILD SUCCESS，逐模块 common 36 / api 0 / gateway 41 / user 33 / record 83 / verify 89 / leaderboard 59 / mapmatch 10 = 351（Failures 0 / Errors 0 / Skipped 0）",
+        "completed": true
       },
       {
-        "step": "静态检查：--static=leaderboard-service（删字段后不得新增违规）"
+        "step": "静态检查：--static=leaderboard-service（删字段后不得新增违规）。收口复跑 → rc=0 / BUILD SUCCESS：checkstyle 0 violations、SpotBugs Total bugs: 9（与 TASK-132 收口态持平，未新增）、PMD 7.17.0 无失败项",
+        "completed": true
       },
       {
-        "step": "词面自检双 locale、契约在途 --baseline + 收口后无参数"
+        "step": "词面自检双 locale、契约在途 --baseline + 收口后无参数。收口复跑（HEAD=58cd104）：CI 同款正则与排除（ci.yml Public docs wording self-check），LC_ALL=C git-grep rc=1（0 命中）、默认 locale rc=1（0 命中），既往登记的 MapMatchResultDTO locale 伪影在当前 HEAD 已不存在；契约无参数（tracked 树与 HEAD 零差异的收口态）→ rc=0（判据 A 两件套齐、含 0 个待办进行中；TASK-132 足迹不在工作树，视为已收口不重审）；在途 --baseline=5f89566 为既有证据核对未复跑（其只改清单与任一当前基线的工作树 diff 已不可重合：TASK-133~137 已提交足迹与并行未跟踪目录必致判据 B 失败），核对 .trae/tmp/task132-contract-inflight.log 第 467 行「TASK-132：判据 B 通过」（整体 rc=1 为 PLAN.md 公共文件过冲）与收口后无参数 task132-contract-final.log rc=0，与 handoff/PLAN 记载一致",
+        "completed": true
       }
     ],
-    "passes": false
+    "passes": true
+  },
+  {
+    "number": 5,
+    "category": "阶段 5：归档",
+    "task": "归档并入主规格并移入 archive/（TASK-158 C2）",
+    "steps": [
+      {
+        "step": "spec-delta 需求原文逐字并入主规格：MODIFIED「校验事件与幂等」按 5 场景终态版整段替换（先并入 wire-verify-outbox 再并入本变更，与 delta L11-L55 逐字一致）",
+        "completed": true
+      },
+      {
+        "step": "主规格头部提案清单与变更历史补 adopt-native-mq-retry 条目，L47 断言句后补清单外合法例外说明；目录移入 spec/changes/archive/",
+        "completed": true
+      }
+    ],
+    "passes": true
   }
 ]
