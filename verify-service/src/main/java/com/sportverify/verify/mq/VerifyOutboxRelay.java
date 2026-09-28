@@ -26,7 +26,8 @@ import java.util.concurrent.TimeUnit;
  * <p>多实例防重：Redisson 锁 {@code verify:outbox:relay}，tryLock(0 等待)——
  * 拿不到锁说明另一实例正在跑，直接跳过本轮（周期短，无需等待）。</p>
  *
- * <p>判定链路不直发（见 VerifyOutboxService）：事件到达延迟由本 relay 周期（默认 5s）决定，
+ * <p>判定链路不直发（见 VerifyOutboxService）：无积压时事件到达延迟下限由本 relay 周期（默认 5s）决定；
+ * 但持续到达率超过 relay 净投递吞吐时延迟由积压主导（实测同 run callback→SENT P50 ≈68.8s ≫ 5s 周期，TASK-143），
  * 榜单侧定时结算纠偏仍是最终一致的兜底。</p>
  *
  * <p>本类同时承担 {@link EnableScheduling}：verify-service 此前无定时任务，
