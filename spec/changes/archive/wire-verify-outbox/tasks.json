@@ -86,5 +86,21 @@
       }
     ],
     "passes": true
+  },
+  {
+    "number": 5,
+    "category": "阶段 5：归档",
+    "task": "归档并入主规格并移入 archive/（TASK-158 C1）",
+    "steps": [
+      {
+        "step": "spec-delta 需求原文逐字并入 spec/specs/sport-record-verify/spec.md：ADDED「判定事件可靠投递」5 场景块插入「校验事件与幂等」块之后，MODIFIED「校验事件与幂等」按 4 场景版整段替换（搬块行尾 LF→CRLF 对齐主规格）",
+        "completed": true
+      },
+      {
+        "step": "主规格头部提案清单与变更历史补 wire-verify-outbox 条目；目录移入 spec/changes/archive/（移名 3 文件随本提交成形）",
+        "completed": true
+      }
+    ],
+    "passes": true
   }
 ]

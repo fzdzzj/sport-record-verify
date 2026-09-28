@@ -43,6 +43,7 @@
 - add-auth-degrade-header-strip（鉴权降级路径剥离身份头）
 - narrow-actuator-exposure（actuator 暴露面收窄）
 - add-strict-secret-fail-fast（密钥注入严格模式与常量时间比较）
+- wire-verify-outbox（判定事件事务内 outbox 与 relay 唯一投递）
 
 各提案的 spec-delta 中 ADDED 需求已全部合并进本规范，MODIFIED 需求按规则处理（见「服务划分」分组与「变更历史」）。
 
@@ -898,6 +899,8 @@ AND 另一个影响 0 行，报 3003 或重试
 
 WHEN 校验流程产生状态变化,
 系统 SHALL 经 RocketMQ 发布 SUBMITTED/VERIFIED/REJECTED 事件，并 SHALL 以 eventId 去重保证消费幂等。
+判定/终判事件（VERIFIED/REJECTED）SHALL NOT 在判定线程同步直发：SHALL 与结果行同事务写入本地消息表后由 relay 唯一投递（见「判定事件可靠投递」）；
+eventId SHALL 在 outbox 写入时生成并保存，relay 重发 SHALL 沿用行内 eventId，使消费端幂等键在重试间稳定。
 
 #### Scenario: 触发校验事件
 
@@ -905,6 +908,13 @@ GIVEN 记录提交进入 VERIFYING
 WHEN 状态迁移完成
 THEN 发布 SUBMITTED 事件（Tag 区分）
 AND verify 消费后拉轨迹执行判定并回调
+
+#### Scenario: 判定事件经待发行表投递
+
+GIVEN 判定或终判产生 VERIFIED/REJECTED 事件
+WHEN 事件投递完成
+THEN 该事件先以 PENDING 行落 verify_event_outbox、再由 relay 按行内 topic/tag 投递并标 SENT
+AND 消费端读到的 eventId 与行内 eventId 逐字一致
 
 #### Scenario: 事件幂等消费
 
@@ -919,6 +929,47 @@ GIVEN 消费失败达到重试阈值
 WHEN 消费者无法处理
 THEN 消息进入 record-verify-events-dlq
 AND 可人工排查
+
+### Requirement: 判定事件可靠投递
+
+WHEN 判定结果落库,
+系统 SHALL 同事务写入事件待发行行（verify_db.verify_event_outbox，status=PENDING），事件 SHALL 由 relay 唯一投递；
+系统 SHALL NOT 在判定路径上同步直发事件，也 SHALL NOT 以吞异常的方式放弃已产生的判定事件。
+
+#### Scenario: 判定结果与待发行同生共死
+
+GIVEN 判定完成（PASSED/REJECTED）或终判完成（RE_PASSED/RE_CONFIRMED）
+WHEN 判定结果行写库
+THEN 同事务写入 outbox PENDING 行（含写入时生成的 eventId、topic、tag、payload）
+AND 任一步失败整体回滚，不出现「判定已落库但事件行不存在」的状态
+
+#### Scenario: relay 是唯一出口
+
+GIVEN 判定主链路已落库并提交
+WHEN 事件投递
+THEN 仅由 relay 定时扫描 PENDING 行投递
+AND 判定线程不调用同步发送（无「直发 + relay」双发路径）
+
+#### Scenario: 延迟上界为 relay 周期
+
+GIVEN 判定结果已提交且 outbox 存在 PENDING 行
+WHEN relay 按周期（默认 5s）扫描
+THEN 事件在周期内投递
+AND 榜单结算的定时纠偏仍是最终一致的兜底
+
+#### Scenario: 表结构随脚本交付
+
+GIVEN 按 `sql/03-verify-db.sql` 初始化 verify_db
+WHEN 查询 verify_event_outbox
+THEN 表存在且含 event_id 唯一键与 status/retry_count/created_at/sent_at 列
+AND 脚本可重复执行（IF NOT EXISTS）
+
+#### Scenario: 投递失败保留行
+
+GIVEN relay 投递某行失败
+WHEN 处理该行
+THEN retry_count+1 且 status 保持 PENDING 留下轮重试
+AND 超过阈值（默认 16）仅记录告警并保留行供人工处理，SHALL NOT 静默丢弃
 
 ### Requirement: 规则阈值可配置
 
@@ -2697,3 +2748,4 @@ AND 下次读取回源到最新值
 - **add-auth-degrade-header-strip**：补齐「不校验时的身份边界」。降级开关（`app.auth.enabled=false`，默认）与白名单是网关的两条透传主路径，此前原样透传不动头——而网关 8080 是唯一对外入口，调用方自带 `X-User-Id` 即可冒充任意用户（连 token 都不需要）。本变更后两条透传路径在放行前剥离外部携带的 `X-User-Id`/`X-Role`，「不校验」只关掉鉴权判定，不等于把身份认定权交给调用方；鉴权开启分支维持覆盖式注入不受影响，剥离与注入互补构成完整身份认定口径。需求边界是**头**不是开关：开关默认值不变（本地演示与压测旧行为保留）。服务直连端口（127.0.0.1:8081-8085）的暴露面不在需求范围，属网络层职责。引用变更 spec/changes/archive/add-auth-degrade-header-strip/。
 - **narrow-actuator-exposure**：网关白名单对 actuator 只放健康探针 `/actuator/health`（精确匹配，SHALL NOT 含 `/actuator/**` 整段通配）——一通配即把 metrics/env/heapdump 等任意端点泄给未认证调用方；其余端点经网关 MUST 走鉴权分支，监控抓取按 ADR-0007 走内网直连不经网关（prometheus 六 target 均直连服务端口）。六服务 health `show-details` 收敛为 `never`：响应仅含整体 status，不含数据源/Redis/磁盘等组件明细；health 端点本体与 include 列表（prometheus/metrics）保留。引用变更 spec/changes/archive/narrow-actuator-exposure/。
 - **add-strict-secret-fail-fast**：密钥兜底默认的治理开关。`app.security.strict=true`（默认 false，本地演示零扰动）时启动期校验全部安全密钥项（JWT 签名密钥 user/gateway 两侧、内部接口共享密钥 common/api 收发两侧），任一项未显式注入（解析为 null 或等于演示默认串）即 fail-fast 抛 `IllegalStateException`，堵住「生产漏注入密钥静默回落公开仓字面值」的缺口；`InternalApiAuthFilter` 共享密钥比较改 `MessageDigest.isEqual` 常量时间比较（判定结果与等值比较语义等价：一致放行、不一致 403/1002）。引用变更 spec/changes/archive/add-strict-secret-fail-fast/。
+- **wire-verify-outbox**：判定事件可靠投递（事务性 outbox）。判定/终判结果与事件待发行行（verify_db.verify_event_outbox，status=PENDING，eventId 写入时生成）同事务落库，任一步失败整体回滚；判定路径不同步直发事件，relay 为唯一投递出口（延迟上界=relay 周期，默认 5s），投递失败 retry_count+1 保留行下轮重试，超过阈值（默认 16）仅记录告警并保留行供人工处理、SHALL NOT 静默丢弃；eventId 随行保存、relay 重发沿用行内 eventId，使消费端幂等键在重试间稳定。引用变更 spec/changes/archive/wire-verify-outbox/。
