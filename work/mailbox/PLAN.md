@@ -1021,3 +1021,51 @@ run `35802403723`（head `eba0108`，2026-09-23 00:31 UTC）——**web/build �
 | 判据与退出码 | 唯一入口 `scripts/verify/mvn-verify.sh`：显式真库 IT **1/0/0/0 rc=0**（两轮：`task154-08`/`task154-10`）；变异红（目标线程多发一条 `SELECT 1`，断言实测=2）**1/1/0/0 rc=1**；还原复绿 rc=0；缺变量 **1/0/0/1 skipped rc=0 不记为真库通过**；offline verify-service 常规套件 **110/0/0/0 rc=0**（与既有基线同数，`*IT` 不被默认 Surefire 收集）。JSON 校验 rc=0、`git diff --check` rc=0；无参数 `mailbox-contract.sh` 提交前 **rc=1**（在途清单与既有脏项同现，预期口径）、提交后 **rc=0**（足迹不在工作树）。`--mode=online`/CI 未跑，**未达外部门槛**；本任务无真实 relay 负载、无四服务起栈。 |
 | 归因/性能纪律 | **不报告**任何延迟/吞吐/P99 数字；不把线程汇总称为完整单语句成本；不把后台刷盘/全局计数归到 `markSent`；**不得**从 TASK-152 的 73.93% 反推待优化子项；未改 `innodb_flush_log_at_trx_commit`/SQL/索引/JVM/池/MQ/relay 默认值；TASK-153 批末标记 NO-GO 未翻案；未 push、未建 PR。 |
 | 只改清单一致性 | 业务证据提交 `ae8fa92`（6）：`VerifyEventOutboxMarkSentWaitAttributionMysqlIT.java`（新）· `判别-outbox-markSent-线程等待可归因性.md`（新）· `exp-outbox-relay-mark-sent-wait-attribution.json`（新）· 本变更三件套 `proposal.md`/`tasks.json`/`spec-delta.md`（新）；台账提交（4）：`TASK-154/spec.md`（新）· `TASK-154/handoff.md`（新）· `PLAN.md`（改）· `后端优化机会总览-2026-09-26.md`（改）。归档移名 / `.codex/` / `.trae/` / `add-verify-degrade-status-index/` 未触碰；未用 `git stash`、未 `git add -A`、未 push、未建 PR；收尾如实回传：两个既有 MySQL 容器保持运行（开工时为外部引擎周期所杀，本任务仅启动未重建）。 |
+
+## 验收记录：TASK-158 恢复「归档 ⇔ delta 已并入主规格 ⇔ 已列入头部清单」不变式（2026-09-28，执行 agent，纯文档零代码）
+
+| 项 | 内容 |
+| --- | --- |
+| 绑定修订 | 开工基线 `779a293`（全 SHA `779a293835ada6f20f0db24066d0d75a25f8f06f`，开工 `git rev-parse` 逐位核对一致；`origin/main...main` = `0	2`，`0f62dbf`/`779a293` 未推送）。3 笔分批提交：C1 `5fb302b`（并入 wire-verify-outbox：主规格 3 处编辑 + 其台账文件补归档 task + 移名 3 文件）、C2 `d3c4284`（并入 adopt-native-mq-retry：主规格 3 处编辑 + 头部例外说明行 + 其台账文件补归档 task + 移名 3 文件）、C3 本笔（台账：PLAN 验收记录 + TASK-158 两件套入库）。全程未 push、未建 PR、未 `git stash`、未 `git add -A`/`add .`（逐路径 add） |
+| 门槛来源 | 本地实跑，唯一入口 `bash scripts/verify/mvn-verify.sh --mode=offline test`：开工基线 + 收口各一次。开工实测 rc=0 / BUILD SUCCESS / 逐模块 36/41/33/103/110/59/10 / Failures 0 / Errors 0 / Skipped 0；收口实测与两次逐位比对随 handoff 补记落库于本笔提交。生效模式 offline |
+| 是否到达外部门槛 | **未达外部门槛**（本次不 push，待下次授权由 CI 复验） |
+| G1 逐字判据（硬） | 自检脚本 blk 提取 + cmp：G1a ADDED「判定事件可靠投递」= wire delta L5-L44 → delta=40/40 spec=40/40、cmp rc=**0**；G1b MODIFIED「校验事件与幂等」= adopt delta L11-L55 终态 → delta=45/45 spec=45/45、标题 occurrences=**1**/1、cmp rc=**0**。开工态两判据如实报红（spec=0/40 与 25/45、cmp rc=1），证明脚本非恒绿 |
+| G2 集合不变式（硬） | 头部清单 38 → **40**、`spec/changes/archive` 目录 **42**；`comm -23` 恰 2 行 = `add-microservice-skeleton`、`add-sharding-host-parameterization`（两合法例外说明行已并入主规格 L47 断言句之后，L47 原文未动，集合不变式自此自解释）；`comm -13` 空 |
+| G3 无误删（硬） | `git diff -U0 779a293..HEAD -- spec/specs/sport-record-verify/spec.md` 全部含删除的 @@ 旧区间 = `-918`、`-920`（被替换「校验事件与幂等」旧块 [897,921] 内）+ `-2699`（末行伪影：起点 L2699 无行尾换行符，本轮改为以换行符结尾，该行删除侧与重加侧逐字一致，其重加侧同 hunk 另 2 行为新增变更历史条目）——除此之外零删除，其余 2674 行一字未动（@@ 行全文见 handoff） |
+| G4 行尾完整性（硬） | 主规格 CR=2765 LF=2765 bareLF=**0**、无 BOM、末字节 `0d 0a`（起点 CR=2698/LF=2698、末行无 0a，本轮有意补尾换行，与 G3 末行伪影同源）；PLAN.md CR=**0**（起点 CR=0/LF=1023，纯追加后 LF=1071，全程 LF 无 CR） |
+| G5 offline 双跑零扰动（硬） | 开工基线 **rc=0 / BUILD SUCCESS / Total 04:01**、逐模块 **36/41/33/103/110/59/10**、Failures/Errors/Skipped 全 0；收口复跑 **rc=0 / BUILD SUCCESS / Total 02:29**、逐模块 **36/41/33/103/110/59/10** —— 两次逐位一致，零扰动成立（本任务零 .java/.sql/.yml/.properties/pom/scripts 改动） |
+| G6 词面自检 | CI 同款正则 + 三排除（archive/**、docs/internal/**、ci.yml），`LC_ALL=C` 与默认 locale 各一次：开工态与 C2 后态均 **ZERO_HIT**（TASK-158 两件套当时未 tracked）；收口态（C3 已入库）双 locale 各 **1 行命中** = `work/mailbox/tasks/TASK-158/spec.md:179` —— 指导侧 spec.md 自检脚本代码块内嵌的禁词正则字面量自身，属 spec 内生冲突（C3 入库与 G6 收口 0 命中不可同时成立），执行侧无权改 spec.md/ci.yml，如实披露待指导侧处置，详见 handoff 补记 |
+| G7 空白与提交 | `git diff --check` rc=**0**；C1/C2/C3 各自 `git show --check` 干净 |
+| G8 契约 | 在途（开工，TASK-158 仅 spec）`--open TASK-158 --baseline=779a293` **rc=0**；收口后**无参数复跑 rc=0**（判据 A 两件套齐含 0 个待办进行中 + TASK-158 足迹不在工作树视为已收口）；`--baseline=779a293` 复跑 rc=1，TASK-158 的过冲**恰**为 `?? spec/changes/add-verify-degrade-status-index/` 的 4 个既有脏项（清单多报 0 条），其余为历史任务对 spec.md/PLAN.md 的公共文件交叠（TASK-127 记载的既知模式，不属本任务）——逐条见 handoff 补记 |
+| 只改清单一致性 | 实际改动集（`git diff --name-only 779a293..HEAD` + untracked）= 主规格 1 + archive 6 + 台账 3 = **10 路径**，与 handoff「只改清单」逐项一致；archive 6 文件中 proposal/delta 4 份 blob 与 HEAD 逐字一致（R100），2 份台账文件各补归档 task（adopt 侧在 HEAD=58cd104 已补录收口复跑证据之上追加，证据未覆盖）；`spec/changes/` 19 个在途目录零触碰（add-verify-degrade-status-index 共 4 文件未跟踪、原样未动）；`.trae/tmp/` 被 `.gitignore` 忽略未入库 |
+| 未覆盖/后续 | ① 本轮 3 笔提交未 push、未过 CI：外部门槛**未达**（G9），不得把 offline 绿表述为外部门槛绿；② 19 个在途 delta 均未并入主规格（自核表见下），下一轮合并难点与首候选见下；③ 主规格仍缺 TASK-142 取批资格（`VerifyEventOutboxMapper` 的 `retry_count < maxRetry`）与 relay 诊断（`relay-diagnostics-enabled`/`relay-diagnostics-window-ms`）相关需求；④ 本轮为纯文档任务，**不构成任何性能结论**；⑤ `work/mailbox/PLAN.md` L4「本地 main 已 push 至 origin/main（58cd104..de81b59）…= 0 0」为**已知陈旧断言**（其后 0f62dbf/779a293 与本轮 3 笔均未推送，收口时 `origin/main...main` = 0 behind / 5 ahead），本轮按约束纯追加未改 L4，留待下一次推送批次连同新 CI run 证据一并订正，本轮亦未据 L4 推出任何「已推送」结论；⑥ 只读范围（TASK-156 产物、docs/perf、prove-verify-outbox-relay-concurrency-scaling、verify-service 测试）本轮未发现需订正的可疑之处（复核以台账交叉引用与触发事实代码锚点为界，未做深审） |
+
+**TASK-158 欠账登记表（19 个在途目录，执行侧自核：steps/passes 用自检脚本实跑复核，tracked 用 `git ls-files` 实数）**
+
+| 目录 | steps | passes 全绿 | tracked |
+| --- | --- | --- | --- |
+| add-verify-degrade-status-index | 0/6 | 否 | 0（未跟踪，从未启动，共 4 文件未跟踪） |
+| fix-verify-outbox-poison-head-of-line | 10/10 | 是 | 3 |
+| measure-head-bottleneck-attribution | 14/15 | 是 | 3 |
+| measure-submit-db-wait-evidence | 13/13 | 是 | 3 |
+| measure-submit-pool-capacity | 13/13 | 是 | 3 |
+| measure-verify-event-stage-lag | 11/11 | 是 | 3 |
+| measure-verify-mark-sent-admin-window | 9/9 | 是 | 3 |
+| measure-verify-mark-sent-spring-paired-cost | 10/10 | 是 | 3 |
+| measure-verify-outbox-mark-sent-cost | 10/10 | 是 | 3 |
+| measure-verify-outbox-mark-sent-server-event | 5/10 | 否 | 3 |
+| measure-verify-outbox-relay-cost | 11/11 | 是 | 3 |
+| prove-verify-mark-sent-wait-attribution | 10/10 | 是 | 3 |
+| prove-verify-outbox-batch-mark-safety | 10/10 | 是 | 3 |
+| prove-verify-outbox-mark-sent-attribution | 10/10 | 是 | 3 |
+| prove-verify-outbox-mark-sent-spring-wiring | 10/10 | 是 | 3 |
+| prove-verify-outbox-relay-concurrency-scaling | 10/10 | 是 | 3 |
+| resume-verify-outbox-mark-sent-server-event | 4/9 | 否 | 3 |
+| shorten-submit-db-footprint | 17/17 | 是 | 3 |
+| update-verify-outbox-relay-delay | 7/8 | 否 | 3 |
+
+即：**15 个已完成但从未并入主规格、从未归档**（含 fix-verify-outbox-poison-head-of-line、shorten-submit-db-footprint 这类已改代码的实质变更），3 个未全绿（measure-verify-outbox-mark-sent-server-event 5/10、resume-verify-outbox-mark-sent-server-event 4/9、update-verify-outbox-relay-delay 7/8），1 个未启动（add-verify-degrade-status-index）。下一轮合并的两个已知难点与首候选：
+
+- **3 深 MODIFIED 链**：需求「relay 可选诊断不得改变可靠投递语义」由 measure-verify-outbox-relay-cost ADDED，再被 measure-verify-outbox-mark-sent-cost MODIFIED，再被 prove-verify-outbox-mark-sent-attribution MODIFIED ⇒ 后续必须按此顺序合并、终态取最后一个 MODIFIED（对应代码事实：VerifyOutboxRelay 的 relay-diagnostics-enabled:false 与 relay-diagnostics-window-ms:10000 已实现）。
+- **对既有基线需求的 MODIFIED**：shorten-submit-db-footprint MODIFIED「轨迹提交幂等」（主规格 L735 起），属提交路径而非 outbox，须单独一轮。
+- **下一轮首候选**：fix-verify-outbox-poison-head-of-line（10/10 全绿、纯 ADDED 2 条需求、零 MODIFIED ⇒ 冲突风险最低，且能把 outbox 章节补齐到与当前代码一致）。
