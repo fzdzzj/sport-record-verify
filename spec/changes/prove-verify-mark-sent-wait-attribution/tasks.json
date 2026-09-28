@@ -1,0 +1,52 @@
+[
+  {
+    "number": 1,
+    "category": "基线与仪器只读预检",
+    "task": "确认原有 P_S 数据层级与可用性",
+    "steps": [
+      {"step": "核对 HEAD=88692cf、既有脏项和 TASK-152/153 结论；只读记录 scratch/演示 MySQL 的 setup_consumers、目标 wait/statement instruments、thread summary 与 digest 表；不启停仪器、不重置计数", "completed": true},
+      {"step": "确认 test-only 专用 scratch schema 可建且真实 DDL 可用；旧 scratch/演示 verify_db 与数据卷完全隔离，不可用就记未覆盖", "completed": true}
+    ],
+    "passes": true
+  },
+  {
+    "number": 2,
+    "category": "单线程目标语句判别",
+    "task": "只在受控连接执行目标 UPDATE",
+    "steps": [
+      {"step": "目标连接取 CONNECTION_ID 并映射 P_S THREAD_ID，观察连接读前快照；目标连接只执行真 markSent SQL，读后快照及目标 digest、状态、影响行数，逐轮确认线程身份和计数闭合", "completed": true},
+      {"step": "重复小样本，加入同线程非目标 SQL/零行 UPDATE 负对照与背景线程检查；检查计数是否能区分并说明嵌套、文件 I/O/后台计时缺失或混杂", "completed": true}
+    ],
+    "passes": true
+  },
+  {
+    "number": 3,
+    "category": "GO/NO-GO 范围裁决",
+    "task": "不把线程汇总直接称为完整单语句成本",
+    "steps": [
+      {"step": "身份/负对照失败或需开启仪器即 NO-GO；若通过，只列可对应的客户端连接线程等待增量与未知项，不加和未知嵌套，不把后台刷盘/全局计数归到 markSent", "completed": true},
+      {"step": "不从 TASK-152 的 73.9% 反推待优化子项，不调 innodb_flush_log_at_trx_commit、索引、JVM、池、MQ，也不修改 relay/Mapper", "completed": true}
+    ],
+    "passes": true
+  },
+  {
+    "number": 4,
+    "category": "验证与证据",
+    "task": "真库判别与普通测试各自如实计数",
+    "steps": [
+      {"step": "新增 test-only 条件式真库 IT；统一入口 offline verify-service 常规测试与显式真库 IT 实跑，区分环境红、测试红、跳过/0-run，记录四计数和退出码", "completed": true},
+      {"step": "有界报告、机器摘要和 ignored raw 路径记录原始计数、线程映射、负对照及不足；JSON 解析、git diff --check、实际文件清单", "completed": true}
+    ],
+    "passes": true
+  },
+  {
+    "number": 5,
+    "category": "一次作业收口",
+    "task": "三件套、台账与提交集中完成",
+    "steps": [
+      {"step": "据实勾选三件套、TASK-154 spec/handoff、PLAN/机会总览，写明 GO/NO-GO 与最强反例，历史 TASK-152/153 原始数字不动", "completed": true},
+      {"step": "无参数 mailbox-contract；仅 stage 本任务文件并作必要本地提交，不 stash/add -A/push/PR，集中回传退出码与未覆盖项", "completed": true}
+    ],
+    "passes": true
+  }
+]

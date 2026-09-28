@@ -1,0 +1,169 @@
+{
+  "task": "TASK-154",
+  "changeId": "prove-verify-mark-sent-wait-attribution",
+  "head": "88692cf0d67aeb7aed41ae647a8524b21af374f5",
+  "date": "2026-09-28",
+  "label": "task154-outbox-marksent-thread-wait-attribution",
+  "purpose": "Read-only adjudication ONLY: without enabling/resetting any Performance Schema instrument and without any production change, can the real markSent conditional UPDATE's wait cost (or smaller fsync/lock/pure-SQL items) be safely attributed to the client connection thread that executed it, using only already-populated P_S summary tables? Counterexample-first: dedicated scratch schema task154_wait_scratch with the repository's real DDL; CONNECTION_ID() -> P_S THREAD_ID mapping; target connection executes only the verbatim production markSent SQL; observer connection takes before/after snapshots; repeated small samples plus same-thread negative controls (zero-row UPDATE, SELECT 1, same-table SELECT) and background-path checks.",
+  "verdict": {
+    "result": "NO-GO",
+    "canAttributeMarkSentWaitCost": false,
+    "restrictedGoForClientThreadObservationOnly": false,
+    "productionCodeChanged": false,
+    "defaultsChanged": false,
+    "instrumentationChanged": false,
+    "countersReset": false,
+    "loadRun": false,
+    "reasons": [
+      "Background attribution unresolved: thread/innodb/log_flusher_thread and log_writer_thread (run B also io_write/page_flush_coordinator/dblwr) have NON-zero wait increments in the same sequence window; the 2 binlog file waits counted on the client thread are only that statement's own share; the redo-flush share borne by background threads can neither be confirmed nor quantified, and the seed INSERTs in the same window travel the same commit path.",
+      "Instrumentation gap: all wait/synch/* instruments are disabled -> 'waiting for log flush completion' style sync waits are simply NOT collected; events_waits_history_long = NO -> the wait event tree (nesting/ordering) cannot be reconstructed from aggregates.",
+      "Cannot name the item: the 2 wait/io/file/sql/binlog events are only '2 waits on this file class'; they cannot be split into write/fsync, nor aggregated with redo into a 'persistence cost'.",
+      "Measurement accounting: this instance has no setup_timers table (unit empirically calibrated as picoseconds); idle is mixed in the same summary table and must be excluded; client wall clock and server statement event time are two independent observations that must not be subtracted or divided."
+    ],
+    "note": "TASK-152's 0.739312 and TASK-153's batch-end-mark NO-GO were NOT modified, NOT overturned, and NOT used to infer optimizable sub-items. No percentage of fsync/lock/pure-SQL was produced."
+  },
+  "environment": {
+    "instances": [
+      {"container": "task131-scratch-mysql", "image": "mysql:8.0.46", "hostPort": "13318->3306", "role": "task154_wait_scratch isolated experiment"},
+      {"container": "sport-verify-mysql", "image": "mysql:8.0.46", "hostPort": "3307->3306", "role": "demo instance, read-only registry check only; verify_db not written"}
+    ],
+    "psConsumersBothInstances": "events_waits_current/history/history_long = NO; events_statements_current/history = YES (per-thread ring), events_statements_history_long = NO; statements_digest = YES; global/thread_instrumentation = YES",
+    "waitInstruments": "400 total, 54 ENABLED+TIMED (wait/io/file/%, wait/io/table/sql/handler, wait/lock/table/sql/handler); all wait/synch/* NOT enabled",
+    "keyEmpiricalFact": "despite events_waits_current=NO, events_waits_summary_by_thread_by_event_name still has non-zero rows (target thread shows idle/file I/O rows) -> thread-scoped waits ARE observable read-only",
+    "noSetupTimersTable": true,
+    "lostCountersZero": "Performance_schema_*_lost all 0, digest_lost=0",
+    "envDisclosure": "At start both pre-existing containers were Exited (255) (killed by an external Docker engine cycle at 2026-09-28T03:38:23Z, OOMKilled=false, restart=no). This task only STARTED these two pre-existing containers (no rebuild, no config change, no volume deletion, no other container started) to restore the middleware state of TASK-152's end; demo verify_db was read-only, never written."
+  },
+  "protocol": {
+    "itClass": "verify-service/src/test/java/com/sportverify/verify/mapper/VerifyEventOutboxMarkSentWaitAttributionMysqlIT.java",
+    "schema": "task154_wait_scratch",
+    "ddlSource": "sql/03-verify-db.sql mechanically renamed via sed 's/verify_db/task154_wait_scratch/g'; schema at 0 rows before the run",
+    "tableShape": "PK id + uk_event_id + idx_status_id(status,id)",
+    "markSentSqlVerbatim": "UPDATE verify_event_outbox SET status = 'SENT', sent_at = NOW() WHERE id = ? AND status = 'PENDING'",
+    "sqlSource": "rendered from the production Mapper annotation at runtime (#{id} -> ?), not hand-typed",
+    "targetConnection": "independent DriverManager connection, autocommit=true (same semantics as production one-call-one-commit), CONNECTION_ID() captured; mapped PROCESSLIST_ID -> P_S THREAD_ID asserted TYPE=FOREGROUND, NAME=thread/sql/one_connection",
+    "observerConnection": "separate DriverManager connection reading thread waits summary / statements summary / markSent digest row before and after each window; 200 ms settle between execute and after-snapshot",
+    "perWindowAssertions": "affected rows; row status; target thread statement TOTAL count delta == 1 (observer queries must not land on the target thread); markSent digest count delta == 1; digest cumulative rows-affected delta == expected",
+    "windows": "w1..w5 repeated small samples (each one new PENDING row); negatives n1 nonexistent id (0 rows), n2 already-SENT row (0 rows), n3 SELECT 1, n4 same-table SELECT, n5 real incrRetry UPDATE (1 row)",
+    "sequenceLevel": [
+      "background thread/innodb/% waits summary, global waits summary, SHOW GLOBAL STATUS Com_update/Com_insert taken before/after the sequence",
+      "thread mapping re-checked after the sequence (identity stability)",
+      "calibrateTimerUnit(): observer runs SELECT SLEEP(0.5) and reads back that statement event's timer from the statement history"
+    ],
+    "timerUnit": "picoseconds (empirical calibration); first implementation using thread-summary before/after delta got delta=2 because a SELECT's summary counter lands AFTER its rows are read, so the before-snapshot read counted itself - fixed by reading the statement history row; NOT an instrument change"
+  },
+  "measuredEvidence": {
+    "timerCalibrationPs": [500368961000, 500561170000, 500563096000],
+    "runA": {
+      "targetProcesslistId": 47,
+      "targetThreadId": 88,
+      "observerThreadId": 87,
+      "windows": [
+        {"id": "w1", "kind": "markSent.pending", "affected": 1, "clientWallUs": 11967.0, "stmtEventTimerUs": 10405.8, "digestCountDelta": 1, "waits": "binlog=2/5602.1us; table/sql/handler=2/109.8us; lock/table/sql/handler=1/2.2us"},
+        {"id": "w2", "kind": "markSent.pending", "affected": 1, "clientWallUs": 7203.8, "stmtEventTimerUs": 6286.0, "digestCountDelta": 1, "waits": "binlog=2/2184.0us; table/sql/handler=2/66.8us; lock/table/sql/handler=1/1.6us"},
+        {"id": "w3", "kind": "markSent.pending", "affected": 1, "clientWallUs": 4800.0, "stmtEventTimerUs": 3623.0, "digestCountDelta": 1, "waits": "binlog=2/1831.7us; table/sql/handler=2/100.3us; lock/table/sql/handler=1/1.4us"},
+        {"id": "w4", "kind": "markSent.pending", "affected": 1, "clientWallUs": 8365.1, "stmtEventTimerUs": 7152.6, "digestCountDelta": 1, "waits": "binlog=2/3895.1us; table/sql/handler=2/99.9us; lock/table/sql/handler=1/1.2us"},
+        {"id": "w5", "kind": "markSent.pending", "affected": 1, "clientWallUs": 8832.4, "stmtEventTimerUs": 7589.7, "digestCountDelta": 1, "waits": "binlog=2/3134.6us; table/sql/handler=2/86.8us; lock/table/sql/handler=1/1.1us"},
+        {"id": "n1-missingId", "kind": "markSent.zeroRow.missingId", "affected": 0, "clientWallUs": 1565.4, "stmtEventTimerUs": 385.2, "digestCountDelta": 1, "waits": "table/sql/handler=1/55.5us; lock/table/sql/handler=1/2.3us (NO binlog)"},
+        {"id": "n2-alreadySent", "kind": "markSent.zeroRow.alreadySent", "affected": 0, "clientWallUs": 1497.1, "stmtEventTimerUs": 295.3, "digestCountDelta": 1, "waits": "table/sql/handler=1/14.5us; lock/table/sql/handler=1/2.0us (NO binlog)"},
+        {"id": "n3-select1", "kind": "nonTarget.select1", "affected": null, "clientWallUs": 641.8, "stmtEventTimerUs": 74.2, "waits": "(no delta)"},
+        {"id": "n4-sameTableSelect", "kind": "nonTarget.sameTableSelect", "affected": null, "clientWallUs": 1772.1, "stmtEventTimerUs": 271.6, "waits": "table/sql/handler=1/22.2us; lock/table/sql/handler=1/2.0us"},
+        {"id": "n5-incrRetry", "kind": "nonTarget.incrRetry", "affected": 1, "clientWallUs": 7821.6, "stmtEventTimerUs": 6649.9, "waits": "binlog=2/2723.8us; table/sql/handler=2/66.1us; lock/table/sql/handler=1/1.8us"}
+      ],
+      "background": "17|thread/innodb/log_flusher_thread|wait/io/file/innodb/innodb_log_file=34/111165.2us; 19|thread/innodb/log_writer_thread=47/832.4us",
+      "global": "sql/binlog=24/38393.4us; innodb_log_file=80/105994.4us; table/sql/handler=30/1532.5us; lock/table/sql/handler=24/39.8us",
+      "globalStatus": {"Com_update": 8, "Com_insert": 6},
+      "identityStable": true
+    },
+    "runB": {
+      "targetProcesslistId": 60,
+      "targetThreadId": 101,
+      "windows": [
+        {"id": "w1", "affected": 1, "clientWallUs": 6201.4, "stmtEventTimerUs": 4653.1, "waits": "binlog=2/2241.2us; table/sql/handler=2/78.7us; lock/table/sql/handler=1/1.7us"},
+        {"id": "w2", "affected": 1, "clientWallUs": 6298.1, "stmtEventTimerUs": 4938.1, "waits": "binlog=2/1729.4us; table/sql/handler=2/52.1us; lock/table/sql/handler=1/1.9us"},
+        {"id": "w3", "affected": 1, "clientWallUs": 24325.7, "stmtEventTimerUs": 15889.4, "waits": "binlog=2/7434.7us; table/sql/handler=2/1363.1us; lock/table/sql/handler=1/3.0us"},
+        {"id": "w4", "affected": 1, "clientWallUs": 10661.0, "stmtEventTimerUs": 7852.2, "waits": "binlog=2/3284.4us; table/sql/handler=2/189.0us; lock/table/sql/handler=1/2.0us"},
+        {"id": "w5", "affected": 1, "clientWallUs": 11736.5, "stmtEventTimerUs": 9522.1, "waits": "binlog=2/3549.9us; table/sql/handler=2/69.0us; lock/table/sql/handler=1/2.2us"},
+        {"id": "n1-missingId", "affected": 0, "clientWallUs": 1814.3, "stmtEventTimerUs": 268.0, "waits": "no binlog (run A: table=1/55.5us; lock=1/2.3us)"},
+        {"id": "n2-alreadySent", "affected": 0, "clientWallUs": 1635.2, "stmtEventTimerUs": 250.4, "waits": "no binlog (run A: table=1/14.5us; lock=1/2.0us)"},
+        {"id": "n3-select1", "affected": null, "stmtEventTimerUs": 78.7, "waits": "(no delta)"},
+        {"id": "n4-sameTableSelect", "affected": null, "stmtEventTimerUs": 298.4, "waits": "table/lock only (run A: table=1/22.2us; lock=1/2.0us)"},
+        {"id": "n5-incrRetry", "affected": 1, "clientWallUs": 14177.8, "stmtEventTimerUs": 11711.5, "waits": "binlog=2/4051.2us; table/sql/handler=2/145.2us; lock/table/sql/handler=1/2.8us"}
+      ],
+      "background": "9/11/12 io_write_thread innodb_data_file; 13 page_flush_coordinator_thread dblwr=6/9531.1us + data=6/150.3us; 17 log_flusher_thread=35/136146.4us; 19 log_writer_thread=48/1317.0us",
+      "global": "sql/binlog=24/41451.2us; innodb_dblwr_file=6/9531.1us; innodb_data_file=10/14065.6us; innodb_log_file=81/133339.9us; table/sql/handler=30/3329.3us; lock/table/sql/handler=24/62.6us",
+      "globalStatus": {"Com_update": 8, "Com_insert": 6},
+      "identityStable": true
+    },
+    "reproducibleCombination": "every row-hitting UPDATE window (12 across runs A+B incl. incrRetry) shows the same client-thread combination: wait/io/file/sql/binlog x2, wait/io/table/sql/handler x2, wait/lock/table/sql/handler x1; plus one idle (~0.22-0.26 s between windows, excluded). Zero-row UPDATE and SELECT windows do NOT produce binlog waits; SELECT 1 produces no non-idle waits at all.",
+    "globalVsThreadCounts": "thread-scoped binlog events from the 7 row-hitting statements (warmup 1 + w1..w5 + n5) = 14; global sql/binlog = 24 in the same period. The difference matches other connections' commit activity (seed INSERTs) and MUST NOT be apportioned to markSent - this is the empirical proof that global counter deltas cannot be used for a single-statement measurement.",
+    "digestIdentity": "target digest = 6b07036bdfeae6b8f12d602eb37af86bfe73e3f9dac3600006dfd8cde12b05b7, byte-for-byte identical to the TASK-152 admin-window production SQL fingerprint (DIGEST_TEXT also identical: UPDATE `verify_event_outbox` SET STATUS = ? , `sent_at` = NOW ( ) WHERE `id` = ? AND STATUS = ?)"
+  },
+  "closedCriteria": [
+    "identity closed: CONNECTION_ID() -> THREAD_ID mapping succeeded (TYPE=FOREGROUND, NAME=thread/sql/one_connection); mapping unchanged after the sequence",
+    "counts closed: per window target-thread statement TOTAL delta exactly 1 (12+ observer P_S reads never landed on the target thread); markSent digest count delta exactly 1 and digest cumulative rows-affected delta == affected rows",
+    "digest identity: same production SQL fingerprint as TASK-152, verified in-run",
+    "semantics unchanged: hit windows end SENT with non-null sent_at; zero-row windows leave no state change; affected rows equal the JDBC return value",
+    "negatives distinguishable: row-hitting UPDATE has binlog file waits; zero-row UPDATE and SELECTs do not; SELECT 1 has no non-idle waits",
+    "reproducible: the combination is identical across two independent runs; a mutation (one extra SELECT 1 on the target thread) turned the 'statement total delta == 1' assertion RED (Tests run 1 / Failures 1 / rc=1, observed delta=2); reverted -> green again - the assertion is alive"
+  ],
+  "unclosedReasons": [
+    "background attribution unknown: thread/innodb/log_flusher_thread, log_writer_thread (run B also io_write/page_flush_coordinator/dblwr) have non-zero increments in the same window; the 2 client-thread binlog waits are only that statement's own share; the redo-flush share borne by background threads can neither be confirmed nor quantified, and the seed INSERTs share the same commit path in the same window",
+    "instruments not covering: all wait/synch/* disabled (the actual 'wait for log flush completion' sync wait is NOT collected); events_waits_history_long = NO (no event-tree reconstruction)",
+    "cannot name: the 2 wait/io/file/sql/binlog events cannot be split into write/fsync nor merged with redo into a 'persistence cost'",
+    "accounting: no setup_timers table (unit calibrated empirically as ps); idle mixed in the summary must be excluded; client wall and server statement event are independent observations - no subtraction/division"
+  ],
+  "restrictedFactualStatement": "In THIS isolated environment and THIS instrument setting, a row-hitting UPDATE stably leaves, on ITS client connection thread, the directly readable combination 'binlog file wait x2 + table handler wait x2 + table lock wait x1', and zero-row UPDATE / non-target SQL do not produce that combination. This is NOT a GO, NOT an optimization authorization, and NOT a full transaction cost.",
+  "entrypoints": {
+    "realDbIt": {"command": "MAVEN_ARGS=\"-Dtest=VerifyEventOutboxMarkSentWaitAttributionMysqlIT -Dsurefire.failIfNoSpecifiedTests=false\" bash scripts/verify/mvn-verify.sh --mode=offline --pl verify-service test", "env": ["TASK154_IT_URL", "TASK154_IT_USER", "TASK154_IT_PASSWORD"], "testsRun": 1, "failures": 0, "errors": 0, "skipped": 0, "exitCode": 0, "logs": ["docs/perf/data/raw/task154-08-it-run.log", "docs/perf/data/raw/task154-10-it-regreen.log"]},
+    "mutationRed": {"mutation": "one extra SELECT 1 executed on the target thread before the measured statement", "testsRun": 1, "failures": 1, "errors": 0, "skipped": 0, "exitCode": 1, "assertion": "w1 target-thread statement total delta expected 1 but was 2", "log": "docs/perf/data/raw/task154-09-it-mutation-red.log"},
+    "reGreenAfterRevert": {"testsRun": 1, "failures": 0, "errors": 0, "skipped": 0, "exitCode": 0, "log": "docs/perf/data/raw/task154-10-it-regreen.log"},
+    "noEnvSkip": {"testsRun": 1, "failures": 0, "errors": 0, "skipped": 1, "exitCode": 0, "log": "docs/perf/data/raw/task154-12-it-noenv-skip.log", "note": "missing-env skip is NOT recorded as a real-DB pass"},
+    "offlineRegular": {"command": "bash scripts/verify/mvn-verify.sh --mode=offline --pl verify-service test", "testsRun": 110, "failures": 0, "errors": 0, "skipped": 0, "exitCode": 0, "note": "*IT is not collected by the default Surefire phase; count equals the pre-existing baseline", "log": "docs/perf/data/raw/task154-11-offline-regular.log"}
+  },
+  "scratchIsolation": {
+    "onlyNewSchema": "task154_wait_scratch",
+    "postState": {"task154_wait_scratch": {"rows": 7, "sent": 6, "pending": 1, "retryPos": 1}, "task142_outbox_scratch": 104, "task147_marksent_scratch": 6, "task148_marksent_scratch": 6, "task149_marksent_scratch": 130, "task153_batch_scratch": 3},
+    "preExistingUnchanged": true,
+    "demoVerifyDb": "read-only registry check only; never written"
+  },
+  "discipline": {
+    "noInstrumentChanges": true,
+    "noCounterResets": true,
+    "noConfigOrContainerChanges": "containers only started (pre-existing, previously Exited(255) by an external Docker engine cycle); no rebuild, no config edit, no volume deletion",
+    "noProductionChange": "no production Java/SQL/YAML/default change; the IT is test-only",
+    "noLoad": "c100x2000 not run; no latency/throughput/P99 number reported",
+    "priorConclusions": "TASK-152's 0.739312 and TASK-153's batch-end-mark NO-GO: unmoved, unmodified, not used to infer optimizable sub-items",
+    "remote": "no push, no PR; local commits only, staged explicitly"
+  },
+  "directlyMeasured": [
+    "target thread identity mapping and stability across the sequence",
+    "per-window closure of statement total delta (=1), digest count delta (=1), digest cumulative rows-affected delta, affected rows and row state",
+    "client-thread wait combination per row-hitting UPDATE: binlog x2 / table handler x2 / table lock x1, in both runs (12 windows)",
+    "negative controls: zero-row UPDATE (no binlog), SELECT 1 (no non-idle waits), same-table SELECT (table waits only), same-thread incrRetry UPDATE (same combination as markSent)",
+    "background innodb thread increments in the same window (log_flusher 34/111.2ms run A, 35/136.1ms run B; log_writer 47/0.83ms, 48/1.32ms; run B io_write/dblwr/page_flush)",
+    "global vs thread-scoped binlog counts (24 vs 14) proving global deltas are not single-statement attributable",
+    "timer unit calibration via SELECT SLEEP(0.5) statement event (~5.0037-5.0056e11 ps)",
+    "mutation red: extra statement on the target thread -> delta 2, rc=1; reverted -> green rc=0"
+  ],
+  "unknowns": [
+    "correspondence between background-thread waits and any single markSent commit",
+    "wait/synch class waits (never collected on this instance)",
+    "wait event tree / nesting reconstruction",
+    "connection acquisition / prepare / commit split-out",
+    "naming of server SQL / network / fsync shares",
+    "the same observation under the production Spring/Hikari assembly",
+    "multi-instance lock contention",
+    "real relay load (c100x2000 not run)"
+  ],
+  "gaps": [
+    "no full-service load; no leaderboard/mapmatch segments; R5 not covered",
+    "--mode=online / CI not run (external threshold not reached)",
+    "the IT is a raw-JDBC conditional real-DB test, not the production Spring assembly"
+  ],
+  "evidence": {
+    "report": "docs/perf/判别-outbox-markSent-线程等待可归因性.md",
+    "rawDir": "docs/perf/data/raw/task154-01-pre-state.txt .. task154-13-scratch-poststate.txt",
+    "itSource": "verify-service/src/test/java/com/sportverify/verify/mapper/VerifyEventOutboxMarkSentWaitAttributionMysqlIT.java"
+  }
+}
