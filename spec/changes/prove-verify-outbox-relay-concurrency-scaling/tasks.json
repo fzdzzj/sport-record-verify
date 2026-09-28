@@ -1,0 +1,52 @@
+[
+  {
+    "number": 1,
+    "category": "基线与隔离只读预检",
+    "task": "冻结基线并准备专用 scratch schema",
+    "steps": [
+      {"step": "核对 HEAD=7eb6095 与既有脏项；容器 task131-scratch-mysql 只读登记 innodb_flush_log_at_trx_commit/sync_binlog/log_bin/event_scheduler 与既有 task% schema 行数前计数；不改配置/仪器、不重置计数器、不重启容器", "completed": true},
+      {"step": "由 sql/03-verify-db.sql 机械改名只新增 task156_concurrency_scratch（IT 内硬校验 SELECT DATABASE()）；跑前跑后既有 schema 行数逐字节一致", "completed": true}
+    ],
+    "passes": true
+  },
+  {
+    "number": 2,
+    "category": "受控并发标度实验",
+    "task": "test-only IT 逐行语义不变的 N 路并发判别",
+    "steps": [
+      {"step": "SQL 逐字取自生产 Mapper 注解渲染；M=2000 PENDING 种子；臂 N∈{1,2,4,8}×3 轮，id%N 互不相交分片，每线程独立 DriverManager 连接 autoCommit=true，barrier 起跑 join 收尾，重置不计入墙钟与计数窗口", "completed": true},
+      {"step": "每臂读总墙钟/聚合吞吐/单行墙钟分布/Com_update 前后差（SHOW GLOBAL STATUS）/digest 计数（若可读）；会话门按客户会话线程计数+SHOW PROCESSLIST 双核对（本实例 FOREGROUND 含两条系统 Daemon 线程已实测订正，原始计数照记）", "completed": true}
+    ],
+    "passes": true
+  },
+  {
+    "number": 3,
+    "category": "交叉校验与三支裁决",
+    "task": "硬判据把关，预注册阈值不放宽",
+    "steps": [
+      {"step": "12 窗口 Com_update 增量精确=2000、Com_insert/Com_delete=0、SENT=2000/PENDING=0、会话门干净；N=1 单行墙钟 9.4ms 落合理量级；digest 仅作旁证", "completed": true},
+      {"step": "S(2)=1.8612、S(4)=3.3066、S(8)=5.7056 单调不减 → 落预注册第一支「并发标度成立（仅必要条件）」；不实施、不改默认值、不翻案 TASK-153、不改写 TASK-152", "completed": true}
+    ],
+    "passes": true
+  },
+  {
+    "number": 4,
+    "category": "变异与调用通道取证",
+    "task": "三档退出码实测 + 带外通道可审计",
+    "steps": [
+      {"step": "变异红（漏标一行，Com_update=1999 断言翻红）rc=1；字节还原（cmp 0）复绿 rc=0（S(8)=5.5858 与主 run 印证）；缺变量 skipped rc=0 不记真库通过；常规套件档在 .mvn/maven.config 删除后跑回 common 36/verify-service 110/skipped 0", "completed": true},
+      {"step": ".mvn/maven.config 两行原文与跑前跑后 git status --porcelain .mvn 存证；git add/commit 之前删除并以空输出取证；未用 MAVEN_OPTS、未改 mvn-verify.sh/任何 pom", "completed": true}
+    ],
+    "passes": true
+  },
+  {
+    "number": 5,
+    "category": "FIFO 反例核查与一次作业收口",
+    "task": "只读核查两个消费者顺序依赖，台账与提交集中完成",
+    "steps": [
+      {"step": "VerifyEventConsumer/LeaderboardEventConsumer 只读核查：不存在同 recordId 顺序依赖（level-based 现状态门+锚点乐观迁移+每 recordId 锁+eventId SETNX；消费端本就并发消费）；记录「若需保序须按 recordId 分区」与「消费端幂等不自动等于授权改 relay」；未据此改任何代码", "completed": true},
+      {"step": "报告/JSON/三件套/tasks.json 据实勾选；TASK-156 spec/handoff、PLAN L4 实测订正与机会总览追加（历史数字出现次数不减）；git diff --check、无参数 mailbox-contract、两笔本地提交（不 stash/add -A/push/PR），退出码集中回传", "completed": true}
+    ],
+    "passes": true
+  }
+]

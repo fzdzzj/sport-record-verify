@@ -1,0 +1,151 @@
+{
+  "task": "TASK-156",
+  "title": "判别 outbox relay markSent 并发标度（方向 B；scratch 真库 + test-only IT，只判别不实施）",
+  "date": "2026-09-28",
+  "headAtStart": "7eb609501730729d7f0a69f2bd31d4df88a04ead",
+  "instance": {
+    "container": "task131-scratch-mysql",
+    "mysqlVersion": "8.0.46",
+    "hostPort": 13318,
+    "schema": "task156_concurrency_scratch",
+    "schemaProvenance": "sed 's/verify_db/task156_concurrency_scratch/g' sql/03-verify-db.sql，机械改名，只新增该 schema",
+    "innodb_flush_log_at_trx_commit": 1,
+    "sync_binlog": 1,
+    "log_bin": "ON",
+    "event_scheduler": "ON",
+    "configChanged": false
+  },
+  "protocol": {
+    "M": 2000,
+    "arms": [1, 2, 4, 8],
+    "roundsPerArm": 3,
+    "sharding": "id % N 互不相交行集，每线程一条独立 DriverManager 连接，autoCommit=true",
+    "sql": "UPDATE verify_event_outbox SET status = 'SENT', sent_at = NOW() WHERE id = ? AND status = 'PENDING'",
+    "sqlSource": "生产 VerifyEventOutboxMapper#markSent 的 @Update 注解运行时渲染（#{id} -> ?，逐字，不增删 WHERE）",
+    "comCounterChannel": "SHOW GLOBAL STATUS（本实例 performance_schema.global_status 不列 Com_update/Com_insert，TASK-154 已实测）",
+    "sessionGate": "客户会话按 P_S NAME='thread/sql/one_connection' 计数==N+1 + SHOW PROCESSLIST 排除 Daemon/自身交叉核对==N；本实例 TYPE='FOREGROUND' 计数含 event_scheduler 与 compress_gtid_table 两条系统 Daemon 线程（实测），FOREGROUND 原始计数仅作证据记录"
+  },
+  "verdict": {
+    "preregisteredRule": "S(8)>=2.0 且 S 随 N 单调不减（容差内）-> 并发标度成立；S(8)<=1.2 -> 每行提交成本是硬墙；其间或噪声大/非单调 -> 证据不足",
+    "branch": "并发标度成立（仅必要条件成立，非实施授权、非生产收益声称）",
+    "S2": 1.8612,
+    "S4": 3.3066,
+    "S8": 5.7056,
+    "monotoneNonDecreasing": true,
+    "wallRangeOverMedianPct": { "1": 2.65, "2": 4.7, "4": 3.91, "8": 8.73 }
+  },
+  "arms": [
+    {
+      "n": 1,
+      "roundWallMs": [19671.172, 19152.815, 19550.559],
+      "roundThroughputRowsPerSec": [101.67, 104.42, 102.3],
+      "medianWallMs": 19550.559,
+      "medianThroughputRowsPerSec": 102.3,
+      "S": 1.0,
+      "rowMedianMsPooled": 9.408,
+      "rowMeanMsPerRound": [9.812, 9.564, 9.762],
+      "rowMedianMsPerRound": [9.338, 9.431, 9.435],
+      "comUpdateDeltaPerRound": [2000, 2000, 2000],
+      "comInsertDeltaPerRound": [0, 0, 0],
+      "comDeleteDeltaPerRound": [0, 0, 0],
+      "sentCountFinalPerRound": 2000,
+      "pendingCountFinalPerRound": 0,
+      "digestCountDeltaTotal": 6000
+    },
+    {
+      "n": 2,
+      "roundWallMs": [10407.698, 10504.441, 10901.028],
+      "roundThroughputRowsPerSec": [192.17, 190.4, 183.47],
+      "medianWallMs": 10504.441,
+      "medianThroughputRowsPerSec": 190.4,
+      "S": 1.8612,
+      "rowMedianMsPooled": 10.423,
+      "rowMeanMsPerRound": [10.389, 10.474, 10.89],
+      "rowMedianMsPerRound": [10.288, 10.312, 10.752],
+      "comUpdateDeltaPerRound": [2000, 2000, 2000],
+      "comInsertDeltaPerRound": [0, 0, 0],
+      "comDeleteDeltaPerRound": [0, 0, 0],
+      "sentCountFinalPerRound": 2000,
+      "pendingCountFinalPerRound": 0,
+      "digestCountDeltaTotal": 6000
+    },
+    {
+      "n": 4,
+      "roundWallMs": [5912.554, 6115.075, 5884.035],
+      "roundThroughputRowsPerSec": [338.26, 327.06, 339.9],
+      "medianWallMs": 5912.554,
+      "medianThroughputRowsPerSec": 338.26,
+      "S": 3.3066,
+      "rowMedianMsPooled": 11.527,
+      "rowMeanMsPerRound": [11.718, 12.185, 11.654],
+      "rowMedianMsPerRound": [11.585, 11.562, 11.437],
+      "comUpdateDeltaPerRound": [2000, 2000, 2000],
+      "comInsertDeltaPerRound": [0, 0, 0],
+      "comDeleteDeltaPerRound": [0, 0, 0],
+      "sentCountFinalPerRound": 2000,
+      "pendingCountFinalPerRound": 0,
+      "digestCountDeltaTotal": 5915
+    },
+    {
+      "n": 8,
+      "roundWallMs": [3552.383, 3253.402, 3426.585],
+      "roundThroughputRowsPerSec": [563.0, 614.74, 583.67],
+      "medianWallMs": 3426.585,
+      "medianThroughputRowsPerSec": 583.67,
+      "S": 5.7056,
+      "rowMedianMsPooled": 13.057,
+      "rowMeanMsPerRound": [13.98, 12.913, 13.534],
+      "rowMedianMsPerRound": [13.776, 12.527, 12.96],
+      "comUpdateDeltaPerRound": [2000, 2000, 2000],
+      "comInsertDeltaPerRound": [0, 0, 0],
+      "comDeleteDeltaPerRound": [0, 0, 0],
+      "sentCountFinalPerRound": 2000,
+      "pendingCountFinalPerRound": 0,
+      "digestCountDeltaTotal": 5584
+    }
+  ],
+  "crossValidation": {
+    "comUpdateDeltaExact2000AllWindows": true,
+    "windowsChecked": 12,
+    "comInsertDeltaAllZero": true,
+    "comDeleteDeltaAllZero": true,
+    "sentEqualsMAndPendingZeroAllRounds": true,
+    "sessionGateCleanAllRounds": true,
+    "n1Sanity": "N=1 单行中位 9.408 ms 落在单行自动提交条件 UPDATE（flush=1/sync_binlog=1/binlog=ON 实例）合理量级，无 <1ms 异常",
+    "digestNote": "digest 计数增量在 N=1/2 恰好 2000/轮；N=4/8 低于 2000（5915/5584 总量）= digest 汇总表行淘汰的仪器表现，仅记录不作判据；硬判据是 SHOW GLOBAL STATUS 的 Com_update 精确增量"
+  },
+  "restoreGreenRun": {
+    "log": "docs/perf/data/raw/task156-08-restore-green.log",
+    "S2": 1.7527,
+    "S4": 3.1688,
+    "S8": 5.5858,
+    "note": "字节还原后第二次独立全量运行，S(N) 与主证据 run 相互印证"
+  },
+  "exitCodes": {
+    "missingEnvSkip": { "rc": 0, "tests": "1/0/0/1 skipped", "countedAsRealDbPass": false, "log": "docs/perf/data/raw/task156-05-skip-run.log" },
+    "greenRun": { "rc": 0, "log": "docs/perf/data/raw/task156-06-green-run.log" },
+    "mutationRed": { "rc": 1, "reason": "arm=1 round=1 Com_update 增量实测=1999 != 2000（漏标一行变异被既有断言抓住）", "log": "docs/perf/data/raw/task156-07-mutation-red.log" },
+    "restoreGreen": { "rc": 0, "log": "docs/perf/data/raw/task156-08-restore-green.log" },
+    "regularOfflineSuite": { "rc": 0, "counts": "common 36 / verify-service 110 / skipped 0（与基线同数，新 *IT 不被默认收集）", "log": "docs/perf/data/raw/task156-10-regular-suite.log" },
+    "onlineMode": "未跑",
+    "externalGate": "未达外部门槛"
+  },
+  "fifoCheck": {
+    "consumers": [
+      "verify-service/src/main/java/com/sportverify/verify/consumer/VerifyEventConsumer.java",
+      "leaderboard-service/src/main/java/com/sportverify/leaderboard/mq/LeaderboardEventConsumer.java"
+    ],
+    "conclusion": "两消费者均不存在同 recordId 事件顺序依赖：SUBMITTED 侧 verify 以 verification_result 主键幂等、与事件先后无关；VERIFIED/REJECTED 侧为「读记录现状态的 level-based 门（非 pass 不入榜）+ 锚点行乐观迁移（INSERT IGNORE / ACTIVE<->ROLLED_BACK）+ 每 recordId Redisson 互斥锁 + eventId SETNX 去重」；且消费端本就是 MessageListenerConcurrently 并发消费、RECONSUME_LATER 重投天然重排——现网语义本就不假设投递按 id 全局 FIFO",
+    "constraintForFutureDesign": "消费端幂等不自动等于授权改 relay；若未来分区 relay 需保序（或语义变更引入顺序假设），应按 recordId 分区而非 round-robin / id % N",
+    "readOnly": true,
+    "noCodeChangedByThisCheck": true
+  },
+  "boundary": {
+    "notProductionRelay": "scratch 真库 + test-only DriverManager IT ≠ 生产 relay（Spring/Hikari + Redisson 全局 tryLock(0) 单跑）",
+    "necessaryNotSufficient": "正标度只是必要非充分：未测并发 syncSend/RocketMQ、未测 relay 锁改造、未测多实例竞争",
+    "noDefaultsChanged": "未改 relay-interval/batch/并发/锁/SQL/索引/事务/池/JVM/MQ/innodb_flush_log_at_trx_commit 任何默认值",
+    "noTask152Comparison": "本任务 N=1 的 9.408 ms/行 与 TASK-152 的 18.0 ms/行 不可比（不同实例不同窗）；判别量只有同实例内的 S(N)"
+  },
+  "rawDir": "docs/perf/data/raw/task156-*",
+  "schemaEndState": "task156_concurrency_scratch 留存 2000 行全 SENT（明确标注的运行证据）；既有 task% schema 行数跑前跑后逐字节一致"
+}
