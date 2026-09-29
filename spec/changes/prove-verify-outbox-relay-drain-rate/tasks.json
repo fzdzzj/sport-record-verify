@@ -1,0 +1,66 @@
+[
+  {
+    "number": 1,
+    "category": "冻结、起栈与 jar 冻结",
+    "task": "冻结起点 HEAD、起四服务局部栈、offline 构建并冻结四个 jar",
+    "steps": [
+      {"step": "核对 HEAD=1ff96e0697694b6ec9669bc35c7234f2efdfe92d 与 origin/main...main=0/1；工作树仅既有脏项 add-verify-degrade-status-index/ 与 TASK-163/（G1f 无参 rc=1 为预期、在途 --open rc=0）；容器只 docker start 五个（不 recreate/不改配置/不删卷），postgis 不起；Nacos verify-service.yml 为空无覆盖", "completed": true},
+      {"step": "mvn-verify.sh --mode=offline package rc=0（七模块 36/41/33/103/120/59/10、Skipped 全 0）；四个 jar sha256 留档；A/B 计数轮之间不重建任何 jar", "completed": true}
+    ],
+    "passes": true
+  },
+  {
+    "number": 2,
+    "category": "轮次协议与交错排空测量",
+    "task": "交错执行 A1→B1→A2→B2 计数轮与排空采样（唯一变量 relay-interval-ms）",
+    "steps": [
+      {"step": "预热轮 W0（全局首轮前）+ W_B/W_A/W_B2（每次 verify-service 重启后）共 4 轮全部丢弃但逐轮留档（label/QPS/排空耗时/斜率），全部排空归零后进入计数轮", "completed": true},
+      {"step": "计数轮交错 A1→B1→A2→B2，每轮 7 步齐备（前置健康与 PENDING=0/负载 100×2000/负载返回后立即 2s 采样写 drain.csv 直至归零/后置检查与复制日志/task144-parse.ps1 配对/计算预注册 slope 与 slope_half/记账），全部 ok=2000 errors=0 limited429=0、cohort=markSent=2010 配对闭合", "completed": true}
+    ],
+    "passes": true
+  },
+  {
+    "number": 3,
+    "category": "效应门 M2、排序控制门 M3 与逐轮 M1/M4/M5",
+    "task": "逐轮机制门 M1、健康门 M4、代价门 M5 及全局 M2/M3 判据验证",
+    "steps": [
+      {"step": "M1 空档机制门四轮全过：A 档 >1s 空档 22/20 个（≥15），中位 5018/5017.5 ms（∈[4000,6000]）；B 档 >1s 空档 1/1 个（≤5），中位 1028/1022 ms", "completed": true},
+      {"step": "M4 健康门四轮全过（ok=2000/errors=0/429=0、relayFail=0、relayExhausted=0、uk_event_id 重复=0、retry_count>0=0、耗尽增量=0、timeout_total=0、无锁异常、drain.csv 完整）；M5 代价门 Com_select 增量 B/A 倍数 ≈0.998（≤1.5）；替换轮使用 0/2", "completed": true},
+      {"step": "M2 效应门两比值均 ≥1.5：slope(B1)/slope(A1) = 57.0893/15.2000 = 3.7559，slope(B2)/slope(A2) = 55.0715/16.0630 = 3.4285，落在结构预测区间 2.5~3.5 内", "completed": true},
+      {"step": "M3 排序控制门通过：|slope(A2)-slope(A1)|/slope(A1) = |16.0630-15.2000|/15.2000 = 5.68%（≤20%），且 A2 之 M1 成立，排除系统时间与预热漂移解释", "completed": true}
+    ],
+    "passes": true
+  },
+  {
+    "number": 4,
+    "category": "预注册裁决与落地支判定",
+    "task": "四有效计数轮全过门，确定归属预注册「落地支」",
+    "steps": [
+      {"step": "4 个计数轮全部有效（逐轮 M1+M4 通过）且 M2、M3、M5 全过，不放宽、不换档、不叠加额外补救因素，裁决归属预注册落地支", "completed": true}
+    ],
+    "passes": true
+  },
+  {
+    "number": 5,
+    "category": "配置落地、测试绑定与 C 轮功能确认",
+    "task": "application.yml 纯新增、新增纯 JUnit 测试类、执行 C 确认轮",
+    "steps": [
+      {"step": "application.yml 在 verify 映射下纯新增 outbox.relay-interval-ms: 500（numstat 6/0，^verify: 根键保持恰好 1 个，附 5 行来源注释）", "completed": true},
+      {"step": "新增纯 JUnit 测试类 VerifyOutboxRelayIntervalDefaultTest（3 个用例：YAML 加载断言 500、代码注解默认值 5000/10000 保持断言、^verify: 根键唯一次数断言；无 SpringBoot 上下文与中间件依赖）", "completed": true},
+      {"step": "mvn-verify.sh --mode=offline --pl verify-service package（rc=0，verify-service 达到 123 用例全绿，Get-FileHash 证实仅 verify jar 变更）；起新 jar（无任何命令行注入）跑 W_C 预热并排空", "completed": true},
+      {"step": "执行 C 确认轮（load 100 2000 task163-C）：M1 >1s 空档数=1（≤5），slope(C)=45.0670，slope(C)/mean(slope(A1),slope(A2)) = 45.0670/15.6315 = 2.8831（≥1.5），C 轮判据全过，无回滚动作", "completed": true}
+    ],
+    "passes": true
+  },
+  {
+    "number": 6,
+    "category": "报告与一次作业收口",
+    "task": "报告/JSON/三件套/两件套/PLAN 纯追加与收尾条",
+    "steps": [
+      {"step": "报告与机器摘要（exp-outbox-relay-drain-rate.json）落盘；JSON 语法校验通过、CR=0、无 BOM、词面门 ZERO_HIT+正向对照", "completed": true},
+      {"step": "强制执行收尾条：stop-services 停机，Win32_Process 证实 sport-verify java 进程数为 0；复跑 mvn-verify.sh --mode=offline 全量套件 rc=0（36/41/33/103/123/59/10 全绿）；记录终态 docker ps -a", "completed": true},
+      {"step": "PLAN.md 纯追加验收记录节 + TASK-163 spec/handoff 入库；G9–G13 收口门全过；分 4 笔逐路径 commit（C1=配置+测试类 / C2=报告+JSON / C3=三件套 / C4=PLAN+两件套），不 push/PR/stash", "completed": true}
+    ],
+    "passes": true
+  }
+]
