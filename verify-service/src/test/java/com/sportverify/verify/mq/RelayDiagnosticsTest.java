@@ -39,7 +39,7 @@ class RelayDiagnosticsTest {
         assertFalse(d.enabled());
         assertTrue(d.lockSkipped().isEmpty(), "关闭时锁竞争汇总必须为空");
         assertTrue(d.emptyRound().isEmpty(), "关闭时空轮汇总必须为空");
-        assertTrue(d.batch(5, 5, 0, 0, 1, 2, 3, 4, 5, 20, 22).isEmpty(),
+        assertTrue(d.batch(5, 5, 0, 0, 1, 2, 3, 4, 5, 20, 22, 1).isEmpty(),
                 "关闭时批次汇总必须为空（不产生批次日志）");
     }
 
@@ -48,7 +48,7 @@ class RelayDiagnosticsTest {
         FakeClock clock = new FakeClock();
         RelayDiagnostics d = new RelayDiagnostics(true, WINDOW_NANOS, clock);
 
-        BatchSummary s = d.batch(3, 2, 1, 0, 1, 2, 30, 4, 5, 50, 60).orElseThrow();
+        BatchSummary s = d.batch(3, 2, 1, 0, 1, 2, 30, 4, 5, 50, 60, 1).orElseThrow();
 
         assertEquals(3, s.rows());
         assertEquals(2, s.success());
@@ -72,7 +72,8 @@ class RelayDiagnosticsTest {
         RelayDiagnostics d = new RelayDiagnostics(true, WINDOW_NANOS, new FakeClock());
 
         // 人为给出超过锁内处理段总时长的分段合计：残差必须钳到 0，不能出现负墙钟
-        BatchSummary s = d.batch(1, 1, 0, 0, 0, 100, 100, 100, 0, 5, 6).orElseThrow();
+        BatchSummary s = d.batch(1, 1, 0, 0, 0, 100, 100,
+                100, 0, 5, 6, 1).orElseThrow();
 
         assertEquals(0, s.residualMs());
     }
@@ -92,7 +93,7 @@ class RelayDiagnosticsTest {
         assertTrue(d.emptyRound().isEmpty(), "窗口内空轮不逐轮输出");
 
         clock.advance(10);
-        BatchSummary s = d.batch(2, 2, 0, 0, 0, 1, 1, 1, 0, 5, 6).orElseThrow();
+        BatchSummary s = d.batch(2, 2, 0, 0, 0, 1, 1, 1, 0, 5, 6, 1).orElseThrow();
         assertEquals(1, s.emptyRounds(), "批次汇总带上自上次汇总以来的空轮计数");
         assertEquals(1, s.lockSkips(), "批次汇总带上自上次汇总以来的锁竞争计数");
 
