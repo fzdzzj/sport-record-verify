@@ -1,0 +1,274 @@
+{
+  "task": "TASK-162",
+  "head": "121273d6cf46fd1e8968d4817f8134d71edffda0",
+  "date": "2026-09-29",
+  "label": "task162-outbox-relay-interval-repeatable-abba",
+  "purpose": "single-factor controlled A-B-B-A repeat of verify.outbox.relay-interval-ms (A=5000ms default, B=500ms injected) with warmup-absorbed first-round comparability; no optimization applied",
+  "changeId": "prove-verify-outbox-relay-interval-repeatable",
+  "reference": {
+    "task144": {
+      "report": "docs/perf/复测-outbox-relay-调度间隔.md",
+      "json": "docs/perf/data/exp-outbox-relay-interval.json",
+      "verdict": "UNDETERMINED",
+      "reason": "round A1 submit QPS deviated -15.65% from the four-round median 155.205 (limit +/-15%) and A1 mixed in 2 consume failures/redeliveries",
+      "roundP50CallbackToSentMs": {"A1": 56769, "B1": 19782, "B2": 18306, "A2": 59317},
+      "metricGateReadingNotUsed": "B1/B2 -65.15%/-67.75% vs A1; improvement gate satisfied but comparability invalid",
+      "relationship": "this task is a NEW experiment / NEW pre-registration / NEW budget; the task-144 UNDETERMINED verdict and every number of its report and machine summary are unchanged and NOT overruled"
+    }
+  },
+  "verdict": {
+    "result": "UNDETERMINED",
+    "recommended": false,
+    "defaultChanged": false,
+    "writtenToClasspathYaml": false,
+    "reason": "budget exhausted at 6/6 counting rounds; A cell has only 1 valid round (A1) because A2/A3/A4 fail the pre-registered V6 submit-QPS comparability gate (+37.30%/+24.39%/+50.03% vs base-pool median 136.230, limit +/-15%); the landing branch requires A cell >=2 valid rounds AND B cell >=2 valid rounds AND the improvement gate, so the improvement gate cannot be evaluated (needs two valid A rounds). All four defensible readings of the self-referential V6 median converge on UNDETERMINED (see comparability.v6Readings). Per spec section 5: any cell short of 2 valid rounds within budget => UNDETERMINED, no extra runs, no landing.",
+    "metricGateReadingNotUsedForDecision": "if one illegitimately pairs the single valid A round A1 (P50 55120ms) with B1/B2, the deltas are -65.06%/-67.52% and B P95 (31743/32340.4ms) is better than A1 P95 (106582.7ms) - same direction and magnitude as task-144; this reading is disclosed but does NOT authorize a default change (comparability gate failed)"
+  },
+  "environment": {
+    "baselineSha": "121273d6cf46fd1e8968d4817f8134d71edffda0",
+    "gitRevListLeftRight": "0\t5",
+    "verifyJarSha256": "7E45A93FE90B94324749279E86B42D930E5CB03EAB32CFD5A1D33C47B9EDE0CD",
+    "recordJarSha256": "C7AF32EF2A359150503EFAEF818D74107B7B5913A1A5998621431C7A39E36970",
+    "userJarSha256": "B1816EC0AD51E4E2D240BE33F597CCA3CA0207D501AEBE1B427B05C544462162",
+    "gatewayJarSha256": "D2363BEF587869A5F61ED9A9C8577F01BF0499EA36AB78F11678AFA4B9CDC6B9",
+    "jarSwapDuringRounds": "NONE",
+    "servicesStarted": ["gateway:8080", "user:8081", "record:8082", "verify:8083"],
+    "servicesAbsent": ["leaderboard", "mapmatch"],
+    "postgis": "container not started -> leaderboard segment and real R5 NOT COVERED",
+    "middleware": {
+      "mysql": "mysql:8.0 sport-verify-mysql host:3307 (started with docker start only)",
+      "rocketmq": "apache/rocketmq:5.2.0 namesrv+broker",
+      "redis": "redis:7.2-alpine",
+      "nacos": "nacos/nacos-server:v2.3.2"
+    },
+    "diskFreeBytesOpen": 234727989248,
+    "diskFreeBytesAtBuild": 234710654976,
+    "effectiveConfigProof": {
+      "applicationYmlHasVerifyOutboxKeys": false,
+      "nacosVerifyServiceYml": "empty (config[...] is empty) => no override",
+      "authoritative": "@Value defaults: batch-size=100, relay-interval-ms=5000, relay-initial-delay-ms=10000, max-retry=16, relay-send-concurrency=1",
+      "onlyChangedFactor": "relay-interval-ms (A=5000 no injection, B=500 injected via --verify.outbox.relay-interval-ms=500 on restart)"
+    },
+    "evidenceFiles": ["docs/perf/data/raw/task162-g2-containers.txt", "docs/perf/data/raw/task162-g2-jarsha.txt", "docs/perf/data/raw/task162-g2-nacos.txt", "docs/perf/data/raw/task162-g2-services.txt"]
+  },
+  "rounds": [
+    {
+      "label": "A1", "cell": "A", "intervalMs": 5000, "injection": "none (default)",
+      "load": {"ok": 2000, "limited429": 0, "errors": 0, "wallSeconds": 16.773, "qps": 119.24, "p50ms": 827.32, "p95ms": 1113.22, "p99ms": 1314.52, "maxMs": 3527.04},
+      "ids": {"recordIds": "60743..62752", "outboxIds": "40421..42430"},
+      "cohort": {"records": 2010, "outboxLinked": 2010},
+      "stagesMs": {
+        "pubToConsume": {"n": 2010, "p50": 12884, "p95": 15054, "p99": 15288, "max": 15540},
+        "consumeToCallback": {"n": 2010, "p50": 189, "p95": 3026.8, "p99": 4541.8, "max": 5752},
+        "callbackToSent": {"n": 2010, "p50": 55120, "p95": 106582.7, "p99": 112238.1, "max": 112476},
+        "consumeToSent": {"n": 2010, "p50": 55298.5, "p95": 106751, "p99": 112410.6, "max": 112529},
+        "pubToSent": {"n": 2010, "p50": 68931, "p95": 118611.2, "p99": 124120.9, "max": 124532}
+      },
+      "relay": {"sentRows": 2010, "firstSent": "2026-09-29 21:16:51.485", "lastSent": "2026-09-29 21:19:11.047", "spanSec": 139.6, "netRateRowsPerSec": 14.40, "longGapsGt1s": 21, "longGapMedianMs": 5020, "batchGroups": 22, "batchSizes": "10,44,63,100x18,93", "groupsGe100": 18, "groupSpanMedianMs": 1212.5},
+      "outboxCreate": {"rows": 2010, "spanSec": 29, "rateRowsPerSec": 69.31, "bucket10s": [75, 402, 1533]},
+      "drainSeconds": 129,
+      "failures": {"consumeFailuresOwnWindow": 0, "redeliveriesOwnWindow": 0, "relayFailLines": 0, "relayExhaustedLines": 0, "logLiteralFallbackLines": 7, "logLiteralNote": "all 7 lines are W0 residue (recordIds 58777..58871 in W0 window, timestamps 21:13:48-59); A1 own window clean"}
+    },
+    {
+      "label": "B1", "cell": "B", "intervalMs": 500, "injection": "--verify.outbox.relay-interval-ms=500",
+      "load": {"ok": 2000, "limited429": 0, "errors": 0, "wallSeconds": 14.128, "qps": 141.56, "p50ms": 678.46, "p95ms": 928.66, "p99ms": 1281.52, "maxMs": 1620.27},
+      "ids": {"recordIds": "64763..66772", "outboxIds": "44441..46450"},
+      "cohort": {"records": 2010, "outboxLinked": 2010},
+      "stagesMs": {
+        "pubToConsume": {"n": 2010, "p50": 12917.5, "p95": 13321, "p99": 13474.6, "max": 13822},
+        "consumeToCallback": {"n": 2010, "p50": 202, "p95": 2729, "p99": 3433.9, "max": 4401},
+        "callbackToSent": {"n": 2010, "p50": 19259, "p95": 31743, "p99": 33061.8, "max": 33250},
+        "consumeToSent": {"n": 2010, "p50": 19443.5, "p95": 31962, "p99": 33192.1, "max": 33360},
+        "pubToSent": {"n": 2010, "p50": 32538.5, "p95": 44100.1, "p99": 45265, "max": 45827}
+      },
+      "relay": {"sentRows": 2010, "firstSent": "2026-09-29 21:28:05.399", "lastSent": "2026-09-29 21:29:05.114", "spanSec": 59.7, "netRateRowsPerSec": 33.66, "longGapsGt1s": 1, "longGapMedianMs": 1056, "batchGroups": 2, "batchSizes": "9,2001", "groupsGe100": 1, "groupSpanMedianMs": 57887},
+      "outboxCreate": {"rows": 2010, "spanSec": 27, "rateRowsPerSec": 74.44, "bucket10s": [96, 705, 1209]},
+      "drainSeconds": 48,
+      "failures": {"consumeFailuresOwnWindow": 0, "redeliveriesOwnWindow": 0, "relayFailLines": 0, "relayExhaustedLines": 0}
+    },
+    {
+      "label": "B2", "cell": "B", "intervalMs": 500, "injection": "--verify.outbox.relay-interval-ms=500",
+      "load": {"ok": 2000, "limited429": 0, "errors": 0, "wallSeconds": 14.681, "qps": 136.23, "p50ms": 687.20, "p95ms": 1106.87, "p99ms": 1292.69, "maxMs": 1855.10},
+      "ids": {"recordIds": "66773..68782", "outboxIds": "46451..48460"},
+      "cohort": {"records": 2010, "outboxLinked": 2010},
+      "stagesMs": {
+        "pubToConsume": {"n": 2010, "p50": 11452, "p95": 12851.1, "p99": 13014.4, "max": 13473},
+        "consumeToCallback": {"n": 2010, "p50": 166, "p95": 2806.3, "p99": 3996, "max": 4977},
+        "callbackToSent": {"n": 2010, "p50": 17902, "p95": 32340.4, "p99": 34208.8, "max": 34429},
+        "consumeToSent": {"n": 2010, "p50": 18046.5, "p95": 32440.6, "p99": 34354.6, "max": 34571},
+        "pubToSent": {"n": 2010, "p50": 29605.5, "p95": 42566.5, "p99": 44241.3, "max": 44581}
+      },
+      "relay": {"sentRows": 2010, "firstSent": "2026-09-29 21:29:45.088", "lastSent": "2026-09-29 21:30:44.216", "spanSec": 59.1, "netRateRowsPerSec": 33.99, "longGapsGt1s": 1, "longGapMedianMs": 1065, "batchGroups": 2, "batchSizes": "9,2001", "groupsGe100": 1, "groupSpanMedianMs": 56822},
+      "outboxCreate": {"rows": 2010, "spanSec": 25, "rateRowsPerSec": 80.40, "bucket10s": [88, 829, 1093]},
+      "drainSeconds": 48,
+      "failures": {"consumeFailuresOwnWindow": 0, "redeliveriesOwnWindow": 0, "relayFailLines": 0, "relayExhaustedLines": 0}
+    },
+    {
+      "label": "A2", "cell": "A", "intervalMs": 5000, "injection": "none (default)", "replacement": false,
+      "load": {"ok": 2000, "limited429": 0, "errors": 0, "wallSeconds": 10.693, "qps": 187.04, "p50ms": 520.67, "p95ms": 637.30, "p99ms": 974.31, "maxMs": 1061.37},
+      "ids": {"recordIds": "70793..72802", "outboxIds": "50471..52480"},
+      "cohort": {"records": 2010, "outboxLinked": 2010},
+      "stagesMs": {
+        "pubToConsume": {"n": 2010, "p50": 9595, "p95": 9813.6, "p99": 9949.6, "max": 10146},
+        "consumeToCallback": {"n": 2010, "p50": 154, "p95": 2346.6, "p99": 2639, "max": 3564},
+        "callbackToSent": {"n": 2010, "p50": 59272, "p95": 110685.2, "p99": 116226.6, "max": 116385},
+        "consumeToSent": {"n": 2010, "p50": 59430, "p95": 110814.2, "p99": 116377, "max": 116529},
+        "pubToSent": {"n": 2010, "p50": 69089.5, "p95": 119931.3, "p99": 125413.2, "max": 125763}
+      },
+      "relay": {"sentRows": 2010, "firstSent": "2026-09-29 21:35:53.843", "lastSent": "2026-09-29 21:38:08.902", "spanSec": 135.1, "netRateRowsPerSec": 14.88, "longGapsGt1s": 21, "longGapMedianMs": 5017, "batchGroups": 22, "batchSizes": "9,73,100x19,28", "groupsGe100": 19, "groupSpanMedianMs": 1173},
+      "outboxCreate": {"rows": 2010, "spanSec": 21, "rateRowsPerSec": 95.71, "bucket10s": [114, 1677, 219]},
+      "drainSeconds": 129,
+      "failures": {"consumeFailuresOwnWindow": 0, "redeliveriesOwnWindow": 0, "relayFailLines": 0, "relayExhaustedLines": 0, "logLiteralFallbackLines": 254, "logLiteralNote": "all 254 lines are W_A residue (recordIds 68792..69080, timestamps 21:32:59.820-21:33:15.097); A2 own window clean"},
+      "validity": {"valid": false, "reason": "V6 submit QPS +37.30% vs base-pool median 136.230 (limit +/-15%)"}
+    },
+    {
+      "label": "A3", "cell": "A", "intervalMs": 5000, "injection": "none (default)", "replacement": true,
+      "load": {"ok": 2000, "limited429": 0, "errors": 0, "wallSeconds": 11.802, "qps": 169.46, "p50ms": 558.11, "p95ms": 782.65, "p99ms": 1014.47, "maxMs": 1340.36},
+      "ids": {"recordIds": "72803..74812", "outboxIds": "52481..54490"},
+      "cohort": {"records": 2010, "outboxLinked": 2010},
+      "stagesMs": {
+        "pubToConsume": {"n": 2010, "p50": 9971.5, "p95": 10445.1, "p99": 10613.8, "max": 10819},
+        "consumeToCallback": {"n": 2010, "p50": 165, "p95": 2491.8, "p99": 2976.7, "max": 3616},
+        "callbackToSent": {"n": 2010, "p50": 54387.5, "p95": 110021.1, "p99": 110492.1, "max": 115690},
+        "consumeToSent": {"n": 2010, "p50": 54529.5, "p95": 110151.2, "p99": 110669.8, "max": 115748},
+        "pubToSent": {"n": 2010, "p50": 64759, "p95": 119880.6, "p99": 120293, "max": 125680}
+      },
+      "relay": {"sentRows": 2010, "firstSent": "2026-09-29 21:42:29.203", "lastSent": "2026-09-29 21:44:43.701", "spanSec": 134.5, "netRateRowsPerSec": 14.94, "longGapsGt1s": 21, "longGapMedianMs": 5017, "batchGroups": 22, "batchSizes": "40,66,100x19,4", "groupsGe100": 19, "groupSpanMedianMs": 1111},
+      "outboxCreate": {"rows": 2010, "spanSec": 22, "rateRowsPerSec": 91.36, "bucket10s": [107, 1394, 509]},
+      "drainSeconds": 129,
+      "failures": {"consumeFailuresOwnWindow": 0, "redeliveriesOwnWindow": 0, "relayFailLines": 0, "relayExhaustedLines": 0, "logLiteralFallbackLines": 254, "logLiteralNote": "all 254 lines are W_A residue; A3 own window clean"},
+      "validity": {"valid": false, "reason": "V6 submit QPS +24.39% vs base-pool median 136.230 (limit +/-15%)"}
+    },
+    {
+      "label": "A4", "cell": "A", "intervalMs": 5000, "injection": "none (default)", "replacement": true,
+      "load": {"ok": 2000, "limited429": 0, "errors": 0, "wallSeconds": 9.785, "qps": 204.39, "p50ms": 475.97, "p95ms": 567.75, "p99ms": 872.40, "maxMs": 1360.46},
+      "ids": {"recordIds": "74813..76822", "outboxIds": "54491..56500"},
+      "cohort": {"records": 2010, "outboxLinked": 2010},
+      "stagesMs": {
+        "pubToConsume": {"n": 2010, "p50": 8755, "p95": 10252, "p99": 10632.7, "max": 11244},
+        "consumeToCallback": {"n": 2010, "p50": 148, "p95": 2101.6, "p99": 2332, "max": 2783},
+        "callbackToSent": {"n": 2010, "p50": 59744.5, "p95": 108346, "p99": 113403.1, "max": 113520},
+        "consumeToSent": {"n": 2010, "p50": 59877.5, "p95": 108647.3, "p99": 113781.5, "max": 113957},
+        "pubToSent": {"n": 2010, "p50": 68575, "p95": 118889.3, "p99": 124393.6, "max": 124620}
+      },
+      "relay": {"sentRows": 2010, "firstSent": "2026-09-29 21:47:58.874", "lastSent": "2026-09-29 21:50:10.512", "spanSec": 131.6, "netRateRowsPerSec": 15.27, "longGapsGt1s": 20, "longGapMedianMs": 5018, "batchGroups": 21, "batchSizes": "41,90,100x18,79", "groupsGe100": 18, "groupSpanMedianMs": 1059},
+      "outboxCreate": {"rows": 2010, "spanSec": 21, "rateRowsPerSec": 95.71, "bucket10s": [139, 1709, 162]},
+      "drainSeconds": 129,
+      "failures": {"consumeFailuresOwnWindow": 0, "redeliveriesOwnWindow": 0, "relayFailLines": 0, "relayExhaustedLines": 0, "logLiteralFallbackLines": 254, "logLiteralNote": "all 254 lines are W_A residue; A4 own window clean"},
+      "validity": {"valid": false, "reason": "V6 submit QPS +50.03% vs base-pool median 136.230 (limit +/-15%)"}
+    }
+  ],
+  "warmupRounds": [
+    {
+      "label": "W0", "cell": "A", "intervalMs": 5000, "injection": "none", "discarded": true,
+      "load": {"ok": 2000, "limited429": 0, "errors": 0, "wallSeconds": 21.024, "qps": 95.13},
+      "ids": {"recordIds": "58733..60742", "outboxIds": "38411..40420"},
+      "drainSeconds": 134, "callback": "2007/2010", "netRateRowsPerSec": 13.69, "longGapsGt1s": 21, "longGapMedianMs": 5021,
+      "bucket10s": [64, 68, 978, 900],
+      "incidents": "own window: 7 RecordApiFallback (recordIds 58777..58871) + redeliveries; 3 records without callback line in window; consumed as global cold-start absorption"
+    },
+    {
+      "label": "W_B", "cell": "B", "intervalMs": 500, "injection": "--verify.outbox.relay-interval-ms=500", "discarded": true,
+      "load": {"ok": 2000, "limited429": 0, "errors": 0, "wallSeconds": 18.517, "qps": 108.01},
+      "ids": {"recordIds": "62753..64762", "outboxIds": "42431..44440"},
+      "drainSeconds": 55, "callback": "2010/2010", "netRateRowsPerSec": 28.78, "longGapsGt1s": 1, "longGapMedianMs": 2627,
+      "bucket10s": [71, 97, 1368, 474],
+      "incidents": "clean; consumed as cell restart (JIT/pool) absorption"
+    },
+    {
+      "label": "W_A", "cell": "A", "intervalMs": 5000, "injection": "none", "discarded": true,
+      "load": {"ok": 2000, "limited429": 0, "errors": 0, "wallSeconds": 23.784, "qps": 84.09},
+      "ids": {"recordIds": "68783..70792", "outboxIds": "48461..50470"},
+      "drainSeconds": 131, "callback": "2004/2010", "netRateRowsPerSec": 13.58, "longGapsGt1s": 23, "longGapMedianMs": 5018,
+      "bucket10s": [15, 39, 877, 1079],
+      "incidents": "own window: 254 getRecord Feign read timeouts ('RecordApiFallback - record-service 不可用（不可软降级）: op=getRecord:<id>, cause=feign.RetryableException: Read timed out') from 21:32:59.820 to 21:33:15.097 -> MQ redeliveries -> duplicate consume lines for 254 recordIds (68792..69080), 6 records without callback line in window; fully absorbed by the pre-registered warmup design; its residue appears in A2/A3/A4 log copies but not in their own windows"
+    }
+  ],
+  "comparability": {
+    "basePool": {"rounds": ["A1", "B1", "B2"], "medianQps": 136.230, "band": [115.795, 156.664], "limitPct": 15},
+    "qpsDeviationPctVsBasePool": {"A1": -12.47, "B1": 3.91, "B2": 0.00, "A2": 37.30, "A3": 24.39, "A4": 50.03},
+    "qpsWithinLimit": {"A1": true, "B1": true, "B2": true, "A2": false, "A3": false, "A4": false},
+    "v6Readings": {
+      "note": "V6 'median of all valid counting rounds' is self-referential; all four defensible readings were computed (script .trae/tmp/t162-v6.py) and ALL converge on UNDETERMINED",
+      "R1_basePool": {"median": 136.230, "valid": ["A1", "B1", "B2"], "AValidCount": 1, "BValidCount": 2, "branch": "UNDETERMINED"},
+      "R2_allSixOnePass": {"median": 155.510, "valid": ["B1", "B2", "A3"], "AValidCount": 1, "BValidCount": 2, "branch": "UNDETERMINED"},
+      "R3_maximalConsistentFixedPoints": {"sets": [{"set": ["A1", "B1", "B2"], "median": 136.230}, {"set": ["A2", "A3", "A4"], "median": 187.040}], "branch": "UNDETERMINED (either set leaves one cell short)"},
+      "R4_sequentialArrival": {"valid": ["A1", "B2"], "AValidCount": 1, "BValidCount": 1, "branch": "UNDETERMINED"}
+    },
+    "creationShapeRaw": {
+      "note": "10s buckets of outbox created_at; recorded raw for guidance review (V7); bucket skew co-varies with load QPS (slow rounds skew late, fast rounds skew early) i.e. co-caused with V6 rather than an independent defect",
+      "buckets": {"A1": [75, 402, 1533], "B1": [96, 705, 1209], "B2": [88, 829, 1093], "A2": [114, 1677, 219], "A3": [107, 1394, 509], "A4": [139, 1709, 162], "W0": [64, 68, 978, 900], "W_B": [71, 97, 1368, 474], "W_A": [15, 39, 877, 1079]}
+    }
+  },
+  "validityPerRound": {
+    "note": "V1 load ok/errors/429; V2 zero RECONSUME_LATER and zero RecordApiFallback in own window; V3 relay fail=0 and exhausted=0; V4 PENDING 0 before and drained to 0; V5 cohort.records==cohort.outboxLinked==callbackToSent.n; V6 submit QPS within +/-15% of pre-registered pool median; V7 creation shape raw for review",
+    "A1": {"v1": true, "v2": true, "v3": true, "v4": true, "v5": true, "v6": true, "v7": "raw recorded", "valid": true},
+    "B1": {"v1": true, "v2": true, "v3": true, "v4": true, "v5": true, "v6": true, "v7": "raw recorded", "valid": true},
+    "B2": {"v1": true, "v2": true, "v3": true, "v4": true, "v5": true, "v6": true, "v7": "raw recorded", "valid": true},
+    "A2": {"v1": true, "v2": true, "v3": true, "v4": true, "v5": true, "v6": false, "v7": "raw recorded", "valid": false},
+    "A3": {"v1": true, "v2": true, "v3": true, "v4": true, "v5": true, "v6": false, "v7": "raw recorded", "valid": false},
+    "A4": {"v1": true, "v2": true, "v3": true, "v4": true, "v5": true, "v6": false, "v7": "raw recorded", "valid": false}
+  },
+  "metricGate": {
+    "betterP50ms": null,
+    "betterP50Round": null,
+    "improvementGateSatisfied": null,
+    "improvementGateReason": "requires two valid A rounds; under every V6 reading only one A round is valid (R1/R2/R4: A1; R3 second set has A2/A3/A4 but then B cell is empty) => not computable",
+    "previewNotUsedForDecision": {
+      "A1P50Ms": 55120,
+      "B1": {"p50Ms": 19259, "p50DeltaPctVsA1": -65.06, "p95Ms": 31743, "p95NotWorseThanA1": true},
+      "B2": {"p50Ms": 17902, "p50DeltaPctVsA1": -67.52, "p95Ms": 32340.4, "p95NotWorseThanA1": true},
+      "A1P95Ms": 106582.7,
+      "note": "disclosed only; comparability gate failed so this reading does not authorize any default change"
+    }
+  },
+  "landing": {
+    "applied": false,
+    "yamlChanged": false,
+    "testClassAdded": false,
+    "cRound": null,
+    "rollback": null,
+    "reason": "UNDETERMINED branch: A cell valid rounds (1) < 2 within the 6-round budget; per spec section 5 no extra runs and no landing; per spec section 7 landing steps (7.1/7.2/7.3) are landing-branch only and were not executed"
+  },
+  "resourceReadings": {
+    "hikaricpTimeoutTotalDeltaPerRound": 0,
+    "hikaricpPendingActivePeak": "prescribed before/after samples all 0.0 for all 9 rounds; supplementary in-round sampling only for A3/A4 (20 samples each, 10s spacing): pending peak 19.0, active peak 10.0 (= pool max) at mid3 of both rounds, remaining samples 0-3; asymmetry disclosed",
+    "lockAbnormalLines": 0,
+    "comSelectDeltaPerRound": {"A1": 20182, "B1": 20181, "B2": 20186, "A2": 20184, "A3": 20195, "A4": 20193, "W0": 20219, "W_B": 20198, "W_A": 20958},
+    "comSelectNote": "B/A ratio ~1.001, NOT the pre-announced '~10x tick => visible rise': the relay's own select count is ~26 (A) vs ~260 (B) per ~130s window (~234 difference), drowned in the ~20k per-round global Com_select dominated by the load path; the 10x tick frequency fact is evidenced by the gap shape (5020 -> 1056 ms) instead; disclosed as required, not used as a finding"
+  },
+  "semanticRegression": {
+    "retryCountGt0Rows": 0,
+    "exhaustedPendingDelta": 0,
+    "duplicateEventIdErrors": 0,
+    "markSentPerRound": 2010,
+    "reconsumeLaterLiteral": 0,
+    "relayFailLines": 0,
+    "relayExhaustedLines": 0
+  },
+  "exitCodes": {
+    "offlinePackageG1c": 0,
+    "staticGateG1d": 1,
+    "staticGateNote": "rc=1 expected: checkstyle fails first with 867 violations; spotbugs/pmd never executed = NOT COVERED",
+    "loadAllRounds": 0,
+    "parseAllRounds": 0,
+    "gitDiffCheckG1g": 0,
+    "closureGatesNote": "G9-G13 closure readings (word-level gate four forms + positive control, mailbox contract closure, only-change list, per-commit show --check, external gates) are recorded in work/mailbox/tasks/TASK-162/handoff.md"
+  },
+  "notCovered": [
+    "leaderboard consumption / SENT->leaderboard segment (leaderboard not started)",
+    "R5 quality / off-road ratio / mapmatch CPU (PostGIS+mapmatch not started; A/B/C all ran on the R5-degraded path)",
+    "spotbugs/pmd (blocked behind checkstyle)",
+    "--mode=online / CI (not run => external gate NOT reached)",
+    "relay-send-concurrency > 1 (kept at 1 for the whole task)",
+    "cause of the A-cell QPS upward drift across the session (no record-service/host-side resource sampling; unattributed)"
+  ],
+  "notClaimed": [
+    "no default config change (relay-interval-ms stays 5000; application.yml untouched)",
+    "no landing/recommendation: the -65%/-67% direction preview is not gate-passing evidence",
+    "no benefit claimed beyond the four-service partial stack",
+    "TASK-144 UNDETERMINED not overruled and its numbers not rewritten; this experiment reaches the same UNDETERMINED verdict under new pre-registration",
+    "no per-row cost / SQL optimization claim (net rate rise is tick-frequency gap shortening only)",
+    "no concurrency claim (relay-send-concurrency = 1 throughout)"
+  ]
+}
