@@ -1137,3 +1137,29 @@ run `35802403723`（head `eba0108`，2026-09-23 00:31 UTC）——**web/build �
 - G6 收口态（TASK-159 两件套已 tracked）：四形态（CI 原样 / C / zh_CN.UTF-8 / C.UTF-8）全 ZERO_HIT rc=1、正向对照 rc=0 命中 9/9、探针已删——无 TASK-158 型内生冲突。
 - G8 收口：无参 rc=0（判据 A 两件套齐、含 0 个待办进行中，TASK-159 足迹不在工作树视为已收口）；--baseline=da6e3ee 复跑 rc=1（判据 A=0），TASK-159 自身过冲恰 4 条 = ?? spec/changes/add-verify-degrade-status-index/ 的既有未跟踪 4 文件（清单多报 0 条，过冲仅来自既有脏项），其余为历史任务对主规格/PLAN 的公共文件交叠（TASK-127 既知模式，不属本任务）。
 - 纯追加与原样入库实证：git diff --numstat da6e3ee..HEAD -- work/mailbox/PLAN.md = 56 insertions / 0 deletions（验收记录节 49 行 + 本补记 7 行含分隔空行）；TASK-159 任务书出库 cmp 工作树逐字节一致；收口态 origin/main...main = 0	4；git status --porcelain 仅剩 ?? spec/changes/add-verify-degrade-status-index/。
+
+## 验收记录：TASK-160 实现 outbox relay 批内并发投递（默认关闭）+ 三件套（2026-09-29，执行 agent，本仓首个动生产代码轮）
+
+| 项 | 内容 |
+| --- | --- |
+| 绑定修订 | 开工基线 `6e375c9`（全 SHA `6e375c93533e7377cde91d52f9d39376e6853275`，开工 `git rev-parse` 逐位核对一致；`git rev-list --left-right --count origin/main...main` = `0	4`）。3 笔分批提交：C1 `0ee26df`（业务代码：并发开关 + 批内并发 + 诊断 + 新测试 10 用例）、C2 `b115897`（三件套纯 ADDED）、C3 本笔（台账：PLAN 验收记录 + TASK-160 两件套入库）。全程未 push、未建 PR、未 `git stash`、未 `git add -A`/`add .`（逐路径 add） |
+| 是否实现 | 是：新键 `verify.outbox.relay-send-concurrency` 默认 1（不写入 application.yml），=1 不创建任何线程池/线程、串行路径与引入前逐字等价（既有 19 测试一字未改全绿 + 新用例断言执行器字段 null）；>1 懒建 daemon 线程池（`verify-outbox-relay-` 前缀、volatile 持有不每轮新建、@PreDestroy shutdown→有界 awaitTermination→超时 shutdownNow）、已取批次按列表下标 `i % N` 切成不重不漏 N 份、一轮恰 N 任务全 join 后解锁；单行处理体唯一实现，单行异常 worker 兜底不外逃；取批仍单次 `selectPendingBatch(batchSize, maxRetry)`。**默认关闭 ⇒ 零生产行为变化、零已测收益**，收益待 TASK-161 同负载判别 |
+| 门槛来源 | 本地实跑，唯一入口 `bash scripts/verify/mvn-verify.sh`：offline test 与 `--static=verify-service` 于 C1/C2 后各一次（C3 纯文档零 .java 改动，读数不因此变化）。生效模式 offline |
+| 是否到达外部门槛 | **未达外部门槛**（本次不 push，待下次授权由 CI 复验） |
+| G0 只读复核 | producer 私有字段 3==3（两计数相等，字段原文见 handoff：STATUS_PENDING/rocketMQTemplate/objectMapper 全部 static final 或 final ⇒ 无共享可变状态）；hikari `maximum-pool-size` 出现 0 次；outbox CREATE TABLE 块 `record_id` 0（全文件对照 5，非判据）；开工态 `relay-send-concurrency` 在 relay 源为空、实现后为 `@Value("${verify.outbox.relay-send-concurrency:1}")` |
+| G1/G1b（硬） | `git diff --numstat <起点>..HEAD -- VerifyOutboxRelayTest.java` 空输出（一字未改）、@Test=19 全绿；新文件 `VerifyOutboxRelayConcurrencyTest.java` 441 行 10 用例；G1b 用例 `concurrencyOne_neverCreatesExecutorPool` 断言默认与显式 1 执行器字段 null，绿 |
+| G2/G3（硬） | `partition_isExhaustiveAndDisjoint`（batch=100×N∈{1,2,3,8}：syncSend 总数 100、每 id payload 恰 1 次、每 id markSent 恰 1 次、incrRetry 从未）、`sendFailure_isIsolated_restOfBatchStillDelivered`、`markSentFailure_incrRetryOnce_restProceeds`、`exhaustedRow_mixedInBatch_isSkippedNotDelivered`、`unexpectedRowException_isContainedByWorker`（incrRetry 抛错被 worker 兜住、relay 不抛、同子列表其余行继续）全绿 |
+| G4 offline | rc=**0** / BUILD SUCCESS，逐模块 **36/41/33/103/120/59/10**（6 个非 verify-service 模块与基线逐位一致；verify-service = 110 + 10 新用例 = 120），Failures/Errors/Skipped 全 **0** |
+| G5 静态门 | rc=**1**（第 2/2 段 checkstyle 失败），`You have 867 Checkstyle violations`，**867 ≤ 921**（「不得新增」口径；新增违规归零并顺带清了 record @param/参数 final/文件末换行等 54 项既有违规）；**spotbugs/pmd 因 checkstyle 先失败从未执行＝未覆盖**，不得写成通过 |
+| G6 词面门 | 正则现场从 ci.yml 提取（长度 **26**、非空断言过；字面量不入任何入库文件）；四形态（CI 原样 / `C` / `zh_CN.UTF-8` / `C.UTF-8`）全 **ZERO_HIT rc=1**（无任一 TOOL_ERROR）；正向对照探针 rc=**0 命中 9/9**、探针已删、`git status --porcelain` 复核无残留；三件套入库前预检同零命中 |
+| G7 空白与提交 | `git diff --check` rc=**0**；C1 `0ee26df`、C2 `b115897` 的 `git show --check` 均 rc=**0**；C3 见本节末补记 |
+| G8 契约 | 在途 `--open TASK-160 --baseline=<起点SHA>` rc=**1**（判据 A=0 即 TASK-160 已声明放行；判据 B=1 的过冲仅来自既有脏项 add-verify-degrade-status-index 未跟踪文件、TASK-160 当时未入库的 spec.md 与 C2 刚入库文件、以及 TASK-131/142/145/146/147/155 对主规格/PLAN 的历史公共文件交叠——TASK-159 已登记的既知模式，不属本任务超范围改动）；收口后无参复跑 rc=**0**（原文见本节末补记） |
+| G10 不得声称收益 | 本节与 handoff 均含原句「**默认关闭 ⇒ 零生产行为变化、零已测收益**」；S(N)/18.0 ms/行/13.4·37 行/s 仅以预登记反例身份出现，全文无一处把历史测量表述为本轮成果 |
+| 只改清单一致性 | 实际改动集 = 4 java（C1：Relay、RelayDiagnostics、RelayDiagnosticsTest 最小补实参、新 ConcurrencyTest）+ 3 三件套（C2）+ PLAN/TASK-160 spec.md/handoff（C3）；`VerifyOutboxRelayTest.java` numstat 空 = 未改；`application.yml`、`VerifyEventOutboxMapper.java`、`VerifyEventProducer.java`、任何 SQL/索引/schema/pom/`scripts/**`/`.github/**`、`docs/perf/**`、其他任务信箱目录、其余 18 个在途目录、`?? spec/changes/add-verify-degrade-status-index/` **全部零触碰**；未创建 `.mvn/maven.config`、未设 `MAVEN_OPTS`、未裸用 mvn；三件套 UTF-8 无 BOM、全程 LF |
+| 未覆盖/后续 | ① spotbugs/pmd 未覆盖（被 checkstyle 阻断在前）；② 未跑同负载 A/B ⇒ 无任何吞吐/延迟结论；③ 未起四服务、未连真 broker/真库（连 offline IT 也未跑）；④ 未 push 未过 CI，offline 绿不得表述为外部门槛绿；⑤ 生产 S(N) 必然低于 TASK-156 的 IT S(N)（Hikari 池 10 与消费线程 32~40 共享 vs IT 每线程独立连接），低多少未知；⑥ 并发路径仅 mock 单测覆盖，TASK-161 同负载判别完成前不得在生产开启 `>1`；⑦ 反例 3 的顺序语义已以 spec delta 明示（子列表内保 ID 相对序、跨 worker 交错），未做保序承诺 |
+
+**TASK-160 补记（C3 提交后终检实测，提交后补录）**
+
+- C3 `git show --check` rc=**0**；`git diff --shortstat 6e375c9..HEAD`（含 C3）与三笔 `git diff --cached --name-only` 原文随执行回复回传指导侧（本文件提交时无法预含自身哈希，按 TASK-159 先例以补记形式登记）。
+- 收口后无参 `bash scripts/verify/mailbox-contract.sh` rc=**0**（判据 A 全任务两件套齐、待办进行中 0 个；原文随执行回复回传）。
+- 终检 `bash .trae/tmp/task160-verify.sh 6e375c93533e7377cde91d52f9d39376e6853275`：G7 三笔 show_check 全 rc=0、G8 无参 rc=0、G6 收口态（三件套与台账入库后）四形态 ZERO_HIT + 正向对照 9/9、G10 handoff 含「默认关闭」计数 ≥1；全量输出随执行回复回传指导侧。
