@@ -1,0 +1,52 @@
+[
+  {
+    "number": 1,
+    "category": "开关与默认路径（D1/D2）",
+    "task": "并发开关默认 1，串行路径可证明未变",
+    "steps": [
+      { "step": "新增 @Value 键 verify.outbox.relay-send-concurrency（默认 1，不写入 application.yml）；抽出单行处理体供串行与并发共用一份实现；并发=1 时不创建任何线程池/线程，单行语句顺序、条件、日志文本与异常处理逐字不变", "completed": true },
+      { "step": "新建 VerifyOutboxRelayConcurrencyTest 断言默认与显式 1 时执行器字段为 null（G1b）；取值<1 钳到 1 并告警一次、不抛异常；既有 19 个 relay 测试一字未改且全绿（G1，以 git diff --numstat 为空为判据）", "completed": true }
+    ],
+    "passes": true
+  },
+  {
+    "number": 2,
+    "category": "批内并发与生命周期（D3/D4/D5）",
+    "task": "已取批次按下标取模切分、懒建线程池、逐行七条不变式守住",
+    "steps": [
+      { "step": "取批仍单次 selectPendingBatch(batchSize, maxRetry)，按列表下标 i % N 切成 N 个互不相交、并集完整的子列表；daemon 线程 + 可识别名字前缀懒建，volatile 持有不每轮新建，@PreDestroy shutdown→有界 awaitTermination→超时 shutdownNow、关闭异常只告警不抛；一轮恰好 N 个任务、全部 join 后才解锁", "completed": true },
+      { "step": "测试断言：100 行 × N∈{1,2,3,8} 不重不漏且每行恰一次发送与标记（G2）；syncSend/markSent 抛错与耗尽行逐行隔离、计数正确（G3）；incrRetry 抛错被 worker 兜住、relay 不抛且同子列表其余行继续（D5.7）", "completed": true }
+    ],
+    "passes": true
+  },
+  {
+    "number": 3,
+    "category": "诊断口径（D6）",
+    "task": "BatchSummary 增加 sendConcurrency 分量并写明线程时间聚合口径",
+    "steps": [
+      { "step": "每 worker 局部累计、join 后主线程求和（不引入 AtomicLong/锁）；selectNanos/lockWaitMs/lockProcessingMs/lockHoldMs 主线程单点计时口径不变；串行 residualMs 钳非负（既有语义）、并发不钳可为负；javadoc 与并发摘要日志措辞写明段值为线程时间聚合、residualMs 可能为负、不得读作未归因墙钟", "completed": true },
+      { "step": "RelayDiagnosticsTest 仅 4 处构造补一个实参；并发摘要测试断言摘要含 sendConcurrency、线程时间措辞与如实为负的 residualMs", "completed": true }
+    ],
+    "passes": true
+  },
+  {
+    "number": 4,
+    "category": "回归与门槛（G4/G5）",
+    "task": "offline 全绿且静态检查不得新增",
+    "steps": [
+      { "step": "bash scripts/verify/mvn-verify.sh --mode=offline test 全绿：6 个非 verify-service 模块数字与基线逐位一致，verify-service = 110 + 新增用例数，Failures/Errors/Skipped 全 0", "completed": true },
+      { "step": "bash scripts/verify/mvn-verify.sh --mode=offline --static=verify-service：checkstyle 违规数 ≤ 921（不得新增口径）；spotbugs/pmd 因 checkstyle 先失败从未执行，如实登记未覆盖", "completed": true }
+    ],
+    "passes": true
+  },
+  {
+    "number": 5,
+    "category": "收口与台账",
+    "task": "三件套、台账、契约与本地提交一次作业内收口",
+    "steps": [
+      { "step": "spec-delta 纯 ADDED（不写 MODIFIED：诊断相关需求属在途 3 深链）；proposal 逐条收录预登记反例 5 条并写明默认关闭不构成收益；handoff 含 G0–G10 实测读数、只改清单逐项对齐与未覆盖项；PLAN 纯追加验收记录", "completed": true },
+      { "step": "三笔提交逐路径 add（C1 代码/C2 三件套/C3 台账），不 push、不建 PR、不 git stash、不 add -A；词面门三态判定 + 正向对照；git diff --check 与无参 mailbox-contract 复跑通过", "completed": true }
+    ],
+    "passes": true
+  }
+]
