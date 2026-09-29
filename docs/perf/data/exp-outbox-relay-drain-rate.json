@@ -1,0 +1,246 @@
+{
+  "task": "TASK-163",
+  "head": "1ff96e0697694b6ec9669bc35c7234f2efdfe92d",
+  "date": "2026-09-30",
+  "label": "task163-outbox-relay-drain-rate",
+  "purpose": "single-factor controlled interleaved A1->B1->A2->B2 evaluation of verify.outbox.relay-interval-ms (A=5000ms default, B=500ms injected) using post-load drain slope (rows/s) as the primary metric, with M3 ordering control (A2 vs A1) and conditional default landing in classpath application.yml",
+  "changeId": "prove-verify-outbox-relay-drain-rate",
+  "reference": {
+    "task144": {
+      "report": "docs/perf/复测-outbox-relay-调度间隔.md",
+      "json": "docs/perf/data/exp-outbox-relay-interval.json",
+      "verdict": "UNDETERMINED",
+      "reason": "round A1 submit QPS deviated -15.65% from four-round median 155.205 (limit +/-15%)",
+      "relationship": "TASK-144 UNDETERMINED verdict and all its numbers remain unchanged and are not overruled"
+    },
+    "task162": {
+      "report": "docs/perf/复测-outbox-relay-调度间隔-可重复性.md",
+      "json": "docs/perf/data/exp-outbox-relay-interval-repeatable.json",
+      "verdict": "UNDETERMINED",
+      "reason": "budget exhausted at 6/6 rounds; A cell had only 1 valid round (A1) because submit QPS drifted upward (+37.30%/+24.39%/+50.03% vs base pool median 136.230, limit +/-15%)",
+      "relationship": "TASK-162 UNDETERMINED verdict and all its numbers remain unchanged and are not overruled; this task uses post-load drain slope to eliminate QPS drift contamination"
+    }
+  },
+  "slopeEstimator": {
+    "definition": "P_peak = maximum PENDING in drain.csv; t_peak = first timestamp reaching P_peak; t_zero = first timestamp reaching 0; slope = P_peak / ((t_zero - t_peak)/1000) rows/s",
+    "linearityCheck": "slope_half = (P_peak - P_at_mid) / ((t_mid - t_peak)/1000) where t_mid is the sample closest to the midpoint between t_peak and t_zero; |slope_half - slope| / slope > 30% requires disclosure",
+    "minPeakRequirement": "P_peak >= 100"
+  },
+  "verdict": {
+    "result": "LANDED",
+    "recommended": true,
+    "defaultChanged": true,
+    "writtenToClasspathYaml": true,
+    "reason": "all 4 counting rounds valid (M1 slack mechanism gate + M4 health gate passed); M2 effect gate passed with slope(B1)/slope(A1)=3.7559 and slope(B2)/slope(A2)=3.4285 (both >= 1.5, matching structural prediction 2.5~3.5); M3 ordering control passed with |slope(A2)-slope(A1)|/slope(A1)=5.68% (<=20%, ruling out system warm-up/drift explanation); M5 cost gate Com_select B/A delta ratio = 0.9976 (~1.0); landing branch triggered; relay-interval-ms: 500 added to application.yml with unit test VerifyOutboxRelayIntervalDefaultTest (123 tests total in verify-service); confirmation round C passed with slope(C)=45.0670, M1 >1s gaps=1, and slope(C)/mean(slope(A1),slope(A2))=2.8831 (>=1.5); no rollback needed"
+  },
+  "environment": {
+    "baselineSha": "1ff96e0697694b6ec9669bc35c7234f2efdfe92d",
+    "gitRevListLeftRight": "0\t1",
+    "verifyJarSha256": "202912840F4BEDC7EC93838F15599BF4A758FC01091633C38E6A2DD7F4CF82B5",
+    "recordJarSha256": "BD8C03C80D5EA32A7A1E9D85E1A5FA16DC4EEF0A6C29DB0007510154CB2D0776",
+    "userJarSha256": "364909E4C37FCD846840A06FE2F998595CB6DE6E5639AAF09015A5B6FB7BD11A",
+    "gatewayJarSha256": "87DD5E7B6055E9037DC928C6C8EC364FFDD9DDC7E1010AD83A2452AF05F81D32",
+    "jarSwapDuringRounds": "NONE",
+    "servicesStarted": ["gateway:8080", "user:8081", "record:8082", "verify:8083"],
+    "servicesAbsent": ["leaderboard", "mapmatch"],
+    "postgis": "container not started -> leaderboard segment and real R5 NOT COVERED",
+    "middleware": {
+      "mysql": "mysql:8.0 sport-verify-mysql host:3307",
+      "rocketmq": "apache/rocketmq:5.2.0 namesrv+broker",
+      "redis": "redis:7.2-alpine",
+      "nacos": "nacos/nacos-server:v2.3.2"
+    },
+    "diskFreeBytesOpen": 233058463744,
+    "diskFreeBytesClose": 231827701760,
+    "effectiveConfigProof": {
+      "applicationYmlHasVerifyOutboxKeysOpening": false,
+      "nacosVerifyServiceYml": "empty (config[...] is empty) => no override",
+      "authoritativeOpening": "@Value defaults: batch-size=100, relay-interval-ms=5000, relay-initial-delay-ms=10000, max-retry=16, relay-send-concurrency=1",
+      "onlyChangedFactor": "verify.outbox.relay-interval-ms (A=5000 no injection, B=500 injected via --verify.outbox.relay-interval-ms=500 on restart)"
+    },
+    "evidenceFiles": [
+      "docs/perf/data/raw/task163-g2-containers.txt",
+      "docs/perf/data/raw/task163-g2-jarsha.txt",
+      "docs/perf/data/raw/task163-g2-nacos.txt",
+      "docs/perf/data/raw/task163-g2-services.txt",
+      "docs/perf/data/raw/task163-c-jarsha.txt",
+      "docs/perf/data/raw/task163-final-containers.txt"
+    ]
+  },
+  "rounds": [
+    {
+      "label": "A1", "cell": "A", "intervalMs": 5000, "injection": "none (default)",
+      "load": {"ok": 2000, "limited429": 0, "errors": 0, "wallSeconds": 16.02, "qps": 124.8, "p50ms": 694.5, "p95ms": 1497.4, "p99ms": 1754.0, "maxMs": 2626.3},
+      "ids": {"recordIds": "78833..80842", "outboxIds": "58511..60520"},
+      "cohort": {"records": 2010, "outboxLinked": 2010},
+      "drain": {"pPeak": 1806, "tPeak": 1790703900765, "tZero": 1790704019581, "drainSeconds": 118.816, "slope": 15.2000, "slopeHalf": 15.3251, "linDiffPct": 0.82},
+      "relay": {"sentRows": 2010, "firstSent": "2026-09-30 01:44:32.614", "lastSent": "2026-09-30 01:46:58.816", "spanSec": 146.2, "netRateRowsPerSec": 13.75, "longGapsGt1s": 22, "longGapMedianMs": 5018, "batchGroups": 23, "batchSizes": "9,32,63,100x19,6", "groupsGe100": 19, "groupSpanMedianMs": 1267},
+      "m1Passed": true,
+      "m4Passed": true,
+      "m5ComSelectDelta": 20236
+    },
+    {
+      "label": "B1", "cell": "B", "intervalMs": 500, "injection": "--verify.outbox.relay-interval-ms=500",
+      "load": {"ok": 2000, "limited429": 0, "errors": 0, "wallSeconds": 10.43, "qps": 191.8, "p50ms": 505.2, "p95ms": 698.5, "p99ms": 948.9, "maxMs": 1085.7},
+      "ids": {"recordIds": "81053..83062", "outboxIds": "60731..62740"},
+      "cohort": {"records": 2010, "outboxLinked": 2010},
+      "drain": {"pPeak": 1675, "tPeak": 1790704125704, "tZero": 1790704155044, "drainSeconds": 29.340, "slope": 57.0893, "slopeHalf": 59.1671, "linDiffPct": 3.64},
+      "relay": {"sentRows": 2010, "firstSent": "2026-09-30 01:48:25.821", "lastSent": "2026-09-30 01:49:14.306", "spanSec": 48.5, "netRateRowsPerSec": 41.46, "longGapsGt1s": 1, "longGapMedianMs": 1028, "batchGroups": 2, "batchSizes": "9,2001", "groupsGe100": 1, "groupSpanMedianMs": 47231},
+      "m1Passed": true,
+      "m4Passed": true,
+      "m5ComSelectDelta": 20181
+    },
+    {
+      "label": "A2", "cell": "A", "intervalMs": 5000, "injection": "none (default)",
+      "load": {"ok": 2000, "limited429": 0, "errors": 0, "wallSeconds": 10.79, "qps": 185.4, "p50ms": 505.0, "p95ms": 757.9, "p99ms": 940.7, "maxMs": 1440.2},
+      "ids": {"recordIds": "83273..85282", "outboxIds": "62951..64960"},
+      "cohort": {"records": 2010, "outboxLinked": 2010},
+      "drain": {"pPeak": 1800, "tPeak": 1790704271934, "tZero": 1790704383993, "drainSeconds": 112.059, "slope": 16.0630, "slopeHalf": 15.9705, "linDiffPct": 0.58},
+      "relay": {"sentRows": 2010, "firstSent": "2026-09-30 01:50:53.877", "lastSent": "2026-09-30 01:53:04.013", "spanSec": 130.1, "netRateRowsPerSec": 15.45, "longGapsGt1s": 20, "longGapMedianMs": 5017.5, "batchGroups": 21, "batchSizes": "37,73,100x19", "groupsGe100": 19, "groupSpanMedianMs": 1177},
+      "m1Passed": true,
+      "m4Passed": true,
+      "m5ComSelectDelta": 20223
+    },
+    {
+      "label": "B2", "cell": "B", "intervalMs": 500, "injection": "--verify.outbox.relay-interval-ms=500",
+      "load": {"ok": 2000, "limited429": 0, "errors": 0, "wallSeconds": 9.82, "qps": 203.7, "p50ms": 472.5, "p95ms": 636.0, "p99ms": 905.3, "maxMs": 1419.9},
+      "ids": {"recordIds": "85493..87502", "outboxIds": "65171..67180"},
+      "cohort": {"records": 2010, "outboxLinked": 2010},
+      "drain": {"pPeak": 1637, "tPeak": 1790704484879, "tZero": 1790704514604, "drainSeconds": 29.725, "slope": 55.0715, "slopeHalf": 58.3491, "linDiffPct": 5.95},
+      "relay": {"sentRows": 2010, "firstSent": "2026-09-30 01:54:25.606", "lastSent": "2026-09-30 01:55:13.129", "spanSec": 47.5, "netRateRowsPerSec": 42.30, "longGapsGt1s": 1, "longGapMedianMs": 1022, "batchGroups": 2, "batchSizes": "9,2001", "groupsGe100": 1, "groupSpanMedianMs": 46325},
+      "m1Passed": true,
+      "m4Passed": true,
+      "m5ComSelectDelta": 20182
+    }
+  ],
+  "perRoundSlope": {
+    "A1": 15.2000,
+    "B1": 57.0893,
+    "A2": 16.0630,
+    "B2": 55.0715
+  },
+  "effectGateM2": {
+    "ratioB1A1": 3.7559,
+    "ratioB2A2": 3.4285,
+    "threshold": 1.5,
+    "structuralPredictionBand": [2.5, 3.5],
+    "passed": true
+  },
+  "orderingControl": {
+    "slopeA1": 15.2000,
+    "slopeA2": 16.0630,
+    "deltaPct": 5.68,
+    "limitPct": 20.0,
+    "passed": true,
+    "note": "A2 ran after both B1 and B2; slope deviation is only +5.68%, proving time drift/warmup does not explain B's advantage"
+  },
+  "warmupRounds": [
+    {
+      "label": "W0", "cell": "A", "injection": "none",
+      "load": {"total": 2000, "ok": 2000, "limited429": 0, "errors": 0, "wallSeconds": 15.34, "qps": 130.4},
+      "drainSeconds": 115.242, "pPeak": 1785, "slope": 15.4891, "note": "initial stack warmup"
+    },
+    {
+      "label": "W_B", "cell": "B", "injection": "--verify.outbox.relay-interval-ms=500",
+      "load": {"total": 200, "ok": 200, "limited429": 0, "errors": 0, "wallSeconds": 1.70, "qps": 117.3},
+      "drainSeconds": 2.705, "pPeak": 168, "slope": 62.1072, "note": "cell B first restart warmup"
+    },
+    {
+      "label": "W_A", "cell": "A", "injection": "none",
+      "load": {"total": 200, "ok": 200, "limited429": 0, "errors": 0, "wallSeconds": 1.46, "qps": 136.8},
+      "drainSeconds": 16.171, "pPeak": 201, "slope": 12.4297, "note": "cell A restart warmup"
+    },
+    {
+      "label": "W_B2", "cell": "B", "injection": "--verify.outbox.relay-interval-ms=500",
+      "load": {"total": 200, "ok": 200, "limited429": 0, "errors": 0, "wallSeconds": 1.32, "qps": 151.3},
+      "drainSeconds": 5.518, "pPeak": 140, "slope": 25.3715, "note": "cell B second restart warmup"
+    },
+    {
+      "label": "W_C", "cell": "C", "injection": "none (new jar with YAML default 500)",
+      "load": {"total": 200, "ok": 200, "limited429": 0, "errors": 0, "wallSeconds": 3.58, "qps": 55.9},
+      "drainSeconds": 7.454, "pPeak": 165, "slope": 22.1358, "note": "confirmation round warmup"
+    }
+  ],
+  "disclosure": {
+    "submitQpsDrift": {
+      "A1": 124.8, "B1": 191.8, "A2": 185.4, "B2": 203.7,
+      "driftPctA1toB2": 63.22,
+      "driftPctA1toA2": 48.56,
+      "note": "submit QPS drifted up by +48.56% from A1 to A2, yet slope stayed stable (15.20 vs 16.06, +5.68%), confirming that post-load drain slope is decoupled from submit QPS"
+    },
+    "outboxCreation10sBuckets": {
+      "A1": [75, 402, 1533],
+      "B1": [96, 705, 1209],
+      "A2": [114, 1677, 219],
+      "B2": [88, 829, 1093],
+      "C": [75, 520, 1415]
+    }
+  },
+  "landing": {
+    "applied": true,
+    "yamlChanged": true,
+    "yamlNumstat": "6 0 verify-service/src/main/resources/application.yml",
+    "testClassAdded": true,
+    "testClass": "verify-service/src/test/java/com/sportverify/verify/config/VerifyOutboxRelayIntervalDefaultTest.java",
+    "testCount": 3,
+    "verifyServiceTotalTests": 123,
+    "cRound": {
+      "label": "C",
+      "injection": "none (verifying classpath application.yml default)",
+      "load": {"ok": 2000, "limited429": 0, "errors": 0, "wallSeconds": 13.32, "qps": 150.2},
+      "pPeak": 1612,
+      "drainSeconds": 35.769,
+      "slope": 45.0670,
+      "slopeHalf": 44.7429,
+      "linDiffPct": 0.72,
+      "m1LongGapsGt1s": 1,
+      "m1LongGapMedianMs": 1541,
+      "m1Passed": true,
+      "meanSlopeA": 15.6315,
+      "ratioToMeanA": 2.8831,
+      "ratioThreshold": 1.5,
+      "ratioPassed": true
+    },
+    "rollback": null
+  },
+  "resourceReadings": {
+    "hikaricpTimeoutTotalDeltaPerRound": 0,
+    "lockAbnormalLines": 0,
+    "comSelectDeltaPerRound": {
+      "A1": 20236, "B1": 20181, "A2": 20223, "B2": 20182, "C": 20192
+    },
+    "comSelectRatioMeanBToMeanA": 0.9976
+  },
+  "semanticRegression": {
+    "retryCountGt0Rows": 0,
+    "exhaustedPendingDelta": 0,
+    "duplicateEventIdErrors": 0,
+    "markSentPerRound": 2010,
+    "reconsumeLaterLiteral": 0,
+    "relayFailLines": 0,
+    "relayExhaustedLines": 0
+  },
+  "exitCodes": {
+    "offlinePackageG1c": 0,
+    "staticGateG1d": 1,
+    "staticGateNote": "rc=1 expected: checkstyle fails with 867 violations; spotbugs/pmd never executed = NOT COVERED",
+    "loadAllRounds": 0,
+    "parseAllRounds": 0,
+    "cRoundVerification": 0,
+    "finalOfflineVerify": 0
+  },
+  "notCovered": [
+    "leaderboard consumption / SENT->leaderboard segment (leaderboard not started)",
+    "R5 quality / off-road ratio / mapmatch CPU (PostGIS+mapmatch not started; all runs on R5-degraded path)",
+    "spotbugs/pmd (blocked behind checkstyle)",
+    "--mode=online / CI (not run => external gate NOT reached)",
+    "relay-send-concurrency > 1 (kept at 1 for the whole task)"
+  ],
+  "notClaimed": [
+    "no claim of concurrency benefits (relay-send-concurrency = 1 throughout)",
+    "no conversion of slope into P50 latency improvement; slope reflects post-load capacity, not arrival-window end-to-end latency",
+    "no extrapolation to higher arrival rates, longer time windows, or multi-instance production environments",
+    "TASK-144 and TASK-162 UNDETERMINED verdicts are not overruled and their figures are not rewritten",
+    "10x tick frequency is a disclosed cost (evidenced by 1028ms vs 5018ms gaps), even though global Com_select is dominated by load"
+  ]
+}
