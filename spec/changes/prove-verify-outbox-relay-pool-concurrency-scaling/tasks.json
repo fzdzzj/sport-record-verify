@@ -1,0 +1,53 @@
+[
+  {
+    "number": 1,
+    "category": "基线与隔离只读预检",
+    "task": "冻结起点并准备专用 scratch schema",
+    "steps": [
+      {"step": "核对 HEAD=291e686a 与任务书一致、origin/main...main=0/1（未推的 1 笔为指导侧 PLAN L4 订正）；既有脏项原样保留不再触碰；容器 task131-scratch-mysql 只 docker start（不 recreate/不改配置/不删卷），实例只读登记 innodb_flush_log_at_trx_commit=1 / sync_binlog=1 / log_bin=ON / version=8.0.46 / event_scheduler=ON", "completed": true},
+      {"step": "由 sql/03-verify-db.sql 机械改名只新增 task161_pool_scratch（建库前既有 schema 列表存证）；IT 内每条直取连接硬校验 SELECT DATABASE()；演示库 3307 零字节写入；既有 task% schema 行数跑前跑后一致", "completed": true}
+    ],
+    "passes": true
+  },
+  {
+    "number": 2,
+    "category": "池内装配与受控标度实验（E1/E2）",
+    "task": "真实 10 连接 Hikari 池上的 N 路并发判别与占用证伪臂",
+    "steps": [
+      {"step": "真实 HikariDataSource：setMaximumPoolSize(10)=生产生效默认值、setPoolName(task161-pool-it)、其余 Hikari 默认（未设 connectionTimeout/minimumIdle/maximumLifetime）；经共享池每次调用 openSession(true) 走生产 VerifyEventOutboxMapper#markSent 的 Mapper 代理逐字 SQL（无自写 UPDATE）；池预热至 total=10 再测量", "completed": true},
+      {"step": "A 组（J=0）N∈{1,2,4,8}×3 轮，已取列表下标 i % N 互不相交分片（与 TASK-160 生产代码同一切法）；B 组证伪臂 N=4 且从同一 DataSource 额外签出 8 条连接整轮持有（可用 2 < N=4），J 标注为池占用代理（occupancy proxy）非消费者行为模型；M=2000/轮、重置不计入墙钟与计数窗口", "completed": true}
+    ],
+    "passes": true
+  },
+  {
+    "number": 3,
+    "category": "硬判据与会话门（E3）",
+    "task": "15 窗口全过才算数，B 组以池指标自证压力",
+    "steps": [
+      {"step": "12+3=15 窗口 Com_update 增量精确=2000（SHOW GLOBAL STATUS，前值重置后/barrier 前、后值 join 后/收尾 SELECT 前）、Com_insert/Com_delete=0、收尾 SENT=2000 且 PENDING=0，全部通过", "completed": true},
+      {"step": "会话门按本轮口径（池常驻持有）：除池连接实读（≤10）+1 控制连接外无外来会话，P_S NAME=thread/sql/one_connection 计数==池实读+1 并用 SHOW PROCESSLIST 交叉核对，排除 event_scheduler/compress_gtid_table 两条系统 Daemon（FOREGROUND 原始计数 13 照记）；15/15 干净", "completed": true},
+      {"step": "池指标轮内最大值（active/idle/total/threadsAwaitingConnection）：B 组自证门 awaitMax=2>0（3/3 轮）压力真实、A 组 N=1 awaitMax=0；池指标只证明有无排队，不配对单次调用、不拆解单行构成（TASK-146 口径）", "completed": true}
+    ],
+    "passes": true
+  },
+  {
+    "number": 4,
+    "category": "三档退出码与调用通道（E4/E5）",
+    "task": "变异红/字节还原复绿/缺变量 skipped 实测 + 带外通道可审计拆除",
+    "steps": [
+      {"step": "变异红：注入 shard 0 漏标首行变异被既有 Com_update==2000 断言抓住（实测=1999）rc=1；cp 备份回写 cmp rc=0 字节一致后两次独立全量重跑 rc=0（S_prod 三组相互印证：S2=1.8567/1.6850/1.6946、S4=3.1538/3.2883/3.1594、S4@J=8=1.7756/1.7794/1.7170 全落 (1.3,1.8)）；缺变量 skipped Tests run 1/Skipped 1 rc=0 不记真库通过", "completed": true},
+      {"step": ".mvn/maven.config 两行原文与跑前跑后 git status --porcelain .mvn 存证；任何 git add/commit 之前删除（删除后 ls rc=2 与空 status 取证）；删除后常规套件回基线数字串证明未被收窄；未用 MAVEN_OPTS、未改 mvn-verify.sh/任何 pom、未裸用 mvn", "completed": true}
+    ],
+    "passes": true
+  },
+  {
+    "number": 5,
+    "category": "裁决与一次作业收口",
+    "task": "预注册三支裁决不放宽，台账与本地提交集中完成",
+    "steps": [
+      {"step": "裁决落预注册第三支「证据不足」：S_prod(4)@J=0=3.1538≥2.0 成立但 S_prod(4)@J=8=1.7756 差 0.0244 未达 1.8、两值均 >1.3 → 只报数字与噪声；S_prod(2)=1.8567/S(4)=3.1538/S(8)=5.6803 单调不减（有界登记）；不实施、不改任何默认值（relay-send-concurrency 保持 1、application.yml 零改动）、不翻案 TASK-153/154、不改写 TASK-152/156 任何数字", "completed": true},
+      {"step": "报告/JSON/三件套（纯 ADDED）/TASK-161 spec+handoff、PLAN 纯追加 1 节；词面门现场提取三态判定+正向对照；git diff --check 与无参 mailbox-contract 复跑通过；分批逐路径提交（不 stash/add -A/push/PR），退出码与读数集中回传", "completed": true}
+    ],
+    "passes": true
+  }
+]
