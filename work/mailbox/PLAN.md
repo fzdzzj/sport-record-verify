@@ -1192,3 +1192,31 @@ run `35802403723`（head `eba0108`，2026-09-23 00:31 UTC）——**web/build �
 - C4 `git show --check` rc=**0**；`git diff --shortstat 291e686a..HEAD`（含 C4）与四笔 `git diff --cached --name-only` 原文随执行回复回传指导侧（本文件提交时无法预含自身哈希，按 TASK-159/160 先例以补记形式登记）。
 - 收口后无参 `bash scripts/verify/mailbox-contract.sh` rc=**0**（判据 A 全任务两件套齐、待办进行中 0 个；原文随执行回复回传）。
 - 终检 `bash .trae/tmp/task161-verify.sh 291e686a663e78ec7a8d1faeec14b9aeb669bca8`：G7 四形态 ZERO_HIT + 正向对照 9/9、G9 无参契约 rc=0、足迹清单；全量输出随执行回复回传指导侧。
+
+## 验收记录：TASK-162 复测 relay 调度间隔（可重复性口径）并条件式落地（2026-09-29，执行 agent，单因素 A-B-B-A 判别、未落地）
+
+| 项 | 内容 |
+| --- | --- |
+| 绑定修订 | 开工基线 `121273d6`（全 SHA `121273d6cf46fd1e8968d4817f8134d71edffda0`，开工 `git rev-parse` 逐位核对一致；`git rev-list --left-right --count origin/main...main` = `0	5`）。3 笔分批提交（未定支）：C1 `47b5deb`（报告 + 机器摘要）、C2 `6371c0c`（三件套纯 ADDED）、C3 本笔（台账：PLAN 验收记录 + TASK-162 两件套入库）。全程未 push、未建 PR、未 `git stash`、未 `git add -A`/`add .`（逐路径 add） |
+| 一句话裁决 | 落预注册**未定支**：预算 6/6 计数轮耗尽，A cell 仅 1 个有效计数轮（A1；A2/A3/A4 因 V6 失败）⇒「A cell ≥2 有效轮」不成立、改善门（需两轮有效 A 中较好者）**无法计算**；**不改任何默认值、未落地**。关键数字：A1 `callback→SENT` P50 = 55120 ms；B1 P50 = 19259 ms（−65.06%）、B2 P50 = 17902 ms（−67.52%）（相对 A1）；四轮 A 提交 QPS 相对基准池 {A1,B1,B2} 中位 136.230 的偏差 = −12.47% / +37.30% / +24.39% / +50.03%（限 ±15%） |
+| 是否实施 / 是否落地 | **否（未落地）**：未定支不满足落地前提 ⇒ `application.yml` 一字未动、无新测试类、无 C 确认轮、无回滚动作；`relay-send-concurrency` 全程 = 1，batch-size/max-retry/消费线程/池/JVM/MQ/Nacos 全部未动；**零生产行为变化** |
+| 门槛来源 | 本地实跑，唯一入口 `bash scripts/verify/mvn-verify.sh`（生效模式 offline；`--mode=offline package` rc=0 冻结四 jar）；四服务局部栈 + 演示库 3307（容器只 `docker start`）；V1–V7、改善/资源/语义门与三支裁决均按任务书 §5/§6 预注册执行，不放宽 |
+| 是否到达外部门槛 | **未达外部门槛**（本次不 push，待下次授权由 CI 复验） |
+| G0/G1 起点与环境 | HEAD 逐位一致、`0	5`；工作树仅 2 类未跟踪项（既有脏项 `spec/changes/add-verify-degrade-status-index/` 零触碰 + `TASK-162/`）；G1a–G1l 照任务书读数全对（G1f 按 §15 订正口径：无参 rc=1 为预期、在途 `--open` rc=0，两形态原文入 handoff；G1k 按动态量口径回报）；五容器只 `docker start`、`sport-verify-postgis` 未起、`task131-scratch-mysql` 零触碰 |
+| G2 生效配置 | Nacos `verify-service.yml` 为空（无覆盖）；四 jar sha256 留档、A/B 计数轮全程同一 verify jar 且不重建；`application.yml` 无任何 `verify.outbox` 键 ⇒ 生效值即 `@Scheduled` 默认 |
+| G3 轮次表（含丢弃预热） | 预热 W0/W_B/W_A 全部丢弃但逐轮留档（W_A 窗 254 次 `getRecord` Feign 读超时 + 重投如实登记，未污染计数轮）；计数轮 A1/B1/B2/A2 + 替换轮 A3/A4，6/6 预算用尽；每轮 6 步齐备、`ok=2000 / errors=0 / limited429=0`、`callbackToSent.n=2010` 配对闭合 |
+| G3 逐轮 V1–V7 | V1–V5 六轮全过；V6 四种读法**全部收敛未定**（R1 基准池 136.230：A1 −12.47% / B1 +3.91% / B2 0.00% 过，A2 +37.30% / A3 +24.39% / A4 +50.03% 失败；R2 全量中位 155.510：B1/B2/A3 过，A1/A2/A4 失败；R3 最大不动点 {A1,B1,B2}=136.230 与 {A2,A3,A4}=187.040 各留一 cell <2；R4 到达序滚动有效 {A1,B2}）；V7 原始三桶逐轮登记（A1 75/402/1533 第三桶抬高、A2–A4 第二桶主导，与 V6 共因），通过口径交指导侧复核 |
+| G4/G5 语义与资源 | 语义门全 0 回归（`retry_count>0`=0、耗尽增量=0、`uk_event_id` 零重复、markSent=2010/轮=cohort、零 `RECONSUME_LATER`；A1 字面 7 行、A2–A4 字面 254 行均按 recordId+时间戳归属前序窗）；资源门：`timeout_total` 增量全 0、零锁异常、`pending/active` 峰值 19/10（仅 A3/A4 轮内采样）与净投递并列、`Com_select` B/A 倍数 ≈1.001 与任务书预告「tick 约 10×」不符**如实登记 + 结构性解释**（tick select 差 ~234 次淹没于每轮 ~20180 总量）、磁盘 ≈218.6 GiB（≥100 GB） |
+| G6 交付物 | 报告（178 行：一句裁决 + 逐轮表含预热 + 逐轮 V1–V7 + 配对 + 资源 + 语义 + 5 反例触碰 + 未覆盖）与机器摘要（274 行，含 `warmupRounds`/`validityPerRound`/`landing`，JSON 解析校验过）——C1；三件套纯 ADDED（proposal 45 行含 5 反例逐字登记 + 触碰情况、spec-delta 33 行两需求五场景、tasks.json 62 行，落地步 `completed=false/passes=false` 不伪绿）——C2 |
+| G7/G8 落地与 C 轮 | **未执行（未定支）**：§7.1/7.2/7.3 全套仅落地支执行 ⇒ 不产生 YAML numstat、不产生新测试类、无 C 轮判据、无回滚证据（回滚条款亦无从触发） |
+| G9 词面门 | 正则现场从 ci.yml 提取（长度 26、字面量不内嵌任何入库文件）；4 形态（ci-exact / `C` / `zh_CN.UTF-8` / `C.UTF-8`）全 ZERO_HIT rc=1、正向对照 rc=0 命中、探针已删；**新登记 harness 事实**：`git grep --untracked` 不搜 ignored 文件（`.trae/**`），正向对照探针必须植在未忽略路径，否则对照恒空（执行侧已踩并修正） |
+| G10 空白与契约 | `git diff --check` rc=0；C1/C2 `git show --check` rc=0（C3 见本节末补记）；在途 `--open TASK-162 --baseline=121273d6` rc=1（自身「清单多报」0 条；「改动集未声明」5 条 = 既有脏项 4 文件 + 报告 md 1 条 `core.quotepath` 转义表达边界；其余历史任务同报 PLAN.md 公共文件交叠既知模式）；收口后无参 rc=0（见本节末补记） |
+| G11 只改清单一致性 | 实际改动集 8 条 = 报告 + JSON（C1）+ 三件套（C2）+ PLAN/TASK-162 `spec.md`+`handoff.md`（C3）；生产 Java（`VerifyOutboxRelay`/`RelayDiagnostics`/`VerifyEventOutboxMapper`/`VerifyEventProducer`/消费者）、`application.yml`、任何 SQL/索引/schema、任何 pom、`scripts/**`、`.github/**`、`docker-compose*.yml`、主规格（2806 行零改动）、`spec/changes/archive/**`、其余 20 个在途目录、其他任务信箱目录、`docs/perf/**` 既有 12 文件、既有测试类与 10 个 `*IT` **全部零触碰**；受保护数字 PLAN 计数 base vs HEAD 不减少（补记给表） |
+| 未覆盖/后续 | ① spotbugs/pmd 未覆盖（被 checkstyle 阻断在前）；② leaderboard/mapmatch/postgis 未起 ⇒ 榜单消费与真实 R5 **未覆盖**、A/B 全程 R5 降级；③ 不得外推到更高到达率/更长窗/生产多实例；④ **不得声称任何并发收益**（`relay-send-concurrency` 全程 = 1）；⑤ 不得与 TASK-152 的 18.0 ms/行或 TASK-156/161 的 S(N)/S_prod(N) 并列成「优化前后」；⑥ TASK-144 的 UNDETERMINED 不翻案、其数字不改写；⑦ 未 push 未过 CI；⑧ 落地未发生 ⇒「500ms 更优」未被证明，−65%/−67% 是未过门观测、不得作推荐或落地依据；⑨ A cell QPS 时漂移（+42%..+72%）归因未取证；⑩ 演示库新增约 1.3 万行记录（运行证据）不得清理 |
+
+**TASK-162 补记（C3 提交后终检实测，提交后补录）**
+
+- C3 `git show --check` rc=**0**；三笔 `git diff --cached --name-only` 与终版 `git diff --shortstat 121273d6..HEAD` 原文随执行回复回传指导侧（本文件提交时无法预含自身哈希，按 TASK-159/160/161 先例以补记形式登记；本补记经 `--amend --no-edit` 并入 C3，最终哈希以 `git log --oneline -1` 为准）；`git diff --numstat 121273d6..HEAD -- work/mailbox/PLAN.md` = **28 insertions / 0 deletions**（验收记录节 21 行 + 本补记 7 行含分隔空行）。
+- 收口后无参 `bash scripts/verify/mailbox-contract.sh` rc=**0**（原文 157 行存 `docs/perf/data/raw/task162-contract-closure.txt`：判据 A 两件套齐含 0 个待办进行中；76 条「视为已收口」+ 2 条 TASK-002/004「未解析到改动清单」跳过；TASK-162 行为 `足迹不在工作树，视为已收口，不重审`）。
+- G11 收口：`git diff --name-only 121273d6..HEAD` 恰 8 条（= §3 清单，其中报告 1 条为 `core.quotepath` 转义形态）；受保护数字 base→HEAD 计数 13.4 4→5、18.0 4→6、73.93 5→6、68.8 1→2、6315 1→2、1.8612 1→2、3.3066 1→2、5.7056 1→2、9.408 1→2、36525962432 2→3、36438897772 1→2（**无一减少**；右值为含本补记文本的终版计数）。
+- 词面门收口态（C1–C3 入库后）4 形态全 ZERO_HIT rc=1 + 正向对照 rc=0 命中（探针已删）；`git diff --check` rc=0；磁盘收口 Free = 232684974080 字节（≈216.7 GiB；相对开工基线 234727989248 减 2043015168 字节；门槛 Free ≥100 GB 远未触及）；TASK-162 `spec.md` = 237 行 / 34268 字节 / sha256 `91c9b95d…0b519`（任务书原样入库）。
