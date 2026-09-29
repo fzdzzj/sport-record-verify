@@ -1,0 +1,62 @@
+[
+  {
+    "number": 1,
+    "category": "冻结、起栈与 jar 冻结",
+    "task": "冻结起点 HEAD、起四服务局部栈、offline 构建并冻结四个 jar",
+    "steps": [
+      {"step": "核对 HEAD=121273d6cf46fd1e8968d4817f8134d71edffda0 与 origin/main...main=0/5；工作树仅既有脏项 add-verify-degrade-status-index/ 与 TASK-162/（G1f 按订正口径：无参 rc=1 为预期、在途 --open rc=0）；容器只 docker start 五个（不 recreate/不改配置/不删卷），postgis 不起；Nacos verify-service.yml 为空无覆盖", "completed": true},
+      {"step": "mvn-verify.sh --mode=offline package rc=0（七模块 36/41/33/103/120/59/10、Skipped 全 0）；四个 jar sha256 留档；A/B 计数轮之间不重建任何 jar", "completed": true}
+    ],
+    "passes": true
+  },
+  {
+    "number": 2,
+    "category": "轮次协议与丢弃预热",
+    "task": "预热吸收冷启动后跑 A-B-B-A 计数轮（唯一变量 relay-interval-ms）",
+    "steps": [
+      {"step": "预热轮 W0（全局首轮前）+ W_B/W_A（每次 verify-service 重启后）共 3 轮全部丢弃但逐轮留档（label/QPS/排空耗时）；W_A 窗 254 次 getRecord Feign 读超时+重投如实登记（被预热设计吸收，未污染计数轮）", "completed": true},
+      {"step": "计数轮 A1→B1→B2→A2（A2 无效后追加替换轮 A3/A4，预算 6/6 用尽），每轮 6 步齐备（前置 PENDING 闭合/负载 100×2000/排空 A 400s·B 200s/立即复制日志/task144-parse.ps1 未改且配对/记账），全部 ok=2000 errors=0 limited429=0、callbackToSent.n=2010 配对闭合", "completed": true}
+    ],
+    "passes": true
+  },
+  {
+    "number": 3,
+    "category": "有效性门 V1–V7 与可比性",
+    "task": "逐轮 V1–V7；V6 自指定义四读法全算，V7 原始桶交指导侧复核",
+    "steps": [
+      {"step": "V1–V5 六轮全过（每轮 ok=2000/errors=0/429=0、排空闭合、n=2010、cohort.records=cohort.outboxLinked=2010）；V3 relay 失败行/耗尽行全 0", "completed": true},
+      {"step": "V6 四读法全部收敛未定：R1 基准池 {A1,B1,B2} 中位 136.230（A1 −12.47%/B1 +3.91%/B2 0.00% 过；A2 +37.30/A3 +24.39/A4 +50.03 失败）；R2 全量中位 155.510（B1 −8.97/B2 −12.40/A3 +8.97 过；A1 −23.32/A2 +20.28/A4 +31.43 失败）；R3 两个不动点 {A1,B1,B2}=136.230 与 {A2,A3,A4}=187.040（取任一集都有 cell <2）；R4 到达序滚动（有效 {A1,B2}）；V7 原始三桶逐轮登记（A1 75/402/1533 第三桶抬高、A2–A4 第二桶主导，与 V6 共因）", "completed": true}
+    ],
+    "passes": true
+  },
+  {
+    "number": 4,
+    "category": "资源/语义门与预注册裁决",
+    "task": "三支裁决不放宽：任一 cell 有效轮 <2 ⇒ 未定支",
+    "steps": [
+      {"step": "资源门全过：9 轮 hikaricp timeout_total 增量全 0、零锁异常、pending/active 峰值（A3/A4 轮内采样 19/10）与净投递并列、Com_select 倍数 ≈1.001 如实登记并附结构性解释（tick select 差 ~234 次淹没于每轮 ~20180 总量；10× 是 relay 空扫频率事实非全局可见倍数）、磁盘 ≈218.6 GiB ≥100GB", "completed": true},
+      {"step": "语义门全过：retry_count>0 行数=0、耗尽行增量=0、uk_event_id 零重复、markSent=2010/轮=cohort、零 RECONSUME_LATER（A1 字面 7 行、A2–A4 字面 254 行均按 recordId+时间戳归属前序窗，本窗 0）", "completed": true},
+      {"step": "裁决落预注册未定支：预算 6/6 耗尽、A cell 仅 1 有效轮（A1）、改善门需两轮有效 A 无法计算；方向性读数 −65.06%/−67.52% 仅作未过门观测登记、不构成推荐；不改任何默认值、relay-send-concurrency 保持 1", "completed": true}
+    ],
+    "passes": true
+  },
+  {
+    "number": 5,
+    "category": "条件式落地（仅落地支执行）",
+    "task": "落地支未成立 ⇒ 不落地（未定支），无 C 轮、无回滚",
+    "steps": [
+      {"step": "仅若双 cell ≥2 有效轮且改善门/资源门/语义门全过：application.yml 纯新增 relay-interval-ms=500（numstat N/0、^verify: 根键仍 1）+ 纯 JUnit 绑定测试类 + C 确认轮（空档≤5、中位≤2000ms、P50±25%）——未执行：未定支不满足落地前提，application.yml 零改动、无新测试类、无 C 轮、无回滚动作", "completed": false}
+    ],
+    "passes": false
+  },
+  {
+    "number": 6,
+    "category": "报告与一次作业收口",
+    "task": "报告/JSON/三件套/两件套/PLAN 纯追加与逐路径本地提交",
+    "steps": [
+      {"step": "报告（一句裁决+逐轮表含预热+逐轮 V1–V7+配对延迟/净速率/空档+资源+语义+未覆盖+5 反例触碰）与机器摘要（新增 warmupRounds/validityPerRound/landing，含 C 轮与回滚字段）落盘；JSON 解析校验、CR=0、无 BOM、词面门 ZERO_HIT+正向对照", "completed": true},
+      {"step": "三件套（纯 ADDED）+ PLAN 纯追加验收节 + TASK-162 spec/handoff（含 MYSQL_PORT 自踩、W_A 254 超时、V6 四读法、Com_select 倍数、采样不对称等披露）；G9–G13 收口门现场跑；逐路径 add，C1=报告+JSON / C2=三件套 / C3=PLAN+两件套；不 stash/add -A/push/PR", "completed": true}
+    ],
+    "passes": true
+  }
+]
