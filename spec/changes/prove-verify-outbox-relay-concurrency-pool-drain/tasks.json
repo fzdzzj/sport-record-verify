@@ -1,0 +1,65 @@
+[
+  {
+    "number": 1,
+    "category": "冻结、起栈与 jar 冻结",
+    "task": "冻结起点 HEAD、起演示容器与四服务局部栈、offline 构建并冻结四个 jar",
+    "steps": [
+      {"step": "核对 HEAD=10a08c3b74b1e77c3c1d83327e33c12b54410e84 与 origin/main...main=0/5；工作树仅既有脏项 add-verify-degrade-status-index/ 与 TASK-164/（契约门无参 rc=1 为预期、--open --baseline=10a08c3 rc=0）；M0 环境门：Docker Desktop 启动、5 容器 healthy、max_connections=151 - Threads_connected=22 = 129 >= 30；Nacos verify-service.yml 为空无覆盖", "completed": true},
+      {"step": "mvn-verify.sh --mode=offline rc=0（36/41/33/103/123/59/10 全绿）+ --mode=offline package rc=0 冻结四 jar（sha256 留档）；静态门 rc=1 且 867 <= 867；词面门四形态 ZERO_HIT rc=1 + 正向对照 rc=0 探针已删；A/B/C 计数轮之间不重建任何 jar", "completed": true}
+    ],
+    "passes": true
+  },
+  {
+    "number": 2,
+    "category": "轮次协议与三臂交错排空测量",
+    "task": "预热 W0/wB1/wC1/wA2 全弃留档，交错执行 A1→B1→C1→A2→B2→C2 计数轮（唯一差异＝注入参数）",
+    "steps": [
+      {"step": "预热轮 4/4 用满（W0 100x2000 + wB1/wC1/wA2 100x200）全部丢弃但留档；B2/C2 因预算耗尽未设预热轮（照实披露）；每轮排空采样 drain.csv 至 0、斜率估计与线性度照预注册估计量计算", "completed": true},
+      {"step": "6 个计数轮 7 步齐备：前置健康与 PENDING=0、负载 100x2000 全部 ok=2000/errors=0/limited429=0、负载返回后立即 ~2s 采样排空、后置采样与日志复制、task144-parse.ps1 原样配对（cohort=markSent=2010 全闭合）、逐轮共变量与 hikari 峰值留档", "completed": true}
+    ],
+    "passes": true
+  },
+  {
+    "number": 3,
+    "category": "逐轮门与裁决门判别",
+    "task": "逐轮 M1/M4/M5/M6 与全局 M2/M3/重复性判别",
+    "steps": [
+      {"step": "M1 机制门六轮全过（A/B 臂零建池日志且批次行 sendConcurrency=1；C 两轮恰 1 条 sendConcurrency=4 建池日志且批次行全 4；>1s 空档数 1/3/1/0/1/0 均 <=5；C 轮 residualMs 为负按 javadoc 口径披露）", "completed": true},
+      {"step": "M4 六轮全过（cohort=markSent=SENT 增量=2010、零重试/零耗尽/零重复/零 RECONSUME_LATER/零锁异常/排空末 PENDING=0）；M6 六轮全过（hikaricp timeout_total 增量全 0、pending/active 峰值照实披露、消费侧零饿死）；M5 Com_select C/A 均值比 1.0002 <= 1.5", "completed": true},
+      {"step": "M3 排序控制门通过（|80.6171-89.3991|/85.0081 = 10.33% <= 20%）；C 臂重复性 21.20% <= 30%、B 臂 17.51% 照实记录", "completed": true},
+      {"step": "M2 效应门两比值均未达线：121.9729/89.3991 = 1.3644 < 1.5、98.5905/80.6171 = 1.2229 < 1.5（均 >1.0，反证支不成立；均落结构预测区间 [1.7,2.5] 之外，该区间不是门）", "completed": true}
+    ],
+    "passes": true
+  },
+  {
+    "number": 4,
+    "category": "预注册三支裁决",
+    "task": "归属预注册「未定支」，不落地",
+    "steps": [
+      {"step": "落地支前提（M2 两比值 >= 1.5）不满足、反证支前提（两比值均 <= 1.0 或 M4/M6 归因红）不满足，按任务书 §7 归未定支：只报数字与估计量方差（同臂极差 A 10.3%/B 17.5%/C 21.2% 与 2s 采样粒度披露），不凑结论、不外推", "completed": true}
+    ],
+    "passes": true
+  },
+  {
+    "number": 5,
+    "category": "条件式落地（未触发）",
+    "task": "application.yml 纯新增两键、新增绑定测试类、确认轮 D——落地支未触发，全部未执行",
+    "steps": [
+      {"step": "application.yml 纯新增 maximum-pool-size: 20 与 relay-send-concurrency: 4（落地支专属动作）", "completed": false},
+      {"step": "新增纯 JUnit 5 绑定测试类（YAML 两键值断言、@Value 生产默认值反射断言、hikari 既有键保持断言、双根键唯一性断言）", "completed": false},
+      {"step": "确认轮 D（--mode=offline package 重建 jar、无注入启动、100x2000、slope(D)/mean(slope(A1),slope(A2)) >= 1.5 判据）", "completed": false}
+    ],
+    "passes": false
+  },
+  {
+    "number": 6,
+    "category": "报告与一次作业收口",
+    "task": "报告/JSON/三件套/两件套/PLAN 纯追加（含 §11 勘误）与收尾条",
+    "steps": [
+      {"step": "报告 docs/perf/判别-outbox-relay-并发与池-排空斜率.md 与机器摘要 exp-outbox-relay-concurrency-pool-drain.json 落盘（JSON 语法校验、CR=0、无 BOM）；M5 Com_update 字面常数与历史基线（TASK-163 留档同为 4020=2x2010）的冲突全程披露，提请指导侧裁决", "completed": true},
+      {"step": "强制收尾条：stop-services 停机、sports java 进程数=0、复跑 offline 全量 rc=0（模块数与未落地状态自洽 123）、静态门 <=867、词面门四形态+对照、无参契约 rc=0、git diff --check 与逐笔 show --check、docker ps -a 留档", "completed": true},
+      {"step": "PLAN.md 纯追加验收记录节（含 §11 的 TASK-163 handoff §4.2 W_C 行勘误一行 + 16 受保护 token base vs HEAD 计数 + 外部门槛栏）+ TASK-164 两件套入库；分 3 笔逐路径 commit（C1=报告+JSON / C2=三件套 / C3=PLAN+两件套），不 push/PR/stash", "completed": true}
+    ],
+    "passes": true
+  }
+]
