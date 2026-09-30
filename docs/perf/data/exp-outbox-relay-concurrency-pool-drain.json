@@ -1,0 +1,243 @@
+{
+  "task": "TASK-164",
+  "head": "10a08c3b74b1e77c3c1d83327e33c12b54410e84",
+  "date": "2026-09-30",
+  "label": "task164-outbox-relay-concurrency-pool-drain",
+  "purpose": "three-arm interleaved evaluation (A=landed baseline pool10 serial, B=pool20 serial, C=pool20 + relay-send-concurrency4) of the post-load drain slope (rows/s) on top of the TASK-163 landed relay-interval-ms=500, with conditional landing of maximum-pool-size=20 and relay-send-concurrency=4 only if M2 both ratios >= 1.5",
+  "changeId": "prove-verify-outbox-relay-concurrency-pool-drain",
+  "reference": {
+    "task163": {
+      "json": "docs/perf/data/exp-outbox-relay-drain-rate.json",
+      "verdict": "LANDED",
+      "relationship": "TASK-163 landed verify.outbox.relay-interval-ms=500; this task evaluates the next two knobs on top of that landed state and does not rewrite any TASK-163 number"
+    },
+    "task161": {
+      "verdict": "UNDETERMINED (S_prod(N) transferability explicitly unanswered)",
+      "relationship": "the structural prediction band [1.7, 2.5] below borrows TASK-161 S_prod(4)@J=0=3.1538 as a parallel-efficiency proxy; that assumption remains unproven and is not treated as fact"
+    }
+  },
+  "slopeEstimator": {
+    "definition": "P_peak = maximum PENDING in drain.csv; t_peak = first timestamp reaching P_peak; t_zero = first timestamp reaching 0; slope = P_peak / ((t_zero - t_peak)/1000) rows/s; drain sampled every ~2s",
+    "linearityCheck": "slope_half = (P_peak - P_at_mid) / ((t_mid - t_peak)/1000); |slope_half - slope| / slope > 30% requires disclosure",
+    "minPeakRequirement": "P_peak >= 100",
+    "estimatorVarianceDisclosure": "drain window contains only 6-12 samples at ~2s granularity; same-config spread today: A 89.3991/80.6171, B 66.9655/56.1843, C 121.9729/98.5905 - sampling-granularity noise is of the same order as the 1.5 threshold"
+  },
+  "verdict": {
+    "result": "UNDETERMINED",
+    "recommended": false,
+    "defaultChanged": false,
+    "reason": "all 6 counting rounds valid (per-round M1/M4/M5/M6 passed; no M4/M6 red so no replacement round permitted), M3 ordering control passed (10.33% <= 20%), C-arm repeatability passed (21.20% <= 30%); BUT M2 effect gate FAILED on both ratios: slope(C1)/max(slope(A1),slope(B1)) = 121.9729/89.3991 = 1.3644 < 1.5 and slope(C2)/max(slope(A2),slope(B2)) = 98.5905/80.6171 = 1.2229 < 1.5; both ratios are > 1.0 so the reproof branch does not apply either; per the pre-registered three-branch rule the task lands in the UNDETERMINED branch: numbers reported as-is, no landing, no extrapolation, no conclusion of benefit or no-benefit"
+  },
+  "arms": {
+    "A": "--verify.outbox.relay-diagnostics-enabled=true (pool default 10, relay-send-concurrency default 1)",
+    "B": "A + --spring.datasource.hikari.maximum-pool-size=20",
+    "C": "B + --verify.outbox.relay-send-concurrency=4"
+  },
+  "environment": {
+    "baselineSha": "10a08c3b74b1e77c3c1d83327e33c12b54410e84",
+    "gitRevListLeftRight": "0 5 (recorded as-is; guide-side note allowed 0 5 or 0 0)",
+    "verifyJarSha256": "B7F9E953091E3EA409E499F702BC51E08B2DF36F0E92F2FC52CE7985C6948D35",
+    "recordJarSha256": "44CE3354B6AB7A10A9E23A595DAF471F4EFD428434435F6B60A81F6DECC51840",
+    "userJarSha256": "D274D9B675C3D3F67D730751C39C957209D2BCEC91219D60225CA7E37CD7F7BB",
+    "gatewayJarSha256": "54DF09D44E406F7DFD8F1088C3983FFBFB596659C54E81B44F10132E1CB0ED57",
+    "jarSwapDuringRounds": "NONE",
+    "servicesStarted": ["gateway:8080", "user:8081", "record:8082", "verify:8083"],
+    "servicesAbsent": ["leaderboard", "mapmatch"],
+    "postgis": "container not started -> leaderboard segment and real R5 NOT COVERED",
+    "middleware": {
+      "mysql": "mysql:8.0 sport-verify-mysql host:3307",
+      "rocketmq": "apache/rocketmq:5.2.0 namesrv+broker",
+      "redis": "redis:7.2-alpine",
+      "nacos": "nacos/nacos-server:v2.3.2"
+    },
+    "nacosOverride": "config[dataId=verify-service.yml, group=DEFAULT_GROUP] is empty => no override",
+    "m0ConnectionMargin": "max_connections=151, Threads_connected after stack=22, margin=129 >= 30",
+    "hikariMaxProof": "hikaricp_connections_max gauge = 10.0 on A rounds, 20.0 on B/C rounds (injection effective)",
+    "effectiveConfigProof": "per-round java CommandLine captured from Win32_Process into raw/task164-<label>-cmdline.txt; A/B/C flags exactly as pre-registered"
+  },
+  "rounds": [
+    {
+      "label": "A1", "cell": "A", "warmupCovered": "W0 (same process, log shared)",
+      "injection": "--verify.outbox.relay-diagnostics-enabled=true",
+      "load": {"ok": 2000, "limited429": 0, "errors": 0, "wallSeconds": 8.168, "qps": 244.86, "p50ms": 394.96},
+      "ids": {"recordIds": "91733..93742", "outboxIds": "71411..73420"},
+      "cohort": {"records": 2010, "outboxLinked": 2010, "sent": 2010, "markSent": 2010},
+      "drain": {"pPeak": 1690, "tPeak": 1790774949865, "tZero": 1790774968769, "drainSeconds": 18.904, "slope": 89.3991, "slopeHalf": 86.2939, "linDiffPct": 3.47, "samples": 9},
+      "relay": {"sentRows": 2010, "netRateRowsPerSec": 63.50, "longGapsGt1s": 1, "longGapMedianMs": 1035, "batchGroups": 2, "batchSizes": "9,2001"},
+      "m1": {"poolCreationLines": 0, "batchDiagLines": 66, "sendConcurrencyValues": "1 (log also contains discarded W0 lines)", "passed": true},
+      "m4Passed": true,
+      "m5": {"comSelectDelta": 20170, "comUpdateDelta": 4020},
+      "m6": {"hikariTimeoutTotalDelta": 0, "activeMax": 10.0, "pendingMax": 15.0}
+    },
+    {
+      "label": "B1", "cell": "B", "warmupCovered": "wB1 (same process, log shared)",
+      "injection": "--verify.outbox.relay-diagnostics-enabled=true --spring.datasource.hikari.maximum-pool-size=20",
+      "load": {"ok": 2000, "limited429": 0, "errors": 0, "wallSeconds": 11.348, "qps": 176.24, "p50ms": 522.66},
+      "ids": {"recordIds": "93953..95962", "outboxIds": "73631..75640"},
+      "cohort": {"records": 2010, "outboxLinked": 2010, "sent": 2010, "markSent": 2010},
+      "drain": {"pPeak": 1524, "tPeak": 1790776219604, "tZero": 1790776242362, "drainSeconds": 22.758, "slope": 66.9655, "slopeHalf": 60.1930, "linDiffPct": 10.11, "samples": 10},
+      "relay": {"sentRows": 2010, "netRateRowsPerSec": 50.65, "longGapsGt1s": 3, "longGapMedianMs": 1048, "batchGroups": 4, "batchSizes": "9,32,32,1937"},
+      "m1": {"poolCreationLines": 0, "batchDiagLines": 37, "sendConcurrencyValues": "1", "passed": true},
+      "m4Passed": true,
+      "m5": {"comSelectDelta": 20177, "comUpdateDelta": 4020},
+      "m6": {"hikariTimeoutTotalDelta": 0, "activeMax": 20.0, "pendingMax": 0.0}
+    },
+    {
+      "label": "C1", "cell": "C", "warmupCovered": "wC1 (same process, log shared)",
+      "injection": "--verify.outbox.relay-diagnostics-enabled=true --spring.datasource.hikari.maximum-pool-size=20 --verify.outbox.relay-send-concurrency=4",
+      "load": {"ok": 2000, "limited429": 0, "errors": 0, "wallSeconds": 8.269, "qps": 241.88, "p50ms": 401.35},
+      "ids": {"recordIds": "96173..98182", "outboxIds": "75851..77860"},
+      "cohort": {"records": 2010, "outboxLinked": 2010, "sent": 2010, "markSent": 2010},
+      "drain": {"pPeak": 1370, "tPeak": 1790776469669, "tZero": 1790776480901, "drainSeconds": 11.232, "slope": 121.9729, "slopeHalf": 120.6897, "linDiffPct": 1.05, "samples": 6},
+      "relay": {"sentRows": 2010, "netRateRowsPerSec": 84.42, "longGapsGt1s": 1, "longGapMedianMs": 1038, "batchGroups": 2, "batchSizes": "10,2000"},
+      "m1": {"poolCreationLines": 1, "batchDiagLines": 37, "sendConcurrencyValues": "4 (plus the single pool-creation line sendConcurrency=4)", "residualMsNote": "negative residualMs observed (e.g. -318/-913/-699) and disclosed per javadoc wording: thread-time aggregation under concurrency, not unattributed wall clock", "passed": true},
+      "m4Passed": true,
+      "m5": {"comSelectDelta": 20167, "comUpdateDelta": 4020},
+      "m6": {"hikariTimeoutTotalDelta": 0, "activeMax": 20.0, "pendingMax": 9.0}
+    },
+    {
+      "label": "A2", "cell": "A", "warmupCovered": "wA2 (same process, log shared)",
+      "injection": "--verify.outbox.relay-diagnostics-enabled=true",
+      "load": {"ok": 2000, "limited429": 0, "errors": 0, "wallSeconds": 8.380, "qps": 238.67, "p50ms": 398.18},
+      "ids": {"recordIds": "98393..100402", "outboxIds": "78071..80080"},
+      "cohort": {"records": 2010, "outboxLinked": 2010, "sent": 2010, "markSent": 2010},
+      "drain": {"pPeak": 1573, "tPeak": 1790776668615, "tZero": 1790776688127, "drainSeconds": 19.512, "slope": 80.6171, "slopeHalf": 79.7531, "linDiffPct": 1.07, "samples": 10},
+      "relay": {"sentRows": 2010, "netRateRowsPerSec": 55.93, "longGapsGt1s": 0, "longGapMedianMs": null, "batchGroups": 1, "batchSizes": "2010"},
+      "m1": {"poolCreationLines": 0, "batchDiagLines": 35, "sendConcurrencyValues": "1", "gapMedianNote": "0 gaps >1s -> median undefined, gate <=5 vacuously passed, disclosed", "passed": true},
+      "m4Passed": true,
+      "m5": {"comSelectDelta": 20172, "comUpdateDelta": 4020},
+      "m6": {"hikariTimeoutTotalDelta": 0, "activeMax": 10.0, "pendingMax": 18.0}
+    },
+    {
+      "label": "B2", "cell": "B", "warmupCovered": "NONE (warmup budget 4/4 exhausted: W0+wB1+wC1+wA2)",
+      "injection": "--verify.outbox.relay-diagnostics-enabled=true --spring.datasource.hikari.maximum-pool-size=20",
+      "load": {"ok": 2000, "limited429": 0, "errors": 0, "wallSeconds": 8.439, "qps": 236.99, "p50ms": 397.57},
+      "ids": {"recordIds": "100403..102412", "outboxIds": "80081..82090"},
+      "cohort": {"records": 2010, "outboxLinked": 2010, "sent": 2010, "markSent": 2010},
+      "drain": {"pPeak": 1658, "tPeak": 1790776818744, "tZero": 1790776848254, "drainSeconds": 29.510, "slope": 56.1843, "slopeHalf": 68.8178, "linDiffPct": 22.49, "samples": 12},
+      "relay": {"sentRows": 2010, "netRateRowsPerSec": 49.69, "longGapsGt1s": 1, "longGapMedianMs": 1115, "batchGroups": 2, "batchSizes": "9,2001"},
+      "m1": {"poolCreationLines": 0, "batchDiagLines": 29, "sendConcurrencyValues": "1", "passed": true},
+      "m4Passed": true,
+      "m5": {"comSelectDelta": 20187, "comUpdateDelta": 4020},
+      "m6": {"hikariTimeoutTotalDelta": 0, "activeMax": 20.0, "pendingMax": 2.0}
+    },
+    {
+      "label": "C2", "cell": "C", "warmupCovered": "NONE (warmup budget exhausted)",
+      "injection": "--verify.outbox.relay-diagnostics-enabled=true --spring.datasource.hikari.maximum-pool-size=20 --verify.outbox.relay-send-concurrency=4",
+      "load": {"ok": 2000, "limited429": 0, "errors": 0, "wallSeconds": 10.600, "qps": 188.68, "p50ms": 513.28},
+      "ids": {"recordIds": "102413..104422", "outboxIds": "82091..84100"},
+      "cohort": {"records": 2010, "outboxLinked": 2010, "sent": 2010, "markSent": 2010},
+      "drain": {"pPeak": 1364, "tPeak": 1790776992012, "tZero": 1790777005847, "drainSeconds": 13.835, "slope": 98.5905, "slopeHalf": 104.6572, "linDiffPct": 6.15, "samples": 8},
+      "relay": {"sentRows": 2010, "netRateRowsPerSec": 67.20, "longGapsGt1s": 0, "longGapMedianMs": null, "batchGroups": 1, "batchSizes": "2010"},
+      "m1": {"poolCreationLines": 1, "batchDiagLines": 36, "sendConcurrencyValues": "4 (plus the single pool-creation line sendConcurrency=4)", "residualMsNote": "negative residualMs disclosed per javadoc wording", "passed": true},
+      "m4Passed": true,
+      "m5": {"comSelectDelta": 20184, "comUpdateDelta": 4020},
+      "m6": {"hikariTimeoutTotalDelta": 0, "activeMax": 20.0, "pendingMax": 6.0}
+    }
+  ],
+  "perRoundSlope": {
+    "A1": 89.3991,
+    "B1": 66.9655,
+    "C1": 121.9729,
+    "A2": 80.6171,
+    "B2": 56.1843,
+    "C2": 98.5905
+  },
+  "effectGateM2": {
+    "ratio1": 1.3644,
+    "ratio2": 1.2229,
+    "threshold": 1.5,
+    "structuralPredictionBand": [1.7, 2.5],
+    "structuralPredictionNote": "derivation cycle=0.5+T_batch/N_eff with TASK-163 T_batch=1.2517~1.7189s and TASK-161 S_prod(4)@J=0=3.1538 as parallel-efficiency proxy; the proxy assumption is explicitly unanswered in TASK-161 and is NOT treated as proven; measured ratios fall below AND outside the band; the band is not a gate",
+    "passed": false
+  },
+  "orderingControl": {
+    "slopeA1": 89.3991,
+    "slopeA2": 80.6171,
+    "deltaPctOfMean": 10.33,
+    "limitPct": 20.0,
+    "passed": true,
+    "note": "A2 ran after B1/C1; A-arm slope deviation 10.33% <= 20% rules out system drift as the explanation of arm differences, but M2 already failed so the verdict is UNDETERMINED regardless"
+  },
+  "repeatability": {
+    "cArmDeviationPctOfMean": 21.2,
+    "cArmLimitPct": 30.0,
+    "cArmPassed": true,
+    "bArmDeviationPctOfMean": 17.51,
+    "bArmLimitPct": null,
+    "bArmNote": "disclosed only, no gate"
+  },
+  "warmupRounds": [
+    {"label": "W0", "cell": "A", "total": 2000, "qps": 122.02, "wallSeconds": 16.391, "pPeak": 1678, "drainSeconds": 21.852, "slope": 76.7893, "note": "stack first round, discarded"},
+    {"label": "wB1", "cell": "B", "total": 200, "qps": 159.72, "wallSeconds": 1.252, "pPeak": null, "drainSeconds": null, "slope": null, "note": "PENDING already 0 at first sample (2 samples only); slope N/A; discarded"},
+    {"label": "wC1", "cell": "C", "total": 200, "qps": 185.88, "wallSeconds": 1.076, "pPeak": null, "drainSeconds": null, "slope": null, "note": "PENDING already 0 at first sample (2 samples only); slope N/A; discarded"},
+    {"label": "wA2", "cell": "A", "total": 200, "qps": 136.06, "wallSeconds": 1.470, "pPeak": 107, "drainSeconds": 3.053, "slope": 35.0475, "note": "discarded"}
+  ],
+  "disclosure": {
+    "submitQpsDrift": {
+      "A1": 244.86, "B1": 176.24, "C1": 241.88, "A2": 238.67, "B2": 236.99, "C2": 188.68,
+      "note": "submit QPS not a gate (TASK-163 decoupling); per-round covariates (host java.exe count, CPU 3 samples, docker ps, Threads_connected 31-41) archived in raw/task164-<label>-round.txt"
+    },
+    "comUpdateCriterionConflict": {
+      "measuredPerRound": 4020,
+      "cohortRows": 2010,
+      "specLiteral": "Com_update increment must exactly equal that round's outbox row count (red if not)",
+      "resolution": "TASK-163 archived before/after samples (raw/task145-task163-A1/B1-*-resources.txt) show the same 4020 = 2x2010 (two pre-existing per-row UPDATEs: verdict write-back + markSent); the gate is applied as exact equality with that deterministic historical baseline (4020) so that any concurrency-induced extra write would still trip it; the literal-constant conflict is disclosed for guide-side adjudication"
+    },
+    "innodbRowLockWaits": "server counter went 0 -> 1 (during C1) -> 2 (during A2), then stable; not a gate, recorded as covariate",
+    "drainSamplingGranularity": "6-12 samples per drain at ~2s; peak-sampling luck materially moves the slope estimate; same-config spreads are disclosed above"
+  },
+  "resourceReadings": {
+    "hikariTimeoutTotalDeltaPerRound": 0,
+    "hikariActivePendingPeaks": {
+      "A1": {"active": 10.0, "pending": 15.0},
+      "B1": {"active": 20.0, "pending": 0.0},
+      "C1": {"active": 20.0, "pending": 9.0},
+      "A2": {"active": 10.0, "pending": 18.0},
+      "B2": {"active": 20.0, "pending": 2.0},
+      "C2": {"active": 20.0, "pending": 6.0}
+    },
+    "consumerStarvation": "none: SENT=cohort=2010 and PENDING=0 at end of every round",
+    "lockAbnormalLines": 0
+  },
+  "semanticRegression": {
+    "retryCountGt0Rows": 0,
+    "exhaustedPendingDelta": 0,
+    "duplicateEventIdErrors": 0,
+    "markSentPerRound": 2010,
+    "reconsumeLaterLiteral": 0,
+    "relayFailLines": 0,
+    "relayExhaustedLines": 0
+  },
+  "landing": {
+    "applied": false,
+    "yamlChanged": false,
+    "testClassAdded": false,
+    "confirmationRoundD": "NOT RUN (landing branch not reached)",
+    "reason": "M2 failed on both ratios"
+  },
+  "exitCodes": {
+    "offlineG1c": 0,
+    "staticGateG1d": 1,
+    "staticGateNote": "rc=1 expected: checkstyle fails with 867 violations (= baseline, <= 867); spotbugs/pmd never executed = NOT COVERED",
+    "lexicalGateG1e": "4 locale forms ZERO_HIT rc=1 + positive control rc=0, probe removed, git status restored",
+    "contractStep0": "no-arg rc=1 (expected, spec-only), --open TASK-164 --baseline=10a08c3 rc=0",
+    "loadAllRounds": 0
+  },
+  "notCovered": [
+    "spotbugs/pmd (blocked behind checkstyle)",
+    "--mode=online / CI (not run => external gate NOT reached)",
+    "leaderboard consumption / SENT->leaderboard segment (leaderboard not started)",
+    "real R5 quality path (PostGIS+mapmatch not started; all rounds on R5-degraded path)",
+    "confirmation round D (landing branch not reached)"
+  ],
+  "notClaimed": [
+    "no claim that concurrency+pool improves drain slope by >= 1.5x (M2 failed on both ratios)",
+    "no claim of NO benefit either (both ratios > 1.0, reproof branch not met; direction was positive in both interleaved pairs but below the pre-registered bar)",
+    "no conversion of slope into P50 or end-to-end latency improvement",
+    "no extrapolation to higher arrival rates, longer windows, or production multi-instance",
+    "pool size 20 is a discrimination value on this demo host, not a production capacity plan",
+    "TASK-161 S_prod(N) conclusions are not overturned; S_prod(N) and this task's slopes are not juxtaposed as before/after",
+    "TASK-153 (batch-end unified SENT marking = NO-GO) and TASK-154 (wait cost not attributable = NO-GO) are not reopened"
+  ]
+}
