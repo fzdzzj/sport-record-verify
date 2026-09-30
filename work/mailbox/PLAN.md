@@ -1248,3 +1248,35 @@ run `35802403723`（head `eba0108`，2026-09-23 00:31 UTC）——**web/build �
 - 收口后无参 `bash scripts/verify/mailbox-contract.sh` rc=**0**（判据 A 两件套齐含 0 个待办进行中；TASK-163 行为 `足迹不在工作树，视为已收口，不重审`）。
 - G11 收口：`git diff --name-only 1ff96e06..HEAD` 恰 10 条（= §4 清单，其中报告 1 条为 `core.quotepath` 转义形态）；受保护数字 base→HEAD 计数 13.4 5→5、18.0 6→6、73.93 6→6、68.8 2→2、6315 2→2、1.8612 2→2、3.3066 2→2、5.7056 2→2、9.408 2→2、36525962432 2→3、36586847965 1→2、36438897772 2→2、36399582548 1→1、36098038547 1→1、2806 4→6、598 1→1（**无一减少**；右值为含本补记文本的终版计数）。
 - 词面门收口态（C1–C4 入库后）4 形态全 ZERO_HIT rc=1 + 正向对照 rc=0 命中（探针已删）；`git diff --check` rc=0；磁盘收口 Free = 231827701760 字节（≈215.91 GB；相对开工基线 233055973376 减 1228271616 字节；门槛 Free ≥100 GB 远未触及）；TASK-163 `spec.md` = 194 行 / 37193 字节 / sha256 `57c7b9bafe081d3b860726e3d13ed343ca9a6a1b36aa69b67587d015fa61abea`（任务书原样入库）。
+## 验收记录：TASK-164 判别批内并发×连接池对 outbox relay 排空斜率的影响（2026-09-30，执行 agent，三臂交错判别、未定支、未落地）
+
+> 勘误（任务书 §11 义务，照实登记）：work/mailbox/tasks/TASK-163/handoff.md §4.2 的 W_C 行（QPS 128.5 / wall 1.56 / P_peak 134 / 排空 6.053）与原始证据 task163-wC-slope.txt（P_peak=165 / drain 7.454）、task163-wC-c100-summary.json（qps 55.85 / wall 3.581）及已入库 exp-outbox-relay-drain-rate.json（55.9/3.58/165/7.454）矛盾，slope=22.1358 两处相同；W_C 为丢弃预热轮，不影响 TASK-163 裁决与落地。不得 amend 已收口的 10a08c3。
+
+| 项目 | 内容 |
+| --- | --- |
+| 绑定修订 | 开工基线 `10a08c3`（全 SHA `10a08c3b74b1e77c3c1d83327e33c12b54410e84`，开工 `git rev-parse` 逐位核对一致；`git rev-list --left-right --count origin/main...main` = `0 5`，任务书允许 0 5 或 0 0，照实记录 0 5）。3 笔分批提交（未定支）：C1（报告 + 机器摘要）、C2（三件套纯 ADDED）、C3 末笔（台账：PLAN 验收记录 + TASK-164 两件套） |
+| 一句话裁决 | 落预注册**未定支（UNDETERMINED）**：6 计数轮全部有效（逐轮 M1/M4/M5/M6 过），M3 排序控制 10.33% ≤20%、C 臂重复性 21.20% ≤30% 均过；但 **M2 两比值 121.9729/89.3991 = 1.3644 与 98.5905/80.6171 = 1.2229 均未达 1.5**（又均 >1.0，反证支不成立）⇒ 只报数字与噪声，不落地、不外推；application.yml 零改动、未新增测试类、未跑确认轮 D |
+| 是否实施 / 是否落地 | **否（未定支，未落地）**：`relay-send-concurrency` 生产默认仍 1、`maximum-pool-size` 仍默认 10；本轮仅产出报告与机器摘要及三件套 |
+| 门槛来源 | 本地实跑，唯一入口 `bash scripts/verify/mvn-verify.sh`（生效模式 offline）；四服务局部栈 + 演示库 3307（容器只 `docker start`）；三臂定义、M0–M6 各门、三支裁决均按任务书 §2/§3/§5/§7 预注册执行，不放宽 |
+| 是否到达外部门槛 | **未达外部门槛（本次不 push，待下次授权由 CI 复验）** |
+| G0/G1 起点与环境 | HEAD 逐位一致、`0 5`；工作树仅既有脏项 `spec/changes/add-verify-degrade-status-index/` 零触碰 + `TASK-164/`；G1 开工读数逐项核对（application.yml 196 行/根键 1+1/L40/L122/L123 锚点全对，CR 工作树 6/blob 0 两面分别记录、blob 与工作树 CR 剥离后逐字节相同，relay-send-concurrency 仅有 L121 注释 1 处而非配置键；VerifyOutboxRelay.java 493 行 L68/72/79/83-84/96/126-127/157/214/414 全对；主规格 2806 行两面 121 Requirement；PLAN 1250 行 CR=0；delta 22/43；词面门正则 len=26、8 分支、四形态 ZERO_HIT rc=1 + 正向对照 rc=0；契约门无参 rc=1 预期 + --open rc=0；磁盘 183.5~196.9 GB ≥100 GB；java 进程 0）；offline 36/41/33/103/123/59/10 全绿；静态门 867 ≤ 867 |
+| M0 环境门 | Docker Desktop 启动、5 演示容器 `docker start` 后全 healthy；`max_connections=151`、起栈后 `Threads_connected=22`，余量 **129 ≥ 30**；Nacos `config[dataId=verify-service.yml, group=DEFAULT_GROUP] is empty`（无覆盖） |
+| G2 生效配置 | 四 jar sha256 留档；A/B/C 全程同一 verify jar（jarSwapDuringRounds=NONE）；每轮进程 CommandLine 原文留档（A=diag=true；B=+pool=20；C=+conc=4）；池注入机制证明：`hikaricp_connections_max` A 轮 10.0 / B、C 轮 20.0 |
+| G3 轮次表（含丢弃预热） | 预热 4/4 用满：W0（A，100x2000，slope=76.7893）、wB1（B，100x200，首采已归零 slope N/A）、wC1（C，N/A）、wA2（A，slope=35.0475）全弃但留档；B2/C2 预算耗尽未设预热轮（照实披露）；计数轮 A1/B1/C1/A2/B2/C2 6/6 负载全部 `ok=2000 / errors=0 / limited429=0`；排空采样 drain.csv 全部完整闭合写至 pending=0 |
+| G3 逐轮判据 | M1（机制门）：A/B 四轮建池日志 0 条、批次诊断行全 sendConcurrency=1；C 两轮恰 1 条 sendConcurrency=4 且批次行全 4；>1s 空档 A1 1/1035ms、B1 3/1048、A2 0/无值（空真）、B2 1/1115、C2 0/无值，均 ≤5 且中位 ≤2000ms；C 轮 residualMs 为负按 javadoc 口径披露。M4 六轮全过（cohort=markSent=SENT 增量=2010、零重试/零耗尽/零重复/零 RECONSUME_LATER/零锁异常/排空末 PENDING=0）。M5：Com_select 增量 A1=20170/B1=20177/C1=20167/A2=20172/B2=20187/C2=20184，C/A 均值比 1.0002 ≤1.5；Com_update 六轮恒 4020=2×2010（判定回写+markSent 每行两条既有 UPDATE；TASK-163 留档 A1/B1 同为 4020——任务书字面常数与该历史基线矛盾，按确定性基线执行并提请指导侧裁决，全程披露）。M6 六轮全过（timeout_total 增量全 0；active/pending 峰值 A1 10/15、B1 20/0、C1 20/9、A2 10/18、B2 20/2、C2 20/6；消费侧零饿死） |
+| G4 裁决门 | slope(A1)=89.3991、slope(B1)=66.9655、slope(C1)=121.9729、slope(A2)=80.6171、slope(B2)=56.1843、slope(C2)=98.5905（行/s）；M2 两比值 **1.3644 / 1.2229 均未达 1.5**（均落结构预测区间 [1.7,2.5] 外，该区间不是门；均 >1.0 ⇒ 反证支不成立）；M3 = 10.33% ≤ 20% 通过；C 臂重复性 21.20% ≤ 30% 通过；⇒ **未定支** |
+| G5 语义与资源 | 语义门零回归（见 G3 逐轮）；资源门：hikaricp 连接超时增量全 0、零锁异常、消费侧零饿死；Innodb_row_lock_waits 服务端计数 0→1（C1）→2（A2）后稳定（非门项照实记录）；磁盘收口见补记 |
+| G6 交付物 | 报告 `docs/perf/判别-outbox-relay-并发与池-排空斜率.md`（一句裁决 + 三臂与预注册 + 逐轮表含预热与 QPS 共变量披露 + 逐轮 M1/M4/M5/M6 + M2/M3/重复性判定 + 噪声与口径披露 + 未覆盖）与机器摘要 `docs/perf/data/exp-outbox-relay-concurrency-pool-drain.json`（JSON 语法校验通过、CR=0、无 BOM）；三件套纯 ADDED `spec/changes/prove-verify-outbox-relay-concurrency-pool-drain/`（proposal.md 含 M5 口径冲突披露、spec-delta.md 纯 ADDED、tasks.json 落地步 completed=false/passes=false 诚实写法） |
+| G9 词面门 | 正则现场从 ci.yml 提取（长度 26、8 分支（7 竖线）、字面量不入任何入库文件）；4 形态（ci-exact / `C` / `zh_CN.UTF-8` / `C.UTF-8`）全 ZERO_HIT rc=1、正向对照 rc=0 命中、探针已删、`git status --porcelain` 逐字还原；收口态复跑见补记 |
+| G10 空白与契约 | 第 0 步两形态：无参 rc=1（预期）、`--open TASK-164 --baseline=10a08c3` rc=0；`git diff --check` rc=0；C1/C2 `git show --check` rc=0（C3 见本节末补记）；收口后无参契约 rc=0（见补记） |
+| G11 只改清单与受保护数字 | 实际改动集 8 项（未定支：无 application.yml、无测试类）= 报告 + JSON（C1）+ 三件套 3 文件（C2）+ PLAN.md + TASK-164 两件套（C3）；16 个受保护数字 token 在 PLAN.md 内 base vs HEAD 计数按命中行数法完全不减少（13.4=7、18.0=9、73.93=8、68.8=4、6315=5、1.8612=4、3.3066=4、5.7056=4、9.408=4、36525962432=4、36586847965=3、36438897772=4、36399582548=3、36098038547=3、2806=7、598=3，终版计数见补记）；生产 Java 代码、pom、scripts、既有测试、主规格 2806 行全部零触碰 |
+| 未覆盖/后续 | ① spotbugs/pmd 未覆盖（被 checkstyle 阻断在前）；② leaderboard/mapmatch/postgis 未起 ⇒ 榜单消费与真实 R5 未覆盖，A/B/C 全程 R5 降级；③ 不得声称「并发+池收益 ≥1.5 倍」（M2 两比值未过），亦不得声称「无收益」（两比值均 >1.0、方向一致为正但未达预注册线）；④ 池尺寸 20 是本机演示环境判别值，不是生产容量规划；⑤ 不构成对 TASK-161 三支结论的翻案，S_prod(N) 与本轮 slope 不得并列成优化前后；⑥ 不把 slope 换算成 P50、不声称端到端延迟改善；⑦ 不外推到更高到达率/更长窗/生产多实例；⑧ 未 push 未过 CI |
+
+**TASK-164 补记（C3 提交后终检实测，提交后补录）**
+
+- C3 初版 5d34275（docs(mailbox) 台账），本补记经 `git commit --amend --no-edit` 并入 C3，最终哈希以 `git log --oneline -1` 为准；C1=4090dd1（报告+JSON）、C2=4e7b638（三件套）；三笔 `git show --check` 均 rc=0；`git diff --check` rc=0。
+- 收口 offline：首跑 rc=1（user-service surefire fork 跨盘符 `'other' has different root` 环境抖动，17/41 中断，留证 raw/task164-close-offline.log，未改任何代码与数据）；同环境原样复跑 rc=0、BUILD SUCCESS、36/41/33/103/123/59/10 全绿（与未落地状态自洽，raw/task164-close-offline2.log）。收口静态门 rc=1（预期形态）且 867 ≤ 867；词面门四形态 ZERO_HIT rc=1 + 正向对照 rc=0（探针已删、status 逐字还原）。
+- 收口后无参 `bash scripts/verify/mailbox-contract.sh` rc=0（raw/task164-contract-closure.txt：TASK-164「足迹不在工作树，视为已收口，不重审」）。
+- 收口停机与容器：`run-perf.sh stop-services` 后 sports 的 java 进程 = 0（宿主余 1 个非 sports java 进程属其它项目，未触碰）；5 演示容器 Up (healthy)、postgis 不起、task131-scratch-mysql Exited(255)（开工时 daemon 本就关闭，本任务只 docker start 5 个演示容器、对该容器零触碰）；磁盘收口 Free = 195578929152 字节（≈182.15 GB ≥ 100 GB）。
+- G11 收口：`git diff --name-only 10a08c3..HEAD` 恰 8 条（= handoff §3 清单，报告 1 条为 quotepath 转义形态）；16 受保护 token base→HEAD（命中行数法）13.4 7→9、18.0 9→11、73.93 8→10、68.8 4→6、6315 5→7、1.8612 4→6、3.3066 4→6、5.7056 4→6、9.408 4→6、36525962432 4→6、36586847965 3→5、36438897772 4→6、36399582548 3→5、36098038547 3→5、2806 7→10、598 3→5（无一减少；右值为含本补记文本的终版计数）。
+- 外部门槛：**未达外部门槛（本次不 push，待下次授权由 CI 复验）**。
