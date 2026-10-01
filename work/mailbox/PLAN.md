@@ -1280,3 +1280,30 @@ run `35802403723`（head `eba0108`，2026-09-23 00:31 UTC）——**web/build �
 - 收口停机与容器：`run-perf.sh stop-services` 后 sports 的 java 进程 = 0（宿主余 1 个非 sports java 进程属其它项目，未触碰）；5 演示容器 Up (healthy)、postgis 不起、task131-scratch-mysql Exited(255)（开工时 daemon 本就关闭，本任务只 docker start 5 个演示容器、对该容器零触碰）；磁盘收口 Free = 195578929152 字节（≈182.15 GB ≥ 100 GB）。
 - G11 收口：`git diff --name-only 10a08c3..HEAD` 恰 8 条（= handoff §3 清单，报告 1 条为 quotepath 转义形态）；16 受保护 token base→HEAD（命中行数法）13.4 7→9、18.0 9→11、73.93 8→10、68.8 4→6、6315 5→7、1.8612 4→6、3.3066 4→6、5.7056 4→6、9.408 4→6、36525962432 4→6、36586847965 3→5、36438897772 4→6、36399582548 3→5、36098038547 3→5、2806 7→10、598 3→5（无一减少；右值为含本补记文本的终版计数）。
 - 外部门槛：**未达外部门槛（本次不 push，待下次授权由 CI 复验）**。
+## 验收记录：TASK-165 verify outbox relay 分块批量标记 SENT 授权与默认关闭实现（2026-10-01，执行 agent，规格授权、默认关闭实现、未测性能）
+
+| 项目 | 内容 |
+| --- | --- |
+| 绑定修订 | 开工基线 `a79729f`（全 SHA `a79729f8264c95487363a97e133ce7bfb4f5cea4`，开工逐位核对一致；`origin/main = b85098ae0eaa71ec7740b70c19b9a74b2c759352`，`git rev-list --left-right --count origin/main...main` = `0 1`；CI run `36736221648` success）。分批提交：C1 `dc1723d`（生产与测试代码）、C2 `eaa94e0`（在途三件套纯 ADDED）、C3（台账：PLAN.md 追加 + TASK-165 两件套，终版 SHA 见补记） |
+| 一句话裁决 | **完成**：三件套显式授权四项语义变化与上界，代码落地默认关闭实现，关闭路径逐字等价，测试保护件与新增单测全绿，真库 IT 缺环境 skip 诚实记录未覆盖，零生产行为变化、零已测收益 |
+| 是否实施 / 是否落地 | **是（实现已落地，生产默认关闭）**：新键 `verify.outbox.relay-batch-mark-enabled:false` 与 `chunk-size:25` 仅在 `@Value`，`application.yml` 零写入；生产默认仍逐行标记 |
+| 门槛来源 | 本地实跑，唯一入口 `bash scripts/verify/mvn-verify.sh`（offline 模式）；静态门 Checkstyle；词面门四形态；契约门；IT 真库独立 scratch 模式（缺环境 Assumptions 跳过） |
+| 是否到达外部门槛 | **未达外部门槛（本次不 push，待下次授权由 CI 复验）** |
+| G0/G1 起点与环境 | 起点 SHA 与 CI run 36736221648 逐项核对一致；脏项仅既有 `spec/changes/add-verify-degrade-status-index/` 零触碰；开工离线全绿（36/41/33/103/123/59/10）；静态门 867；application.yml 196 行 CR=0 根键 1+1；主规格 2806 行两面 121 Requirement；PLAN 1282 行 CR=0；词面门 ZERO_HIT rc=1 + 对照 rc=0；契约两形态符合预期；磁盘 Free >180 GB；java 进程 0；容器 task131-scratch-mysql 零触碰 |
+| G2/G4 测试门槛 | 保护件 `VerifyOutboxRelayTest` (19)、`VerifyOutboxRelayConcurrencyTest` (10)、`VerifyEventOutboxMapperSqlContractTest` (1) numstat 为空且全绿；新增 `VerifyOutboxRelayBatchMarkTest` (10)、`VerifyOutboxRelayBatchMarkConfigTest` (4) 全绿；全量离线 7 模块 36/41/33/103/137/59/10，Skipped 0，BUILD SUCCESS，rc=0 |
+| G5 静态门 | `mvn-verify.sh --mode=offline --static=verify-service` rc=1（预期形态），Checkstyle 违规数严格等于基线 867（≤867），新增 Java 代码 0 违规 |
+| G6 词面门 | 从 ci.yml 现场提取正则（len=26, 7 竖线 8 分支），四形态全 ZERO_HIT rc=1，正向对照 rc=0 命中，探针清理后 `git status --porcelain` 还原 |
+| G8 契约门 | 在途 `--open TASK-165 --baseline=a79729f8` rc=0；收口后无参 `bash scripts/verify/mailbox-contract.sh` rc=0（见补记） |
+| G9 只改清单 | 恰 11 项：Mapper（纯新增方法）、Relay（两键+分块逻辑+诊断追加）、新单测、新配置测试、新真库 IT、三件套 3 文件、PLAN.md、TASK-165 任务书与 handoff.md |
+| G10 受保护数字 | 17 个受保护 token base vs HEAD 计数（命中行数/全文总数）无一减少：13.4 (9→10)、18.0 (11→12)、73.93 (10→11)、68.8 (6→7)、6315 (7→8)、1.8612 (6→7)、3.3066 (6→7)、5.7056 (6→7)、9.408 (6→7)、36525962432 (7→8)、36586847965 (6→7)、36438897772 (6→7)、36399582548 (5→6)、36098038547 (5→6)、2806 (14→15)、598 (5→6)、36736221648 (2→3) |
+| §7 反例触碰说明 | ① 分块扩大崩溃重投窗口：已触碰并由新规格授权，上界由 100 收窄至 chunk-size(25)，eventId 稳定；② `sent_at` 同值：已触碰并由新规格授权；③ chunk UPDATE 真失败整块留 PENDING：已触碰并由新规格授权，补偿逐 id incrRetry；④ 与并发 >1 叠加：未触碰（主动规避，本轮不测不开并发）；⑤ MyBatis foreach 注入面：已触碰并从架构防御，严格使用 `#{id}` 预编译占位符并在测试中锁定 |
+| 未覆盖/后续 | ① spotbugs/pmd 未覆盖（被 checkstyle 阻断在前）；② `--mode=online` 与 CI 未跑 ⇒ 未达外部门槛；③ 零已测收益（本轮不测性能，不得声称任何延迟/吞吐改善，不得把 markSent 占 72~77% 写成可获得收益）；④ 未起四服务 ⇒ 无端到端证据；⑤ 未测与 `relay-send-concurrency>1` 的组合，不得据此开启并发；⑥ IT 因缺环境变量 Assumptions skip，真库语义未覆盖；⑦ 默认关闭 ⇒ 零生产行为变化；⑧ 不得据此开启 `relay-batch-mark-enabled=true`（须另立判别轮且改用诊断锁内吞吐）；⑨ 不翻案 TASK-153/154，不改写历史数字 |
+
+**TASK-165 补记（C3 提交后终检实测，提交后补录）**
+
+- C3 初版 700b112（docs(mailbox) 台账），本补记经 `git commit --amend --no-edit` 并入 C3，最终哈希以 `git log --oneline -1` 为准；C1=dc1723d（Java 业务与测试）、C2=eaa94e0（三件套）；三笔 `git show --check` 均 rc=0；`git diff --check` rc=0。
+- 收口 offline：`bash scripts/verify/mvn-verify.sh --mode=offline` rc=0、BUILD SUCCESS、36/41/33/103/137/59/10 全绿、Skipped 0。收口静态门 Checkstyle rc=1（预期形态）且 867 ≤ 867、新增文件 0 违规；词面门四形态 ZERO_HIT rc=1 + 正向对照 rc=0（探针已删、status 逐字还原）。
+- 收口后无参 `bash scripts/verify/mailbox-contract.sh` rc=0（TASK-165「足迹不在工作树，视为已收口，不重审」）。
+- sports 的 java 进程 = 0；5 演示容器 Up (healthy)、postgis 不起、task131-scratch-mysql Exited(255)（零触碰）；磁盘收口 Free > 180 GB（≥ 100 GB）。
+- G10 收口：17 个受保护 token base→HEAD 计数（13.4 9→11、18.0 11→13、73.93 10→12、68.8 6→8、6315 7→9、1.8612 6→8、3.3066 6→8、5.7056 6→8、9.408 6→8、36525962432 7→9、36586847965 6→8、36438897772 6→8、36399582548 5→7、36098038547 5→7、2806 14→17、598 5→7、36736221648 2→6）无一减少。
+- 外部门槛：**未达外部门槛（本次不 push，待下次授权由 CI 复验）**。
