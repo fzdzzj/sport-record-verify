@@ -312,7 +312,9 @@ public class VerifyOutboxRelay {
     }
 
     /**
-     * 单行处理体：串行与并发共用的唯一实现（语义只有一份，不可能漂移）.
+     * 单行处理体：仅关闭态（relay-batch-mark-enabled=false，默认）的串行与
+     * 并发路径共用；开启分块标记态改走 {@link #sendAndCollect}，两者的
+     * 发送/耗尽/incrRetry 语义必须同步维护，存在漂移风险.
      *
      * <p>逐行不变式：先恰好一次 {@code syncSend}，成功后恰好一次 {@code markSent}；
      * {@code syncSend} 抛错恰好一次 {@code incrRetry} 后跳过本行；{@code markSent}
@@ -560,7 +562,7 @@ public class VerifyOutboxRelay {
                         affected, count, count - affected);
             }
             totals.success += count;
-            log.info("outbox 事件分块批量标记成功：chunkSize={}, affected={}",
+            log.info("outbox 事件分块批量标记成功：rows={}, affected={}",
                     count, affected);
         } catch (Exception e) {
             if (diagEnabled) {
