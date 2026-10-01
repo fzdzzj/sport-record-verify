@@ -122,6 +122,10 @@ verify:
   outbox:
     relay-interval-ms: 500
 
+    # outbox relay 分块标记 SENT 默认开启（TASK-169 落地，详见 docs/perf/判别-outbox-relay-分块标记吞吐.md）：
+    # 实测 chunk-size 25 下单行标记耗时降低 75%~91%，锁内吞吐稳定提升 ≥ 1.5 倍，过 M1~M6 各门。
+    relay-batch-mark-enabled: true
+
 # 规则读取二级缓存（Caffeine → Redis → DB 回填两级，审批版 §7.3 需求项，规范「二级缓存读路径」）：
 # 只覆盖「规则快照/灰度路由」低频变更读路径，判定结果缓存维持单层 Caffeine（有状态机幂等兜底）。
 # TTL 只做兜底上界，秒级一致靠变更监听精准失效（invalidate + Redis DEL）；Redis 异常自动降级 Caffeine+DB。

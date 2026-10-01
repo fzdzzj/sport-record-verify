@@ -47,8 +47,8 @@ class VerifyOutboxRelayBatchMarkConfigTest {
     }
 
     @Test
-    @DisplayName("2. classpath application.yml 不含任何新键声明（仅存在于 @Value）")
-    void testClasspathApplicationYmlDoesNotContainBatchMarkKeys()
+    @DisplayName("2. classpath application.yml 声明 relay-batch-mark-enabled=true，chunk-size 仍不声明（走 @Value 默认 25）")
+    void testClasspathApplicationYmlDeclaresBatchMarkEnabled()
             throws Exception {
         YamlPropertySourceLoader loader = new YamlPropertySourceLoader();
         List<PropertySource<?>> sources = loader.load(
@@ -56,13 +56,23 @@ class VerifyOutboxRelayBatchMarkConfigTest {
                 new ClassPathResource("application.yml"));
         assertThat(sources).isNotEmpty();
 
+        Object enabled = null;
+        for (PropertySource<?> source : sources) {
+            enabled = source.getProperty(
+                    "verify.outbox.relay-batch-mark-enabled");
+            if (enabled != null) {
+                break;
+            }
+        }
+        assertNotNull(enabled,
+                "application.yml 必须声明 relay-batch-mark-enabled");
+        assertEquals("true", String.valueOf(enabled),
+                "relay-batch-mark-enabled 必须为 true（TASK-169 落地）");
+
         for (PropertySource<?> source : sources) {
             assertNull(source.getProperty(
-                    "verify.outbox.relay-batch-mark-enabled"),
-                    "application.yml 不得声明 relay-batch-mark-enabled");
-            assertNull(source.getProperty(
                     "verify.outbox.relay-batch-mark-chunk-size"),
-                    "application.yml 不得声明 relay-batch-mark-chunk-size");
+                    "application.yml 不得声明 relay-batch-mark-chunk-size（走 @Value 默认 25）");
         }
     }
 
