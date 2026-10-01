@@ -62,6 +62,7 @@
 - prove-verify-outbox-relay-concurrency-scaling（markSent 并发标度真库预注册裁决，正标度仅必要条件）
 - prove-verify-outbox-relay-drain-rate（relay 净投递能力以排空斜率裁决，间隔 500ms 落地）
 - prove-verify-outbox-relay-pool-concurrency-scaling（池内并发标度真实 Hikari 池裁决，仅必要条件）
+- shorten-submit-db-footprint（提交事务不落不可见中间态，SQL 展示默认关闭）
 
 各提案的 spec-delta 中 ADDED 需求已全部合并进本规范，MODIFIED 需求按规则处理（见「服务划分」分组与「变更历史」）。
 清单外合法例外（2 项）：add-microservice-skeleton（主规格由其落地生成，属基线生成而非并入）；add-sharding-host-parameterization（TASK-115 冲突停手未并入，后由 add-sharding-host-env-override 以独立 ADDED 并入，本目录仅作历史存档）。archive 目录集合减去本头部清单恰为该 2 项。
@@ -753,19 +754,18 @@ THEN host 解析为 mysql（服务名）
 AND 容器内能以该服务名连上 MySQL（如 `-h mysql -P 3306` 的 USE/查询成功）
 
 ### Requirement: 轨迹提交幂等
-
 WHEN 客户端提交运动记录,
 系统 SHALL 以 `request_id` 唯一识别，重复提交 SHALL 返回原结果而非重复入库。
+首次提交且本地事务成功时，系统 SHALL 将已提交状态置为 VERIFYING 并进入校验流程。
 
 #### Scenario: 首次提交成功
-
 GIVEN 客户端携带新 request_id
-WHEN 提交记录
-THEN 记录落库，状态置 SUBMITTED
+WHEN 提交记录且本地事务成功
+THEN 记录落库，已提交状态为 VERIFYING
 AND 进入校验流程
+AND 事务提交后发布 SUBMITTED 事件
 
 #### Scenario: 重复提交幂等
-
 GIVEN 相同 request_id 已提交过
 WHEN 再次提交相同 request_id
 THEN 系统返回 3004 幂等冲突或原结果
@@ -1724,6 +1724,68 @@ GIVEN TASK-152 的 18.0 ms/行（演示实例 3307）与 TASK-156 的 S(N)（同
 WHEN 形成报告措辞
 THEN 判别量 SHALL 只有同实例同装配内的 `S_prod(N)`
 AND SHALL NOT 把跨实例（13318 scratch vs 3307 演示）或跨装配（DriverManager vs Hikari）的数字并列成「优化前后」
+
+### Requirement: 提交事务不落不可见中间态
+WHEN 客户端首次提交含轨迹点的新运动记录且本地事务成功提交,
+系统 SHALL 使已提交的 `sport_record.status` 为 VERIFYING,
+SHALL NOT 把仅存在于同一事务内部、对其他连接不可见的 SUBMITTED 再单独 UPDATE 一次。
+系统 SHALL 仍在事务提交之后异步发布 SUBMITTED 事件。
+系统 SHALL 保留对已存在 SUBMITTED 行执行 SUBMITTED 到 VERIFYING 的乐观锁回调能力。
+
+#### Scenario: 首次提交事务提交后即为 VERIFYING
+GIVEN 客户端携带新 request_id 提交含轨迹点的记录
+WHEN 本地事务成功提交
+THEN 库中该行 status 为 VERIFYING
+AND 提交响应 status 为 VERIFYING
+AND 事务提交后发布 SUBMITTED 事件
+AND 提交路径没有一次 SUBMITTED 到 VERIFYING 的 UPDATE
+
+#### Scenario: 轨迹写入失败不发事件
+GIVEN 首次提交过程中轨迹点写入抛错
+WHEN 本地事务回滚
+THEN 不发布 SUBMITTED 事件
+AND 不留下半截 sport_record 行
+
+#### Scenario: 历史 SUBMITTED 行仍可迁到 VERIFYING
+GIVEN 库中已存在 status=SUBMITTED 的记录
+WHEN 调用既有状态回调请求迁到 VERIFYING 且 version 匹配
+THEN 系统以乐观锁 UPDATE 将该行迁到 VERIFYING
+AND 不因为提交路径不再写 SUBMITTED 而拒绝该回调
+
+### Requirement: 分片 SQL 展示默认关闭
+WHEN record-service 以默认配置处理提交路径的轨迹写入,
+系统 SHALL NOT 在热路径上打印 ShardingSphere 逻辑 SQL 与实际 SQL。
+系统 MAY 通过环境变量 `SS_SQL_SHOW=true` 临时打开 SQL 展示，且该开关默认必须为 false。
+
+#### Scenario: 默认关闭
+GIVEN 未设置 SS_SQL_SHOW
+WHEN 服务加载主 `sharding.yaml`
+THEN sql-show 解析为 false
+
+#### Scenario: 显式打开仅用于排查
+GIVEN 环境变量 SS_SQL_SHOW=true
+WHEN 服务加载主 `sharding.yaml`
+THEN sql-show 解析为 true
+AND 不得把 true 写进仓库默认值
+
+### Requirement: 本次数据库类改动用同一负载验收
+WHEN 实施缩短提交 DB 足迹的改动,
+系统 SHALL 只修改数据库一类因素,
+并 SHALL 用与 TASK-138 相同的 100 并发 x 2000 请求、相同样本复测。
+系统 SHALL NOT 在同一次变更中修改连接池默认值、JVM 参数、索引或 innodb 刷盘。
+
+#### Scenario: 复测对比 TASK-138
+GIVEN TASK-138 已记录 QPS 120.90 与 P50 777.55ms
+WHEN 完成允许清单内的提交路径改动
+THEN 使用 `bash scripts/perf/run-perf.sh load 100 2000 dbfoot` 复测
+AND 报告必须写出新旧数字
+AND 不得把旧环境 137 QPS 写成当前结果
+
+#### Scenario: 指标没有改善就停止叠加
+GIVEN 已经关掉 sql-show 默认值并去掉提交路径那条不可见 UPDATE
+WHEN 同一负载的 QPS 与 P50 相对 TASK-138 没有改善
+THEN 停止继续修改连接池、JVM、索引或刷盘参数
+AND 在报告中写明剩余假设（例如 commit fsync 地板）
 
 ### Requirement: 提交事件异步发布
 
@@ -3503,3 +3565,4 @@ AND 下次读取回源到最新值
 - **prove-verify-outbox-relay-concurrency-scaling**：在隔离真库上以预注册阈值判别 markSent 并发标度；裁决按预注册三支严格执行，无论哪支都不实施优化、不改默认值、不翻案 TASK-153、不改写 TASK-152 数字；正标度结论仅是必要条件且不构成实施授权，分区 relay 实施须另立提案。引用变更 spec/changes/archive/prove-verify-outbox-relay-concurrency-scaling/。
 - **prove-verify-outbox-relay-drain-rate**：以负载停止后的排空斜率裁决 relay 调度间隔；不翻案 TASK-144 与 TASK-162 的 UNDETERMINED 结论与数字，排空斜率是排空能力，不得换算成端到端延迟改善；调度间隔 500ms 默认值变更须经 C 轮确认且结论不得外推。引用变更 spec/changes/archive/prove-verify-outbox-relay-drain-rate/。
 - **prove-verify-outbox-relay-pool-concurrency-scaling**：在真实 10 连接 Hikari 池上以预注册阈值判别 relay 池内并发标度；裁决按预注册三支执行，无论哪支都不实施优化、不改默认值（relay-send-concurrency 保持 1）、不翻案 TASK-153/154、不改写 TASK-152/156 数字；池内标度结论仅是必要条件且不构成实施授权。引用变更 spec/changes/archive/prove-verify-outbox-relay-pool-concurrency-scaling/。
+- **shorten-submit-db-footprint**：缩短提交事务数据库足迹，提交事务不落不可见中间态，分片 SQL 展示默认关闭；MODIFIED 既有基线需求轨迹提交幂等，**Previous** 注记行按惯例剔除；相关代码已在 TASK-139 落地（后续等待归因见 TASK-140），SS_SQL_SHOW 与提交路径默认态保持关闭，不修改连接池默认 10。引用变更 spec/changes/archive/shorten-submit-db-footprint/。
