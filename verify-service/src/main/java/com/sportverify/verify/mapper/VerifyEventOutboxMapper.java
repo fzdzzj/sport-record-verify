@@ -37,4 +37,25 @@ public interface VerifyEventOutboxMapper extends BaseMapper<VerifyEventOutbox> {
     @Update("UPDATE verify_event_outbox SET retry_count = retry_count + 1 " +
             "WHERE id = #{id} AND status = 'PENDING'")
     int incrRetry(@Param("id") Long id);
+
+    /**
+     * 分块批量投递成功标记（条件含 status='PENDING'：并发下只生效一次，重复标记幂等）.
+     *
+     * <p>仅当 {@code verify.outbox.relay-batch-mark-enabled=true} 时由
+     * relay 局部累积后分块调用。
+     * 调用方必须拦截空列表（禁止发出 IN ()）。</p>
+     *
+     * @param ids 待标记成功的事件主键列表
+     * @return 实际受影响行数
+     */
+    @Update("<script>"
+            + "UPDATE verify_event_outbox "
+            + "SET status = 'SENT', sent_at = NOW() "
+            + "WHERE status = 'PENDING' AND id IN "
+            + "<foreach collection='ids' item='id' open='(' "
+            + "separator=',' close=')'>"
+            + "#{id}"
+            + "</foreach>"
+            + "</script>")
+    int markSentBatch(@Param("ids") List<Long> ids);
 }

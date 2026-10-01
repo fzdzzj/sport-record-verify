@@ -103,6 +103,30 @@ public class VerifyOutboxRelay {
     private volatile boolean sendConcurrencyWarned;
 
     /**
+     * 分块批量标记 SENT 开关（默认 false 关闭）.
+     *
+     * <p>默认关闭：关闭时与引入前逐字等价，不调用 {@code markSentBatch}，逐行调用 {@code markSent}。
+     * 开启后将成功发送行的 id 累积到局部列表，每满 chunk 或批末一次性批量标记。
+     * 授权语义变化包括：崩溃重复投递窗口上界由 1 行扩大为 chunk-size；SENT 独立连接可见性推迟至 chunk 标记；
+     * sent_at 批内同值偏离 DDL 注释；chunk 标记 SQL 真失败整块重投并逐 id incrRetry。
+     * 与 relay-send-concurrency 正交，未经生产基线与锁内吞吐判别不得开启.</p>
+     */
+    @Value("${verify.outbox.relay-batch-mark-enabled:false}")
+    private boolean relayBatchMarkEnabled;
+
+    /**
+     * 分块批量标记的 chunk 上界大小（默认 25，钳位在 [1, batch-size]）.
+     *
+     * <p>非法配置值（&lt; 1 或 &gt; batchSize）自动钳位到有效区间并记录一次 WARN，绝不抛出异常。
+     * 每个 chunk 内发送成功的行数达到此值时立即执行一次 markSentBatch.</p>
+     */
+    @Value("${verify.outbox.relay-batch-mark-chunk-size:25}")
+    private int relayBatchMarkChunkSize;
+
+    /** 配置值无效（&lt; 1 或 &gt; batch-size）的钳位告警只打一条. */
+    private volatile boolean batchMarkChunkSizeWarned;
+
+    /**
      * 定时投递一轮（默认 5s；多实例经 Redisson 锁互斥）。
      *
      * <p>诊断计时口径（TASK-146 校正、TASK-147 订正）：当开关<strong>关闭</strong>时不做任何 {@code nanoTime} 采样，
@@ -158,14 +182,25 @@ public class VerifyOutboxRelay {
             if (diagEnabled) {
                 selectNanos = System.nanoTime() - selectStart;
             }
-            // 串行路径：与引入前逐字等价（sendConcurrency==1 时不创建任何线程池对象）
-            if (batch.isEmpty() || sendConcurrency == 1) {
-                for (VerifyEventOutbox row : batch) {
-                    processRow(row, diagEnabled, totals);
+            if (!relayBatchMarkEnabled) {
+                // 串行路径：与引入前逐字等价（sendConcurrency==1 时不创建任何线程池对象）
+                if (batch.isEmpty() || sendConcurrency == 1) {
+                    for (VerifyEventOutbox row : batch) {
+                        processRow(row, diagEnabled, totals);
+                    }
+                } else {
+                    deliverConcurrently(batch, sendConcurrency,
+                            diagEnabled, totals);
                 }
             } else {
-                deliverConcurrently(batch, sendConcurrency,
-                        diagEnabled, totals);
+                int chunkSize = effectiveBatchMarkChunkSize();
+                if (batch.isEmpty() || sendConcurrency == 1) {
+                    deliverBatchMarkSerial(batch, chunkSize,
+                            diagEnabled, totals);
+                } else {
+                    deliverBatchMarkConcurrently(batch, sendConcurrency,
+                            chunkSize, diagEnabled, totals);
+                }
             }
             if (diagEnabled) {
                 // 锁内处理段终点：批次处理结束，尚未输出摘要、尚未解锁
@@ -193,6 +228,12 @@ public class VerifyOutboxRelay {
                                 + " 为各线程墙钟的聚合和（线程时间），"
                                 + "residualMs 可能为负，不得读作未归因墙钟";
                     }
+                    String batchMarkNote = "";
+                    if (relayBatchMarkEnabled) {
+                        batchMarkNote = String.format(
+                                ", markBatchCalls=%d, markBatchRows=%d",
+                                totals.markBatchCalls, totals.markBatchRows);
+                    }
                     String summaryFormat = "outbox relay 诊断（批次）：rows={}, "
                             + "success={}, failed={}, exhausted={}, "
                             + "lockWaitMs={}, selectMs={}, sendMs={}, "
@@ -200,14 +241,15 @@ public class VerifyOutboxRelay {
                             + "lockProcessingMs={}, lockHoldMs={}, "
                             + "residualMs={}, "
                             + "emptyRounds={}, lockSkips={}, sendConcurrency={}"
-                            + concurrencyNote;
+                            + concurrencyNote
+                            + batchMarkNote;
                     diag.batch(batch.size(), totals.success, totals.failed,
                             totals.exhausted, lockWaitMs,
                             TimeUnit.NANOSECONDS.toMillis(selectNanos),
                             TimeUnit.NANOSECONDS.toMillis(totals.sendNanos),
                             TimeUnit.NANOSECONDS.toMillis(totals.markNanos),
                             TimeUnit.NANOSECONDS.toMillis(
-                                    totals.incrRetryNanos),
+                                     totals.incrRetryNanos),
                             TimeUnit.NANOSECONDS.toMillis(processingNanos),
                             TimeUnit.NANOSECONDS.toMillis(lockHoldNanos),
                             sendConcurrency)
@@ -240,6 +282,33 @@ public class VerifyOutboxRelay {
                     + "已钳到 1 走串行投递", configured);
         }
         return 1;
+    }
+
+    /**
+     * 生效分块大小：配置值无效（&lt; 1 或 &gt; batchSize）钳位到 [1, batchSize]，仅首轮打一条 WARN.
+     *
+     * @return 生效 chunk 大小
+     */
+    private int effectiveBatchMarkChunkSize() {
+        int configured = relayBatchMarkChunkSize;
+        int max = Math.max(1, batchSize);
+        if (configured < 1) {
+            if (!batchMarkChunkSizeWarned) {
+                batchMarkChunkSizeWarned = true;
+                log.warn("verify.outbox.relay-batch-mark-chunk-size={} 无效（< 1），"
+                        + "已钳到 1", configured);
+            }
+            return 1;
+        }
+        if (configured > max) {
+            if (!batchMarkChunkSizeWarned) {
+                batchMarkChunkSizeWarned = true;
+                log.warn("verify.outbox.relay-batch-mark-chunk-size={} 无效（> batch-size={}），"
+                        + "已钳到 {}", configured, max, max);
+            }
+            return max;
+        }
+        return configured;
     }
 
     /**
@@ -388,6 +457,217 @@ public class VerifyOutboxRelay {
     }
 
     /**
+     * 串行分块批量标记投递：成功发送行的 id 累积到局部列表，每满 chunk 或批末一次性 markSentBatch.
+     *
+     * @param batch       本轮已取到的批次
+     * @param chunkSize   生效的 chunk 大小
+     * @param diagEnabled 诊断开关
+     * @param totals      本轮累计器
+     */
+    private void deliverBatchMarkSerial(final List<VerifyEventOutbox> batch,
+                                        final int chunkSize,
+                                        final boolean diagEnabled,
+                                        final RelayTotals totals) {
+        List<Long> pendingIds = new ArrayList<>(chunkSize);
+        for (VerifyEventOutbox row : batch) {
+            sendAndCollect(row, chunkSize, pendingIds, diagEnabled, totals);
+        }
+        if (!pendingIds.isEmpty()) {
+            flushBatchMark(pendingIds, diagEnabled, totals);
+        }
+    }
+
+    /**
+     * 单行发送并收集成功 id：耗尽行保留不发，发送失败逐行 incrRetry，发送成功累积到 pendingIds.
+     *
+     * @param row         本行数据
+     * @param chunkSize   chunk 大小
+     * @param pendingIds  局部待标记 id 列表
+     * @param diagEnabled 诊断开关
+     * @param totals      累计器
+     */
+    private void sendAndCollect(final VerifyEventOutbox row,
+                                final int chunkSize,
+                                final List<Long> pendingIds,
+                                final boolean diagEnabled,
+                                final RelayTotals totals) {
+        if (row.getRetryCount() != null && row.getRetryCount() >= maxRetry) {
+            totals.exhausted++;
+            log.error("outbox 事件超过最大重试次数，保留行供人工处理："
+                    + "id={}, eventId={}, topic={}, tag={}, retryCount={}",
+                    row.getId(), row.getEventId(), row.getTopic(),
+                    row.getTag(), row.getRetryCount());
+            return;
+        }
+        long sendStart = diagEnabled ? System.nanoTime() : 0L;
+        try {
+            verifyEventProducer.syncSend(row);
+        } catch (Exception e) {
+            if (diagEnabled) {
+                totals.sendNanos += System.nanoTime() - sendStart;
+            }
+            long incrStart = diagEnabled ? System.nanoTime() : 0L;
+            outboxMapper.incrRetry(row.getId());
+            if (diagEnabled) {
+                totals.incrRetryNanos += System.nanoTime() - incrStart;
+            }
+            totals.failed++;
+            log.warn("outbox 事件投递失败，下轮重试：id={}, eventId={}, retryCount={}",
+                    row.getId(), row.getEventId(),
+                    row.getRetryCount() == null ? 1
+                            : row.getRetryCount() + 1, e);
+            return;
+        }
+        if (diagEnabled) {
+            totals.sendNanos += System.nanoTime() - sendStart;
+        }
+        pendingIds.add(row.getId());
+        if (pendingIds.size() >= chunkSize) {
+            flushBatchMark(pendingIds, diagEnabled, totals);
+        }
+    }
+
+    /**
+     * 刷出已累积的成功 id 列表并执行批量条件标记.
+     *
+     * <p>affected &lt; ids.size() 仅记录 WARN（可能已被并发标记或已耗尽），不抛出不 incrRetry；
+     * 抛出异常则对 chunk 内每个 id 逐一执行一次 incrRetry，记录 ERROR，异常不外逃.</p>
+     *
+     * @param pendingIds  局部待标记 id 列表（处理完毕后清空）
+     * @param diagEnabled 诊断开关
+     * @param totals      累计器
+     */
+    private void flushBatchMark(final List<Long> pendingIds,
+                                final boolean diagEnabled,
+                                final RelayTotals totals) {
+        if (pendingIds.isEmpty()) {
+            return;
+        }
+        List<Long> idsToMark = new ArrayList<>(pendingIds);
+        pendingIds.clear();
+        int count = idsToMark.size();
+        long markStart = diagEnabled ? System.nanoTime() : 0L;
+        try {
+            int affected = outboxMapper.markSentBatch(idsToMark);
+            if (diagEnabled) {
+                totals.markNanos += System.nanoTime() - markStart;
+                totals.markBatchCalls++;
+                totals.markBatchRows += count;
+            }
+            if (affected < count) {
+                log.warn("outbox relay 批量标记 SENT 部分命中："
+                        + "affected={}, expected={}, diff={}",
+                        affected, count, count - affected);
+            }
+            totals.success += count;
+            log.info("outbox 事件分块批量标记成功：chunkSize={}, affected={}",
+                    count, affected);
+        } catch (Exception e) {
+            if (diagEnabled) {
+                totals.markNanos += System.nanoTime() - markStart;
+                totals.markBatchCalls++;
+                totals.markBatchRows += count;
+            }
+            log.error("outbox relay 批量标记 SENT 异常，对该 chunk 每个 id 逐一 incrRetry："
+                    + "chunkSize={}", count, e);
+            for (Long id : idsToMark) {
+                long incrStart = diagEnabled ? System.nanoTime() : 0L;
+                try {
+                    outboxMapper.incrRetry(id);
+                } catch (Exception ex) {
+                    log.warn("outbox relay 批量标记异常后补偿 incrRetry 失败：id={}",
+                            id, ex);
+                }
+                if (diagEnabled) {
+                    totals.incrRetryNanos += System.nanoTime() - incrStart;
+                }
+                totals.failed++;
+            }
+        }
+    }
+
+    /**
+     * 批内并发分块批量投递：每个 worker 维护独立的局部 pendingIds 列表，在 worker 内部按 chunk flush.
+     *
+     * @param batch           本轮已取到的批次
+     * @param sendConcurrency 生效并发数
+     * @param chunkSize       生效 chunk 大小
+     * @param diagEnabled     诊断开关
+     * @param totals          本轮累计器
+     */
+    private void deliverBatchMarkConcurrently(
+            final List<VerifyEventOutbox> batch,
+            final int sendConcurrency,
+            final int chunkSize,
+            final boolean diagEnabled,
+            final RelayTotals totals) {
+        ExecutorService pool = sendPool(sendConcurrency);
+        List<List<VerifyEventOutbox>> shards = new ArrayList<>(sendConcurrency);
+        for (int s = 0; s < sendConcurrency; s++) {
+            shards.add(new ArrayList<>());
+        }
+        for (int i = 0; i < batch.size(); i++) {
+            shards.get(i % sendConcurrency).add(batch.get(i));
+        }
+        List<RelayTotals> shardTotals = new ArrayList<>(shards.size());
+        List<Future<?>> futures = new ArrayList<>(shards.size());
+        for (int s = 0; s < shards.size(); s++) {
+            List<VerifyEventOutbox> shard = shards.get(s);
+            RelayTotals workerTotals = new RelayTotals();
+            shardTotals.add(workerTotals);
+            futures.add(pool.submit(() -> runBatchMarkShard(
+                    shard, chunkSize, diagEnabled, workerTotals)));
+        }
+        for (Future<?> future : futures) {
+            try {
+                future.get();
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                log.warn("outbox relay 并发批量标记投递等待子列表完成时被中断，停止等待剩余子列表");
+                break;
+            } catch (ExecutionException e) {
+                log.warn("outbox relay 并发批量标记投递子列表任务意外终止"
+                        + "（worker 循环体已兜底，此处为顶层防御）", e.getCause());
+            }
+        }
+        for (RelayTotals workerTotals : shardTotals) {
+            totals.merge(workerTotals);
+        }
+    }
+
+    /**
+     * 单个 worker 的分块子列表循环：单行异常隔离，尾块保证 flush.
+     *
+     * @param shard       本 worker 负责的子列表
+     * @param chunkSize   生效 chunk 大小
+     * @param diagEnabled 诊断开关
+     * @param totals      本 worker 局部累计器
+     */
+    private void runBatchMarkShard(final List<VerifyEventOutbox> shard,
+                                   final int chunkSize,
+                                   final boolean diagEnabled,
+                                   final RelayTotals totals) {
+        List<Long> pendingIds = new ArrayList<>(chunkSize);
+        for (VerifyEventOutbox row : shard) {
+            try {
+                sendAndCollect(row, chunkSize, pendingIds, diagEnabled, totals);
+            } catch (Exception e) {
+                log.warn("outbox relay 并发批量标记投递单行异常，已隔离，继续同子列表其余行："
+                                + "id={}, eventId={}",
+                        row.getId(), row.getEventId(), e);
+            }
+        }
+        if (!pendingIds.isEmpty()) {
+            try {
+                flushBatchMark(pendingIds, diagEnabled, totals);
+            } catch (Exception e) {
+                log.warn("outbox relay 并发批量标记尾块 flush 异常：chunkSize={}",
+                        pendingIds.size(), e);
+            }
+        }
+    }
+
+    /**
      * 懒建发送线程池：仅并发 &gt; 1 且本批非空时的投递会调用到本方法；volatile 持有、
      * 整个生命周期只建一次（不得每轮新建）；daemon 线程 + 可识别名字前缀，避免泄漏
      * 线程阻塞 JVM 退出、便于线程转储定位.
@@ -479,8 +759,16 @@ public class VerifyOutboxRelay {
         private int failed;
         /** 本轮耗尽行数（重试达上限的防御分支）. */
         private int exhausted;
+        /** 批量标记 SQL 调用次数（仅开启批量标记且开启诊断时累计）. */
+        private int markBatchCalls;
+        /** 批量标记涉及的 outbox 行数累计（仅开启批量标记且开启诊断时累计）. */
+        private int markBatchRows;
 
-        /** 把一个 worker 的局部累计并进本轮合计（全部 join 后由主线程单线程调用）. */
+        /**
+         * 把一个 worker 的局部累计并进本轮合计（全部 join 后由主线程单线程调用）.
+         *
+         * @param other 待合并的 worker 累计器
+         */
         private void merge(final RelayTotals other) {
             this.sendNanos += other.sendNanos;
             this.markNanos += other.markNanos;
@@ -488,6 +776,8 @@ public class VerifyOutboxRelay {
             this.success += other.success;
             this.failed += other.failed;
             this.exhausted += other.exhausted;
+            this.markBatchCalls += other.markBatchCalls;
+            this.markBatchRows += other.markBatchRows;
         }
     }
 }
