@@ -49,6 +49,7 @@
 - add-verify-outbox-relay-send-concurrency（outbox relay 批内可选并发投递，默认关闭且串行路径等价）
 - measure-head-bottleneck-attribution（优化前先做同负载归因，一次只改一类因素）
 - measure-submit-db-wait-evidence（提交耗时归因须对齐真实计时边界）
+- measure-submit-pool-capacity（池容量对照单因素与池包装关闭语义）
 
 各提案的 spec-delta 中 ADDED 需求已全部合并进本规范，MODIFIED 需求按规则处理（见「服务划分」分组与「变更历史」）。
 清单外合法例外（2 项）：add-microservice-skeleton（主规格由其落地生成，属基线生成而非并入）；add-sharding-host-parameterization（TASK-115 冲突停手未并入，后由 add-sharding-host-env-override 以独立 ADDED 并入，本目录仅作历史存档）。archive 目录集合减去本头部清单恰为该 2 项。
@@ -1269,6 +1270,54 @@ WHEN 生成诊断报告
 THEN 回滚事务不计入成功样本
 AND 不为凑齐指标调用私有接口或扩大业务修改范围
 AND 将无法分离的指标明确记为未覆盖
+
+### Requirement: 池包装关闭与首次建池不得交错漏关
+WHEN 包装数据源关闭与第一次获取连接并发发生,
+系统 SHALL 保证关闭完成后不会留下由该包装类新建且未关闭的内层连接池，且关闭后新请求不得获取连接。
+
+#### Scenario: 关闭发生在已通过入口检查但尚未建池时
+GIVEN 首次取连接线程已通过关闭检查并等待进入内层池创建区
+WHEN 另一线程完成 close()
+THEN 首次取连接不得在关闭后创建可用的新池
+AND 连接请求被拒绝或已创建的池受关闭路径管理
+
+#### Scenario: 重复关闭与既有调用
+GIVEN 内层池已经建立
+WHEN close() 重复执行且另一个线程正等待连接
+THEN 关闭操作保持幂等
+AND 不持有包装类的生命周期锁等待数据库连接
+
+### Requirement: 池容量对照仅改变一个因素
+WHEN 对当前提交链路验证连接池容量候选值,
+系统 SHALL 在相同修复后 jar、相同负载定义和相同诊断开关下，仅改变 `MYSQL_POOL_SIZE`，并记录每轮运行条件与请求、等待、资源指标。
+
+#### Scenario: 四轮可比对照
+GIVEN 健康服务、足够磁盘、允许的 MySQL 连接上限和可恢复的排队状态
+WHEN 按 10、20、20、10 顺序各执行一次 c100×2000
+THEN 每轮保留 QPS/P50/P95/P99/错误率及 `connWait` 分位、服务与 DB 资源采样
+AND 报告精确说明预热/重启/积压条件、jar 校验和与可能的混杂因素
+
+#### Scenario: 容量或可比性不满足
+GIVEN 某一轮前磁盘不足、连接容量不安全或积压无法回到可比状态
+WHEN 评估下一轮是否开始
+THEN 系统 SHALL 停止后续负载并记录已做轮次、退出码和未覆盖原因
+AND SHALL NOT 清库、擅自改变 JVM/SQL/事务或增加完整负载重试
+
+### Requirement: 对照结果不得越级转化为生产默认值
+WHEN 汇总连接池容量实验,
+系统 SHALL 区分受控观测、混杂因素与未知，并仅在同条件重复结果与错误/资源指标共同支持时给出候选结论。
+
+#### Scenario: 候选值有一致证据
+GIVEN 两次候选轮次的方向一致且相对基线范围可区分、无额外错误或明显资源恶化
+WHEN 出具报告
+THEN 系统仅报告本机同负载下候选值值得进一步验证
+AND 不在本变更修改通用池默认值或声称未测部署环境收益
+
+#### Scenario: 重叠或退化
+GIVEN 两臂区间重叠、运行条件漂移或 DB 饱和及错误增加
+WHEN 出具报告
+THEN 系统给出不确定或不推荐的判定与反例
+AND 不调其他参数补救同一轮实验
 
 ### Requirement: 提交事件异步发布
 
@@ -3035,3 +3084,4 @@ AND 下次读取回源到最新值
 - **add-verify-outbox-relay-send-concurrency**：实现 outbox relay 批内可选并发投递与分段诊断；并发投递默认关闭（relay-send-concurrency 保持 1）且串行路径与引入前等价，逐行可靠投递语义不变，锁周期与重试约束不变；并发路径未经生产验证且零已测收益，并发诊断标明线程时间聚合口径，不得据其回推墙钟结论。引用变更 spec/changes/archive/add-verify-outbox-relay-send-concurrency/。
 - **measure-head-bottleneck-attribution**：确立性能优化前必须做同一负载归因的规范约束，一次只改一类因素并用同一基线验收；在延迟、吞吐、资源与调用次数归因明确前，调用次数未降不得先调 JVM、不加索引、不改连接池，性能优化不得改变关键语义与权限、幂等、治理约束。引用变更 spec/changes/archive/measure-head-bottleneck-attribution/。
 - **measure-submit-db-wait-evidence**：明确提交耗时归因必须与真实计时边界对齐，纠正历史混合段直接推算池等待与 fsync 的证据等级；同一负载重复结果须保留波动与可比边界，单次观察不宣称收益归因已证实；临时提交诊断必须受控且默认关闭，回滚不记成功样本。引用变更 spec/changes/archive/measure-submit-db-wait-evidence/。
+- **measure-submit-pool-capacity**：规范连接池生命周期与池容量单因素对照边界，修复池包装关闭与首次建池并发交错漏关缺陷；池容量对照仅改变一个因素且保持其他参数不变，对照结果不得越级转化为生产默认值，不修改生产默认池容量，不声称延时获益。引用变更 spec/changes/archive/measure-submit-pool-capacity/。
