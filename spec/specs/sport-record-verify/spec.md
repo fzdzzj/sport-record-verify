@@ -59,6 +59,7 @@
 - prove-verify-mark-sent-wait-attribution（markSent 等待归因先证单线程计数对应）
 - prove-verify-outbox-batch-mark-safety（批末标记候选先证可靠投递语义）
 - prove-verify-outbox-mark-sent-spring-wiring（markSent 探针须在真实 Spring 路径受判别）
+- prove-verify-outbox-relay-concurrency-scaling（markSent 并发标度真库预注册裁决，正标度仅必要条件）
 
 各提案的 spec-delta 中 ADDED 需求已全部合并进本规范，MODIFIED 需求按规则处理（见「服务划分」分组与「变更历史」）。
 清单外合法例外（2 项）：add-microservice-skeleton（主规格由其落地生成，属基线生成而非并入）；add-sharding-host-parameterization（TASK-115 冲突停手未并入，后由 add-sharding-host-env-override 以独立 ADDED 并入，本目录仅作历史存档）。archive 目录集合减去本头部清单恰为该 2 项。
@@ -1618,6 +1619,38 @@ GIVEN 仅有隔离 Spring 切片的小样本可配对结果
 WHEN 形成 TASK-148 结论
 THEN 系统 SHALL 仅报告该切片的接线可行/不可行，SHALL NOT 将其称为生产负载的内部占比、纯 SQL/fsync/池等待或吞吐收益
 AND SHALL NOT 从独立 P50 相减、跑 c100×2000、修改 relay 默认值、Mapper SQL、索引、MQ/池/JVM 参数
+
+### Requirement: markSent 并发标度判别须在真库上以预注册阈值裁决
+WHEN relay 容量决策需要知道「逐行语义不变的前提下，N 路并发 `markSent` 的聚合吞吐是否随 N 显著上升」,
+测量作业 SHALL 在专用 scratch 真库上以生产逐字 SQL、每线程独立自动提交连接和互不相交行分片进行受控实验，并以预注册的 S(N) 三支阈值裁决，不得事后放宽。
+
+#### Scenario: 受控并发标度实验
+GIVEN 专用 scratch schema 已由仓库 DDL 机械改名生成且每条连接硬校验落库正确
+WHEN N ∈ {1,2,4,8} 各臂按 `id % N` 互不相交分片、M=2000 行、每行一次自动提交条件 UPDATE 并重复 3 轮
+THEN 作业 SHALL 交叉校验每轮 `Com_update` 增量精确等于 M、窗口内 `Com_insert`/`Com_delete` 为 0、收尾 SENT=M 且 PENDING=0
+AND SHALL 在起跑前记录在跑会话并要求除本臂自有 N+1 条连接外无外来前台会话，任一判据不满足即判 harness 缺陷停并回传
+
+#### Scenario: 变异与跳过不得冒充测量
+GIVEN 测量 harness 可能空过或环境变量缺失
+WHEN 注入漏标/重复标记一行的变异或缺省 `TASK156_IT_*` 环境变量
+THEN 慢跑 SHALL 以既有断言翻红（`Com_update` ≠ M 或 SENT 计数 ≠ M）、还原后复绿，缺变量跳过 SHALL 记为未覆盖而不计入真库通过
+AND 三档退出码 SHALL 实测记录
+
+### Requirement: 正标度结论仅是必要条件且不构成实施授权
+WHEN 实验得出 S(N) 的裁决,
+作业 SHALL 把结论限定为该 scratch 实例、该持久配置与该连接语义下的提交层可摊薄性，不得将其当作生产吞吐收益或 relay 改造授权。
+
+#### Scenario: 并发标度成立的边界
+GIVEN S(8) ≥ 2.0 且 S 随 N 单调不减
+WHEN 形成裁决
+THEN 作业 SHALL 同时记录「未测并发 syncSend/RocketMQ、未测 relay 锁改造、未测多实例竞争」的边界
+AND SHALL NOT 修改 relay-interval/batch/并发/锁/SQL/索引/事务/池/JVM/MQ/`innodb_flush_log_at_trx_commit` 任何默认值，SHALL NOT 翻案 TASK-153 或改写 TASK-152 数字
+
+#### Scenario: 分区 relay 的保序约束
+GIVEN 消费端对同 recordId 事件的顺序依赖已被只读核查
+WHEN 核查发现消费者依赖同 recordId 事件顺序（或未来设计引入顺序假设）
+THEN 后续分区 relay 设计 SHALL 按 recordId 分区而非 round-robin / `id % N` 以保序
+AND 消费端 SETNX/锚点幂等 SHALL NOT 被当作改 relay 的授权依据
 
 ### Requirement: 提交事件异步发布
 
@@ -3394,3 +3427,4 @@ AND 下次读取回源到最新值
 - **prove-verify-mark-sent-wait-attribution**：规范 markSent 内部等待归因的单线程计数验证判据；先证实线程、digest 与实际 UPDATE 增量的身份闭合再讨论线程级等待；受限 GO 仅证实单线程计数对应，不等于内部等待已归因，不等于性能收益，不改生产参数与默认值。引用变更 spec/changes/archive/prove-verify-mark-sent-wait-attribution/。
 - **prove-verify-outbox-batch-mark-safety**：建立批末标记候选的可靠投递语义判别标准，坚持语义判别与性能验收分开；默认 NO-GO，若候选使既有可靠投递或可见性产生未经授权变化则坚决否决；测试仅回答语义可行性，即使 GO 也不表示已提速，不实施生产批量化优化。引用变更 spec/changes/archive/prove-verify-outbox-batch-mark-safety/。
 - **prove-verify-outbox-mark-sent-spring-wiring**：验证 markSent 探针在 Spring 管理真实 Mapper 路径下的隔离判别与计时边界；结论仅表示 Spring 管理的受限切片中探针可配对，不等于完整生产路径已验证，不等于内部成本占比或吞吐收益，不改生产配置与默认值。引用变更 spec/changes/archive/prove-verify-outbox-mark-sent-spring-wiring/。
+- **prove-verify-outbox-relay-concurrency-scaling**：在隔离真库上以预注册阈值判别 markSent 并发标度；裁决按预注册三支严格执行，无论哪支都不实施优化、不改默认值、不翻案 TASK-153、不改写 TASK-152 数字；正标度结论仅是必要条件且不构成实施授权，分区 relay 实施须另立提案。引用变更 spec/changes/archive/prove-verify-outbox-relay-concurrency-scaling/。
