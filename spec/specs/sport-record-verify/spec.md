@@ -55,6 +55,7 @@
 - measure-verify-mark-sent-spring-paired-cost（markSent 配对成本先经隔离真库判别）
 - measure-verify-outbox-relay-cost（relay 可选诊断语义保持与成本双口径）
 - measure-verify-outbox-mark-sent-cost（markSent 计时边界不重计不漏计）
+- prove-verify-outbox-mark-sent-attribution（markSent 内部测量先经隔离真实装配证明）
 
 各提案的 spec-delta 中 ADDED 需求已全部合并进本规范，MODIFIED 需求按规则处理（见「服务划分」分组与「变更历史」）。
 清单外合法例外（2 项）：add-microservice-skeleton（主规格由其落地生成，属基线生成而非并入）；add-sharding-host-parameterization（TASK-115 冲突停手未并入，后由 add-sharding-host-env-override 以独立 ADDED 并入，本目录仅作历史存档）。archive 目录集合减去本头部清单恰为该 2 项。
@@ -1439,31 +1440,22 @@ THEN 系统 SHALL 先在仅含已提交基线的隔离检出上重跑唯一入�
 AND 不能复现时 SHALL 判为证据缺口并停止新测量，不把编译红、环境红或跳过当作行为红
 
 ### Requirement: relay 可选诊断不得改变可靠投递语义
-WHEN `verify.outbox` relay 诊断开关开启,
-系统 SHALL 以有界、低基数的批次摘要提供取批、发送、标记与失败处理的真实计时边界，同时 SHALL 保持默认关闭及原来的取批、锁、eventId、SENT、重试、异常传播与锁释放语义；关闭时 SHALL 不产生额外 DB/MQ 调用或逐事件诊断日志。
+WHEN `verify.outbox` relay 诊断开启或关闭,
+系统 SHALL 以有界、低基数的摘要提供实际经过的取批、发送、标记和失败处理墙钟及结果，SHALL 保持原取批、锁、eventId、SENT、重试、异常传播与解锁处理语义；关闭时 SHALL 不增加 DB/MQ 调用或逐事件诊断日志。
 
-#### Scenario: 发送失败与标记失败不可重计
-GIVEN 一批含成功行及 `syncSend` 或 `markSent` 抛错的行
-WHEN relay 执行同一行的发送、标记和失败处理
-THEN 每次调用实际经过的阶段 SHALL 只累计该阶段发生的墙钟一次
-AND `markSent` 抛错前已成功的发送 SHALL NOT 被再次计入发送时间
-AND 无法完成的标记 SHALL NOT 记作成功标记
-AND 原有的失败递增和异常传播行为 SHALL 不变
-AND 摘要 SHALL 不包含 eventId、payload、用户标识、SQL 参数或密钥
+#### Scenario: 解锁后的计时边界
+GIVEN 一轮批次已处理，准备调用 `unlock()`
+WHEN 汇报 `lockProcessingMs` 与 `lockHoldMs`
+THEN `lockProcessingMs` SHALL 只指处理段且不含解锁
+AND `lockHoldMs` SHALL 只描述终点在解锁调用之后取得的经过时间，摘要日志若在终点之后输出 SHALL 明示其未被包含
+AND `unlock()` 抛错或未证实释放时 SHALL NOT 把经过时间当作已释放锁的确证
 
-#### Scenario: 完整占锁与处理段区分
-GIVEN relay 拿到防重锁并完成一轮投递
-WHEN 诊断报告锁内处理时长或完整占锁时长
-THEN 锁内处理时长 SHALL 明示其截点是否包含摘要输出与解锁
-AND 只有实际在解锁之后取终点的计时 SHALL 称为完整占锁时长
-AND 任一成功、空批或异常路径 SHALL 保持原锁释放行为
-
-#### Scenario: 空轮、竞争与默认关闭
-GIVEN relay 正常调度，可能读到空批或拿不到锁
-WHEN 诊断开启或关闭
-THEN 空轮和竞争 SHALL 以有界频率汇总
-AND 关闭时 SHALL 不输出诊断日志、不调用额外 DB/MQ
-AND 中断、异常与 finally 路径 SHALL 维持原来的投递语义
+#### Scenario: 失败与默认关闭
+GIVEN 发送、标记、失败计数或解锁可能抛错
+WHEN relay 执行本轮
+THEN 诊断 SHALL 不重复归集已计的发送/标记墙钟
+AND SHALL 不改变原有发送、SENT、retry_count 和异常处理分支
+AND 开关关闭时 SHALL 不增加额外 DB/MQ 调用、诊断日志或逐行计时采样
 
 ### Requirement: relay 成本结论必须保留周期与事件两种口径
 WHEN 对 relay 间隔及批内工作作性能归因,
@@ -1507,6 +1499,36 @@ WHEN 执行唯一一轮默认间隔 5000ms、c100×2000 的诊断负载
 THEN 报告 SHALL 分账同 run 可投递/耗尽待人工积压、成功/失败/重试与可用资源
 AND SHALL 将该轮标成测量而非与 TASK-145 的同版本优化前后对照
 AND SHALL NOT 外推到榜单端到端或持续负载收益
+
+### Requirement: markSent 内部测量先经隔离真实装配证明
+WHEN 需要拆解 `markSent` 的外层混合墙钟,
+系统 SHALL 先在隔离真 MySQL 和本仓真实 Mapper 装配中验证一条测试专用、目标调用限定的候选接线，SHALL 明示每层计时的客户端边界及不能观察的段；在证明配对与语义不变前 SHALL NOT 接入生产路径或运行大负载。
+
+#### Scenario: 同调用配对可行
+GIVEN scratch schema 中存在 PENDING outbox 行且测试探针启用
+WHEN 调用真实 `VerifyEventOutboxMapper.markSent` 一次
+THEN 目标行 SHALL 按原 SQL 从 PENDING 变 SENT 且更新行数/事务结果与无探针一致
+AND 测量 SHALL 能将目标 Mapper 与其可安全观测的下层调用在同一次调用中配对
+AND 非目标 Mapper、凭证、eventId 与 payload SHALL 不进入测量摘要
+AND 数据库服务端 SQL 时间、连接获取或提交若未直接观测 SHALL 明记未知
+
+#### Scenario: 关闭、失败、连续调用及不可行
+GIVEN 探针关闭、目标调用失败或连续更新多行
+WHEN 用同一 scratch 真实装配执行
+THEN 关闭状态 SHALL 不产出探针读数，失败后作用域 SHALL 清理，后续调用 SHALL 不串样本
+AND 异常、连接释放、更新行数及状态 SHALL 与无探针基线一致
+AND 若环境不可用或任何语义/隔离反例成立，系统 SHALL 停止该候选、保留反证并报告未覆盖或不可行，不改生产配置
+
+### Requirement: 有限突发与采样峰值不得冒充已完成归因
+WHEN 汇报 TASK-146 的积压证据或 TASK-147 的可行性试验,
+系统 SHALL 将晚于负载结束的首次采样最大值记作观测峰值，真实峰值标未知且不低于观测值；SHALL 将小样本接线证明与生产吞吐收益区分。
+
+#### Scenario: 只读证据订正
+GIVEN 首次 PENDING 采样晚于负载结束且最大观测值为 1571
+WHEN 更新报告与机器摘要
+THEN 文案 SHALL 保留 1571 原值并说明真实峰值未知、至少 1571
+AND SHALL NOT 把该值称为覆盖整个负载窗口的真实峰值
+AND 本任务 SHALL NOT 为补峰值重跑 c100×2000 或更改 relay 默认值
 
 ### Requirement: 提交事件异步发布
 
@@ -3279,3 +3301,4 @@ AND 下次读取回源到最新值
 - **measure-verify-mark-sent-spring-paired-cost**：规范 markSent 外层与下层同调用逐次配对的隔离真库判别方法；GO 仅表示在专用 scratch 真库与 Spring 注入真实 Mapper 受限切片中小样本同调用分账可重复且语义不变，不授权 SQL 批量化，不改生产配置与默认值。引用变更 spec/changes/archive/measure-verify-mark-sent-spring-paired-cost/。
 - **measure-verify-outbox-relay-cost**：引入 relay 可选诊断与成本双口径测量规范，其 ADDED 需求为三深 MODIFIED 链的链基；诊断默认关闭且不得改变可靠投递语义，relay 成本结论必须保留周期与事件两种口径；本项仅测量不推出默认值变更，有限轮次数据不宣称可复现收益，不修改 5000ms 默认值。引用变更 spec/changes/archive/measure-verify-outbox-relay-cost/。
 - **measure-verify-outbox-mark-sent-cost**：规范 markSent 嵌套计时与归因边界，按三深链链序第二位将其 MODIFIED 需求替换 measure-verify-outbox-relay-cost 的 ADDED 需求文本；markSent 归因以同一次调用的嵌套证据为准，发送与标记计时互不重复；仅测量与修正诊断，不实施优化、不改生产默认值。引用变更 spec/changes/archive/measure-verify-outbox-mark-sent-cost/。
+- **prove-verify-outbox-mark-sent-attribution**：规范 markSent 内部测量的隔离真实装配证明，为三深链终态，本条目写入时主规格该题文本即其 delta MODIFIED 块；有限突发与采样峰值不得冒充已完成归因；仅证明受限装配下同调用配对测量办法可行，不等于生产插桩已安全、不等于瓶颈已定位，不改生产默认值。引用变更 spec/changes/archive/prove-verify-outbox-mark-sent-attribution/。
