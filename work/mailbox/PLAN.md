@@ -1337,3 +1337,52 @@ run `35802403723`（head `eba0108`，2026-09-23 00:31 UTC）——**web/build �
 - sports 的 java 进程 = 0；`.mvn/maven.config` 删净（`git status --porcelain .mvn` 空）；`docker ps -a` 收口存证：仅 `sport-verify-mysql` Up (healthy)、`task131-scratch-mysql` Exited(255) 零触碰、postgis 未启动。
 - 演示库 `verify_db` 跑前跑后快照一致：`SHOW DATABASES` 同清单（仅新增 scratch 库）、`verify_event_outbox` 84100 行 / max_id 84100；scratch 库 `task165_batch_mark_scratch` 保留（1 表 11 行，IT 6 用例遗留 ＋ 探针行），不清库、不删表。
 - 外部门槛：**未达外部门槛（本次不 push，待下次授权由 CI 复验）**。
+## 验收记录：TASK-167 批量合并 17 个在途 spec 变更到主规格并归档（2026-10-01，执行 agent，纯文档轮，零代码改动）
+
+| 项目 | 内容 |
+| --- | --- |
+| 绑定修订 | 开工基线 `cd4763e`（全 SHA `cd4763e33db2340ee45d4fbe2e94d383cbe67d8e`，开工逐位核对一致；`origin/main = fcc1f7e3cfe5ac2d96bf6c20692b5896424730fd`，`git rev-list --left-right --count origin/main...main` = `0 1`；CI run `36808102571` success）。分批提交：业务提交 C-01..C-17 共 17 笔，台账提交 C-18 本笔（PLAN.md 纯追加 + TASK-167 两件套，终版 SHA 以 `git log --oneline -1` 为准） |
+| 一句话裁决 | **完成**：17 个 allPass=True 的在途 spec 变更目录全部按 §4 固定顺序逐字并入主规格并归档移名至 `spec/changes/archive/`；三深链终态 A2 与 shorten 基线 MODIFIED 目标块均经 cmp rc=0 验证通过；集合不变式（清单 58、archive 60、合法例外 2 项、在途 7）逐笔严格成立；纯文档零代码改动；offline 双跑 36/41/33/103/137/59/10 全绿零扰动；本次不 push，未达外部门槛 |
+| 是否实施 / 是否落地 | **规格已落地，生产默认态未变**：主规格终态 3568 行 / 161 个 Requirement / 头部清单 58 项；archive 60 项；17 对 md 移名 R100 字节保真；`relay-send-concurrency` 仍保持默认值 1，`relay-batch-mark-enabled` 仍保持 false，`SS_SQL_SHOW` 仍默认关闭 |
+| 门槛来源 | 本地实跑，Maven 唯一入口 `bash scripts/verify/mvn-verify.sh --mode=offline test`；词面门四形态 + 正向对照；在途与收口契约门；逐块 EOL 归一 cmp；非空删除行多重集比对；集合不变式校验 |
+| 是否到达外部门槛 | **未达外部门槛（本次不 push；指导侧验收后将连同订正笔 cd4763e 与本批 18 笔一并 push，由 CI 复验）** |
+| G0 起点核对 | 起点 SHA `cd4763e33db2340ee45d4fbe2e94d383cbe67d8e`、`origin/main` `fcc1f7e3cfe5ac2d96bf6c20692b5896424730fd`、计数 `0 1` 逐位核对一致；主规格起点 2806 行 / 121 Requirement / 114668 字节；PLAN.md 1339 行 CR=0；任务书 316 行 / 42777 字节 / SHA256 `fbe45a21464e51f10fbd74e10430a68f3c2f5f1d27de761920030ac07fed4eec`；开工 offline 全绿 36/41/33/103/137/59/10；契约在途 rc=0；java 进程 0；Docker 容器零触碰 |
+| G1/§2.1 五维复核 | 24 目录 steps/allPass/ADDED/MODIFIED 逐行复核：17 入选目录 ADDED 块数和为 40（4+3+3+3+3+2+2+1+2+2+2+2+2+2+2+2+3），MODIFIED 块数和为 3；7 排除目录含 13 个需求标题；与指导侧订正说明完全吻合，rc=0 |
+| G2 逐字判据 | 40 个新需求块逐一与各自 delta 块 EOL 归一 cmp rc=0、行数相等、occ=1；三深链终态 A2（`prove-verify-outbox-mark-sent-attribution`，17 行）cmp rc=0；shorten 目标块（17 行，剔除 `**Previous**` 注记行及紧跟空行）cmp rc=0；被替换 A0/A1/基线块 cmp rc=0 |
+| G3 删除纪律 | 全区间 `git diff -U0 cd4763e..HEAD -- spec.md` 非空删除行仅为基线「轨迹提交幂等」的 2 行非空差异，属于旧基线块多重集子集；逐笔非空删除仅 C-09/C-10/C-17 产生且均严格属于被替换块多重集，其余 14 笔非空删除恒为 0 |
+| G4 行尾与字节保真 | 主规格终态 3568 行，CR==LF==3568，bareLF=0，末2字节 `0d 0a`；PLAN.md CR=0；17 对 md 移名 R100 且 blob 逐字节一致；7 个游离 CR 文件 CR 计数与偏移不变；tasks.json 追加后有效且 `spring-wiring/tasks.json` CR 仍为 96；新写文件无 BOM |
+| G5 offline 双跑 | 开工与收口两跑：`bash scripts/verify/mvn-verify.sh --mode=offline test` 退出码均严格为 0，七模块 `36/41/33/103/137/59/10` 逐位一致，Failures=0/Errors=0/Skipped=0，BUILD SUCCESS |
+| G6 词面门 | 正则现场从 ci.yml 提取（len=26 / 58 字节 UTF-8，7 竖线 8 分支），四形态（ci-exact-untracked / C / zh_CN.UTF-8 / C.UTF-8）全 ZERO_HIT rc=1；正向对照探针 rc=0 命中 9/9；探针删除后 `git status --porcelain` 还原 |
+| G7 空白检查 | `git diff --check` rc=0；C-01..C-17 完整 17 笔提交各自 `git show --check` 全部 rc=0，C-18 提交后即刻复验 rc=0 |
+| G8 契约门 | ① 开工在途 `--open TASK-167 --baseline=cd4763e` rc=0；② handoff 建立后无 `--open` rc=1（过冲仅来自 `?? spec/changes/add-verify-degrade-status-index/` 4 文件）；③ C-18 提交后无参 `bash scripts/verify/mailbox-contract.sh` rc=0 |
+| G9 集合不变式 | 头部提案清单 41 → 58，archive 目录 43 → 60；`comm -23 archive 清单` 恰为 2 项合法例外（`add-microservice-skeleton`、`add-sharding-host-parameterization`）；`comm -13 archive 清单` 为空；17 笔业务提交后三个计数同步 +1 逐笔成立 |
+| G10 受保护 token | 18 个受保护 token 在 PLAN.md 命中行数 base vs 收口两测无一减少：13.4 (12→13)、18.0 (14→15)、73.93 (13→14)、68.8 (9→10)、6315 (10→11)、1.8612 (9→10)、3.3066 (9→10)、5.7056 (9→10)、9.408 (9→10)、36525962432 (9→10)、36586847965 (8→9)、36438897772 (9→10)、36399582548 (8→9)、36098038547 (8→9)、36808102571 (1→2)、36736221648 (7→8)、2806 (14→15)、598 (8→9) |
+| G11 只改清单 | handoff 只改清单恰 55 路径，与 §6 全集逐项对齐；工作树除既有脏项与 trae 临时自检文件外完全干净；7 个排除目录零变化 |
+| G12 逐笔结构 | C-01..C-17 每笔恰为 M 主规格 + R100×2 + R08x×1（tasks.json），提交信息 `docs(spec): 归档 <目录名> 并入主规格` 且 C-09/C-10/C-17 携带口径；C-18 恰为 PLAN.md + 任务两件套 |
+| 口径说明 | ① 三深链合并：C-08 引入 A0（链基），C-09 替换为 A1（中间态），C-10 替换为 A2（终态，17 行）；② shorten 基线替换：替换基线 `### Requirement: 轨迹提交幂等` 为目标 17 行，依既有规范惯例剔除 `**Previous**` 注记行及紧跟空行，代码已在 TASK-139/140 落地；③ 变更历史 17 条正文数字均在 archive 原文逐字 grep 命中 |
+| 欠账与后续登记 | ① 7 个排除目录（`add-verify-degrade-status-index` 等）因包含未通过 task 或脏项保持在途，留待后续专项任务；② TASK-166 登记的「后续把两份单行语义 `processRow` 与 `sendAndCollect` 统一为一个 `sendRow`」欠账在此延续登记；③ 规格并入不等于任何生产开关开启，不声称任何吞吐/延迟收益，不翻案历史任务任何既定数字 |
+
+**TASK-167 提交明细与 staged 暂存清单记录**
+
+| 批次 | 完整 SHA | 短 SHA | 提交主题 | shortstat | staged 状态（-M） |
+| --- | --- | --- | --- | --- | --- |
+| C-01 | `d4946caa4902a17b0afec70e73b37051daabba89` | `d4946ca` | docs(spec): 归档 add-verify-outbox-relay-send-concurrency 并入主规格 | 4 files changed, 118 insertions(+) | M spec.md, R100 proposal.md, R100 spec-delta.md, R087 tasks.json |
+| C-02 | `253fc87cc3e50adf92e19e9acaf801860456f44d` | `253fc87` | docs(spec): 归档 measure-head-bottleneck-attribution 并入主规格 | 4 files changed, 84 insertions(+) | M spec.md, R100 proposal.md, R100 spec-delta.md, R087 tasks.json |
+| C-03 | `2b23c34ac73185ba2bc829118dba4a4cadf9031d` | `2b23c34` | docs(spec): 归档 measure-submit-db-wait-evidence 并入主规格 | 4 files changed, 77 insertions(+) | M spec.md, R100 proposal.md, R100 spec-delta.md, R087 tasks.json |
+| C-04 | `0a9bcf130c95c92927e03e70b5dd9716a16957af` | `0a9bcf1` | docs(spec): 归档 measure-submit-pool-capacity 并入主规格 | 4 files changed, 66 insertions(+) | M spec.md, R100 proposal.md, R100 spec-delta.md, R087 tasks.json |
+| C-05 | `9f93ea1a2697e172859986d4ad08d667a746cc71` | `9f93ea1` | docs(spec): 归档 measure-verify-event-stage-lag 并入主规格 | 4 files changed, 66 insertions(+) | M spec.md, R100 proposal.md, R100 spec-delta.md, R087 tasks.json |
+| C-06 | `a73f1ec5f1aafe471469fe00d4d56d95804c287f` | `a73f1ec` | docs(spec): 归档 measure-verify-mark-sent-admin-window 并入主规格 | 4 files changed, 50 insertions(+) | M spec.md, R100 proposal.md, R100 spec-delta.md, R081 tasks.json |
+| C-07 | `d748453a72de9ea16ac84b4709e8a078d295a5aa` | `d748453` | docs(spec): 归档 measure-verify-mark-sent-spring-paired-cost 并入主规格 | 4 files changed, 52 insertions(+) | M spec.md, R100 proposal.md, R100 spec-delta.md, R083 tasks.json |
+| C-08 | `6862cd353139c8d587114a41142e6847b3272632` | `6862cd3` | docs(spec): 归档 measure-verify-outbox-relay-cost 并入主规格 | 4 files changed, 56 insertions(+) | M spec.md, R100 proposal.md, R100 spec-delta.md, R084 tasks.json |
+| C-09 | `d8a4a08a329da81790fb4d50442e8f643fdd70e1` | `d8a4a08` | docs(spec): 归档 measure-verify-outbox-mark-sent-cost 并入主规格 | 4 files changed, 65 insertions(+), 15 deletions(-) | M spec.md, R100 proposal.md, R100 spec-delta.md, R083 tasks.json |
+| C-10 | `aa604a7e8e1380e91d0c041cdc0b834ada43ce96` | `aa604a7` | docs(spec): 归档 prove-verify-outbox-mark-sent-attribution 并入主规格 | 4 files changed, 64 insertions(+), 25 deletions(-) | M spec.md, R100 proposal.md, R100 spec-delta.md, R083 tasks.json |
+| C-11 | `b0e93ca6a3d85293acebd40455c9ebc7f7517e75` | `b0e93ca` | docs(spec): 归档 prove-verify-mark-sent-wait-attribution 并入主规格 | 4 files changed, 44 insertions(+) | M spec.md, R100 proposal.md, R100 spec-delta.md, R081 tasks.json |
+| C-12 | `7ac7e04c38ef383af2f5c2301aaa71a45c9ef190` | `7ac7e04` | docs(spec): 归档 prove-verify-outbox-batch-mark-safety 并入主规格 | 4 files changed, 50 insertions(+) | M spec.md, R100 proposal.md, R100 spec-delta.md, R081 tasks.json |
+| C-13 | `f415c0030089a1ad46a592865b4619375f45a95d` | `f415c00` | docs(spec): 归档 prove-verify-outbox-mark-sent-spring-wiring 并入主规格 | 4 files changed, 46 insertions(+) | M spec.md, R100 proposal.md, R100 spec-delta.md, R091 tasks.json |
+| C-14 | `bf939eee15930835367d4af6a9c020998d9ff133` | `bf939ee` | docs(spec): 归档 prove-verify-outbox-relay-concurrency-scaling 并入主规格 | 4 files changed, 50 insertions(+) | M spec.md, R100 proposal.md, R100 spec-delta.md, R084 tasks.json |
+| C-15 | `72d7f9448eb3761b67486bddca68144b54e279ae` | `72d7f94` | docs(spec): 归档 prove-verify-outbox-relay-drain-rate 并入主规格 | 4 files changed, 51 insertions(+) | M spec.md, R100 proposal.md, R100 spec-delta.md, R088 tasks.json |
+| C-16 | `6b12cbafbbd39ba3d7583fa00e6e0fd18a68cfc5` | `6b12cba` | docs(spec): 归档 prove-verify-outbox-relay-pool-concurrency-scaling 并入主规格 | 4 files changed, 56 insertions(+) | M spec.md, R100 proposal.md, R100 spec-delta.md, R087 tasks.json |
+| C-17 | `5486ed38c6e248f9e43509efd91405ff01f637be` | `5486ed3` | docs(spec): 归档 shorten-submit-db-footprint 并入主规格 | 4 files changed, 84 insertions(+), 5 deletions(-) | M spec.md, R100 proposal.md, R100 spec-delta.md, R086 tasks.json |
+| C-18 | 待落盘 | 待落盘 | docs(mailbox): 登记 TASK-167 验收记录与任务两件套 | 3 files changed | M PLAN.md, A spec.md, A handoff.md |
+
+业务提交 C-01..C-17 阶段总 shortstat（基线 `cd4763e` → C-17）：`52 files changed, 1039 insertions(+), 5 deletions(-)`。
