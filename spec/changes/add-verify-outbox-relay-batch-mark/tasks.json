@@ -63,6 +63,10 @@
       {
         "step": "环境无 TASK165_IT_URL/USER/PASSWORD 时 Assumptions skip 留档（Tests run: 6, Skipped: 6，退出码 0，不冒充通过，记真库未覆盖）",
         "completed": true
+      },
+      {
+        "step": "TASK-166 真库实跑证据（2026-10-01）：真实 MySQL（容器 sport-verify-mysql，宿主端口 3307，独立 scratch 库 task165_batch_mark_scratch，按 sql/03-verify-db.sql 原文 DDL 建表；演示库 verify_db 跑前跑后快照一致 84100 行 / max_id 84100）实跑本 IT 全绿：Tests run: 6, Failures: 0, Errors: 0, Skipped: 0，退出码 0；四项上界实测证据与 .mvn 临时通道跑前跑后快照见 work/mailbox/tasks/TASK-166/handoff.md（通道在任何 git add/commit 之前删除）",
+        "completed": true
       }
     ],
     "passes": true

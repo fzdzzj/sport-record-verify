@@ -23,6 +23,7 @@ THEN 已成功发送行的 SENT 标记 MAY 按 chunk（`relay-batch-mark-chunk-s
 2. **SENT 可见性延迟上界**：独立连接可见已成功发送事件为 SENT 的延迟上界为一个 chunk 的发送时长（逐行路径为每行发送返回立即独立提交可见）。
 3. **`sent_at` 时间语义**：同 chunk 内所有行的 `sent_at` 统一记录为该 chunk 批量 UPDATE 执行时的数据库时间（`NOW()`），**chunk 内同值**；该值与 DDL 注释「投递成功时间」的偏差被本规格显式授权，且代码 javadoc 与日志 MUST 予以披露。
 4. **标记失败重投语义**：chunk 批量标记 SQL 真失败（抛出持久化异常）时，该 chunk 内已投递行**全部保留 PENDING**、下轮整块重投；系统 MUST 对该 chunk 内的每个 id 各调用一次 `incrRetry` 以保持失败计数与重试耗尽判定语义，且异常 MUST NOT 外逃打断整轮 relay。
+5. **成功行逐行 INFO 日志被 chunk 级日志取代**（TASK-166 F1 补录的被授权变化）：开启态下成功行不再有逐行 INFO 日志（原 `outbox 事件投递成功：id=…, eventId=…, tag=…` 由每 chunk 一条汇总日志取代）；失败行的逐行 WARN 日志**保持不变**。两点影响登记：① 运维无法再按 `eventId` 从日志定位单条投递时刻；② TASK-163/164 的 M1 空档机制门依赖逐行日志时间戳，**在开启态不可用**，后续任何判别必须改用诊断口径的锁内吞吐。
 
 #### Scenario: 成功行按 chunk 分块批量标记
 GIVEN `verify.outbox.relay-batch-mark-enabled=true` 且 `relay-batch-mark-chunk-size=25`
