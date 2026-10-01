@@ -58,6 +58,7 @@
 - prove-verify-outbox-mark-sent-attribution（markSent 内部测量先经隔离真实装配证明）
 - prove-verify-mark-sent-wait-attribution（markSent 等待归因先证单线程计数对应）
 - prove-verify-outbox-batch-mark-safety（批末标记候选先证可靠投递语义）
+- prove-verify-outbox-mark-sent-spring-wiring（markSent 探针须在真实 Spring 路径受判别）
 
 各提案的 spec-delta 中 ADDED 需求已全部合并进本规范，MODIFIED 需求按规则处理（见「服务划分」分组与「变更历史」）。
 清单外合法例外（2 项）：add-microservice-skeleton（主规格由其落地生成，属基线生成而非并入）；add-sharding-host-parameterization（TASK-115 冲突停手未并入，后由 add-sharding-host-env-override 以独立 ADDED 并入，本目录仅作历史存档）。archive 目录集合减去本头部清单恰为该 2 项。
@@ -1589,6 +1590,34 @@ GIVEN 既有可靠投递、状态、重试、eventId、锁与时间语义均由�
 WHEN 形成 GO 裁决
 THEN GO 仅授权另立单因素同负载性能提案
 AND SHALL NOT 在本任务中声称已优化 P99/吞吐或改动运行默认值
+
+### Requirement: markSent 探针应在 Spring 管理的真实 Mapper 路径接受隔离判别
+WHEN TASK-147 的手工工厂可配对结论需要用于规划 verify-service 成本归因,
+系统 SHALL 先在隔离真 MySQL 上验证同一种测试专用、目标调用限定的探针，SHALL 核实 Spring 注入的真实 Mapper、MyBatis-Plus 自动装配、`SqlSessionTemplate`、事务工厂和 Hikari 接线，SHALL 列明与完整生产上下文的差异；SHALL NOT 将直接 `openSession` 的结果冒充 Spring 路径。
+
+#### Scenario: 无显式事务的目标调用
+GIVEN scratch DDL 有 PENDING outbox 行，Spring 注入真实 Mapper 且调用者无业务 `@Transactional`
+WHEN 开启测试探针并经 Spring Mapper 调用 `markSent` 一次
+THEN 状态、更新行数及独立连接可见性 SHALL 与无插件基线一致
+AND 此目标调用 SHALL 恰配一条低基数 `StatementHandler.update` 样本，样本 SHALL NOT 含 eventId、payload、凭证或 SQL 参数
+AND 报告 SHALL 区分实际验证的 Spring 切片与被排除的外部服务
+
+#### Scenario: 关闭、非目标、连续、失败及连接释放
+GIVEN 测试探针关闭、调用非目标 Mapper、连续目标调用或 scratch 中发生真实 SQL 失败
+WHEN 对照无插件基线执行并关闭会话
+THEN 关闭与非目标 SHALL 零样本，连续/失败后 SHALL 不串样本
+AND 返回值、状态、异常类型、自动提交可见性和连接归还 SHALL 与无插件基线一致
+AND 若真库/关键 Spring 接线/无插件基线不可用或任一语义反例成立，系统 SHALL 停止并报告未覆盖或不可行，不换第二探针、不改生产配置
+
+### Requirement: 下层计时的边界和结论等级应准确
+WHEN 汇报 TASK-147/148 的探针样本,
+系统 SHALL 定义其为整个 `StatementHandler.update` 调用墙钟（可含 JDBC 执行、取更新行数、MyBatis 后处理及隐式提交相关等待），SHALL 将连接获取、prepare/绑定、显式提交、服务端 SQL 和网络往返拆分中未直接观测的部分标为未知。
+
+#### Scenario: 小样本不冒充生产归因
+GIVEN 仅有隔离 Spring 切片的小样本可配对结果
+WHEN 形成 TASK-148 结论
+THEN 系统 SHALL 仅报告该切片的接线可行/不可行，SHALL NOT 将其称为生产负载的内部占比、纯 SQL/fsync/池等待或吞吐收益
+AND SHALL NOT 从独立 P50 相减、跑 c100×2000、修改 relay 默认值、Mapper SQL、索引、MQ/池/JVM 参数
 
 ### Requirement: 提交事件异步发布
 
@@ -3364,3 +3393,4 @@ AND 下次读取回源到最新值
 - **prove-verify-outbox-mark-sent-attribution**：规范 markSent 内部测量的隔离真实装配证明，为三深链终态，本条目写入时主规格该题文本即其 delta MODIFIED 块；有限突发与采样峰值不得冒充已完成归因；仅证明受限装配下同调用配对测量办法可行，不等于生产插桩已安全、不等于瓶颈已定位，不改生产默认值。引用变更 spec/changes/archive/prove-verify-outbox-mark-sent-attribution/。
 - **prove-verify-mark-sent-wait-attribution**：规范 markSent 内部等待归因的单线程计数验证判据；先证实线程、digest 与实际 UPDATE 增量的身份闭合再讨论线程级等待；受限 GO 仅证实单线程计数对应，不等于内部等待已归因，不等于性能收益，不改生产参数与默认值。引用变更 spec/changes/archive/prove-verify-mark-sent-wait-attribution/。
 - **prove-verify-outbox-batch-mark-safety**：建立批末标记候选的可靠投递语义判别标准，坚持语义判别与性能验收分开；默认 NO-GO，若候选使既有可靠投递或可见性产生未经授权变化则坚决否决；测试仅回答语义可行性，即使 GO 也不表示已提速，不实施生产批量化优化。引用变更 spec/changes/archive/prove-verify-outbox-batch-mark-safety/。
+- **prove-verify-outbox-mark-sent-spring-wiring**：验证 markSent 探针在 Spring 管理真实 Mapper 路径下的隔离判别与计时边界；结论仅表示 Spring 管理的受限切片中探针可配对，不等于完整生产路径已验证，不等于内部成本占比或吞吐收益，不改生产配置与默认值。引用变更 spec/changes/archive/prove-verify-outbox-mark-sent-spring-wiring/。
