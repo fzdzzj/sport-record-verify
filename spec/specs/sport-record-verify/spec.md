@@ -48,6 +48,7 @@
 - fix-verify-outbox-poison-head-of-line（修复重试耗尽行占满取批队首、令后续可投递事件永久不可见的投递饥饿）
 - add-verify-outbox-relay-send-concurrency（outbox relay 批内可选并发投递，默认关闭且串行路径等价）
 - measure-head-bottleneck-attribution（优化前先做同负载归因，一次只改一类因素）
+- measure-submit-db-wait-evidence（提交耗时归因须对齐真实计时边界）
 
 各提案的 spec-delta 中 ADDED 需求已全部合并进本规范，MODIFIED 需求按规则处理（见「服务划分」分组与「变更历史」）。
 清单外合法例外（2 项）：add-microservice-skeleton（主规格由其落地生成，属基线生成而非并入）；add-sharding-host-parameterization（TASK-115 冲突停手未并入，后由 add-sharding-host-env-override 以独立 ADDED 并入，本目录仅作历史存档）。archive 目录集合减去本头部清单恰为该 2 项。
@@ -1209,6 +1210,65 @@ GIVEN 一次优化可以减少远程调用或事务时间
 WHEN 该改动会改变权限判定、幂等结果或治理凭证校验
 THEN 不采用该改动
 AND 另找不改变这些语义的方案
+
+### Requirement: 提交耗时归因须与真实计时边界一致
+WHEN 系统把提交链路的某个计时段归因为连接池等待、SQL 执行或数据库提交刷盘,
+系统 SHALL 记录该段的起止位置、涉及的数据源层次和被包含的其他操作，SHALL 只把被直接隔离测得的部分称为实测值。IF 只能取得代理层混合段或池状态快照, 系统 SHALL 把无法分离的份额标为未知，不得用总体 P50 减去其他段的 P50 声称得到每请求池等待或 fsync 耗时。
+
+#### Scenario: 内层池指标可用且人群一致
+GIVEN 真实内层 Hikari 连接获取等待存在可复核的计时证据，SQL/JDBC 与提交区间各有明确计时边界
+WHEN 报告提交请求的瓶颈归因
+THEN 分别列出计时范围、样本数和是否包含后台事务
+AND 仅在请求或样本群体可关联时计算该群体的等待占比
+AND 不将 `beforeCommit→afterCommit` 整段全部标为 fsync
+
+#### Scenario: 只有混合段或全服务指标
+GIVEN `select` 段含物理连接等待和 SQL 查询，或者连接池指标混入其他后台操作
+WHEN 编写提交请求的延迟报告
+THEN 系统 SHALL 报告直接测得的混合区间或全服务指标
+AND 将“请求级池等待占比”和“纯 fsync 耗时”记为未分离测得
+AND 不把等待线程数快照或不同请求的分段 P50 之和当作单请求延迟
+
+### Requirement: 同一负载重复结果须保留波动与可比边界
+WHEN 报告一次性能变更前后的 QPS 或延迟,
+系统 SHALL 区分单次观察、重复同版本波动与受控前后因果比较，SHALL 记录环境指纹、样本量、后台负载与每次独立指标。IF 现有变更同时调整 SQL 次数和 SQL 日志展示, 系统 SHALL NOT 将其合计结果归因给其中某一项。
+
+#### Scenario: 当前版本的有限重复跑次
+GIVEN 当前 HEAD 的 100 并发×2000 请求模板未变，且存储容量、运行时配置与既有跑次可核对
+WHEN 运行有限重复测量
+THEN 每次使用独立 label 与 raw 原始文件
+AND 分别报告 QPS、P50、P95、P99、成功/错误数及跨轮范围
+AND 对 TASK-139 的 P95 上升保持观察状态，除非重复数据支持更强结论
+
+#### Scenario: 旧跑次或运行环境不可比
+GIVEN 原有 dbfoot 跑次的配置/原始证据缺失，或者磁盘空间不足以容纳本次新增轨迹数据
+WHEN 准备计算前后差值或再次运行负载
+THEN 不把旧跑次塞入同组统计
+AND 不清库、不扩压测档位、不编造测量
+AND 明确列出未知信息与停止原因
+
+### Requirement: 临时提交诊断必须受控
+WHEN 为提交性能归因开启应用内诊断,
+系统 SHALL 默认关闭、不改提交行为，SHALL 对驻留内存中的诊断样本设置可验证上限。WHEN 事务回滚, 系统 SHALL NOT 把该事务计为已成功提交样本。
+
+#### Scenario: 默认关闭
+GIVEN 服务使用仓库默认配置
+WHEN 执行首次提交
+THEN 业务状态与事件语义保持不变
+AND 不持续保留每请求诊断样本
+
+#### Scenario: 有界开启
+GIVEN 诊断开关开启且重复请求超过样本上限
+WHEN 继续提交成功事务
+THEN 内存保留的计时样本数不超过已声明上限
+AND 统计口径仍标明保留窗口或聚合范围
+
+#### Scenario: 回滚与不可行插桩
+GIVEN 某次提交事务回滚或真实内层连接获取无法可靠插桩
+WHEN 生成诊断报告
+THEN 回滚事务不计入成功样本
+AND 不为凑齐指标调用私有接口或扩大业务修改范围
+AND 将无法分离的指标明确记为未覆盖
 
 ### Requirement: 提交事件异步发布
 
@@ -2974,3 +3034,4 @@ AND 下次读取回源到最新值
 - **fix-verify-outbox-poison-head-of-line**：修复取批队首被重试耗尽行堵塞造成的投递饥饿。缺陷：selectPendingBatch 按 `status='PENDING' ORDER BY id LIMIT limit` 取最早一批，relay 对 `retry_count >= maxRetry` 的行只告警并 continue，队首被耗尽行占满时后续可投递行永久不可见。修复：取批资格条件增加 `retry_count < maxRetry`，由 relay 传入其当前上限；耗尽行保留原状态与原数据供人工处理（不删除、不重置计数、不改 eventId、不重投）。反过度声称（继承 proposal 原文口径）：代码路径与 SQL 可确认此条件推导，尚无真实运行时饥饿事件或新增红测证据，实施时必须先证明；TASK-138 曾测得另一场景下 outbox PENDING 1012/SENT 998，但未证明当时存在耗尽行，不得拿它冒充本缺陷的事故证据；既有 (status,id) 索引仍可服务顺序扫描，但可能需扫描大量耗尽行，不得声称这一步改善查询耗时。引用变更 spec/changes/archive/fix-verify-outbox-poison-head-of-line/。
 - **add-verify-outbox-relay-send-concurrency**：实现 outbox relay 批内可选并发投递与分段诊断；并发投递默认关闭（relay-send-concurrency 保持 1）且串行路径与引入前等价，逐行可靠投递语义不变，锁周期与重试约束不变；并发路径未经生产验证且零已测收益，并发诊断标明线程时间聚合口径，不得据其回推墙钟结论。引用变更 spec/changes/archive/add-verify-outbox-relay-send-concurrency/。
 - **measure-head-bottleneck-attribution**：确立性能优化前必须做同一负载归因的规范约束，一次只改一类因素并用同一基线验收；在延迟、吞吐、资源与调用次数归因明确前，调用次数未降不得先调 JVM、不加索引、不改连接池，性能优化不得改变关键语义与权限、幂等、治理约束。引用变更 spec/changes/archive/measure-head-bottleneck-attribution/。
+- **measure-submit-db-wait-evidence**：明确提交耗时归因必须与真实计时边界对齐，纠正历史混合段直接推算池等待与 fsync 的证据等级；同一负载重复结果须保留波动与可比边界，单次观察不宣称收益归因已证实；临时提交诊断必须受控且默认关闭，回滚不记成功样本。引用变更 spec/changes/archive/measure-submit-db-wait-evidence/。
