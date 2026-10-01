@@ -148,6 +148,7 @@ M3 overall => PASS       反证支检查（三比值全 <=1.0）=> NO
 3. **M3 漂移说明与收敛**：TASK-168 因 A 对照臂宿主 CPU 竞争下 MySQL 单行 fsync 翻倍导致 M3（45.31%）失效。本轮 A 臂 `T_proc` 为 23.35 / 18.21 / 16.64（RSD 14.76%），仍可见单调下行趋势但已收敛到门内；同期共变量：`sports_java = 4` 恒定、`nonsports_java` 2→0、CPU 5%~46% 波动、第三方容器 `gsproj_mysql_measure`/`gsproj_redis_measure` 部分时段在跑、负载 QPS 149~182 波动。**不对机理做外推**。
 4. **替换轮未动用**（六轮无一 M4 红）；预热轮 2 个按预算全用。
 5. **执行侧偏差登记（非任务书缺陷）**：Windows PTY 会在交互式写盘时把 LF 变 CRLF，故落盘脚本统一做 `\r\n → \n` 归一；`application.yml` 的插入块从 spec.md **现场提取**（我手工重敲的一版把 `≥ 1.5` 写成 `≥1.5`，比对发现后改用现场提取，保证逐字一致）。上述均为执行工具链问题，未触及被测代码/参数。
+   另记一处**硬约束留痕（1 例）**：收口核对阶段有一条命令误把中文串写入 `grep` 命令行，该命令因变量展开错误**未成功执行**（rc≠0、无输出落盘），随后改用 PowerShell 侧核对；除该例外，全程命令行仅含 ASCII，中文字面量一律经 UTF-8 文件 / stdin 通道落盘。
 6. 任务书 §6 的「零注入裸起」与「核 `markBatchCalls`/`T_proc`」互斥（诊断默认关闭），处置见 §7.4 口径说明，未放宽任何门。
 
 ## 9. 未覆盖项与不得推出的结论
@@ -168,3 +169,20 @@ M3 overall => PASS       反证支检查（三比值全 <=1.0）=> NO
 - 验收记录：`work/mailbox/PLAN.md`（纯追加 TASK-169 节；20 个受保护 token 只增不减）。
 - 落地件：`verify-service/src/main/resources/application.yml`（纯新增 4 行）、`verify-service/src/test/java/com/sportverify/verify/config/VerifyOutboxRelayBatchMarkDefaultTest.java`（新增）、`verify-service/src/test/java/com/sportverify/verify/config/VerifyOutboxRelayBatchMarkConfigTest.java`（授权翻转用例 2）。
 - 原始物料（gitignored，`docs/perf/data/raw/task169-*`）：每轮 `-verify.log` / `-verify.crlf.txt` / `-diaglines.txt` / `-record.log` / `-c100-summary.json` / `-c100-raw.csv` / `-stats.txt` / `-hikari-peak.txt` / `-round.txt`（label ∈ {W0,W1,A1,B1,A2,B2,A3,B3,C,Cd}）、`-cmdline.txt`（进程命令行）、`task169-m0-docker.txt`、`task169-g2-jarsha.txt`、`task169-g2-package.log`、`task169-g2-stack.txt`、`task169-g3-jarsha.txt`、`task169-g3-package.log`、`task169-g3-package.rc`、`task169-diag-summary.txt`、`task169-wording-*.txt`、`task169-contract-{noarg,open}.txt`、`task169-conflict-probe.log`、`task169-close-offline.log`、`task169-close-docker.txt`。
+
+## 11. 收尾清理与复跑（收口终检）
+
+- **标准清理**：`run-perf.sh stop-services` 停四个 Java 服务；实测 `java.exe` 总数 = 0、sports java = 0；5 个演示容器保持 `Up (healthy)`；`task131-scratch-mysql` 与演示库零触碰（仅新增运行期记录）。台账 `raw/task169-close-docker.txt`。
+- **offline 复跑**：`bash scripts/verify/mvn-verify.sh --mode=offline test` → **rc=0、BUILD SUCCESS**，七模块 **36/41/33/103/140/59/10**、Skipped 全 0（verify-service **140** ⇒ 证落地生效）；留档 `raw/task169-close-offline.log`。
+- **确认轮 jar 重建**：`--mode=offline package` → rc=0、BUILD SUCCESS（`raw/task169-g3-package.log`），jar sha256 由 `af966f4e…` 变为 `240149fc171d63958630674a69c3ee529af49f805540f3937a9c9a375ea1ec70`。
+- **契约门**：开工无参 rc=1（预期，仅 spec 无 handoff）、`--open TASK-169 --baseline=77cc8862…` rc=0；收口后无参 **rc=0**（`两件套齐（含 0 个待办进行中）+ 判据 B 清单一致`，`raw/task169-contract-closure.txt`）。
+- **空白门**：落地前 `git diff --check` rc=0；提交后 `git show --check` 两笔均干净。
+- **词面门（落地后复跑）**：正则自 ci.yml 现场提取，四形态（原样 / `LC_ALL=C` / `zh_CN.UTF-8` / `C.UTF-8`）全 **ZERO_HIT rc=1**，正向探针 rc=0（163 个 tracked 文件参与扫描）；留档 `raw/task169-close-wording-*.txt`。
+- **提交**（逐路径 add；全程无 `git add -A` / `git add .`、无 `git stash`、无 push、无 PR）：
+  - **C1** `1d0edd5` = 落地件（`application.yml` numstat 4/0 + 新增绑定测试类 76/0 + 授权翻转既有用例 16/6）；
+  - **C2** `1b3200e` = 报告 + 机器摘要 + `work/mailbox/PLAN.md` + TASK-169 两件套；
+  - **C3** = 本 §11 收尾回填（仅 `work/mailbox/tasks/TASK-169/handoff.md`）。
+- **改动集**：`git diff --name-only 77cc8862a270a1dd0fbcc8d73601d63694a8a291` 恰 **8 路径**（`raw/task169-close-diffpaths.txt`），与 §3 只改清单逐条一致。
+- **起点与终态计数**：开工 `git rev-list --left-right --count origin/main...main = 0 1`；本任务 3 笔（C1/C2/C3）＋既有 `77cc8862` ⇒ 收口 **`0 4`**（**未 push**）。
+- **外部门槛**：**未达外部门槛**（本任务不 push；待下次显式授权由 CI 复验 online verify 与词面门）。
+- **收口后仓库态**：`git status --porcelain` 仅剩既有脏项 `?? spec/changes/add-verify-degrade-status-index/`（开工即存在，零触碰）。
