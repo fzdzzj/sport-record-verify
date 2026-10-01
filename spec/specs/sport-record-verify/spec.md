@@ -53,6 +53,7 @@
 - measure-verify-event-stage-lag（判定与榜单事件分段归因与积压分账）
 - measure-verify-mark-sent-admin-window（同窗聚合读数须与实际 relay 负载计数闭合）
 - measure-verify-mark-sent-spring-paired-cost（markSent 配对成本先经隔离真库判别）
+- measure-verify-outbox-relay-cost（relay 可选诊断语义保持与成本双口径）
 
 各提案的 spec-delta 中 ADDED 需求已全部合并进本规范，MODIFIED 需求按规则处理（见「服务划分」分组与「变更历史」）。
 清单外合法例外（2 项）：add-microservice-skeleton（主规格由其落地生成，属基线生成而非并入）；add-sharding-host-parameterization（TASK-115 冲突停手未并入，后由 add-sharding-host-env-override 以独立 ADDED 并入，本目录仅作历史存档）。archive 目录集合减去本头部清单恰为该 2 项。
@@ -1435,6 +1436,44 @@ GIVEN 工作树存在归属不明的未跟踪测试文件
 WHEN 开展新的成本测量前
 THEN 系统 SHALL 先在仅含已提交基线的隔离检出上重跑唯一入口 offline 测试与 TASK-148 条件式真库 IT，确认其不依赖该未跟踪文件
 AND 不能复现时 SHALL 判为证据缺口并停止新测量，不把编译红、环境红或跳过当作行为红
+
+### Requirement: relay 可选诊断不得改变可靠投递语义
+WHEN `verify.outbox.relay` 诊断开关开启,
+系统 SHALL 以有界、低基数的批次摘要提供取批、发送、标记与失败处理的耗时和结果，同时 SHALL 保持默认关闭及原来的取批、锁、eventId、SENT、重试和异常传播语义。
+
+#### Scenario: 成功批与失败行
+GIVEN 一个包含成功与发送失败事件的合格批次，且诊断已开启
+WHEN relay 投递该批次
+THEN 摘要 SHALL 提供所选/成功/失败行数与各同步环节的非负墙钟时间
+AND 成功行 SHALL 原样发送 eventId 并标 SENT
+AND 失败行 SHALL 按既有规则递增 retry_count
+AND 摘要 SHALL NOT 输出 payload、eventId、用户标识或密钥
+
+#### Scenario: 空轮、竞争与诊断关闭
+GIVEN relay 正常调度，可能读到空批或拿不到锁
+WHEN 诊断开启或关闭
+THEN 空轮/竞争 SHALL 以有界频率记录或汇总，不能形成每事件无限日志
+AND 诊断关闭时 SHALL 不输出批次诊断日志或引入额外 DB/MQ 调用
+AND 原有中断、异常、锁释放路径 SHALL 保持不变
+
+### Requirement: relay 成本结论必须保留周期与事件两种口径
+WHEN 对 relay 间隔及批内工作作性能归因,
+系统 SHALL 在同一 jar、同一诊断开关下，以真实周期的单调时钟数据及同 run 事件配对数据分别记录周期构成、有限突发积压、可靠投递与资源状态，SHALL NOT 从不同分位数做逐请求占比或从有限突发外推持续吞吐。
+
+#### Scenario: 周期成本闭合
+GIVEN 诊断已开启且观测到非空批次
+WHEN 汇总每个周期的取批、发送、标记、失败处理和锁持有耗时
+THEN 报告 SHALL 核查各段与总时长是否闭合，并把未覆盖的残差单列
+AND SHALL 将 `syncSend` 记为混合墙钟而非纯 MQ 网络耗时
+AND SHALL 将 Mapper 耗时记为混合墙钟而非纯 SQL 执行耗时
+
+#### Scenario: 资源缺测与有限突发
+GIVEN A=5000ms、B=500ms 的至多两轮同 jar 诊断负载，或一轮提前停止
+WHEN 决定是否更改运行默认值
+THEN 报告 SHALL 分别记载提交/事件关联、可投递及耗尽积压、资源可观测范围、失败与配对缺口
+AND SHALL 将采不到的资源标记未知，将失败轮保留为实际样本
+AND SHALL 保持 `relay-interval-ms=5000` 默认值不变
+AND SHALL NOT 宣称两轮证明可复现的延迟收益、稳定吞吐或榜单端到端完成
 
 ### Requirement: 提交事件异步发布
 
@@ -3205,3 +3244,4 @@ AND 下次读取回源到最新值
 - **measure-verify-event-stage-lag**：规范校验判定与事件分段积压归因，判定与榜单事件分段归因须有可关联样本；可投递与重试耗尽待人工 outbox 积压必须分开记账，不得用总 PENDING 冒充活跃积压；一次负载的环境与覆盖边界必须可复核，单次受控归因不实施优化、不修改默认参数，不将分段诊断结果宣称为上线提速。引用变更 spec/changes/archive/measure-verify-event-stage-lag/。
 - **measure-verify-mark-sent-admin-window**：规范管理员窗口预检与同窗聚合测量纪律，负载测量前必须证实提权与构建产物；同窗聚合读数须与实际 relay 负载计数闭合，仅当 digest 唯一、无干扰且计数完全配平时报告比值，单轮聚合归因不构成生产提速依据。引用变更 spec/changes/archive/measure-verify-mark-sent-admin-window/。
 - **measure-verify-mark-sent-spring-paired-cost**：规范 markSent 外层与下层同调用逐次配对的隔离真库判别方法；GO 仅表示在专用 scratch 真库与 Spring 注入真实 Mapper 受限切片中小样本同调用分账可重复且语义不变，不授权 SQL 批量化，不改生产配置与默认值。引用变更 spec/changes/archive/measure-verify-mark-sent-spring-paired-cost/。
+- **measure-verify-outbox-relay-cost**：引入 relay 可选诊断与成本双口径测量规范，其 ADDED 需求为三深 MODIFIED 链的链基；诊断默认关闭且不得改变可靠投递语义，relay 成本结论必须保留周期与事件两种口径；本项仅测量不推出默认值变更，有限轮次数据不宣称可复现收益，不修改 5000ms 默认值。引用变更 spec/changes/archive/measure-verify-outbox-relay-cost/。
