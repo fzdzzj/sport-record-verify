@@ -47,6 +47,7 @@
 - adopt-native-mq-retry（消费重试与死信改走 RocketMQ 原生）
 - fix-verify-outbox-poison-head-of-line（修复重试耗尽行占满取批队首、令后续可投递事件永久不可见的投递饥饿）
 - add-verify-outbox-relay-send-concurrency（outbox relay 批内可选并发投递，默认关闭且串行路径等价）
+- measure-head-bottleneck-attribution（优化前先做同负载归因，一次只改一类因素）
 
 各提案的 spec-delta 中 ADDED 需求已全部合并进本规范，MODIFIED 需求按规则处理（见「服务划分」分组与「变更历史」）。
 清单外合法例外（2 项）：add-microservice-skeleton（主规格由其落地生成，属基线生成而非并入）；add-sharding-host-parameterization（TASK-115 冲突停手未并入，后由 add-sharding-host-env-override 以独立 ADDED 并入，本目录仅作历史存档）。archive 目录集合减去本头部清单恰为该 2 项。
@@ -1142,6 +1143,72 @@ GIVEN 并发数为 2 且各线程的发送与标记段聚合和超过锁内墙�
 WHEN 计算摘要残差
 THEN 摘要如实给出负的 residualMs
 AND 不钳成 0 伪装成未归因的墙钟剩余量
+
+### Requirement: 优化前先做同一负载归因
+
+WHEN 准备优化已有性能路径,
+系统 SHALL 先使用优化前后可重复的同一负载记录延迟、吞吐和资源占用,
+并 SHALL 把主要耗时归入业务规则、数据库、远程调用、锁、CPU 或 GC 之一。
+
+#### Scenario: 没有归因不得开始优化
+
+GIVEN 只有一次延迟或吞吐结果，或只有旧环境压测报告
+WHEN 不能说明当前 HEAD 上主要耗时属于哪一类因素
+THEN 不得开始代码或参数优化
+AND 先补同一负载下的归因证据
+
+#### Scenario: 旧报告不得冒充当前 HEAD
+
+GIVEN docs/perf 中存在更早环境的 QPS 或 P95
+WHEN 编写当前 HEAD 的归因结论
+THEN 必须标明那些数字来自旧报告
+AND 不得把它们写成当前 HEAD 的实测值
+
+#### Scenario: 只选择占比最高的一类
+
+GIVEN 同一负载已经给出各类耗时占比或调用次数
+WHEN 选择本次优化对象
+THEN 只选择占比最高的一类
+AND 不在同一次变更中混合修改其他类别
+
+### Requirement: 一次只改一类因素并用同一基线验收
+
+WHEN 实施一次性能优化,
+系统 SHALL 只修改本次归因选中的一类因素,
+并 SHALL 用优化前同一负载、样本和并发档复测。
+
+#### Scenario: 指标没有改善就回到度量
+
+GIVEN 已完成一次单因素改动
+WHEN 同一基线复测显示目标指标没有改善
+THEN 停止继续叠加参数或无关改动
+AND 重新度量瓶颈
+
+#### Scenario: 调用次数未降不得先调 JVM
+
+GIVEN 主要耗时来自 SQL、HTTP 或事务范围
+WHEN 这些调用次数或事务范围尚未下降
+THEN 不得把 JVM、堆或 GC 参数调整作为本次优化
+AND 先减少调用或缩短事务
+
+#### Scenario: 本轮度量不实施优化
+
+GIVEN 当前变更的目标是产出 HEAD 归因表
+WHEN 已经选出占比最高的一类因素
+THEN 只记录该类因素与下一步假设
+AND 不在本变更中修改业务代码、索引、连接池或 JVM 参数
+
+### Requirement: 性能优化不得改变关键语义
+
+WHEN 为性能修改业务路径,
+系统 SHALL 保持金额、库存、权限、幂等和治理凭证的既有语义。
+
+#### Scenario: 拒绝以变快为理由改变准入
+
+GIVEN 一次优化可以减少远程调用或事务时间
+WHEN 该改动会改变权限判定、幂等结果或治理凭证校验
+THEN 不采用该改动
+AND 另找不改变这些语义的方案
 
 ### Requirement: 提交事件异步发布
 
@@ -2906,3 +2973,4 @@ AND 下次读取回源到最新值
 - **adopt-native-mq-retry**：消费重试与死信改走 RocketMQ 原生。消费者以客户端参数 maxReconsumeTimes=3 声明重试上限（连同首次共最多消费 4 次），失败由 broker 按退避重投；超次消息进入该消费组内建死信队列 %DLQ%<consumerGroup>，不再向自建死信 topic record-verify-events-dlq 投递；业务代码不自建重试计数键、不读不写任何自建重试键。合并口径（delta L3-L7 原文提示）：本 delta 的 MODIFIED 按目标态整段书写、已包含 wire-verify-outbox 对同一需求（校验事件与幂等）的修改，两变更先后并入得到同一终态，建议先并入 wire-verify-outbox 以避免中间态引用尚不存在的需求；本轮即按此顺序执行。引用变更 spec/changes/archive/adopt-native-mq-retry/。
 - **fix-verify-outbox-poison-head-of-line**：修复取批队首被重试耗尽行堵塞造成的投递饥饿。缺陷：selectPendingBatch 按 `status='PENDING' ORDER BY id LIMIT limit` 取最早一批，relay 对 `retry_count >= maxRetry` 的行只告警并 continue，队首被耗尽行占满时后续可投递行永久不可见。修复：取批资格条件增加 `retry_count < maxRetry`，由 relay 传入其当前上限；耗尽行保留原状态与原数据供人工处理（不删除、不重置计数、不改 eventId、不重投）。反过度声称（继承 proposal 原文口径）：代码路径与 SQL 可确认此条件推导，尚无真实运行时饥饿事件或新增红测证据，实施时必须先证明；TASK-138 曾测得另一场景下 outbox PENDING 1012/SENT 998，但未证明当时存在耗尽行，不得拿它冒充本缺陷的事故证据；既有 (status,id) 索引仍可服务顺序扫描，但可能需扫描大量耗尽行，不得声称这一步改善查询耗时。引用变更 spec/changes/archive/fix-verify-outbox-poison-head-of-line/。
 - **add-verify-outbox-relay-send-concurrency**：实现 outbox relay 批内可选并发投递与分段诊断；并发投递默认关闭（relay-send-concurrency 保持 1）且串行路径与引入前等价，逐行可靠投递语义不变，锁周期与重试约束不变；并发路径未经生产验证且零已测收益，并发诊断标明线程时间聚合口径，不得据其回推墙钟结论。引用变更 spec/changes/archive/add-verify-outbox-relay-send-concurrency/。
+- **measure-head-bottleneck-attribution**：确立性能优化前必须做同一负载归因的规范约束，一次只改一类因素并用同一基线验收；在延迟、吞吐、资源与调用次数归因明确前，调用次数未降不得先调 JVM、不加索引、不改连接池，性能优化不得改变关键语义与权限、幂等、治理约束。引用变更 spec/changes/archive/measure-head-bottleneck-attribution/。
