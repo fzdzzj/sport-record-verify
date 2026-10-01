@@ -54,6 +54,7 @@
 - measure-verify-mark-sent-admin-window（同窗聚合读数须与实际 relay 负载计数闭合）
 - measure-verify-mark-sent-spring-paired-cost（markSent 配对成本先经隔离真库判别）
 - measure-verify-outbox-relay-cost（relay 可选诊断语义保持与成本双口径）
+- measure-verify-outbox-mark-sent-cost（markSent 计时边界不重计不漏计）
 
 各提案的 spec-delta 中 ADDED 需求已全部合并进本规范，MODIFIED 需求按规则处理（见「服务划分」分组与「变更历史」）。
 清单外合法例外（2 项）：add-microservice-skeleton（主规格由其落地生成，属基线生成而非并入）；add-sharding-host-parameterization（TASK-115 冲突停手未并入，后由 add-sharding-host-env-override 以独立 ADDED 并入，本目录仅作历史存档）。archive 目录集合减去本头部清单恰为该 2 项。
@@ -1438,23 +1439,31 @@ THEN 系统 SHALL 先在仅含已提交基线的隔离检出上重跑唯一入�
 AND 不能复现时 SHALL 判为证据缺口并停止新测量，不把编译红、环境红或跳过当作行为红
 
 ### Requirement: relay 可选诊断不得改变可靠投递语义
-WHEN `verify.outbox.relay` 诊断开关开启,
-系统 SHALL 以有界、低基数的批次摘要提供取批、发送、标记与失败处理的耗时和结果，同时 SHALL 保持默认关闭及原来的取批、锁、eventId、SENT、重试和异常传播语义。
+WHEN `verify.outbox` relay 诊断开关开启,
+系统 SHALL 以有界、低基数的批次摘要提供取批、发送、标记与失败处理的真实计时边界，同时 SHALL 保持默认关闭及原来的取批、锁、eventId、SENT、重试、异常传播与锁释放语义；关闭时 SHALL 不产生额外 DB/MQ 调用或逐事件诊断日志。
 
-#### Scenario: 成功批与失败行
-GIVEN 一个包含成功与发送失败事件的合格批次，且诊断已开启
-WHEN relay 投递该批次
-THEN 摘要 SHALL 提供所选/成功/失败行数与各同步环节的非负墙钟时间
-AND 成功行 SHALL 原样发送 eventId 并标 SENT
-AND 失败行 SHALL 按既有规则递增 retry_count
-AND 摘要 SHALL NOT 输出 payload、eventId、用户标识或密钥
+#### Scenario: 发送失败与标记失败不可重计
+GIVEN 一批含成功行及 `syncSend` 或 `markSent` 抛错的行
+WHEN relay 执行同一行的发送、标记和失败处理
+THEN 每次调用实际经过的阶段 SHALL 只累计该阶段发生的墙钟一次
+AND `markSent` 抛错前已成功的发送 SHALL NOT 被再次计入发送时间
+AND 无法完成的标记 SHALL NOT 记作成功标记
+AND 原有的失败递增和异常传播行为 SHALL 不变
+AND 摘要 SHALL 不包含 eventId、payload、用户标识、SQL 参数或密钥
 
-#### Scenario: 空轮、竞争与诊断关闭
+#### Scenario: 完整占锁与处理段区分
+GIVEN relay 拿到防重锁并完成一轮投递
+WHEN 诊断报告锁内处理时长或完整占锁时长
+THEN 锁内处理时长 SHALL 明示其截点是否包含摘要输出与解锁
+AND 只有实际在解锁之后取终点的计时 SHALL 称为完整占锁时长
+AND 任一成功、空批或异常路径 SHALL 保持原锁释放行为
+
+#### Scenario: 空轮、竞争与默认关闭
 GIVEN relay 正常调度，可能读到空批或拿不到锁
 WHEN 诊断开启或关闭
-THEN 空轮/竞争 SHALL 以有界频率记录或汇总，不能形成每事件无限日志
-AND 诊断关闭时 SHALL 不输出批次诊断日志或引入额外 DB/MQ 调用
-AND 原有中断、异常、锁释放路径 SHALL 保持不变
+THEN 空轮和竞争 SHALL 以有界频率汇总
+AND 关闭时 SHALL 不输出诊断日志、不调用额外 DB/MQ
+AND 中断、异常与 finally 路径 SHALL 维持原来的投递语义
 
 ### Requirement: relay 成本结论必须保留周期与事件两种口径
 WHEN 对 relay 间隔及批内工作作性能归因,
@@ -1474,6 +1483,30 @@ THEN 报告 SHALL 分别记载提交/事件关联、可投递及耗尽积压、�
 AND SHALL 将采不到的资源标记未知，将失败轮保留为实际样本
 AND SHALL 保持 `relay-interval-ms=5000` 默认值不变
 AND SHALL NOT 宣称两轮证明可复现的延迟收益、稳定吞吐或榜单端到端完成
+
+### Requirement: markSent 归因以同一次调用的嵌套证据为准
+WHEN 对逐行 `markSent` 成本作归因,
+系统 SHALL 将 Mapper 调用、可安全观测的客户端下层操作及剩余墙钟按同一次调用/同一批次配对、低基数有界汇总；未观测层 SHALL 明记未知，不得以独立分位数相减、全局累计值或有限突发净速率冒充纯 SQL、纯连接池排队、纯 fsync 或持续吞吐结论。
+
+#### Scenario: 成功路径有可配对读数
+GIVEN 诊断开启且安全插桩已通过测试
+WHEN `markSent` 成功更新一行
+THEN 报告 SHALL 给出实际覆盖的每层边界、配对样本数、同批合计及未覆盖残差
+AND 任何连接获取或 JDBC 读数 SHALL 按客户端混合墙钟命名
+AND 原有 UPDATE SQL、事务、状态及 eventId SHALL 不变
+
+#### Scenario: 插桩无效或资源缺测
+GIVEN 下层计时无法与 relay 调用可靠配对、插桩影响语义或外部资源采集缺失
+WHEN 形成 TASK-146 结论
+THEN 系统 SHALL 停止有风险的插桩或负载，将对应构成记为未知并说明验证缺口
+AND SHALL NOT 为满足结论而额外补跑、改写批次/间隔/索引/SQL/池/JVM/MQ 默认值
+
+#### Scenario: 单轮有限突发
+GIVEN test/package 通过、环境健康、同 jar/参数可确认且预算尚未使用
+WHEN 执行唯一一轮默认间隔 5000ms、c100×2000 的诊断负载
+THEN 报告 SHALL 分账同 run 可投递/耗尽待人工积压、成功/失败/重试与可用资源
+AND SHALL 将该轮标成测量而非与 TASK-145 的同版本优化前后对照
+AND SHALL NOT 外推到榜单端到端或持续负载收益
 
 ### Requirement: 提交事件异步发布
 
@@ -3245,3 +3278,4 @@ AND 下次读取回源到最新值
 - **measure-verify-mark-sent-admin-window**：规范管理员窗口预检与同窗聚合测量纪律，负载测量前必须证实提权与构建产物；同窗聚合读数须与实际 relay 负载计数闭合，仅当 digest 唯一、无干扰且计数完全配平时报告比值，单轮聚合归因不构成生产提速依据。引用变更 spec/changes/archive/measure-verify-mark-sent-admin-window/。
 - **measure-verify-mark-sent-spring-paired-cost**：规范 markSent 外层与下层同调用逐次配对的隔离真库判别方法；GO 仅表示在专用 scratch 真库与 Spring 注入真实 Mapper 受限切片中小样本同调用分账可重复且语义不变，不授权 SQL 批量化，不改生产配置与默认值。引用变更 spec/changes/archive/measure-verify-mark-sent-spring-paired-cost/。
 - **measure-verify-outbox-relay-cost**：引入 relay 可选诊断与成本双口径测量规范，其 ADDED 需求为三深 MODIFIED 链的链基；诊断默认关闭且不得改变可靠投递语义，relay 成本结论必须保留周期与事件两种口径；本项仅测量不推出默认值变更，有限轮次数据不宣称可复现收益，不修改 5000ms 默认值。引用变更 spec/changes/archive/measure-verify-outbox-relay-cost/。
+- **measure-verify-outbox-mark-sent-cost**：规范 markSent 嵌套计时与归因边界，按三深链链序第二位将其 MODIFIED 需求替换 measure-verify-outbox-relay-cost 的 ADDED 需求文本；markSent 归因以同一次调用的嵌套证据为准，发送与标记计时互不重复；仅测量与修正诊断，不实施优化、不改生产默认值。引用变更 spec/changes/archive/measure-verify-outbox-mark-sent-cost/。
