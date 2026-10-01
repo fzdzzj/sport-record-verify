@@ -1,0 +1,41 @@
+{
+  "task": "TASK-168",
+  "title": "有界分块标记 SENT 对 outbox relay 锁内吞吐的判别",
+  "verdict": "UNDETERMINED",
+  "landed": false,
+  "code_changes": 0,
+  "jar": {
+    "ab": "8FE7D6EFADAD9E4722567BF078D9B359F6EAA9C3AFCFD35C9EC01D5356BF831D",
+    "note": "single verify-service jar used across A/B arms (no swap)"
+  },
+  "arms": {
+    "A": "--verify.outbox.relay-diagnostics-enabled=true --verify.outbox.relay-batch-mark-enabled=false",
+    "B": "--verify.outbox.relay-diagnostics-enabled=true --verify.outbox.relay-batch-mark-enabled=true --verify.outbox.relay-batch-mark-chunk-size=25"
+  },
+  "interval_ms": 500,
+  "send_concurrency": 1,
+  "chunk_size": 25,
+  "load": "100x2000 (plus 10 warmup requests => cohort 2010 rows/round)",
+  "rounds": {
+    "A1":  {"arm": "A", "batches": 36, "rows": 2010, "sum_lockProcessingMs": 32899, "sum_markMs": 24715, "sum_sendMs": 7542, "T_proc_ms": 16.367662, "T_mark_ms": 12.296, "R_lock_rows_s": 61.10, "markBatchCalls": 0, "markBatchRows": 0, "cs_delta": 20251, "cu_delta": 4020},
+    "B1":  {"arm": "B", "batches": 38, "rows": 2010, "sum_lockProcessingMs": 16051, "sum_markMs": 6307,  "sum_sendMs": 8496, "T_proc_ms": 7.985572,  "T_mark_ms": 3.1378, "R_lock_rows_s": 125.23, "markBatchCalls": 97, "markBatchRows": 2010, "cs_delta": 20111, "cu_delta": 2107},
+    "A2b": {"arm": "A", "batches": 30, "rows": 2010, "sum_lockProcessingMs": 52174, "sum_markMs": 42536, "sum_sendMs": 9017, "T_proc_ms": 25.957214, "T_mark_ms": 21.1622, "R_lock_rows_s": 38.52, "markBatchCalls": 0, "markBatchRows": 0, "cs_delta": 22382, "cu_delta": 4020, "note": "replacement for A2 (M4-red harness drain bug)"},
+    "B2":  {"arm": "B", "batches": 33, "rows": 2010, "sum_lockProcessingMs": 11222, "sum_markMs": 3532,  "sum_sendMs": 6871, "T_proc_ms": 5.583085,  "T_mark_ms": 1.7572, "R_lock_rows_s": 179.11, "markBatchCalls": 91, "markBatchRows": 2010, "cs_delta": 19504, "cu_delta": 2101},
+    "W0":  {"arm": "A", "batches": 35, "rows": 2010, "T_proc_ms": 14.6368, "T_mark_ms": 10.7761, "discarded": true},
+    "W1":  {"arm": "B", "discarded": true, "note": "200x small-sample warmup; verify path hit transient Feign read timeouts, discarded"},
+    "A2":  {"arm": "A", "valid": false, "note": "first A2 run aborted early by harness drain-wait bug; M4 red (cohort 405/2010, 618 left PENDING); occupies budget"}
+  },
+  "gates": {
+    "M0": {"docker": true, "five_containers_healthy": true, "max_connections": 151, "threads_connected_pre": 1, "threads_connected_post": 22, "margin_ge_30": true},
+    "M1": {"A_no_batchmark": true, "A_no_markBatchCalls": true, "A_per_row_logs": true, "B_batchmark_rows_log": true, "B_markBatchCalls_gt_0": true, "B_markBatchRows_eq_total_rows": true, "B_per_row_logs_zero": true},
+    "M2_1": {"value": 2.0497, "threshold": 1.5, "pass": true},
+    "M2_2": {"value": 4.6493, "threshold": 1.5, "pass": true},
+    "M3": {"value_pct": 45.31, "threshold_pct": 20, "pass": false},
+    "B_repeatability_pct": {"value": 35.41, "disclosed_threshold_pct": 25},
+    "M4": {"ok": 2000, "errors": 0, "limited429": 0, "cohort_rows": 2010, "cohort_sent": 2010, "cohort_marksent": 2010, "retry_gt0": 0, "exhausted": 0, "dup_eventid": 0, "reconsume_later": 0, "relay_fail_lines": 0, "lock_abnormal": 0, "batchmark_partial_warn": 0, "batchmark_exception": 0, "final_pending": 0},
+    "M5": {"cs_BA_1": 0.9931, "cs_BA_2": 0.8713, "cs_range_ok": true, "cu_BA_1": 0.5241, "cu_BA_2": 0.5226, "cu_le_0.65": true},
+    "M6": {"hikari_timeout_total_delta": 0, "active_max": 10, "pending_max": [19, 19, 16, 18]}
+  },
+  "confirmation_round_C": {"run": false, "reason": "not landing branch (M3 fail)"},
+  "covariates": {"started": "2026-10-01T16:45+08:00", "ended": "2026-10-01T17:09+08:00", "nonsports_java": [2,2,2,0], "load_qps": {"A1": 137.07, "B1": 71.01, "A2b": 94.05, "B2": 74.56}, "note": "monotone host slowdown; third-party containers gsproj_mysql_measure/gsproj_redis_measure active"}
+}
