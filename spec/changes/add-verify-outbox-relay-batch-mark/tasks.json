@@ -1,0 +1,106 @@
+[
+  {
+    "number": 1,
+    "category": "规格授权与在途三件套",
+    "task": "建立在途三件套，显式有界授权分块标记四项语义变化，默认关闭",
+    "steps": [
+      {
+        "step": "创建 proposal.md、specs/sport-record-verify/spec-delta.md 与 tasks.json，包含 ADDED Requirement relay 可选有界分块标记 SENT 与默认关闭等价性",
+        "completed": true
+      },
+      {
+        "step": "显式引用 TASK-153 NO-GO 及其 §4 停止条件，说明授权来自产品决策（用户 2026-09-30 原话都允许），登记三条去重无法消除的运维代价，严禁出现任何性能收益数字",
+        "completed": true
+      }
+    ],
+    "passes": true
+  },
+  {
+    "number": 2,
+    "category": "生产代码默认关闭实现",
+    "task": "Mapper 纯新增 markSentBatch，Relay 增加两键与局部累积分块标记，关闭路径逐字等价",
+    "steps": [
+      {
+        "step": "VerifyEventOutboxMapper 纯新增 markSentBatch 方法，使用 @Update + <script> + <foreach> 参数化绑定，既有三个方法与 SQL 一字不改",
+        "completed": true
+      },
+      {
+        "step": "VerifyOutboxRelay 新增 relay-batch-mark-enabled:false 与 relay-batch-mark-chunk-size:25，非法配置钳位告警，关闭路径逐字等价，开启路径 worker 局部列表按 chunk 刷出，异常逐 id incrRetry 且不外逃，诊断纯追加分量",
+        "completed": true
+      }
+    ],
+    "passes": true
+  },
+  {
+    "number": 3,
+    "category": "单元测试与配置测试",
+    "task": "新增 VerifyOutboxRelayBatchMarkTest 与 VerifyOutboxRelayBatchMarkConfigTest，保护件全绿",
+    "steps": [
+      {
+        "step": "新增纯 JUnit 5 VerifyOutboxRelayBatchMarkConfigTest，断言两键 @Value 默认字面、断言 application.yml 不含新键、断言根键唯一性、断言 relay-interval-ms=500 保持",
+        "completed": true
+      },
+      {
+        "step": "新增纯 JUnit 5 + Mockito VerifyOutboxRelayBatchMarkTest 覆盖全部 10 个用例（关闭零调用、100 行 4 块、107 行 5 块、发送失败不入 chunk、耗尽行不入 chunk、部分命中 WARN、异常补偿 incrRetry、非法钳位告警、并发 4 worker 集合不重不漏、诊断分量）",
+        "completed": true
+      },
+      {
+        "step": "验证保护件 VerifyOutboxRelayTest(19)、VerifyOutboxRelayConcurrencyTest(10)、VerifyEventOutboxMapperSqlContractTest(1) numstat 为空且全绿",
+        "completed": true
+      }
+    ],
+    "passes": true
+  },
+  {
+    "number": 4,
+    "category": "隔离 scratch 真库 IT",
+    "task": "新增 VerifyEventOutboxBatchMarkMapperMysqlIT，环境缺失 Assumptions skip 留档",
+    "steps": [
+      {
+        "step": "新增 VerifyEventOutboxBatchMarkMapperMysqlIT 覆盖条件幂等、部分命中、sent_at 同值非空、资格交互过滤、自动提交一致性、复裁 TASK-153 最强反例",
+        "completed": true
+      },
+      {
+        "step": "环境无 TASK165_IT_URL/USER/PASSWORD 时 Assumptions skip 留档（Tests run: 6, Skipped: 6，退出码 0，不冒充通过，记真库未覆盖）",
+        "completed": true
+      }
+    ],
+    "passes": true
+  },
+  {
+    "number": 5,
+    "category": "生产默认值与性能判别（未授权 / 未触发）",
+    "task": "application.yml 改动、合并 delta、跑性能负载与开启生产开关——本轮未授权，全部不执行",
+    "steps": [
+      {
+        "step": "修改 application.yml 将 relay-batch-mark-enabled 置为 true（未授权，不执行）",
+        "completed": false
+      },
+      {
+        "step": "合并 delta 进主规格（未授权，不执行）",
+        "completed": false
+      },
+      {
+        "step": "启动四服务与中间件进行 c100x2000 负载排空测量（未授权，不执行）",
+        "completed": false
+      }
+    ],
+    "passes": false
+  },
+  {
+    "number": 6,
+    "category": "台账与收尾交回",
+    "task": "PLAN 纯追加、handoff 六项交回、G0-G12 逐门实测留档",
+    "steps": [
+      {
+        "step": "PLAN.md 纯追加验收记录（17 受保护 token 计数不减、外部门槛栏、反例触碰说明）",
+        "completed": true
+      },
+      {
+        "step": "完成 handoff.md 六项交回物，G0-G12 全量门槛实测退出码与读数原文留档",
+        "completed": true
+      }
+    ],
+    "passes": true
+  }
+]
