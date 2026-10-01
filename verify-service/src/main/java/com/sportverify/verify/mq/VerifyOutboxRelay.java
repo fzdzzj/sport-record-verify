@@ -186,7 +186,7 @@ public class VerifyOutboxRelay {
                 // 串行路径：与引入前逐字等价（sendConcurrency==1 时不创建任何线程池对象）
                 if (batch.isEmpty() || sendConcurrency == 1) {
                     for (VerifyEventOutbox row : batch) {
-                        processRow(row, diagEnabled, totals);
+                        sendRow(row, diagEnabled, totals);
                     }
                 } else {
                     deliverConcurrently(batch, sendConcurrency,
@@ -312,28 +312,33 @@ public class VerifyOutboxRelay {
     }
 
     /**
-     * 单行处理体：仅关闭态（relay-batch-mark-enabled=false，默认）的串行与
-     * 并发路径共用；开启分块标记态改走 {@link #sendAndCollect}，两者的
-     * 发送/耗尽/incrRetry 语义必须同步维护，存在漂移风险.
+     * 统一的单行处理体：串行与并发、逐行标记与分块标记四条投递路径共用的唯一实现，
+     * 逐行可靠投递语义只有一份，不存在漂移.
      *
-     * <p>逐行不变式：先恰好一次 {@code syncSend}，成功后恰好一次 {@code markSent}；
-     * {@code syncSend} 抛错恰好一次 {@code incrRetry} 后跳过本行；{@code markSent}
-     * 抛错同样恰好一次 {@code incrRetry}；耗尽行不投递不标记仅告警；eventId 永不
-     * 重新生成、topic/tag/payload/traceId 原样透传.原 for 循环体的语句顺序、条件、
-     * 日志文本与异常处理逐字保持，仅 continue 语义由 return 表达.</p>
+     * <p>三段落结构：① 耗尽行防御性拦截；② 发送段；③ 标记段.逐行不变式：先恰好
+     * 一次 {@code syncSend}，发送失败恰好一次 {@code incrRetry} 后跳过本行；标记段
+     * {@code pendingIds == null} 时成功后恰好一次 {@code markSent}、抛错恰好一次
+     * {@code incrRetry}，否则成功行 id 累积到 {@code pendingIds} 且满 {@code chunkSize}
+     * 调 {@code flushBatchMark}；耗尽行不投递不标记仅告警；eventId 永不重新生成、
+     * topic/tag/payload/traceId 原样透传.</p>
      *
      * @param row         本行 outbox 数据（原样透传给生产者与 Mapper）
+     * @param chunkSize   分块标记 chunk 大小（逐行标记模式下忽略）
+     * @param pendingIds  分块标记局部待标记 id 列表（逐行标记模式传 {@code null}）
      * @param diagEnabled 诊断开关（关闭时不做任何 nanoTime 采样）
-     * @param totals      本轮累计器（串行为主线程直用，并发为 worker 局部实例）
+     * @param totals      累计器（串行为主线程直用，并发为 worker 局部实例）
      */
-    private void processRow(final VerifyEventOutbox row, final boolean diagEnabled,
-                            final RelayTotals totals) {
+    private void sendRow(final VerifyEventOutbox row, final int chunkSize,
+                         final List<Long> pendingIds, final boolean diagEnabled,
+                         final RelayTotals totals) {
         // 防御性兜底：取批 SQL 已按当前上限过滤耗尽行；仅当运行中上限被下调等极端情况下
         // 本批仍可能含新耗尽行，此时保留行、不投递不计数。
         if (row.getRetryCount() != null && row.getRetryCount() >= maxRetry) {
             totals.exhausted++;
-            log.error("outbox 事件超过最大重试次数，保留行供人工处理：id={}, eventId={}, topic={}, tag={}, retryCount={}",
-                    row.getId(), row.getEventId(), row.getTopic(), row.getTag(), row.getRetryCount());
+            log.error("outbox 事件超过最大重试次数，保留行供人工处理："
+                    + "id={}, eventId={}, topic={}, tag={}, retryCount={}",
+                    row.getId(), row.getEventId(), row.getTopic(),
+                    row.getTag(), row.getRetryCount());
             return;
         }
         // 发送段：本行实际经过的发送墙钟只累计一次（成功失败都只记这一段，不在失败分支重算）
@@ -353,36 +358,58 @@ public class VerifyOutboxRelay {
             totals.failed++;
             log.warn("outbox 事件投递失败，下轮重试：id={}, eventId={}, retryCount={}",
                     row.getId(), row.getEventId(),
-                    row.getRetryCount() == null ? 1 : row.getRetryCount() + 1, e);
+                    row.getRetryCount() == null ? 1
+                            : row.getRetryCount() + 1, e);
             return;
         }
         if (diagEnabled) {
             totals.sendNanos += System.nanoTime() - sendStart;
         }
-        // 标记段：标记成功/失败尝试各自只累计本段墙钟一次，不与发送段互相重复归集
-        long markStart = diagEnabled ? System.nanoTime() : 0L;
-        try {
-            outboxMapper.markSent(row.getId());
-            if (diagEnabled) {
-                totals.markNanos += System.nanoTime() - markStart;
+        // 标记段：逐行标记模式各自累计本段墙钟一次且与发送段互不重复归集；
+        // 分块标记模式仅收集成功 id，满 chunk 才 flush。
+        if (pendingIds == null) {
+            long markStart = diagEnabled ? System.nanoTime() : 0L;
+            try {
+                outboxMapper.markSent(row.getId());
+                if (diagEnabled) {
+                    totals.markNanos += System.nanoTime() - markStart;
+                }
+                totals.success++;
+                log.info("outbox 事件投递成功：id={}, eventId={}, tag={}",
+                        row.getId(), row.getEventId(), row.getTag());
+            } catch (Exception e) {
+                if (diagEnabled) {
+                    totals.markNanos += System.nanoTime() - markStart;
+                }
+                long incrStart = diagEnabled ? System.nanoTime() : 0L;
+                outboxMapper.incrRetry(row.getId());
+                if (diagEnabled) {
+                    totals.incrRetryNanos += System.nanoTime() - incrStart;
+                }
+                totals.failed++;
+                log.warn("outbox 事件投递失败，下轮重试：id={}, eventId={}, retryCount={}",
+                        row.getId(), row.getEventId(),
+                        row.getRetryCount() == null ? 1
+                                : row.getRetryCount() + 1, e);
             }
-            totals.success++;
-            log.info("outbox 事件投递成功：id={}, eventId={}, tag={}",
-                    row.getId(), row.getEventId(), row.getTag());
-        } catch (Exception e) {
-            if (diagEnabled) {
-                totals.markNanos += System.nanoTime() - markStart;
-            }
-            long incrStart = diagEnabled ? System.nanoTime() : 0L;
-            outboxMapper.incrRetry(row.getId());
-            if (diagEnabled) {
-                totals.incrRetryNanos += System.nanoTime() - incrStart;
-            }
-            totals.failed++;
-            log.warn("outbox 事件投递失败，下轮重试：id={}, eventId={}, retryCount={}",
-                    row.getId(), row.getEventId(),
-                    row.getRetryCount() == null ? 1 : row.getRetryCount() + 1, e);
+            return;
         }
+        pendingIds.add(row.getId());
+        if (pendingIds.size() >= chunkSize) {
+            flushBatchMark(pendingIds, diagEnabled, totals);
+        }
+    }
+
+    /**
+     * 逐行标记模式的便捷重载：等价于 {@code sendRow(row, 0, null, diagEnabled, totals)}.
+     *
+     * @param row         本行 outbox 数据（原样透传给生产者与 Mapper）
+     * @param diagEnabled 诊断开关（关闭时不做任何 nanoTime 采样）
+     * @param totals      累计器（串行为主线程直用，并发为 worker 局部实例）
+     */
+    private void sendRow(final VerifyEventOutbox row, final boolean diagEnabled,
+                         final RelayTotals totals) {
+        sendRow(row, 0, null, diagEnabled, totals);
     }
 
     /**
@@ -449,7 +476,7 @@ public class VerifyOutboxRelay {
                           final RelayTotals totals) {
         for (VerifyEventOutbox row : shard) {
             try {
-                processRow(row, diagEnabled, totals);
+                sendRow(row, diagEnabled, totals);
             } catch (Exception e) {
                 log.warn("outbox relay 并发投递单行异常，已隔离，继续同子列表其余行："
                                 + "id={}, eventId={}",
@@ -472,59 +499,9 @@ public class VerifyOutboxRelay {
                                         final RelayTotals totals) {
         List<Long> pendingIds = new ArrayList<>(chunkSize);
         for (VerifyEventOutbox row : batch) {
-            sendAndCollect(row, chunkSize, pendingIds, diagEnabled, totals);
+            sendRow(row, chunkSize, pendingIds, diagEnabled, totals);
         }
         if (!pendingIds.isEmpty()) {
-            flushBatchMark(pendingIds, diagEnabled, totals);
-        }
-    }
-
-    /**
-     * 单行发送并收集成功 id：耗尽行保留不发，发送失败逐行 incrRetry，发送成功累积到 pendingIds.
-     *
-     * @param row         本行数据
-     * @param chunkSize   chunk 大小
-     * @param pendingIds  局部待标记 id 列表
-     * @param diagEnabled 诊断开关
-     * @param totals      累计器
-     */
-    private void sendAndCollect(final VerifyEventOutbox row,
-                                final int chunkSize,
-                                final List<Long> pendingIds,
-                                final boolean diagEnabled,
-                                final RelayTotals totals) {
-        if (row.getRetryCount() != null && row.getRetryCount() >= maxRetry) {
-            totals.exhausted++;
-            log.error("outbox 事件超过最大重试次数，保留行供人工处理："
-                    + "id={}, eventId={}, topic={}, tag={}, retryCount={}",
-                    row.getId(), row.getEventId(), row.getTopic(),
-                    row.getTag(), row.getRetryCount());
-            return;
-        }
-        long sendStart = diagEnabled ? System.nanoTime() : 0L;
-        try {
-            verifyEventProducer.syncSend(row);
-        } catch (Exception e) {
-            if (diagEnabled) {
-                totals.sendNanos += System.nanoTime() - sendStart;
-            }
-            long incrStart = diagEnabled ? System.nanoTime() : 0L;
-            outboxMapper.incrRetry(row.getId());
-            if (diagEnabled) {
-                totals.incrRetryNanos += System.nanoTime() - incrStart;
-            }
-            totals.failed++;
-            log.warn("outbox 事件投递失败，下轮重试：id={}, eventId={}, retryCount={}",
-                    row.getId(), row.getEventId(),
-                    row.getRetryCount() == null ? 1
-                            : row.getRetryCount() + 1, e);
-            return;
-        }
-        if (diagEnabled) {
-            totals.sendNanos += System.nanoTime() - sendStart;
-        }
-        pendingIds.add(row.getId());
-        if (pendingIds.size() >= chunkSize) {
             flushBatchMark(pendingIds, diagEnabled, totals);
         }
     }
@@ -652,7 +629,7 @@ public class VerifyOutboxRelay {
         List<Long> pendingIds = new ArrayList<>(chunkSize);
         for (VerifyEventOutbox row : shard) {
             try {
-                sendAndCollect(row, chunkSize, pendingIds, diagEnabled, totals);
+                sendRow(row, chunkSize, pendingIds, diagEnabled, totals);
             } catch (Exception e) {
                 log.warn("outbox relay 并发批量标记投递单行异常，已隔离，继续同子列表其余行："
                                 + "id={}, eventId={}",
