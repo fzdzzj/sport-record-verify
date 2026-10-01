@@ -1427,3 +1427,24 @@ run `35802403723`（head `eba0108`，2026-09-23 00:31 UTC）——**web/build �
 | 门禁终检 | offline 复跑 rc=0、七模块 `36/41/33/103/140/59/10`、Skipped 全 0（verify-service 137→**140**）；`stop-services` 后 sports java = 0；`docker ps -a` 留档 `raw/task169-close-docker.txt` |
 | 只改清单 | `application.yml`（纯新增）+ `VerifyOutboxRelayBatchMarkDefaultTest.java`（新增）+ `VerifyOutboxRelayBatchMarkConfigTest.java`（授权翻转）+ 判别报告 + 机器摘要 + 本文件 + TASK-169 两件套；原始物料 `docs/perf/data/raw/task169-*`（gitignored）；既有脏项 `spec/changes/add-verify-degrade-status-index/` 与 `task131-scratch-mysql` 零触碰 |
 | 外部门槛 | **未达外部门槛**（本任务不 push；待下次显式授权由 CI 复验 online verify 与词面门） |
+
+## 验收记录：TASK-170 单行投递逻辑重构（统一 processRow 与 sendAndCollect 为单一 sendRow）（2026-10-01，执行 agent，纯结构重构、零生产行为变化、闭环 TASK-166 欠账）
+
+| 项目 | 内容 |
+| --- | --- |
+| 绑定修订 | 开工基线 `037d39ab7a981383e113172d29c6a04ee50ce6d3`（`origin/main = 9050964699c8b802ae9da22980939d78b2d31bdc`，`git rev-list --left-right --count origin/main...main` = `0 1`）；任务书 SHA256 `604fe4ca299012f224b6afa754f80704e1016a542e3f17ebc501478dbf846b84` 逐位一致。分批提交：C1（生产重构 `VerifyOutboxRelay.java`）、C2（台账：PLAN.md 追加 + TASK-170 两件套），终版哈希以 `git log --oneline -1` 为准 |
+| 一句话裁决 | **完成**：`processRow` 与 `sendAndCollect` 彻底删除，统一为单一 `sendRow`（五参主方法 + 三参便捷重载），四条投递路径（串行/并发 × 逐行标记/分块标记）全部改调 `sendRow`；零生产行为变化（offline 全绿、Checkstyle 不增反降、application.yml 零触碰）；TASK-166 登记的 sendRow 统一欠账闭环 |
+| 是否实施 / 是否落地 | **重构已落地**：生产代码仅改 `verify-service/src/main/java/com/sportverify/verify/mq/VerifyOutboxRelay.java`（numstat `67 90`，1 file，762 行）；三段落语义（耗尽拦截 / 发送段 / 标记段）、日志文本、异常补偿与纳秒计时逐字保持；`application.yml` 零写入，所有开关默认值不变 |
+| 门槛来源 | 本地实跑，唯一入口 `bash scripts/verify/mvn-verify.sh`（offline 模式）+ 静态门 Checkstyle + 词面门四形态 + 契约门 |
+| 是否到达外部门槛 | **未达外部门槛（本次不 push；待下次显式授权由 CI 复验）** |
+| G0 起点核对 | HEAD/origin/rev-list 逐位一致；工作树脏项仅既有 `spec/changes/add-verify-degrade-status-index/`（零触碰）+ `work/mailbox/tasks/TASK-170/`；任务书 SHA256 逐位一致 |
+| G1 单行语义统一 | `processRow`/`sendAndCollect` 标识符零命中；`sendRow` 定义恰 2 处（主方法 + 重载，相邻满足重载声明顺序）；耗尽检查全文件恰 1 次；实际投递出口 `verifyEventProducer.syncSend(row)` 全文件恰 1 次 |
+| G2/G3 保护件与配置 | 三保护件 `VerifyOutboxRelayTest`(19)/`VerifyOutboxRelayConcurrencyTest`(10)/`VerifyOutboxRelayBatchMarkTest`(10) numstat 为空且全绿；`git diff --exit-code HEAD -- application.yml` rc=0 |
+| G4 全量 offline | 开工与收口两跑均 rc=0、`BUILD SUCCESS`、七模块 `36/41/33/103/140/59/10`、Skipped 全 0 |
+| G5 静态门 | 开工 rc=1 `You have 867 Checkstyle violations`；收口 rc=1 `You have 862 Checkstyle violations`（`862 ≤ 867`）；目标文件违规 27→22（LineLength 18→13、Javadoc 9→9），零新增 |
+| G6 词面门 | 正则现场从 ci.yml 提取（字符长 26 / 58 字节 / 7 竖线 8 分支），四形态（default / `LC_ALL=C` / `zh_CN.UTF-8` / `C.UTF-8`）全 ZERO_HIT rc=1；正向对照 rc=0 命中 |
+| G7 空白检查 | `git diff --check` rc=0（零尾随空格） |
+| G8 契约门 | 在途 `--open TASK-170 --baseline=037d39ab…` rc=0；收口后无参 `bash scripts/verify/mailbox-contract.sh` rc=0 |
+| 受保护 token | 21 个 token 在 PLAN.md 行命中数 base vs 收口无一减少（base 与任务书 §5 逐位一致：13.4=14、18.0=16、73.93=15、68.8=11、6315=12、1.8612=11、3.3066=11、5.7056=11、9.408=11、36525962432=11、36586847965=10、36438897772=11、36399582548=10、36098038547=10、2806=17、598=10、36736221648=9、36808102571=4、36821040708=2、36845152965=1、36871294588=1） |
+| 欠账闭环 | **TASK-166 登记（本文件 L1328 与 L1363②）的「后续把两份单行语义 `processRow` 与 `sendAndCollect` 统一为一个 `sendRow`」欠账在本任务闭环**：两私有方法删除、统一 `sendRow`，Javadoc 漂移告警消除 |
+| 未覆盖/后续 | ① spotbugs/pmd 未覆盖（被 checkstyle 阻断）；② `--mode=online` 与 CI 未跑 ⇒ 未达外部门槛；③ 纯结构重构，不声称任何吞吐/延迟收益、不开启任何开关、不翻案历史任务数字；④ 验证在 Git Bash 下执行（本机 WSL 发行版磁盘丢失，见 TASK-170 handoff §7 工具链偏差登记） |
