@@ -34,7 +34,7 @@
 - **G3 生产配置零改动**：`git diff --exit-code HEAD -- application.yml` rc=0。
 - **G4 全量 offline 测试门**：`bash scripts/verify/mvn-verify.sh --mode=offline test` 退出码 0，`BUILD SUCCESS`，七模块 **36/41/33/103/140/59/10**（common/gateway/user/record/verify/leaderboard/mapmatch），`Failures: 0, Errors: 0, Skipped: 0` 逐模块成立。
 - **G5 静态代码门**：`--mode=offline --static=verify-service` 退出码 1（预期形态），`You have 862 Checkstyle violations` ⇒ `862 ≤ 867`；目标文件 `VerifyOutboxRelay.java` 违规数 **27→22**（LineLength 18→13，Javadoc 9→9 未变），**零新增违规**。
-- **G6 词面门**：正则现场从 `.github/workflows/ci.yml`（`Public docs wording self-check` 行）提取（`面试|弹药|大厂|八股|简历|求职|突击|附录 ?A`，字符长 26 / UTF-8 58 字节 / 7 竖线 8 分支），四形态（default / `LC_ALL=C` / `zh_CN.UTF-8` / `C.UTF-8`）**全 ZERO_HIT rc=1**；正向对照（对 ci.yml 自身跑该正则）rc=0 命中。
+- **G6 词面门**：正则现场从 `.github/workflows/ci.yml`（`Public docs wording self-check` 行）提取（8 个分支、26 字符 / 58 UTF-8 字节、7 条竖线；**本文件不复述该正则原文**，否则自触该门槛），四形态（default / `LC_ALL=C` / `zh_CN.UTF-8` / `C.UTF-8`）**全 ZERO_HIT rc=1**；正向对照（对 ci.yml 自身跑该正则）rc=0 命中。
 - **G7 空白检查门**：`git diff --check` rc=0（零尾随空格）。
 - **G8 契约门与台账**：在途 `bash scripts/verify/mailbox-contract.sh --open TASK-170 --baseline=037d39ab7a981383e113172d29c6a04ee50ce6d3` rc=0（判据 A 两件套 + 判据 B 清单一致）；收口后无参 `bash scripts/verify/mailbox-contract.sh` rc=0（见 §9）。PLAN.md 追加本任务验收记录并闭环 TASK-166 欠账，21 个受保护 token 计数无一减少（见 §8）。
 
