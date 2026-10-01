@@ -57,6 +57,7 @@
 - measure-verify-outbox-mark-sent-cost（markSent 计时边界不重计不漏计）
 - prove-verify-outbox-mark-sent-attribution（markSent 内部测量先经隔离真实装配证明）
 - prove-verify-mark-sent-wait-attribution（markSent 等待归因先证单线程计数对应）
+- prove-verify-outbox-batch-mark-safety（批末标记候选先证可靠投递语义）
 
 各提案的 spec-delta 中 ADDED 需求已全部合并进本规范，MODIFIED 需求按规则处理（见「服务划分」分组与「变更历史」）。
 清单外合法例外（2 项）：add-microservice-skeleton（主规格由其落地生成，属基线生成而非并入）；add-sharding-host-parameterization（TASK-115 冲突停手未并入，后由 add-sharding-host-env-override 以独立 ADDED 并入，本目录仅作历史存档）。archive 目录集合减去本头部清单恰为该 2 项。
@@ -1556,6 +1557,38 @@ GIVEN 目标语句身份、线程映射、重复样本与负对照均闭合
 WHEN 形成受限 GO
 THEN 作业 MAY 另立同负载归因提案，但本任务 SHALL NOT 改业务代码、SQL、索引、池、JVM、MQ 或运行默认值
 AND SHALL NOT 把 TASK-152 的单轮 73.9% 当作可回收收益或据此实施批量标记
+
+### Requirement: 批末标记候选须先证明可靠投递语义
+WHEN 逐行 `markSent` 的数据库语句事件成本引出减少调用次数的候选,
+系统 SHALL 在生产行为改变前以真实 SQL 与现行规范对照发送、标记、失败与重扫边界；消费者幂等不能自动视为扩大重复投递窗口的授权。
+
+#### Scenario: 成功发送后进程中断
+GIVEN 第一条事件已同步发送、第二条尚未发送或批末尚未标记
+WHEN 处理进程中断并在下轮重扫
+THEN 判别实验 SHALL 分别记录现行逐行标记和候选批末标记的数据库状态、额外重复投递行数与原 eventId
+AND 若差异未经规范授权 SHALL 判 NO-GO，不实施生产批量更新
+
+#### Scenario: 部分成功与失败
+GIVEN 一批同时包含发送成功、发送失败与达到重试上限的事件
+WHEN 候选尝试聚合标记或数据库更新部分失败
+THEN 判别实验 SHALL 检查各行 `status`、`retry_count`、影响行数、`sent_at` 与下轮资格
+AND SHALL NOT 将失败发送行错误标 SENT、丢弃事件或假设单条成功等于整批成功
+
+### Requirement: 语义判别与性能验收须分开
+WHEN 只在隔离 scratch MySQL 上比较逐行与批末标记,
+系统 SHALL 将结果限定为候选语义 GO/NO-GO；SHALL NOT 把 TASK-152 单轮服务端事件占比推导为批量化吞吐收益。
+
+#### Scenario: 有未授权差异
+GIVEN 真库或既有规范证明更长的 PENDING/重复投递窗口、延迟的 SENT 可见性或改变的 `sent_at` 无法保持
+WHEN 形成裁决
+THEN 系统 SHALL 报告最小反例并保留现行逐行生产路径
+AND SHALL NOT 为凑性能结论启动演示负载、修改生产 Mapper/relay 或运行默认值
+
+#### Scenario: 未发现差异
+GIVEN 既有可靠投递、状态、重试、eventId、锁与时间语义均由可复现证据保持
+WHEN 形成 GO 裁决
+THEN GO 仅授权另立单因素同负载性能提案
+AND SHALL NOT 在本任务中声称已优化 P99/吞吐或改动运行默认值
 
 ### Requirement: 提交事件异步发布
 
@@ -3330,3 +3363,4 @@ AND 下次读取回源到最新值
 - **measure-verify-outbox-mark-sent-cost**：规范 markSent 嵌套计时与归因边界，按三深链链序第二位将其 MODIFIED 需求替换 measure-verify-outbox-relay-cost 的 ADDED 需求文本；markSent 归因以同一次调用的嵌套证据为准，发送与标记计时互不重复；仅测量与修正诊断，不实施优化、不改生产默认值。引用变更 spec/changes/archive/measure-verify-outbox-mark-sent-cost/。
 - **prove-verify-outbox-mark-sent-attribution**：规范 markSent 内部测量的隔离真实装配证明，为三深链终态，本条目写入时主规格该题文本即其 delta MODIFIED 块；有限突发与采样峰值不得冒充已完成归因；仅证明受限装配下同调用配对测量办法可行，不等于生产插桩已安全、不等于瓶颈已定位，不改生产默认值。引用变更 spec/changes/archive/prove-verify-outbox-mark-sent-attribution/。
 - **prove-verify-mark-sent-wait-attribution**：规范 markSent 内部等待归因的单线程计数验证判据；先证实线程、digest 与实际 UPDATE 增量的身份闭合再讨论线程级等待；受限 GO 仅证实单线程计数对应，不等于内部等待已归因，不等于性能收益，不改生产参数与默认值。引用变更 spec/changes/archive/prove-verify-mark-sent-wait-attribution/。
+- **prove-verify-outbox-batch-mark-safety**：建立批末标记候选的可靠投递语义判别标准，坚持语义判别与性能验收分开；默认 NO-GO，若候选使既有可靠投递或可见性产生未经授权变化则坚决否决；测试仅回答语义可行性，即使 GO 也不表示已提速，不实施生产批量化优化。引用变更 spec/changes/archive/prove-verify-outbox-batch-mark-safety/。
