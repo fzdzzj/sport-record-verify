@@ -1,41 +1,66 @@
 {
-  "task": "TASK-168",
-  "title": "有界分块标记 SENT 对 outbox relay 锁内吞吐的判别",
-  "verdict": "UNDETERMINED",
-  "landed": false,
-  "code_changes": 0,
+  "task": "TASK-169",
+  "title": "分块标记稳态判别与最终落地（平抑 M3 漂移）",
+  "verdict": "LANDED",
+  "landed": true,
+  "code_changes": 3,
+  "code_change_paths": [
+    "verify-service/src/main/resources/application.yml",
+    "verify-service/src/test/java/com/sportverify/verify/config/VerifyOutboxRelayBatchMarkDefaultTest.java",
+    "verify-service/src/test/java/com/sportverify/verify/config/VerifyOutboxRelayBatchMarkConfigTest.java"
+  ],
+  "code_change_notes": {
+    "application.yml": "pure addition of verify.outbox.relay-batch-mark-enabled: true; git diff --numstat = 4 0; ^verify: and ^spring: root keys exactly 1 each; total lines 196 -> 200",
+    "VerifyOutboxRelayBatchMarkDefaultTest.java": "new pure JUnit 5 binding test, 3 cases, zero container dependency",
+    "VerifyOutboxRelayBatchMarkConfigTest.java": "existing case 2 flipped (assert yml declares the key = true, chunk-size still absent) under explicit guide authorization; cases 1/3/4 untouched"
+  },
   "jar": {
-    "ab": "8FE7D6EFADAD9E4722567BF078D9B359F6EAA9C3AFCFD35C9EC01D5356BF831D",
-    "note": "single verify-service jar used across A/B arms (no swap)"
+    "pre_landing_ab": "af966f4ec14e9d85680275c613c4772e97fce64b56e3e6170d07bc9be10aec28",
+    "post_landing_confirmation": "240149fc171d63958630674a69c3ee529af49f805540f3937a9c9a375ea1ec70",
+    "note": "A/B arms used one and the same pre-landing jar (no swap); confirmation rounds C/Cd used the rebuilt post-landing jar"
   },
   "arms": {
     "A": "--verify.outbox.relay-diagnostics-enabled=true --verify.outbox.relay-batch-mark-enabled=false",
-    "B": "--verify.outbox.relay-diagnostics-enabled=true --verify.outbox.relay-batch-mark-enabled=true --verify.outbox.relay-batch-mark-chunk-size=25"
+    "B": "--verify.outbox.relay-diagnostics-enabled=true --verify.outbox.relay-batch-mark-enabled=true --verify.outbox.relay-batch-mark-chunk-size=25",
+    "C": "(no command-line injection at all; batch-mark comes from application.yml default)",
+    "Cd": "--verify.outbox.relay-diagnostics-enabled=true (diagnostics-only; batch-mark still from application.yml default)"
   },
   "interval_ms": 500,
   "send_concurrency": 1,
   "chunk_size": 25,
-  "load": "100x2000 (plus 10 warmup requests => cohort 2010 rows/round)",
+  "load": "100x2000 per counting round (plus 10 warmup requests => cohort 2010 rows/round); W1 warmup 100x200",
   "rounds": {
-    "A1":  {"arm": "A", "batches": 36, "rows": 2010, "sum_lockProcessingMs": 32899, "sum_markMs": 24715, "sum_sendMs": 7542, "T_proc_ms": 16.367662, "T_mark_ms": 12.296, "R_lock_rows_s": 61.10, "markBatchCalls": 0, "markBatchRows": 0, "cs_delta": 20251, "cu_delta": 4020},
-    "B1":  {"arm": "B", "batches": 38, "rows": 2010, "sum_lockProcessingMs": 16051, "sum_markMs": 6307,  "sum_sendMs": 8496, "T_proc_ms": 7.985572,  "T_mark_ms": 3.1378, "R_lock_rows_s": 125.23, "markBatchCalls": 97, "markBatchRows": 2010, "cs_delta": 20111, "cu_delta": 2107},
-    "A2b": {"arm": "A", "batches": 30, "rows": 2010, "sum_lockProcessingMs": 52174, "sum_markMs": 42536, "sum_sendMs": 9017, "T_proc_ms": 25.957214, "T_mark_ms": 21.1622, "R_lock_rows_s": 38.52, "markBatchCalls": 0, "markBatchRows": 0, "cs_delta": 22382, "cu_delta": 4020, "note": "replacement for A2 (M4-red harness drain bug)"},
-    "B2":  {"arm": "B", "batches": 33, "rows": 2010, "sum_lockProcessingMs": 11222, "sum_markMs": 3532,  "sum_sendMs": 6871, "T_proc_ms": 5.583085,  "T_mark_ms": 1.7572, "R_lock_rows_s": 179.11, "markBatchCalls": 91, "markBatchRows": 2010, "cs_delta": 19504, "cu_delta": 2101},
-    "W0":  {"arm": "A", "batches": 35, "rows": 2010, "T_proc_ms": 14.6368, "T_mark_ms": 10.7761, "discarded": true},
-    "W1":  {"arm": "B", "discarded": true, "note": "200x small-sample warmup; verify path hit transient Feign read timeouts, discarded"},
-    "A2":  {"arm": "A", "valid": false, "note": "first A2 run aborted early by harness drain-wait bug; M4 red (cohort 405/2010, 618 left PENDING); occupies budget"}
+    "A1": {"arm": "A", "batches": 33, "rows": 2010, "sum_lockProcessingMs": 46924, "sum_markMs": 41325, "sum_sendMs": 5124, "T_proc_ms": 23.345274, "T_mark_ms": 20.5597, "R_lock_rows_s": 42.84, "markBatchCalls": 0, "markBatchRows": 0, "cs_delta": 20318, "cu_delta": 4020},
+    "B1": {"arm": "B", "batches": 33, "rows": 2010, "sum_lockProcessingMs": 7636, "sum_markMs": 2795, "sum_sendMs": 4227, "T_proc_ms": 3.799005, "T_mark_ms": 1.3905, "R_lock_rows_s": 263.23, "markBatchCalls": 90, "markBatchRows": 2010, "cs_delta": 18352, "cu_delta": 2100},
+    "A2": {"arm": "A", "batches": 32, "rows": 2010, "sum_lockProcessingMs": 36594, "sum_markMs": 31247, "sum_sendMs": 4926, "T_proc_ms": 18.205970, "T_mark_ms": 15.5458, "R_lock_rows_s": 54.93, "markBatchCalls": 0, "markBatchRows": 0, "cs_delta": 20310, "cu_delta": 4020},
+    "B2": {"arm": "B", "batches": 41, "rows": 2010, "sum_lockProcessingMs": 8749, "sum_markMs": 3334, "sum_sendMs": 4757, "T_proc_ms": 4.352736, "T_mark_ms": 1.6587, "R_lock_rows_s": 229.74, "markBatchCalls": 97, "markBatchRows": 2010, "cs_delta": 18364, "cu_delta": 2107},
+    "A3": {"arm": "A", "batches": 32, "rows": 2010, "sum_lockProcessingMs": 33448, "sum_markMs": 27805, "sum_sendMs": 5219, "T_proc_ms": 16.640796, "T_mark_ms": 13.8333, "R_lock_rows_s": 60.09, "markBatchCalls": 0, "markBatchRows": 0, "cs_delta": 20307, "cu_delta": 4020},
+    "B3": {"arm": "B", "batches": 36, "rows": 2010, "sum_lockProcessingMs": 7637, "sum_markMs": 2924, "sum_sendMs": 4143, "T_proc_ms": 3.799502, "T_mark_ms": 1.4547, "R_lock_rows_s": 263.19, "markBatchCalls": 93, "markBatchRows": 2010, "cs_delta": 18362, "cu_delta": 2103},
+    "W0": {"arm": "A", "batches": 35, "rows": 2010, "sum_lockProcessingMs": 35805, "sum_markMs": 30093, "sum_sendMs": 5131, "T_proc_ms": 17.8134, "T_mark_ms": 14.9716, "R_lock_rows_s": 56.14, "markBatchCalls": 0, "markBatchRows": 0, "discarded": true},
+    "W1": {"arm": "B", "batches": 4, "rows": 210, "sum_lockProcessingMs": 954, "sum_markMs": 227, "sum_sendMs": 640, "T_proc_ms": 4.5429, "T_mark_ms": 1.0810, "R_lock_rows_s": 220.13, "markBatchCalls": 10, "markBatchRows": 210, "discarded": true},
+    "C": {"arm": "C", "injection": "none", "ok": 2000, "errors": 0, "limited429": 0, "batchmark_success_lines": 103, "per_row_logs": 0, "cohort_rows": 2010, "cohort_sent": 2010, "final_pending": 0, "cs_delta": 18414, "cu_delta": 2113, "hikari_timeout_total_delta": 0, "hikari_active_max": 10, "hikari_pending_max": 23, "note": "proves the landed yml default activates batch marking"},
+    "Cd": {"arm": "D", "batches": 40, "rows": 2010, "sum_lockProcessingMs": 8713, "sum_markMs": 2915, "sum_sendMs": 4038, "T_proc_ms": 4.334826, "T_mark_ms": 1.4502, "R_lock_rows_s": 230.69, "markBatchCalls": 96, "markBatchRows": 2010, "diag_lines_with_markBatchCalls": 40, "cs_delta": 18363, "cu_delta": 2106, "hikari_timeout_total_delta": 0, "hikari_active_max": 10, "hikari_pending_max": 19}
   },
   "gates": {
     "M0": {"docker": true, "five_containers_healthy": true, "max_connections": 151, "threads_connected_pre": 1, "threads_connected_post": 22, "margin_ge_30": true},
-    "M1": {"A_no_batchmark": true, "A_no_markBatchCalls": true, "A_per_row_logs": true, "B_batchmark_rows_log": true, "B_markBatchCalls_gt_0": true, "B_markBatchRows_eq_total_rows": true, "B_per_row_logs_zero": true},
-    "M2_1": {"value": 2.0497, "threshold": 1.5, "pass": true},
-    "M2_2": {"value": 4.6493, "threshold": 1.5, "pass": true},
-    "M3": {"value_pct": 45.31, "threshold_pct": 20, "pass": false},
-    "B_repeatability_pct": {"value": 35.41, "disclosed_threshold_pct": 25},
-    "M4": {"ok": 2000, "errors": 0, "limited429": 0, "cohort_rows": 2010, "cohort_sent": 2010, "cohort_marksent": 2010, "retry_gt0": 0, "exhausted": 0, "dup_eventid": 0, "reconsume_later": 0, "relay_fail_lines": 0, "lock_abnormal": 0, "batchmark_partial_warn": 0, "batchmark_exception": 0, "final_pending": 0},
-    "M5": {"cs_BA_1": 0.9931, "cs_BA_2": 0.8713, "cs_range_ok": true, "cu_BA_1": 0.5241, "cu_BA_2": 0.5226, "cu_le_0.65": true},
-    "M6": {"hikari_timeout_total_delta": 0, "active_max": 10, "pending_max": [19, 19, 16, 18]}
+    "M1": {"all_rounds": true, "A_no_batchmark": true, "A_no_markBatchCalls": true, "A_per_row_logs": 2010, "B_batchmark_rows_log": true, "B_markBatchCalls_gt_0": true, "B_markBatchRows_eq_total_rows": 2010, "B_per_row_logs_zero": true},
+    "M2_mean": {"value": 4.8691, "threshold": 1.5, "pass": true},
+    "M2_pairs": {"pair1": 6.1451, "pair2": 4.1826, "pair3": 4.3797, "pairs_ge_1.5": 3, "need": 2, "pass": true},
+    "M3": {"rsd_A_pct": 14.76, "clause1_threshold_pct": 20, "clause1_pass": true, "stable_pair": "A2A3", "stable_pair_spread_pct": 8.98, "clause2_pass": true, "pass": true},
+    "B_repeatability_pct": {"value": 6.55, "disclosed_threshold_pct": 25, "pass": true},
+    "M4": {"ok": 2000, "errors": 0, "limited429": 0, "cohort_rows": 2010, "cohort_sent": 2010, "cohort_marksent": 2010, "retry_gt0": 0, "exhausted": 0, "dup_eventid": 0, "reconsume_later": 0, "relay_fail_lines": 0, "lock_abnormal": 0, "batchmark_partial_warn": 0, "batchmark_exception": 0, "final_pending": 0, "all_six_rounds_pass": true},
+    "M5": {"cs_BA_1": 0.9032, "cs_BA_2": 0.9042, "cs_BA_3": 0.9042, "cs_range_ok": true, "cu_BA_1": 0.5224, "cu_BA_2": 0.5241, "cu_BA_3": 0.5231, "cu_le_0.65": true, "cu_A_each": 4020},
+    "M6": {"hikari_timeout_total_delta": 0, "active_max": 10, "pending_max_by_round": {"A1": 19, "B1": 15, "A2": 17, "B2": 18, "A3": 16, "B3": 17, "C": 23, "Cd": 19}}
   },
-  "confirmation_round_C": {"run": false, "reason": "not landing branch (M3 fail)"},
-  "covariates": {"started": "2026-10-01T16:45+08:00", "ended": "2026-10-01T17:09+08:00", "nonsports_java": [2,2,2,0], "load_qps": {"A1": 137.07, "B1": 71.01, "A2b": 94.05, "B2": 74.56}, "note": "monotone host slowdown; third-party containers gsproj_mysql_measure/gsproj_redis_measure active"}
+  "confirmation_rounds": {
+    "C": {"mode": "bare", "pass": true, "reason": "batch marking active via landed yml default; M4/M5/M6 pass"},
+    "Cd": {"mode": "diagnostics-only", "pass": true, "T_proc_ms": 4.334826, "ratio_vs_mean_A": 4.4748, "ratio_vs_mean_B": 0.9190, "dev_vs_mean_B_pct": 8.81, "reason": "markBatchCalls>0 measured; T_proc consistent with B arm; M4/M5/M6 pass"}
+  },
+  "offline_tests": {"modules": [36, 41, 33, 103, 140, 59, 10], "verify_service": 140, "skipped": 0, "baseline_verify_service": 137},
+  "deviations": {
+    "origin_main_sha": {"spec_value": "df4a56f6ba3a64b971a81dcff14e30018ff9f57a", "actual": "df4a56f6fcf361a0abade58ad1db0a8d74c81390", "ruling": "spec typo in trailing 32 hex chars; prefix df4a56f and the 0 1 count are self-consistent"},
+    "protected_tokens": {"note": "8 of 20 token baselines in spec are lower than measured; all 20 measured >= spec; monotone no-decrease gate satisfied"},
+    "existing_test_conflict": {"test": "VerifyOutboxRelayBatchMarkConfigTest#testClasspathApplicationYmlDoesNotContainBatchMarkKeys", "note": "spec section 6 landing conflicted with this guard assertion; guide authorized flipping it (option A)"}
+  },
+  "covariates": {"nonsports_java_by_round": {"A1": 2, "B1": 2, "A2": 2, "B2": 2, "A3": 2, "B3": 0, "C": 0, "Cd": [1, 2]}, "load_qps": {"A1": 166.39, "B1": 181.94, "A2": 170.46, "B2": 149.21, "A3": 177.81, "B3": 180.20, "C": 108.07, "Cd": 153.15}, "note": "third-party containers gsproj_mysql_measure/gsproj_redis_measure active during parts of the window"}
 }

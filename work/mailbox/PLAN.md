@@ -1410,3 +1410,20 @@ run `35802403723`（head `eba0108`，2026-09-23 00:31 UTC）——**web/build �
 | G10 空白与契约 | 第 0 步两形态：无参 rc=1（预期）、`--open TASK-168 --baseline=b5e6f85` rc=0；`git diff --check` rc=0（收口态见 handoff §10） |
 | G11 只改清单与受保护数字 | 未定支实际改动集 = 报告 + JSON + PLAN.md（本记录）+ TASK-168 两件套；`application.yml`、生产 Java/Mapper/SQL/索引/pom/scripts、既有测试、主规格 3568 行全部**零触碰**；19 个受保护 token（含 `13.4`、`18.0`、`73.93`、`68.8`、`6315`、`1.8612`、`3.3066`、`5.7056`、`9.408`、`36525962432`、`36586847965`、`36438897772`、`36399582548`、`36098038547`、`2806`、`598`、`36736221648`、`36808102571`、`36821040708`）在 PLAN.md 内计数**只增不减** |
 | 未覆盖/后续 | ① spotbugs/pmd 未覆盖（被 checkstyle 867 阻断在前）；② `--mode=online` 与 CI 未跑 ⇒ 未达外部门槛；③ **不得**把 2.0497/4.6493 或 `T_mark` 下降读作「≥1.5× 锁内吞吐收益已证明」（M3 控制门 45.31% 失效、B 臂 35.41% 离差）；④ **不得**把 Com_update 语句数≈5 折读作端到端改善；⑤ 四服务局部栈、单实例、池默认 10，无多实例竞争、无 RocketMQ 重投/端到端；⑥ 不翻案 TASK-144/162/163/164 任何数字，不得与 TASK-164 排空斜率口径并列成优化前后；⑦ 后续落地须重做判别并先解决 A 对照臂稳定性。执行侧工具链偏差（ASCII 写盘致中文 grep 模式被替换、排空等待缺陷、git-bash `/d/git/Git/bin` 在 PATH 首部破坏 `docker --format`）已在 handoff §7 登记，均属工具链、未触及被测代码 |
+## 验收记录：TASK-169 分块标记稳态判别与最终落地（2026-10-01，执行 agent，三对交错判别、落地支 GO、已落地）
+
+| 项 | 实测 |
+| --- | --- |
+| 唯一问题 | 在 TASK-168 判未定支（M3 排序控制门 45.31% 失效）基础上扩为 **3 对交错** A1→B1→A2→B2→A3→B3（各 100×2000），纳秒批次诊断口径 `T_proc = lockProcessingMs / rows` 是否稳定 ≥1.5 且过 M3 抗漂移门 |
+| 开工基线 | HEAD `77cc8862a270a1dd0fbcc8d73601d63694a8a291`；任务书 SHA256 `155a7c5eca36cfcf7f49fe1c734ca00282b5663c42d44e56b108189004aac589`（逐位核验一致）；`origin/main` 实测 `df4a56f6fcf361a0abade58ad1db0a8d74c81390`（§8 后 32 位抄录笔误，指导侧裁定无需改 spec） |
+| 前置门禁 | offline `36/41/33/103/137/59/10` rc=0；static rc=1 Checkstyle 867；词面门四形态 ZERO_HIT rc=1（正向探针 rc=0）；契约门无参 rc=1（预期）/`--open TASK-169` rc=0 |
+| 轮次与 jar | W0（A）/W1（B）预热留档丢弃；计数 A1→B1→A2→B2→A3→B3；A/B 全程同一 jar `af966f4e…aec28`（不换 jar） |
+| 核心读数 | `T_proc` A 臂 23.3453/18.2060/16.6408、B 臂 3.7990/4.3527/3.7995 ms/行；`T_mark` 由 13.83~20.56 降到 1.39~1.66 ms/行；`R_lock` 42.84~60.09 → 229.74~263.23 行/s |
+| M2 效应门 | `M2_mean = 19.397347/3.983748 = 4.8691 ≥1.5`；逐对 6.1451 / 4.1826 / 4.3797（3/3 ≥1.5，需 ≥2）⇒ 过 |
+| M3 抗漂移门 | `RSD(A) = 14.76% ≤20%`（①成立），另有平稳对 A2/A3（8.98%，②成立）；`RSD(B) = 6.55%`（仅记录）⇒ 过（TASK-168 同口径 45.31% 失效） |
+| M1/M4/M5/M6 | 六轮逐轮全过：A 臂零批量标记/零 `markBatchCalls`/逐行投递 2010；B 臂标记日志 90/97/93、`markBatchCalls>0`、`markBatchRows=2010`、逐行投递 ZERO_HIT；cohort 2010=SENT，PENDING=0，`retry_count>0`=0/耗尽=0/零重复/零 RECONSUME_LATER/零锁异常；`Com_select` B/A 0.9032/0.9042/0.9042、`Com_update` B/A 0.5224/0.5241/0.5231；hikari timeout 增量 0、`_active` 峰 10、`_pending` 峰 15~19 |
+| 落地（GO） | `application.yml` 纯新增 `relay-batch-mark-enabled: true`（numstat `4 0`、根键 1/1、196→200 行）；新增 `VerifyOutboxRelayBatchMarkDefaultTest`（3 用例）；指导侧授权翻转既有 `VerifyOutboxRelayBatchMarkConfigTest` 用例 2（numstat 16/6，用例 1/3/4 一字不动） |
+| 确认轮 | `--mode=offline package` 重建 jar `240149fc…`（原 `af966f4e…`）；C 裸起（命令行零注入）批量标记日志 103 行、M4/M5/M6 过；Cd 仅诊断注入 `markBatchCalls>0`、`T_proc = 4.3348 ms/行`、对 A 均值 `4.4748 ≥1.5`、对 B 均值偏差 8.81%、M4/M5/M6 过 |
+| 门禁终检 | offline 复跑 rc=0、七模块 `36/41/33/103/140/59/10`、Skipped 全 0（verify-service 137→**140**）；`stop-services` 后 sports java = 0；`docker ps -a` 留档 `raw/task169-close-docker.txt` |
+| 只改清单 | `application.yml`（纯新增）+ `VerifyOutboxRelayBatchMarkDefaultTest.java`（新增）+ `VerifyOutboxRelayBatchMarkConfigTest.java`（授权翻转）+ 判别报告 + 机器摘要 + 本文件 + TASK-169 两件套；原始物料 `docs/perf/data/raw/task169-*`（gitignored）；既有脏项 `spec/changes/add-verify-degrade-status-index/` 与 `task131-scratch-mysql` 零触碰 |
+| 外部门槛 | **未达外部门槛**（本任务不 push；待下次显式授权由 CI 复验 online verify 与词面门） |
