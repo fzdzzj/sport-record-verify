@@ -153,8 +153,17 @@ M3 overall（clause1 或 clause2）=> PASS      反证支检查（三比值全 <
 - **offline 复跑**：`bash scripts/verify/mvn-verify.sh --mode=offline test` → rc=0、BUILD SUCCESS，七模块 `36/41/33/103/143/59/10`、Skipped 全 0（verify-service **143** ⇒ 证落地生效）。
 - **契约门**：开工 `--open TASK-171 --baseline=898db2b0…` rc=0；收口后无参 **rc=0**（两件套齐 + 判据 B 清单一致）。
 - **受保护 token**：22 个 token 在 PLAN.md 行命中数 base vs 收口无一减少（base 与任务书 §8 逐位一致）。
-- **提交**（逐路径 add；全程无 `git add -A` / `git add .`、无 `git stash`、无 push、无 PR）：见 §12。
+- **提交**（逐路径 add；全程无 `git add -A` / `git add .`、无 `git stash`、无 push、无 PR）：
+  - **C1** `d315b97` = 落地件（`verify-service/src/main/resources/application.yml` 纯新增 `4 0` + 新增绑定测试类 `VerifyOutboxRelaySendConcurrencyDefaultTest.java`），2 files / 80 insertions；
+  - **C2** `0d0d8e2` = 报告 + 机器摘要 + `work/mailbox/PLAN.md` + TASK-171 两件套，5 files / 440 insertions；
+  - **C3** = 本 §11/§12 回填（仅 `work/mailbox/tasks/TASK-171/handoff.md`）。
+- **起点与终态计数**：开工 `git rev-list --left-right --count origin/main...main = 0 1`；本任务 C1/C2/C3 三笔 ⇒ 收口 **`0 4`**（**未 push**）。
+- **收口后仓库态**：`git status --porcelain` 仅剩既有脏项 `?? spec/changes/add-verify-degrade-status-index/`（开工即存在，零触碰）。
 
 ## 12. 提交回填
 
-（收口提交哈希见 PLAN.md 验收记录末节与 `git log --oneline`。）
+| 提交 | 内容 | 文件数 / 行数 |
+| --- | --- | --- |
+| `d315b97` | 落地件（`application.yml` 纯新增 + 绑定测试类） | 2 files / +80 |
+| `0d0d8e2` | 报告 + 机器摘要 + PLAN.md + TASK-171 两件套 | 5 files / +440 |
+| `（C3）` | 本 §11/§12 回填 | 1 file |
