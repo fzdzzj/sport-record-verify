@@ -1455,3 +1455,23 @@ run `35802403723`（head `eba0108`，2026-09-23 00:31 UTC）——**web/build �
 | --- | --- |
 | 外部门槛 | GitHub Actions run `36880083885`（HEAD `964871c17b7b9d707fa3a2b550b61a181a764db3`，trigger=push/branch=main，https://github.com/fzdzzj/sport-record-verify/actions/runs/36880083885），conclusion=`success`；`web` 17s 全绿（10 步）、`build` 2m43s 全绿（11 步流水线＋后置清理）；第 5 步 `--mode=online verify` 与第 10 步词面门全 success |
 | 覆盖确证 | 外部 CI 确证 TASK-170 单行投递重构（统一为单一 sendRow）在真实构建环境下 140 个测试用例全绿、Checkstyle ≤867（实测 862）通过、词面门通过 |
+
+## 验收记录：TASK-171 分块标记落地态之上的批内并发（N=2）稳态判别与落地（2026-10-02，执行 agent，三对交错判别、落地支 GO、已落地）
+
+| 项 | 实测 |
+| --- | --- |
+| 唯一问题 | 在 TASK-169 已落地的分块批量标记（chunk 25，单行标记 1.50 ms）与串行投递 `relay-send-concurrency=1` 生产态之上，单因素改 `relay-send-concurrency` 1→2，纳秒批次诊断口径 `T_proc = lockProcessingMs / rows` 是否稳定 ≥1.5（≤2.65 ms/行）且过 M3 抗漂移门 |
+| 开工基线 | HEAD `898db2b0c4b92e27e4fcf7eaffa752ee88352d76`；任务书 SHA256 `bd09de7b503d56d0738b8a8929fb5da7b36303d68b56b2362e8f1c10a6622fe3`（逐位核验一致）；`origin/main` 实测 `964871c17b7b9d707fa3a2b550b61a181a764db3`；`git rev-list --left-right --count origin/main...main` = `0 1` |
+| 前置门禁 | offline `36/41/33/103/140/59/10` rc=0（Skipped 全 0）；static rc=1 Checkstyle 严格 862；词面门四形态 ZERO_HIT rc=1；契约门 `--open TASK-171 --baseline=898db2b0…` rc=0 |
+| 轮次与 jar | W0（A）/W1（B）预热留档丢弃；计数 A1→B1→A2→B2→A3→B3；A/B 全程同一 jar `556e7565…b024fa`（不换 jar） |
+| 核心读数 | `T_proc` A 臂 3.5159/3.0483/6.2597、B 臂 1.9622/1.9338/2.1318 ms/行；`R_lock` 159.75~328.06 → 469.08~517.11 行/s（B 臂三轮高度一致） |
+| M2 效应门 | `M2_mean = 4.274627/2.009287 = 2.1274 ≥1.5`；逐对 1.7918 / 1.5763 / 2.9363（3/3 ≥1.5，需 ≥2）⇒ 过 |
+| M3 抗漂移门 | `RSD(A) = 33.14% > 20%`（clause ① 未达，A3 受宿主抖动上抬）；但平稳对 A1A2 展布 14.25% ≤20% 且对应 B1/B2 改善比 1.7918/1.5763 均 ≥1.5 ⇒ clause ② 成立、M3 overall PASS；`RSD(B) = 4.35% ≤25%` |
+| M1/M4/M5/M6 | 六轮逐轮全过：A 臂诊断行 `sendConcurrency=1`（35/34/37）且并发注记/线程池日志 ZERO_HIT；B 臂 `sendConcurrency=2`（35）＋并发聚合注记 35＋线程池日志 1；两臂批量标记日志正常、`markBatchRows=2010`、逐行投递 ZERO_HIT；cohort 2010=SENT，PENDING=0，`retry_count>0`=0/耗尽=0/零重复/零锁异常/零降级告警/零 worker 隔离；`Com_select` B/A=1.0008、`Com_update` B/A=1.0073（均 ∈[0.8,1.2]）；hikari timeout 增量 0、`_active` 峰 10、`_pending` 峰 13~22 |
+| 落地（GO） | `application.yml` 纯新增 `relay-send-concurrency: 2`（numstat `4 0`、根键 1/1、200→204 行）；新增 `VerifyOutboxRelaySendConcurrencyDefaultTest`（3 用例）；既有测试零改动 |
+| 确认轮 | `--mode=offline package` 重建 jar `8f0a05d0…ba4fa3`（原 `556e7565…b024fa`，BUILD SUCCESS）；C 裸起（命令行零注入）出现 INFO `outbox relay 已创建批内并发发送线程池：sendConcurrency=2`（默认生效），`ok=2000/errors=0/limited429=0`、批量标记 118 行、逐行投递 ZERO_HIT、M4/M5/M6 过（cs 18411/cu 2128/timeout 0） |
+| 门禁终检 | offline 复跑 rc=0、七模块 `36/41/33/103/143/59/10`、Skipped 全 0（verify-service 140→**143**）；`stop-services` 后 sports java=0 |
+| 只改清单 | `application.yml`（纯新增）+ `VerifyOutboxRelaySendConcurrencyDefaultTest.java`（新增）+ 判别报告 + 机器摘要 + 本文件 + TASK-171 两件套；原始物料 `docs/perf/data/raw/task171-*`（gitignored）；既有脏项 `spec/changes/add-verify-degrade-status-index/` 零触碰 |
+| 受保护 token | 22 个 token 在 PLAN.md 行命中数 base vs 收口无一减少（base 与任务书 §8 逐位一致：13.4=15、18.0=17、73.93=16、68.8=12、6315=13、1.8612=12、3.3066=12、5.7056=12、9.408=12、36525962432=12、36586847965=11、36438897772=12、36399582548=11、36098038547=11、2806=18、598=11、36736221648=10、36808102571=5、36821040708=3、36845152965=2、36871294588=2、36880083885=3） |
+| 外部门槛 | **未达外部门槛**（本任务不 push；待下次显式授权由 CI 复验 online verify 与词面门） |
+| 未覆盖/后续 | ① spotbugs/pmd 未覆盖；② `--mode=online` 与 CI 未跑；③ **不得**把 `T_proc` 改善比 2.1274 读作端到端吞吐/延迟收益；④ **不得**把 B 臂 `markMs/sendMs` 聚合和读作耗时上升（N=2 线程时间聚合口径，`residualMs` 可能为负）；⑤ 四服务局部栈、单实例、池默认 10；⑥ 不翻案 TASK-144/161/162/163/164/168/169/170 任何数字；⑦ 回滚＝删该 YAML 键或注入 `--verify.outbox.relay-send-concurrency=1` |

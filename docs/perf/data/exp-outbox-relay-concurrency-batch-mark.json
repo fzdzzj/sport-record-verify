@@ -1,0 +1,61 @@
+{
+  "task": "TASK-171",
+  "title": "分块标记落地态之上的批内并发（N=2）稳态判别与落地",
+  "verdict": "LANDED",
+  "landed": true,
+  "code_changes": 2,
+  "code_change_paths": [
+    "verify-service/src/main/resources/application.yml",
+    "verify-service/src/test/java/com/sportverify/verify/config/VerifyOutboxRelaySendConcurrencyDefaultTest.java"
+  ],
+  "code_change_notes": {
+    "application.yml": "pure addition of verify.outbox.relay-send-concurrency: 2; git diff --numstat = 4 0; ^verify: and ^spring: root keys exactly 1 each; total lines 200 -> 204",
+    "VerifyOutboxRelaySendConcurrencyDefaultTest.java": "new pure JUnit 5 binding test, 3 cases, zero container dependency"
+  },
+  "jar": {
+    "pre_landing_ab": "556e75658655aa402bdb15902925d8a2754ae9e3f9743d019c69b41ba8b024fa",
+    "post_landing_confirmation": "8f0a05d061f30949d4ca5da282f4b654b093c106e2978341cfed819e0cba4fa3",
+    "note": "A/B arms used one and the same pre-landing jar (no swap); confirmation round C used the rebuilt post-landing jar"
+  },
+  "arms": {
+    "A": "--verify.outbox.relay-diagnostics-enabled=true --verify.outbox.relay-batch-mark-enabled=true --verify.outbox.relay-batch-mark-chunk-size=25 --verify.outbox.relay-send-concurrency=1",
+    "B": "--verify.outbox.relay-diagnostics-enabled=true --verify.outbox.relay-batch-mark-enabled=true --verify.outbox.relay-batch-mark-chunk-size=25 --verify.outbox.relay-send-concurrency=2",
+    "C": "(no command-line injection at all; send-concurrency comes from application.yml default)"
+  },
+  "interval_ms": 500,
+  "batch_size": 100,
+  "chunk_size": 25,
+  "send_concurrency": {"A": 1, "B": 2},
+  "load": "100x2000 per counting round (plus 10 warmup requests => cohort 2010 rows/round); W1 warmup 100x200",
+  "rounds": {
+    "A1": {"arm": "A", "batches": 35, "rows": 2010, "sum_lockProcessingMs": 7067, "sum_markMs": 3052, "sum_sendMs": 3242, "T_proc_ms": 3.515920, "T_mark_ms": 1.5184, "R_lock_rows_s": 284.42, "markBatchCalls": 92, "markBatchRows": 2010, "cs_delta": 18352, "cu_delta": 2102},
+    "B1": {"arm": "B", "batches": 35, "rows": 2010, "sum_lockProcessingMs": 3944, "sum_markMs": 3505, "sum_sendMs": 3283, "T_proc_ms": 1.962189, "T_mark_ms": 1.7438, "R_lock_rows_s": 509.63, "markBatchCalls": 108, "markBatchRows": 2010, "cs_delta": 18373, "cu_delta": 2118},
+    "A2": {"arm": "A", "batches": 34, "rows": 2010, "sum_lockProcessingMs": 6127, "sum_markMs": 2758, "sum_sendMs": 2993, "T_proc_ms": 3.048259, "T_mark_ms": 1.3721, "R_lock_rows_s": 328.06, "markBatchCalls": 91, "markBatchRows": 2010, "cs_delta": 18349, "cu_delta": 2101},
+    "B2": {"arm": "B", "batches": 35, "rows": 2010, "sum_lockProcessingMs": 3887, "sum_markMs": 3420, "sum_sendMs": 3247, "T_proc_ms": 1.933831, "T_mark_ms": 1.7015, "R_lock_rows_s": 517.11, "markBatchCalls": 108, "markBatchRows": 2010, "cs_delta": 18371, "cu_delta": 2118},
+    "A3": {"arm": "A", "batches": 37, "rows": 2010, "sum_lockProcessingMs": 12582, "sum_markMs": 8107, "sum_sendMs": 3005, "T_proc_ms": 6.259701, "T_mark_ms": 4.0333, "R_lock_rows_s": 159.75, "markBatchCalls": 93, "markBatchRows": 2010, "cs_delta": 18367, "cu_delta": 2103},
+    "B3": {"arm": "B", "batches": 35, "rows": 2010, "sum_lockProcessingMs": 4285, "sum_markMs": 4057, "sum_sendMs": 3265, "T_proc_ms": 2.131841, "T_mark_ms": 2.0184, "R_lock_rows_s": 469.08, "markBatchCalls": 106, "markBatchRows": 2010, "cs_delta": 18369, "cu_delta": 2116},
+    "W0": {"arm": "A", "batches": 39, "rows": 2010, "sum_lockProcessingMs": 9495, "sum_markMs": 3878, "sum_sendMs": 4874, "T_proc_ms": 4.7239, "T_mark_ms": 1.9294, "R_lock_rows_s": 211.69, "markBatchCalls": 95, "markBatchRows": 2010, "discarded": true},
+    "W1": {"arm": "B", "batches": 4, "rows": 210, "sum_lockProcessingMs": 535, "sum_markMs": 272, "sum_sendMs": 597, "T_proc_ms": 2.5476, "T_mark_ms": 1.2952, "R_lock_rows_s": 392.52, "markBatchCalls": 11, "markBatchRows": 210, "discarded": true},
+    "C": {"arm": "C", "injection": "none", "ok": 2000, "errors": 0, "limited429": 0, "batchmark_success_lines": 118, "per_row_logs": 0, "cohort_rows": 2010, "cohort_sent": 2010, "final_pending": 0, "retry_gt0": 0, "exhausted": 0, "dup_eventid": 0, "lock_abnormal": 0, "batchmark_partial_warn": 0, "workerwarn_lines": 0, "cs_delta": 18411, "cu_delta": 2128, "hikari_timeout_total_delta": 0, "hikari_active_max": 10, "hikari_pending_max": 19, "note": "proves the landed yml default activates send-concurrency=2 (pool-create INFO line observed)"}
+  },
+  "gates": {
+    "M0": {"docker": true, "five_containers_healthy": true, "max_connections": 151, "threads_connected_pre": 1, "threads_connected_post": 22, "margin_ge_30": true},
+    "M1": {"all_rounds": true, "A_sendconc1_lines_eq_diag_lines": [35, 34, 37], "A_sendconc2_lines": 0, "A_conc_note": 0, "A_pool_create": 0, "B_sendconc2_lines": 35, "B_conc_note_lines": 35, "B_pool_create": 1, "both_batchmark_rows_log_gt_0": true, "both_markBatchRows_eq_total_rows": 2010, "both_per_row_logs_zero": true},
+    "M2_mean": {"value": 2.1274, "threshold": 1.5, "pass": true},
+    "M2_pairs": {"pair1": 1.7918, "pair2": 1.5763, "pair3": 2.9363, "pairs_ge_1.5": 3, "need": 2, "pass": true},
+    "M3": {"rsd_A_pct": 33.14, "clause1_threshold_pct": 20, "clause1_pass": false, "stable_pair": "A1A2", "stable_pair_spread_pct": 14.25, "clause2_pair_ratios": [1.7918, 1.5763], "clause2_pass": true, "pass": true, "note": "A2A3 spread 69.00% and A1A3 spread 56.14% both exceed 20%; clause 2 via A1A2"},
+    "B_repeatability_pct": {"value": 4.35, "disclosed_threshold_pct": 25, "pass": true},
+    "M4": {"ok": 2000, "errors": 0, "limited429": 0, "cohort_rows": 2010, "cohort_sent": 2010, "cohort_marksent": 2010, "retry_gt0": 0, "exhausted": 0, "dup_eventid": 0, "reconsume_later": 0, "relay_fail_lines": 0, "exhaust_lines": 0, "lock_abnormal": 0, "batchmark_partial_warn": 0, "batchmark_exception": 0, "workerwarn_lines": 0, "concurrency_clamp_warn": 0, "final_pending": 0, "all_six_rounds_pass": true},
+    "M5": {"cs_delta_A": [18352, 18349, 18367], "cs_delta_B": [18373, 18371, 18369], "cs_BA_ratio": 1.0008, "cs_range_ok": true, "cu_delta_A": [2102, 2101, 2103], "cu_delta_B": [2118, 2118, 2116], "cu_BA_ratio": 1.0073, "cu_range_ok": true},
+    "M6": {"hikari_timeout_total_delta": 0, "active_max": 10, "pending_max_by_round": {"A1": 22, "B1": 16, "A2": 13, "B2": 14, "A3": 20, "B3": 15, "C": 19}}
+  },
+  "confirmation_rounds": {
+    "C": {"mode": "bare", "pass": true, "send_concurrency_effective": 2, "send_concurrency_evidence": "pool-create INFO line: 'outbox relay 已创建批内并发发送线程池：sendConcurrency=2'", "reason": "send-concurrency=2 active via landed yml default; M4/M5/M6 pass"}
+  },
+  "offline_tests": {"modules": [36, 41, 33, 103, 143, 59, 10], "verify_service": 143, "skipped": 0, "baseline_verify_service": 140},
+  "deviations": {
+    "origin_main_sha": {"spec_value": "964871c17b7b9d707fa3a2b550b61a181a764db3", "note": "matches spec section 8"},
+    "protected_tokens": {"note": "22 tokens in PLAN.md must not decrease; monotone no-decrease gate satisfied"}
+  },
+  "covariates": {"java_total_by_round": {"A1": 4, "B1": 4, "A2": 4, "B2": 4, "A3": 4, "B3": 4, "C": 4}, "sports_java_by_round": {"A1": 4, "B1": 4, "A2": 4, "B2": 4, "A3": 4, "B3": 4, "C": 4}, "nonsports_java_by_round": {"A1": 0, "B1": 0, "A2": 0, "B2": 0, "A3": 0, "B3": 0, "C": 0}, "load_qps": {"A1": 211.24, "B1": 217.59, "A2": 222.18, "B2": 214.46, "A3": 200.73, "B3": 219.17, "C": 145.14}, "note": "no third-party containers active; QPS same order across arms"}
+}
