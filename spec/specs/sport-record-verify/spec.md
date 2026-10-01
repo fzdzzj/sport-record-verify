@@ -51,6 +51,7 @@
 - measure-submit-db-wait-evidence（提交耗时归因须对齐真实计时边界）
 - measure-submit-pool-capacity（池容量对照单因素与池包装关闭语义）
 - measure-verify-event-stage-lag（判定与榜单事件分段归因与积压分账）
+- measure-verify-mark-sent-admin-window（同窗聚合读数须与实际 relay 负载计数闭合）
 
 各提案的 spec-delta 中 ADDED 需求已全部合并进本规范，MODIFIED 需求按规则处理（见「服务划分」分组与「变更历史」）。
 清单外合法例外（2 项）：add-microservice-skeleton（主规格由其落地生成，属基线生成而非并入）；add-sharding-host-parameterization（TASK-115 冲突停手未并入，后由 add-sharding-host-env-override 以独立 ADDED 并入，本目录仅作历史存档）。archive 目录集合减去本头部清单恰为该 2 项。
@@ -1367,6 +1368,38 @@ GIVEN 榜单/R5 缺席，或连四服务/MQ/容量都不能满足安全门槛
 WHEN 评估本轮覆盖
 THEN 在前者仅报告具备可靠证据的局部链路并标榜单/R5 未覆盖
 AND 在后者不跑负载、只保留静态/只读证据与退出码，不编造实时吞吐
+
+### Requirement: 负载测量前必须证实提权与构建产物
+WHEN 宿主 Windows 服务占用演示 Redis 固定端口且普通权限停止失败,
+测量作业 SHALL 在任何服务中断前验证管理员服务控制权限，并用仓库统一入口补齐缺失的 verify-service jar。
+
+#### Scenario: 前置失败时零中断退出
+GIVEN 当前会话没有服务控制权限或离线 package 失败
+WHEN 作业检查测量前提
+THEN 作业 SHALL 不停止宿主服务、不启动负载、不修改服务或数据卷
+AND SHALL 即时回报而不是提交重复的未覆盖报告或将 TASK-150/151 改为通过
+
+#### Scenario: 前置满足时可逆切换
+GIVEN 当前会话已提升、jar 可用且宿主 Redis 无已知其他使用者
+WHEN 作业在受控窗口通过服务管理器临时暂停宿主 Redis 并启动既有演示容器
+THEN 作业 SHALL 记录原状态/启动类型与切换后状态
+AND 作业结束或中途失败时 SHALL 先停本轮 Java 和演示 Redis，再恢复宿主服务及 6379 原监听
+
+### Requirement: 同窗聚合读数须与实际 relay 负载计数闭合
+WHEN 真实单实例四服务和 Performance Schema 的测量前提成立,
+测量作业 SHALL 至多运行一次 c100×2000，并在同窗记录目标 UPDATE digest 事件总量与 relay 非空批次 markMs 总量。
+
+#### Scenario: 计数闭合
+GIVEN 目标 digest 唯一、已启用计时且无溢出和其他实例干扰
+WHEN cohort 投递并排空且 COUNT_STAR 增量等于成功 markSent 次数和批次成功行数
+THEN 作业 SHALL 仅报告服务端语句事件总墙钟与外层标记总墙钟的同窗聚合比值和单位/舍入边界
+AND SHALL 不从独立 P50 相减、不将聚合差额命名为池等待、网络、纯 SQL 或 fsync
+
+#### Scenario: 负载或仪器不可用
+GIVEN 服务不健康、积压不明、负载失败、digest 混杂、计数不符或恢复失败
+WHEN 作业收口
+THEN 作业 SHALL 保留实际原始证据并记不可归因，不重跑凑结论或改运行默认值
+AND SHALL 优先恢复宿主服务及本轮环境，恢复失败须置于回报首位
 
 ### Requirement: 提交事件异步发布
 
@@ -3135,3 +3168,4 @@ AND 下次读取回源到最新值
 - **measure-submit-db-wait-evidence**：明确提交耗时归因必须与真实计时边界对齐，纠正历史混合段直接推算池等待与 fsync 的证据等级；同一负载重复结果须保留波动与可比边界，单次观察不宣称收益归因已证实；临时提交诊断必须受控且默认关闭，回滚不记成功样本。引用变更 spec/changes/archive/measure-submit-db-wait-evidence/。
 - **measure-submit-pool-capacity**：规范连接池生命周期与池容量单因素对照边界，修复池包装关闭与首次建池并发交错漏关缺陷；池容量对照仅改变一个因素且保持其他参数不变，对照结果不得越级转化为生产默认值，不修改生产默认池容量，不声称延时获益。引用变更 spec/changes/archive/measure-submit-pool-capacity/。
 - **measure-verify-event-stage-lag**：规范校验判定与事件分段积压归因，判定与榜单事件分段归因须有可关联样本；可投递与重试耗尽待人工 outbox 积压必须分开记账，不得用总 PENDING 冒充活跃积压；一次负载的环境与覆盖边界必须可复核，单次受控归因不实施优化、不修改默认参数，不将分段诊断结果宣称为上线提速。引用变更 spec/changes/archive/measure-verify-event-stage-lag/。
+- **measure-verify-mark-sent-admin-window**：规范管理员窗口预检与同窗聚合测量纪律，负载测量前必须证实提权与构建产物；同窗聚合读数须与实际 relay 负载计数闭合，仅当 digest 唯一、无干扰且计数完全配平时报告比值，单轮聚合归因不构成生产提速依据。引用变更 spec/changes/archive/measure-verify-mark-sent-admin-window/。
