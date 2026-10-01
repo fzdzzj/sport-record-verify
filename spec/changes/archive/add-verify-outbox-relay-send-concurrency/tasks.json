@@ -48,5 +48,21 @@
       { "step": "三笔提交逐路径 add（C1 代码/C2 三件套/C3 台账），不 push、不建 PR、不 git stash、不 add -A；词面门三态判定 + 正向对照；git diff --check 与无参 mailbox-contract 复跑通过", "completed": true }
     ],
     "passes": true
+  },
+  {
+    "number": 6,
+    "category": "归档阶段",
+    "task": "TASK-167 将本变更的 spec-delta 需求按固定顺序逐字并入主规格并归档本目录（三深链终态/基线 MODIFIED 规则见 TASK-167 spec.md §5）",
+    "steps": [
+      {
+        "step": "delta 的 ADDED/MODIFIED 需求逐字并入 spec/specs/sport-record-verify/spec.md（EOL 归一 cmp rc=0；标题 occ=1）",
+        "completed": true
+      },
+      {
+        "step": "本目录 git mv 入 spec/changes/archive/，头部提案清单与变更历史各 +1，验收记录见 work/mailbox/PLAN.md 的 TASK-167 节",
+        "completed": true
+      }
+    ],
+    "passes": true
   }
 ]

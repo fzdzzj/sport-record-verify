@@ -46,6 +46,7 @@
 - wire-verify-outbox（判定事件事务内 outbox 与 relay 唯一投递）
 - adopt-native-mq-retry（消费重试与死信改走 RocketMQ 原生）
 - fix-verify-outbox-poison-head-of-line（修复重试耗尽行占满取批队首、令后续可投递事件永久不可见的投递饥饿）
+- add-verify-outbox-relay-send-concurrency（outbox relay 批内可选并发投递，默认关闭且串行路径等价）
 
 各提案的 spec-delta 中 ADDED 需求已全部合并进本规范，MODIFIED 需求按规则处理（见「服务划分」分组与「变更历史」）。
 清单外合法例外（2 项）：add-microservice-skeleton（主规格由其落地生成，属基线生成而非并入）；add-sharding-host-parameterization（TASK-115 冲突停手未并入，后由 add-sharding-host-env-override 以独立 ADDED 并入，本目录仅作历史存档）。archive 目录集合减去本头部清单恰为该 2 项。
@@ -1041,6 +1042,106 @@ GIVEN Nacos 配置 verify.rules.r1.speed=6.0
 WHEN 规则链读取
 THEN R1 阈值采用 6.0
 AND 其他阈值采用默认值
+
+### Requirement: outbox relay 批内并发投递默认关闭且串行路径与引入前等价
+WHEN 配置 outbox relay 的批内并发投递开关 `verify.outbox.relay-send-concurrency`,
+系统 SHALL 默认取 1（串行），取值为 1 时不创建任何线程池或线程、在锁内逐行串行处理，
+行为（取批、投递、标记、重试、耗尽行处理、异常传播、日志）SHALL 与引入本能力前的路径逐字等价；
+取值小于 1 时 SHALL 钳到 1 并告警一次，不得因配置非法导致服务启动失败；
+未设上限，但实用上界受连接池约束，未经同负载测量不得调大。
+
+#### Scenario: 默认值不创建线程
+GIVEN 未显式配置 `verify.outbox.relay-send-concurrency`
+WHEN relay 执行一轮含待投递行的投递
+THEN 不创建任何执行器服务或池线程
+AND 按 ID 顺序串行投递，逐行语义与引入前完全一致
+
+#### Scenario: 非法取值钳位告警且不抛异常
+GIVEN `verify.outbox.relay-send-concurrency` 配置为 0 或负数
+WHEN relay 启动后进入首轮投递
+THEN 生效并发数钳到 1 并打一条 WARN 告警
+AND 服务正常投递，不因配置非法抛异常或启动失败
+
+### Requirement: 并发投递不改变逐行可靠投递语义
+WHEN `verify.outbox.relay-send-concurrency` 大于 1,
+系统 SHALL 仅在已取到的批次内并行投递多行，且对每行保持既有不变式：
+先恰好一次 `syncSend`；成功后恰好一次 `markSent`；`syncSend` 抛错恰好一次
+`incrRetry` 后告警并跳过该行；`markSent` 抛错恰好一次 `incrRetry` 后告警；
+耗尽行（retry_count 达到上限）不投递、不标记、仅告警保留；
+eventId 永不重新生成，topic/tag/payload/traceId 原样透传；
+单行异常绝不逃出 worker 循环体（被捕获并告警）。
+串行与并发路径 SHALL 共用同一个单行处理实现，语义只有一份。
+
+#### Scenario: 每行发送与标记各恰好一次
+GIVEN 一批 100 条 PENDING 行且并发数为 3
+WHEN relay 取批并发投递
+THEN 每行恰好经 `syncSend` 发送一次、成功行恰好 `markSent` 一次
+AND 全部行的 id 集合与原批次 id 集合相等，不重不漏
+
+#### Scenario: 发送失败仍逐行隔离
+GIVEN 并发数大于 1 且某行 `syncSend` 抛错
+WHEN relay 投递该批
+THEN 该行恰好一次 `incrRetry`、不标 SENT
+AND 其余行继续按既有语义投递与标记，计数正确，异常不外逃
+
+#### Scenario: 标记失败仍逐行隔离
+GIVEN 并发数大于 1 且某行 `markSent` 抛错
+WHEN relay 投递该批
+THEN 该行恰好一次 `incrRetry`、不重复投递
+AND 其余行继续按既有语义投递与标记，计数正确，异常不外逃
+
+#### Scenario: 耗尽行不参与并发投递
+GIVEN 并发数大于 1 且批次中混有重试已耗尽的行
+WHEN relay 处理该批
+THEN 耗尽行不投递、不标记、仅告警保留供人工处理
+AND 其余可投递行正常投递与标记
+
+#### Scenario: 单行意外异常不废掉整个子列表
+GIVEN 并发数大于 1 且某行处理抛出意外异常（如 `incrRetry` 失败）
+WHEN worker 执行该行
+THEN 异常被 worker 循环体捕获并告警，同子列表其余行继续处理
+AND 无异常逃出 worker 破坏解锁与汇总流程
+
+### Requirement: 并发只作用于已取批次且取批锁周期不变
+WHEN relay 的批内并发数大于 1,
+系统 SHALL 仍每轮恰好一次 `selectPendingBatch(batchSize, maxRetry)`（SQL、
+`ORDER BY id`、批次上限、重试上限全部不变），并把已取到的列表按列表下标
+`i % N` 划分为 N 个互不相交、并集完整的子列表；一轮恰好提交 N 个任务并全部
+join 后才解锁（整批仍在防重锁内完成）。系统 SHALL NOT 以 `id % N` 谓词做 SQL
+分区，SHALL NOT 增加取批次数、投递尝试次数或锁持有次数。
+
+#### Scenario: 划分不触碰取批 SQL
+GIVEN 并发数为 2 且一批按 ID 顺序返回的行
+WHEN relay 切分该批并发投递
+THEN 取批查询仍只执行一次且参数与引入前一致
+AND 每个子列表内行保持 ID 相对顺序，子列表大小之和等于批次大小、id 集合互不相交
+
+#### Scenario: 锁语义不变
+GIVEN 并发数大于 1 且非空批次
+WHEN 本轮执行
+THEN 整批的投递与标记在防重锁内完成，全部任务 join 后才解锁
+AND 期间其他实例仍被互斥跳过本轮
+
+### Requirement: 并发诊断必须标明线程时间聚合口径
+WHEN 并发数大于 1 时输出批次摘要诊断,
+系统 SHALL 在摘要中输出本批生效的并发数字段 `sendConcurrency`，并在 javadoc
+与摘要日志中写明：并发下 sendMs/markMs/incrRetryMs 是各线程墙钟的聚合和
+（线程时间），不是单条时间轴上的墙钟，因此 `residualMs` 可能为负、不得读作
+「未归因的墙钟」；`lockWaitMs/selectMs/lockProcessingMs/lockHoldMs` 的主线程
+单点计时口径 SHALL 不变。
+
+#### Scenario: 并发摘要含并发数与口径说明
+GIVEN 并发数为 2、非空批次且诊断开启
+WHEN relay 输出批次摘要
+THEN 摘要含 sendConcurrency=2 与「段值为线程时间聚合、residualMs 可能为负、
+不得读作未归因墙钟」的措辞
+AND lockWaitMs/selectMs/lockProcessingMs/lockHoldMs 计时口径与引入前一致
+
+#### Scenario: 并发下 residual 如实为负而不钳零
+GIVEN 并发数为 2 且各线程的发送与标记段聚合和超过锁内墙钟
+WHEN 计算摘要残差
+THEN 摘要如实给出负的 residualMs
+AND 不钳成 0 伪装成未归因的墙钟剩余量
 
 ### Requirement: 提交事件异步发布
 
@@ -2804,3 +2905,4 @@ AND 下次读取回源到最新值
 - **wire-verify-outbox**：判定事件可靠投递（事务性 outbox）。判定/终判结果与事件待发行行（verify_db.verify_event_outbox，status=PENDING，eventId 写入时生成）同事务落库，任一步失败整体回滚；判定路径不同步直发事件，relay 为唯一投递出口（延迟上界=relay 周期，默认 5s），投递失败 retry_count+1 保留行下轮重试，超过阈值（默认 16）仅记录告警并保留行供人工处理、SHALL NOT 静默丢弃；eventId 随行保存、relay 重发沿用行内 eventId，使消费端幂等键在重试间稳定。引用变更 spec/changes/archive/wire-verify-outbox/。
 - **adopt-native-mq-retry**：消费重试与死信改走 RocketMQ 原生。消费者以客户端参数 maxReconsumeTimes=3 声明重试上限（连同首次共最多消费 4 次），失败由 broker 按退避重投；超次消息进入该消费组内建死信队列 %DLQ%<consumerGroup>，不再向自建死信 topic record-verify-events-dlq 投递；业务代码不自建重试计数键、不读不写任何自建重试键。合并口径（delta L3-L7 原文提示）：本 delta 的 MODIFIED 按目标态整段书写、已包含 wire-verify-outbox 对同一需求（校验事件与幂等）的修改，两变更先后并入得到同一终态，建议先并入 wire-verify-outbox 以避免中间态引用尚不存在的需求；本轮即按此顺序执行。引用变更 spec/changes/archive/adopt-native-mq-retry/。
 - **fix-verify-outbox-poison-head-of-line**：修复取批队首被重试耗尽行堵塞造成的投递饥饿。缺陷：selectPendingBatch 按 `status='PENDING' ORDER BY id LIMIT limit` 取最早一批，relay 对 `retry_count >= maxRetry` 的行只告警并 continue，队首被耗尽行占满时后续可投递行永久不可见。修复：取批资格条件增加 `retry_count < maxRetry`，由 relay 传入其当前上限；耗尽行保留原状态与原数据供人工处理（不删除、不重置计数、不改 eventId、不重投）。反过度声称（继承 proposal 原文口径）：代码路径与 SQL 可确认此条件推导，尚无真实运行时饥饿事件或新增红测证据，实施时必须先证明；TASK-138 曾测得另一场景下 outbox PENDING 1012/SENT 998，但未证明当时存在耗尽行，不得拿它冒充本缺陷的事故证据；既有 (status,id) 索引仍可服务顺序扫描，但可能需扫描大量耗尽行，不得声称这一步改善查询耗时。引用变更 spec/changes/archive/fix-verify-outbox-poison-head-of-line/。
+- **add-verify-outbox-relay-send-concurrency**：实现 outbox relay 批内可选并发投递与分段诊断；并发投递默认关闭（relay-send-concurrency 保持 1）且串行路径与引入前等价，逐行可靠投递语义不变，锁周期与重试约束不变；并发路径未经生产验证且零已测收益，并发诊断标明线程时间聚合口径，不得据其回推墙钟结论。引用变更 spec/changes/archive/add-verify-outbox-relay-send-concurrency/。
