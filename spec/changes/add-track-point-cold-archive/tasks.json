@@ -1,0 +1,82 @@
+[
+  {
+    "number": 1,
+    "category": "归档存储基建（sql 脚本 / 实体 / Mapper / 分片配置）",
+    "task": "归档逻辑表 track_point_archive 的物理表、实体、Mapper 与 ShardingSphere 规则",
+    "steps": [
+      {
+        "step": "新增 sql/05-track-point-archive-shards.sql：16 张 track_point_archive_N 物理表（DDL 逐字段同 track_point_N，幂等 CREATE TABLE IF NOT EXISTS）+ sport_record 加 archived TINYINT NOT NULL DEFAULT 0 列与 idx_archive (archived, end_time) 索引（沿用 04 脚本注释与格式惯例）",
+        "completed": false
+      },
+      {
+        "step": "新增 TrackPointArchive 实体（@TableName(\"track_point_archive\")，字段同 TrackPoint）与 TrackPointArchiveMapper（BaseMapper + 多值批插 insertBatch，照 TrackPointMapper.insertBatch 先例，表名为 track_point_archive）",
+        "completed": false
+      },
+      {
+        "step": "sharding.yaml 的 !SHARDING.tables 增加 track_point_archive 规则：actualDataNodes ds0.track_point_archive_$->{0..15}、分片列 user_id、独立 INLINE 算法 track_point_archive_inline（表达式 track_point_archive_$->{user_id % 16}）；track_point 既有规则与 !SINGLE 声明零改动",
+        "completed": false
+      }
+    ],
+    "passes": false
+  },
+  {
+    "number": 2,
+    "category": "归档任务（record-service 模块）",
+    "task": "TrackPointArchiveService：调度互斥、候选扫描、幂等迁移与计数器",
+    "steps": [
+      {
+        "step": "新增 TrackPointArchiveService：@Scheduled fixedDelayString track.archive.interval-ms 默认 3600000，Redisson 锁 lock:track:archive（tryLock 不等待，未获锁跳过本轮，finally 释放）；候选扫描 archived=0 + status IN 终态集合 + end_time 非空且早于冷边界（track.archive.cold-days 默认 90）+ ORDER BY id LIMIT track.archive.batch-records 默认 20",
+        "completed": false
+      },
+      {
+        "step": "逐记录幂等迁移：热表读点 → 归档表已有该记录数据则跳过插入（崩溃重入自愈）→ 批插（保留原雪花 id）→ 删热表 → 事务外置标志 UPDATE archived=1 WHERE id AND archived=0；零点记录直接置标志；Micrometer Counter track.archive.migrated.records 迁移成功递增（构造注册）",
+        "completed": false
+      },
+      {
+        "step": "TrackPointArchiveServiceTest 新增（Mockito + SimpleMeterRegistry）：扫描谓词完备、锁未获跳过、正常迁移点数守恒且保留原 id、崩溃重入两形态自愈（插入后崩 / 删热后崩）、零点直接置标志、批次上限、冷边界可配",
+        "completed": false
+      }
+    ],
+    "passes": false
+  },
+  {
+    "number": 3,
+    "category": "读路径冷热路由与申诉防线（record-service 模块）",
+    "task": "listPoints / pagePoints 按 archived 标志路由；getRecordWithPoints 恒热；submitAppeal 拒已归档",
+    "steps": [
+      {
+        "step": "SportRecord 实体加 archived 字段（Integer，0/1）；listPoints / pagePoints 路由：archived=1 查 TrackPointArchiveMapper（同样 (record_id, user_id) 双条件 + seq 升序），否则热表；getRecordWithPoints 零改动恒热表",
+        "completed": false
+      },
+      {
+        "step": "submitAppeal 对 archived=1 的记录抛 RECORD_STATUS_INVALID（状态机不迁移、不触发复判）",
+        "completed": false
+      },
+      {
+        "step": "SportRecordServiceTest 新增：冷记录 listPoints/pagePoints 路由归档表且热表 never、热记录（archived=0/null）路径不变、getRecordWithPoints 恒不触归档表、submitAppeal 已归档拒绝",
+        "completed": false
+      }
+    ],
+    "passes": false
+  },
+  {
+    "number": 4,
+    "category": "全项门禁与验证",
+    "task": "离线测试、静态检查、词面门、契约门全绿",
+    "steps": [
+      {
+        "step": "bash scripts/verify/mvn-verify.sh --mode=offline test 全绿：用例数只增不减（record-service 115→≥127，全仓 438→≥450），Skipped 全 0，既有用例零翻转",
+        "completed": false
+      },
+      {
+        "step": "Checkstyle（--static=verify-service）≤862；词面门四形态全 ZERO_HIT rc=1；git diff --check rc=0",
+        "completed": false
+      },
+      {
+        "step": "scripts/verify/mailbox-contract.sh --open TASK-175 --baseline=<开工 HEAD> 契约校验通过 rc=0；收口后无参模式 rc=0",
+        "completed": false
+      }
+    ],
+    "passes": false
+  }
+]
