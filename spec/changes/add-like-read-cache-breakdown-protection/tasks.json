@@ -1,0 +1,82 @@
+[
+  {
+    "number": 1,
+    "category": "互斥重建锁（record-service 模块）",
+    "task": "readCount 缓存 miss 路径加 per-record Redisson 互斥重建",
+    "steps": [
+      {
+        "step": "readCount miss 后以 lock:like:count-init:{recordId} 互斥（tryLock 等待 1s、lease=-1 看门狗），获锁者双重检查后回源 COUNT 并按哨兵规则回填，finally 释放锁",
+        "completed": false
+      },
+      {
+        "step": "未获锁者自旋重读缓存至多 3 次共享结果，耗尽后兜底直读 DB 返回且不回填；锁服务异常（tryLock 抛错）降级为既有直读回填路径，不向上抛锁异常",
+        "completed": false
+      },
+      {
+        "step": "RecordLikeServiceTest 新增：并发 miss 单线程回源（COUNT 恰 1 次）、获锁双重检查不查 DB、等待者共享结果（COUNT never）、等待者兜底直读不回填、锁异常降级回填",
+        "completed": false
+      }
+    ],
+    "passes": false
+  },
+  {
+    "number": 2,
+    "category": "空值哨兵与 TTL 持久化配套（record-service 模块）",
+    "task": "零计数短 TTL 哨兵回填与计数写入后 persist 清 TTL",
+    "steps": [
+      {
+        "step": "回填时 DB 计数为 0 则 set(key, \"0\", 60, SECONDS) 哨兵；非 0 维持既有无 TTL set 回填",
+        "completed": false
+      },
+      {
+        "step": "incrementCount 与 decrementCount 在 INCR/DECR 后调用 persist(countKey) 清 TTL，杜绝哨兵键被 INCR 后带 TTL 过期导致计数幽灵回退",
+        "completed": false
+      },
+      {
+        "step": "RecordLikeServiceTest 新增：零计数哨兵（setEx 60s）、非零持久回填回归、like 首次点赞后 persist、unlike 取消后 persist",
+        "completed": false
+      }
+    ],
+    "passes": false
+  },
+  {
+    "number": 3,
+    "category": "pending 队列可观测（record-service 模块）",
+    "task": "PendingOp 入队时间戳与 flush 每轮堆积量/队头年龄 Gauge",
+    "steps": [
+      {
+        "step": "PendingOp 增加 enqueuedAt（epoch millis），pushPending 写入；parseOp 对旧格式元素容错（缺失记 -1）",
+        "completed": false
+      },
+      {
+        "step": "RecordLikeService 构造注入 MeterRegistry 并注册两个 Gauge（like.pending.queue.size / like.pending.head.age.ms，AtomicLong 载体），flush 每轮锁内消费前采集 LLEN 与队头年龄（空队列记 0，旧格式记 -1），堆积超 1000 记 WARN；既有 flush 测试补 listOps.size 打桩适配",
+        "completed": false
+      },
+      {
+        "step": "RecordLikeServiceTest 新增：flush 发布堆积与年龄度量、旧格式元素年龄记 -1 不阻断消费",
+        "completed": false
+      }
+    ],
+    "passes": false
+  },
+  {
+    "number": 4,
+    "category": "全项门禁与验证",
+    "task": "离线测试、静态检查、词面门、契约门全绿",
+    "steps": [
+      {
+        "step": "bash scripts/verify/mvn-verify.sh --mode=offline test 全绿：用例数只增不减（record-service 105→≥115，全仓 428→≥438），Skipped 全 0，既有用例零翻转",
+        "completed": false
+      },
+      {
+        "step": "Checkstyle（--static=verify-service）≤862；词面门四形态全 ZERO_HIT rc=1；git diff --check rc=0",
+        "completed": false
+      },
+      {
+        "step": "scripts/verify/mailbox-contract.sh --open TASK-174 --baseline=<开工 HEAD> 契约校验通过 rc=0；收口后无参模式 rc=0",
+        "completed": false
+      }
+    ],
+    "passes": false
+  }
+]
