@@ -63,6 +63,7 @@
 - prove-verify-outbox-relay-drain-rate（relay 净投递能力以排空斜率裁决，间隔 500ms 落地）
 - prove-verify-outbox-relay-pool-concurrency-scaling（池内并发标度真实 Hikari 池裁决，仅必要条件）
 - shorten-submit-db-footprint（提交事务不落不可见中间态，SQL 展示默认关闭）
+- add-verify-outbox-relay-batch-mark（outbox relay 可选有界分块标记 SENT，默认开启）
 
 各提案的 spec-delta 中 ADDED 需求已全部合并进本规范，MODIFIED 需求按规则处理（见「服务划分」分组与「变更历史」）。
 清单外合法例外（2 项）：add-microservice-skeleton（主规格由其落地生成，属基线生成而非并入）；add-sharding-host-parameterization（TASK-115 冲突停手未并入，后由 add-sharding-host-env-override 以独立 ADDED 并入，本目录仅作历史存档）。archive 目录集合减去本头部清单恰为该 2 项。
@@ -1057,6 +1058,46 @@ GIVEN Nacos 配置 verify.rules.r1.speed=6.0
 WHEN 规则链读取
 THEN R1 阈值采用 6.0
 AND 其他阈值采用默认值
+
+### Requirement: outbox relay 有界分块标记 SENT 默认开启
+
+WHEN 未显式配置或配置 `verify.outbox.relay-batch-mark-enabled=true`（生产默认 `true`），
+系统 SHALL 对已成功发送行的 SENT 标记按 chunk（`verify.outbox.relay-batch-mark-chunk-size`，生产默认 `25`，钳位 `[1, batch-size]`）合并为一条批量条件 UPDATE，更新条件 MUST 保持 `status = 'PENDING'`（幂等）。系统被显式授权以下五项语义变化及其上界：
+
+1. **重复投递窗口上界**：进程异常崩溃时，已由 broker 成功接收但尚未执行 chunk 标记的事件行数上界为 **chunk-size**（逐行路径为 1，TASK-153 候选为 batch-size=100）。下轮重投时 MUST 沿用行内原有 `eventId`，使消费端去重键稳定。
+2. **SENT 可见性延迟上界**：独立连接可见已成功发送事件为 SENT 的延迟上界为一个 chunk 的发送时长（逐行路径为每行发送返回立即独立提交可见）。
+3. **`sent_at` 时间语义**：同 chunk 内所有行的 `sent_at` 统一记录为该 chunk 批量 UPDATE 执行时的数据库时间（`NOW()`），**chunk 内同值**；该值与 DDL 注释「投递成功时间」的偏差被本规格显式授权，且代码 javadoc 与日志 MUST 予以披露。
+4. **标记失败重投语义**：chunk 批量标记 SQL 真失败（抛出持久化异常）时，该 chunk 内已投递行**全部保留 PENDING**、下轮整块重投；系统 MUST 对该 chunk 内的每个 id 各调用一次 `incrRetry` 以保持失败计数与重试耗尽判定语义，且异常 MUST NOT 外逃打断整轮 relay。
+5. **成功行逐行 INFO 日志被 chunk 级日志取代**：开启态下成功行不再有逐行 INFO 日志（原 `outbox 事件投递成功：id=…, eventId=…, tag=…` 由每 chunk 一条汇总日志取代）；失败行的逐行 WARN 日志**保持不变**。
+
+#### Scenario: 成功行按 chunk 分块批量标记
+GIVEN `verify.outbox.relay-batch-mark-enabled=true` 且 `relay-batch-mark-chunk-size=25`
+WHEN relay 取出一批 100 行待投递事件且全部发送成功
+THEN 恰好调用 4 次 `markSentBatch`，每次传入 25 个有序 ID，条件含 `status = 'PENDING'`
+AND 每次批量更新返回后 chunk 内行状态在独立连接上可见为 SENT
+
+#### Scenario: 进程崩溃后重复投递有界收窄
+GIVEN `verify.outbox.relay-batch-mark-enabled=true` 且 `relay-batch-mark-chunk-size=25`
+WHEN chunk 内前 k 行（k <= 25）发送成功后进程崩溃或退出
+THEN 下轮 `selectPendingBatch` 重投行数上界为 25（收窄自 batch-size 100）
+AND 重投行的 `eventId` 与崩溃前逐字一致
+
+#### Scenario: 标记 SQL 异常补偿失败计数
+GIVEN `verify.outbox.relay-batch-mark-enabled=true` 且某 chunk 包含 n 行已发送事件
+WHEN 该 chunk 执行 `markSentBatch` 抛出 SQL 异常
+THEN 该 chunk 全部 n 行保持 PENDING 状态
+AND 系统对该 chunk 内每个 ID 逐一调用一次 `incrRetry`
+AND totals.failed 增加 n，异常被隔离，后续 chunk 继续处理
+
+### Requirement: outbox relay 分块标记关闭路径与逐行等价保留
+
+WHEN 显式配置 `verify.outbox.relay-batch-mark-enabled=false` 时，
+系统 SHALL 保持向后兼容的逐行标记模式，relay MUST NOT 调用 `markSentBatch`，调用序列与引入分块标记前**逐字等价**；单行处理与并发路径统一由单一 `sendRow` 承载。
+
+#### Scenario: 显式关闭保持逐行等价
+GIVEN `verify.outbox.relay-batch-mark-enabled=false`
+WHEN relay 处理一批待投递事件
+THEN 行为与引入分块标记前逐字等价：每行发送成功立即调用 `markSent` 独立提交，崩溃重复投递窗口至多 1 行
 
 ### Requirement: outbox relay 批内并发投递默认关闭且串行路径与引入前等价
 WHEN 配置 outbox relay 的批内并发投递开关 `verify.outbox.relay-send-concurrency`,
@@ -3566,3 +3607,4 @@ AND 下次读取回源到最新值
 - **prove-verify-outbox-relay-drain-rate**：以负载停止后的排空斜率裁决 relay 调度间隔；不翻案 TASK-144 与 TASK-162 的 UNDETERMINED 结论与数字，排空斜率是排空能力，不得换算成端到端延迟改善；调度间隔 500ms 默认值变更须经 C 轮确认且结论不得外推。引用变更 spec/changes/archive/prove-verify-outbox-relay-drain-rate/。
 - **prove-verify-outbox-relay-pool-concurrency-scaling**：在真实 10 连接 Hikari 池上以预注册阈值判别 relay 池内并发标度；裁决按预注册三支执行，无论哪支都不实施优化、不改默认值（relay-send-concurrency 保持 1）、不翻案 TASK-153/154、不改写 TASK-152/156 数字；池内标度结论仅是必要条件且不构成实施授权。引用变更 spec/changes/archive/prove-verify-outbox-relay-pool-concurrency-scaling/。
 - **shorten-submit-db-footprint**：缩短提交事务数据库足迹，提交事务不落不可见中间态，分片 SQL 展示默认关闭；MODIFIED 既有基线需求轨迹提交幂等，**Previous** 注记行按惯例剔除；相关代码已在 TASK-139 落地（后续等待归因见 TASK-140），SS_SQL_SHOW 与提交路径默认态保持关闭，不修改连接池默认 10。引用变更 spec/changes/archive/shorten-submit-db-footprint/。
+- **add-verify-outbox-relay-batch-mark**：outbox relay 可选有界分块标记 SENT 能力域（TASK-165 建立、TASK-166 真实 MySQL 确证四项上界、TASK-169 三对交错稳态判别落地为生产默认开启、TASK-170 单行投递重构为单一 sendRow、TASK-171 在此基础上叠加批内并发 N=2 生产落地）。在产品决策显式授权下接受崩溃时重投窗口有界扩大至 chunk-size（25，收窄自 TASK-153 候选的 batch-size 100），单行标记耗时由 16.65ms 降至 1.50ms（降 91%），彻底消除数据库写串行化瓶颈。引用变更 spec/changes/archive/add-verify-outbox-relay-batch-mark/。

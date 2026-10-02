@@ -73,23 +73,23 @@
   },
   {
     "number": 5,
-    "category": "生产默认值与性能判别（未授权 / 未触发）",
-    "task": "application.yml 改动、合并 delta、跑性能负载与开启生产开关——本轮未授权，全部不执行",
+    "category": "生产默认值与性能判别（已由 TASK-169/171 落地）",
+    "task": "application.yml 改动、合并 delta、跑性能负载与开启生产开关——已由 TASK-169/TASK-171（yml 与开关）与 TASK-172（并入主规格）落地",
     "steps": [
       {
-        "step": "修改 application.yml 将 relay-batch-mark-enabled 置为 true（未授权，不执行）",
-        "completed": false
+        "step": "修改 application.yml 将 relay-batch-mark-enabled 置为 true（TASK-169 已落地，见 work/mailbox/tasks/TASK-169/handoff.md）",
+        "completed": true
       },
       {
-        "step": "合并 delta 进主规格（未授权，不执行）",
-        "completed": false
+        "step": "合并 delta 进主规格（TASK-172 已落地，见 work/mailbox/tasks/TASK-172/handoff.md）",
+        "completed": true
       },
       {
-        "step": "启动四服务与中间件进行 c100x2000 负载排空测量（未授权，不执行）",
-        "completed": false
+        "step": "启动四服务与中间件进行 c100x2000 负载排空测量（TASK-169/TASK-171 已落地，见对应 handoff.md）",
+        "completed": true
       }
     ],
-    "passes": false
+    "passes": true
   },
   {
     "number": 6,
@@ -102,6 +102,22 @@
       },
       {
         "step": "完成 handoff.md 六项交回物，G0-G12 全量门槛实测退出码与读数原文留档",
+        "completed": true
+      }
+    ],
+    "passes": true
+  },
+  {
+    "number": 7,
+    "category": "归档阶段",
+    "task": "TASK-172 将本提案的 ADDED 需求并入主规格并将本目录归档",
+    "steps": [
+      {
+        "step": "delta 的 ADDED 需求逐字并入 spec/specs/sport-record-verify/spec.md，头部已归档清单 58→59，变更历史 +1 条目",
+        "completed": true
+      },
+      {
+        "step": "本目录 git mv 入 spec/changes/archive/，验收记录见 work/mailbox/PLAN.md 的 TASK-172 节",
         "completed": true
       }
     ],
