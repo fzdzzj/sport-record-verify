@@ -1503,3 +1503,16 @@ run `35802403723`（head `eba0108`，2026-09-23 00:31 UTC）——**web/build �
 | --- | --- |
 | 外部门槛 | GitHub Actions run `36976873215`（HEAD `3998c09b3db69d240538e7f1aea017d51c0634a1`，trigger=push/branch=main，https://github.com/fzdzzj/sport-record-verify/actions/runs/36976873215），conclusion=`success`；`web` 27s 全绿（10 步）、`build` 2m24s 全绿（11 步流水线＋后置清理）；第 5 步 `--mode=online verify` 与第 10 步词面门全 success |
 | 覆盖确证 | 外部 CI 确证 TASK-172 主规格并入（头部清单 58→59、161→163 个 Requirement、3568→3610 行）与提案归档（archive 60→61）在真实构建环境下全模块 143 个测试用例全绿、Checkstyle ≤867（实测 862）通过、词面门通过 |
+
+## 验收记录：TASK-173 判定链路消除跨服务重复读取并引入聚合契约 getRecordWithPoints（2026-10-02，执行 agent，代码轮）
+
+| 项 | 实测 |
+| --- | --- |
+| 唯一问题 | verify-service `VerifyService.verify(recordId)` 判定前执行 2 次独立 Feign 往返（`getRecord` + `listPoints`），record-service 侧对 `sport_record` 表重复两次 `selectById`；本轮引入聚合契约单次拉取，预取 HTTP 往返 2→1、`sport_record` 查询 2→1，轨迹查询严格携带分片键 `user_id` 单分片路由不退化 |
+| 开工基线 | HEAD `c9618b04d955618785df52aec938c3c988060fbc`；任务书 SHA256 `bfaff05b6f812e79eaa492fbe160712211678280ba8f1f1b8bfa7072f8727c8d`（零修改）；`origin/main` `3998c09b3db69d240538e7f1aea017d51c0634a1`；`git rev-list --left-right --count origin/main...main` = `0 1`；工作树未跟踪仅既有 `spec/changes/add-verify-degrade-status-index/`（零触碰）+ 在途提案 `spec/changes/add-record-with-points-feign/` + 本任务目录，逐位核验一致 |
+| 实现落地 | api：新增 `RecordWithPointsDTO`；`RecordApi` 声明 `@GetMapping("/records/{recordId}/with-points")`；`RecordApiFallback` 对聚合契约显式抛 `RECORD_SERVICE_UNAVAILABLE(4007)`（不可软降级）。record-service：`SportRecordService.getRecordWithPoints` 单次查 `sport_record`（缺失抛 3001 且不触轨迹表）→ 按 `user_id` 单分片查 `track_point`（seq 升序）；`InternalRecordController` 暴露同名端点。verify-service：`verify()` 判定前预取改为单次聚合调用，`reconcileCallback` 补偿路径保持轻量 `getRecord` 不变。既有 `getRecord` 与 `listPoints` 接口及实现 100% 未动，向后兼容 |
+| 测试 | record-service 103→**105**（`getRecordWithPoints_routesByUserIdAndAssemblesDto`：单次主表查询 + 渲染 SQL 段断言携带 `user_id` 分片键与 `seq ASC` + 组装字段顺序；`getRecordWithPoints_recordNotFound_throws`：3001 且 `selectList` 零调用）；verify-service 143→**144**（`verify_usesAggregatedFetch_neverCallsLegacyEndpoints`：`getRecordWithPoints(1L)` 恰 1 次、`getRecord(1L)`/`listPoints(1L)` 恒 0 次；既有 `stubHappyVerify` 打桩适配聚合契约） |
+| 门禁 | offline 七模块 `36/41/33/105/144/59/10` rc=0（全仓 425→**428**、Skipped 全 0、BUILD SUCCESS）；static `--static=verify-service` rc=1、Checkstyle 严格 **862**（与开工基线持平未增）；词面门四形态（default / `LC_ALL=C` / `zh_CN.UTF-8` / `C.UTF-8`）全 ZERO_HIT rc=1、正向探针 rc=0；在途契约门 `--open TASK-173 --baseline=c9618b04…` rc=0（handoff 建立前实测，TASK-169 同口径）；`git diff --check` rc=0 |
+| 受保护 token | PLAN.md 行命中数只增不减：`grep -cF` 口径 24 项基线/收口两轮逐项全等（与任务书 §5 所载 24 项逐位同值；任务书标题作 23 系计数口径差，见 handoff §1） |
+| 提交 | C-01 `c34812d` `feat(api): 新增 getRecordWithPoints 聚合契约并接入 verify 判定链路（TASK-173）`（8 files / +151 −7）；C-02 `docs(mailbox): 登记 TASK-173 验收记录与任务两件套（TASK-173）`（提案三件套 + PLAN 纯追加 + TASK-173 两件套）；C-03 回填收口读数（仅 handoff）；未 push、未建 PR |
+| 未覆盖/后续 | 未跑 `--mode=online` 与 CI（未达外部门槛，push 须用户显式单次授权）；`--static` 在 checkstyle 处即失败，spotbugs/pmd 未覆盖；`spec/changes/add-verify-degrade-status-index/` 与其余 5 个在途未定/测量提案目录零触碰；聚合契约在真实双服务环境下的往返收敛收益未实测（本轮仅单元级证据），不得推出生产端到端延迟数字；不翻案 TASK-143~172 任何结论与历史数字 |

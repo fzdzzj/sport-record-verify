@@ -1,0 +1,78 @@
+[
+  {
+    "number": 1,
+    "category": "契约定义（api 模块）",
+    "task": "新增 RecordWithPointsDTO 与 RecordApi 聚合接口声明及 Fallback",
+    "steps": [
+      {
+        "step": "api 模块新增 RecordWithPointsDTO（包含 SportRecordDTO record 与 List<TrackPointDTO> points，支持序列化）",
+        "completed": true
+      },
+      {
+        "step": "RecordApi 声明 @GetMapping(\"/records/{recordId}/with-points\") Result<RecordWithPointsDTO> getRecordWithPoints(@PathVariable(\"recordId\") Long recordId)",
+        "completed": true
+      },
+      {
+        "step": "RecordApiFallback 落地 getRecordWithPoints 显式抛出 RECORD_SERVICE_UNAVAILABLE(4007)，不可软降级",
+        "completed": true
+      }
+    ],
+    "passes": true
+  },
+  {
+    "number": 2,
+    "category": "服务端实现（record-service 模块）",
+    "task": "SportRecordService 与 InternalRecordController 实现聚合查询",
+    "steps": [
+      {
+        "step": "SportRecordService 新增 getRecordWithPoints(Long recordId)：单次查询 sport_record，若空抛 3001，再以 userId 单分片路由查询 track_point，组装返回",
+        "completed": true
+      },
+      {
+        "step": "InternalRecordController 增加 @GetMapping(\"/records/{recordId}/with-points\") 转发调用",
+        "completed": true
+      },
+      {
+        "step": "SportRecordServiceTest 增加单测：验证成功聚合组装、验证 3001 记录不存在且未查询轨迹点",
+        "completed": true
+      }
+    ],
+    "passes": true
+  },
+  {
+    "number": 3,
+    "category": "消费端接入（verify-service 模块）",
+    "task": "VerifyService.verify 接入聚合契约并更新单测",
+    "steps": [
+      {
+        "step": "VerifyService.verify(recordId) 改用 recordApi.getRecordWithPoints(recordId)，消除重复的 getRecord 与 listPoints 两次调用",
+        "completed": true
+      },
+      {
+        "step": "VerifyServiceTest 适配与补测：verify 成功断言调用 getRecordWithPoints，原单接口未被调用",
+        "completed": true
+      }
+    ],
+    "passes": true
+  },
+  {
+    "number": 4,
+    "category": "全项门禁与验证",
+    "task": "离线测试、静态检查、词面门、契约门全绿",
+    "steps": [
+      {
+        "step": "bash scripts/verify/mvn-verify.sh --mode=offline test 全绿：用例数只增不减（record-service 103→≥105，verify-service 143→≥144，全仓 425→≥428），Skipped 全 0",
+        "completed": true
+      },
+      {
+        "step": "Checkstyle 检查 ≤862；词面门四形态全 ZERO_HIT rc=1；git diff --check rc=0",
+        "completed": true
+      },
+      {
+        "step": "scripts/verify/mailbox-contract.sh --open TASK-173 契约校验通过 rc=0",
+        "completed": true
+      }
+    ],
+    "passes": true
+  }
+]
