@@ -47,6 +47,9 @@ public class SportRecord {
     /** 审核状态（RecordStatus.code，状态机见审批版 §5.1） */
     private Integer status;
 
+    /** 轨迹点已归档标志（0 否 1 是，课题 3 冷热分离；归档任务置位，读路径据此路由） */
+    private Integer archived;
+
     /** 乐观锁版本号（状态迁移 WHERE version 条件） */
     private Integer version;
 

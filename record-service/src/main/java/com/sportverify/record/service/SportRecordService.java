@@ -20,7 +20,9 @@ import com.sportverify.common.result.Result;
 import com.sportverify.common.result.ResultCode;
 import com.sportverify.record.entity.SportRecord;
 import com.sportverify.record.entity.TrackPoint;
+import com.sportverify.record.entity.TrackPointArchive;
 import com.sportverify.record.mapper.SportRecordMapper;
+import com.sportverify.record.mapper.TrackPointArchiveMapper;
 import com.sportverify.record.mapper.TrackPointMapper;
 import com.sportverify.record.mq.RecordEventProducer;
 import lombok.RequiredArgsConstructor;
@@ -36,6 +38,7 @@ import org.springframework.transaction.support.TransactionSynchronizationManager
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Objects;
 
 /**
  * 运动记录服务（规范「轨迹提交幂等」「轨迹分片存储」「校验状态机」）。
@@ -56,6 +59,7 @@ public class SportRecordService {
 
     private final SportRecordMapper sportRecordMapper;
     private final TrackPointMapper trackPointMapper;
+    private final TrackPointArchiveMapper trackPointArchiveMapper;
     private final RecordEventProducer recordEventProducer;
     private final VerifyApi verifyApi;
     private final VerifyDegradeService verifyDegradeService;
@@ -246,6 +250,10 @@ public class SportRecordService {
         if (record.getStatus() == null || record.getStatus() != RecordStatus.REJECTED.getCode()) {
             throw new BizException(ResultCode.RECORD_STATUS_INVALID, "仅 REJECTED 记录可发起申诉");
         }
+        // 申诉防线（课题 3）：已归档记录拒绝——复判会拉轨迹点，冷数据已迁走，读空无意义
+        if (Objects.equals(record.getArchived(), 1)) {
+            throw new BizException(ResultCode.RECORD_STATUS_INVALID, "记录已归档，不支持申诉");
+        }
         // 建申诉单（唯一键冲突由 verify 侧幂等返回既有单）；
         // userId 以记录归属人为准（服务端权威，不信任调用方入参，且避免入参缺失导致 NOT NULL 落库失败）
         Result<AppealDTO> appealResp = verifyApi.createAppeal(new AppealCreateDTO(recordId, record.getUserId(), reason));
@@ -279,19 +287,15 @@ public class SportRecordService {
     }
 
     /**
-     * 拉取记录全部轨迹点（校验引擎输入，规范「记录本身不分片」）。
-     * 先查 sport_record 得到 user_id，再按 user_id 路由对应分片（WHERE 必须携带分片键）。
+     * 拉取记录全部轨迹点（用户端读路径，规范「记录本身不分片」）。
+     * 先查 sport_record 得到 user_id，再按 archived 标志冷热路由（WHERE 必须携带分片键）。
      */
     public List<TrackPointDTO> listPoints(Long recordId) {
         SportRecord record = sportRecordMapper.selectById(recordId);
         if (record == null) {
             throw new BizException(ResultCode.RECORD_NOT_FOUND);
         }
-        return trackPointMapper.selectList(new LambdaQueryWrapper<TrackPoint>()
-                        .eq(TrackPoint::getRecordId, recordId)
-                        .eq(TrackPoint::getUserId, record.getUserId()) // 分片键：单分片路由
-                        .orderByAsc(TrackPoint::getSeq))
-                .stream().map(this::toDto).toList();
+        return routePoints(record).stream().map(this::toDto).toList();
     }
 
     /**
@@ -320,17 +324,29 @@ public class SportRecordService {
      * 轨迹分页查询（规范「分片分页查询」场景）。
      * WHERE 携带 user_id → 路由单分片；若查询条件不含分片键，ShardingSphere 广播全部分片，
      * 代理对 COUNT/LIMIT 分片重写并在内存合并——分页插件绑定代理数据源后跨分片结果完整。
+     * 按 archived 标志冷热路由（课题 3）：归档分支同口径查 track_point_archive。
      */
     public Page<TrackPointDTO> pagePoints(Long recordId, long page, long size) {
         SportRecord record = sportRecordMapper.selectById(recordId);
         if (record == null) {
             throw new BizException(ResultCode.RECORD_NOT_FOUND);
         }
-        Page<TrackPoint> result = trackPointMapper.selectPage(new Page<>(page, size),
-                new LambdaQueryWrapper<TrackPoint>()
-                        .eq(TrackPoint::getRecordId, recordId)
-                        .eq(TrackPoint::getUserId, record.getUserId())
-                        .orderByAsc(TrackPoint::getSeq));
+        Page<TrackPoint> result;
+        if (Objects.equals(record.getArchived(), 1)) {
+            Page<TrackPointArchive> archPage = trackPointArchiveMapper.selectPage(new Page<>(page, size),
+                    new LambdaQueryWrapper<TrackPointArchive>()
+                            .eq(TrackPointArchive::getRecordId, recordId)
+                            .eq(TrackPointArchive::getUserId, record.getUserId())
+                            .orderByAsc(TrackPointArchive::getSeq));
+            result = new Page<>(archPage.getCurrent(), archPage.getSize(), archPage.getTotal());
+            result.setRecords(archPage.getRecords().stream().map(this::toHotPoint).toList());
+        } else {
+            result = trackPointMapper.selectPage(new Page<>(page, size),
+                    new LambdaQueryWrapper<TrackPoint>()
+                            .eq(TrackPoint::getRecordId, recordId)
+                            .eq(TrackPoint::getUserId, record.getUserId())
+                            .orderByAsc(TrackPoint::getSeq));
+        }
         Page<TrackPointDTO> dtoPage = new Page<>(result.getCurrent(), result.getSize(), result.getTotal());
         dtoPage.setRecords(result.getRecords().stream().map(this::toDto).toList());
         return dtoPage;
@@ -403,5 +419,38 @@ public class SportRecordService {
         TrackPointDTO dto = new TrackPointDTO();
         BeanUtils.copyProperties(tp, dto);
         return dto;
+    }
+
+    /**
+     * 冷热路由（课题 3）：archived=1 查归档表，否则热表；两路径均携带
+     * (record_id, user_id) 双条件单分片路由并按 seq 升序。
+     */
+    private List<TrackPoint> routePoints(SportRecord record) {
+        if (Objects.equals(record.getArchived(), 1)) {
+            return trackPointArchiveMapper.selectList(
+                            new LambdaQueryWrapper<TrackPointArchive>()
+                                    .eq(TrackPointArchive::getRecordId, record.getId())
+                                    .eq(TrackPointArchive::getUserId, record.getUserId())
+                                    .orderByAsc(TrackPointArchive::getSeq))
+                    .stream().map(this::toHotPoint).toList();
+        }
+        return trackPointMapper.selectList(new LambdaQueryWrapper<TrackPoint>()
+                        .eq(TrackPoint::getRecordId, record.getId())
+                        .eq(TrackPoint::getUserId, record.getUserId())
+                        .orderByAsc(TrackPoint::getSeq));
+    }
+
+    /** 归档实体转热表实体形态（DTO 映射复用） */
+    private TrackPoint toHotPoint(TrackPointArchive a) {
+        TrackPoint p = new TrackPoint();
+        p.setId(a.getId());
+        p.setRecordId(a.getRecordId());
+        p.setUserId(a.getUserId());
+        p.setSeq(a.getSeq());
+        p.setLat(a.getLat());
+        p.setLng(a.getLng());
+        p.setTs(a.getTs());
+        p.setSpeed(a.getSpeed());
+        return p;
     }
 }

@@ -10,12 +10,15 @@ import com.sportverify.common.exception.BizException;
 import com.sportverify.common.result.ResultCode;
 import com.sportverify.record.entity.SportRecord;
 import com.sportverify.record.entity.TrackPoint;
+import com.sportverify.record.entity.TrackPointArchive;
 import com.sportverify.record.mapper.SportRecordMapper;
+import com.sportverify.record.mapper.TrackPointArchiveMapper;
 import com.sportverify.record.mapper.TrackPointMapper;
 import com.sportverify.record.mq.RecordEventProducer;
 import com.baomidou.mybatisplus.core.MybatisConfiguration;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.metadata.TableInfoHelper;
+import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.sportverify.api.verify.VerifyApi;
 import com.sportverify.api.verify.dto.AppealDTO;
 import com.sportverify.api.verify.dto.VerificationResultDTO;
@@ -46,6 +49,7 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 /**
@@ -61,6 +65,7 @@ class SportRecordServiceTest {
 
     private SportRecordMapper sportRecordMapper;
     private TrackPointMapper trackPointMapper;
+    private TrackPointArchiveMapper trackPointArchiveMapper;
     private RecordEventProducer recordEventProducer;
     private VerifyApi verifyApi;
     private VerifyDegradeService verifyDegradeService;
@@ -70,10 +75,11 @@ class SportRecordServiceTest {
     void setUp() {
         sportRecordMapper = mock(SportRecordMapper.class);
         trackPointMapper = mock(TrackPointMapper.class);
+        trackPointArchiveMapper = mock(TrackPointArchiveMapper.class);
         recordEventProducer = mock(RecordEventProducer.class);
         verifyApi = mock(VerifyApi.class);
         verifyDegradeService = mock(VerifyDegradeService.class);
-        service = new SportRecordService(sportRecordMapper, trackPointMapper,
+        service = new SportRecordService(sportRecordMapper, trackPointMapper, trackPointArchiveMapper,
                 recordEventProducer, verifyApi, verifyDegradeService);
         // 无 Spring：@Value 不生效；setField 模拟产品默认 true（与 properties/@Value 缺省一致）
         ReflectionTestUtils.setField(service, "batchInsertEnabled", true);
@@ -667,5 +673,93 @@ class SportRecordServiceTest {
                 BizException.class, () -> service.pagePoints(1L, 1, 20)).getCode());
         assertEquals(ResultCode.RECORD_NOT_FOUND.getCode(), assertThrows(
                 BizException.class, () -> service.getDto(1L)).getCode());
+    }
+
+    // ==================== 冷热路由与申诉防线（TASK-175） ====================
+
+    /** 冷热路由判别式：archived=1 → listPoints 读归档表，热表不被访问 */
+    @Test
+    void listPoints_archivedRecord_readsArchiveTable() {
+        SportRecord record = new SportRecord();
+        record.setId(1L);
+        record.setUserId(100L);
+        record.setArchived(1);
+        when(sportRecordMapper.selectById(1L)).thenReturn(record);
+        TrackPointArchive arch = new TrackPointArchive();
+        arch.setId(9L);
+        arch.setRecordId(1L);
+        arch.setUserId(100L);
+        arch.setSeq(3);
+        when(trackPointArchiveMapper.selectList(any())).thenReturn(List.of(arch));
+
+        List<TrackPointDTO> out = service.listPoints(1L);
+
+        assertEquals(1, out.size());
+        assertEquals(3, out.get(0).getSeq());
+        verify(trackPointArchiveMapper).selectList(any());
+        verify(trackPointMapper, never()).selectList(any());
+    }
+
+    /** 冷热路由判别式：archived=1 → pagePoints 走归档分页（selectPage），热表不被访问 */
+    @Test
+    @SuppressWarnings("unchecked")
+    void pagePoints_archivedRecord_readsArchiveTable() {
+        SportRecord record = new SportRecord();
+        record.setId(1L);
+        record.setUserId(100L);
+        record.setArchived(1);
+        when(sportRecordMapper.selectById(1L)).thenReturn(record);
+        TrackPointArchive arch = new TrackPointArchive();
+        arch.setId(9L);
+        arch.setRecordId(1L);
+        arch.setUserId(100L);
+        arch.setSeq(2);
+        Page<TrackPointArchive> archPage = new Page<>(1, 20, 1);
+        archPage.setRecords(List.of(arch));
+        when(trackPointArchiveMapper.selectPage(any(Page.class), any())).thenReturn(archPage);
+
+        var out = service.pagePoints(1L, 1, 20);
+
+        assertEquals(1, out.getTotal());
+        assertEquals(1, out.getRecords().size());
+        assertEquals(2, out.getRecords().get(0).getSeq());
+        verify(trackPointArchiveMapper).selectPage(any(Page.class), any());
+        verify(trackPointMapper, never()).selectPage(any(Page.class), any());
+    }
+
+    /** 判定聚合契约恒热判别式：即便 archived=1，getRecordWithPoints 也恒查热表（归档 mapper 零交互） */
+    @Test
+    void getRecordWithPoints_alwaysReadsHotTable() {
+        SportRecord record = new SportRecord();
+        record.setId(1L);
+        record.setUserId(100L);
+        record.setStatus(RecordStatus.PASSED.getCode());
+        record.setArchived(1);
+        when(sportRecordMapper.selectById(1L)).thenReturn(record);
+        TrackPoint tp = new TrackPoint();
+        tp.setSeq(1);
+        when(trackPointMapper.selectList(any())).thenReturn(List.of(tp));
+
+        RecordWithPointsDTO out = service.getRecordWithPoints(1L);
+
+        assertEquals(1, out.getPoints().size());
+        verify(trackPointMapper).selectList(any());
+        verifyNoInteractions(trackPointArchiveMapper);
+    }
+
+    /** 申诉防线判别式：可申诉终态（REJECTED）但 archived=1 → 3003，状态机不迁移、不建申诉单 */
+    @Test
+    void submitAppeal_archivedRecord_rejected() {
+        SportRecord record = new SportRecord();
+        record.setId(5L);
+        record.setUserId(200L);
+        record.setStatus(RecordStatus.REJECTED.getCode());
+        record.setArchived(1);
+        when(sportRecordMapper.selectById(5L)).thenReturn(record);
+
+        BizException e = assertThrows(BizException.class, () -> service.appeal(5L, 100L, "理由"));
+        assertEquals(ResultCode.RECORD_STATUS_INVALID.getCode(), e.getCode());
+        verify(sportRecordMapper, never()).updateStatus(anyLong(), anyInt(), anyInt(), anyInt());
+        verify(verifyApi, never()).createAppeal(any());
     }
 }

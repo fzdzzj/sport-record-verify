@@ -55,11 +55,23 @@ rules:
           standard:
             shardingColumn: user_id
             shardingAlgorithmName: track_point_inline
+      track_point_archive:
+        # 16 张归档物理分片表（课题 3 冷热分离，建表见 sql/05-track-point-archive-shards.sql）
+        # 分片键与算法与热表一致（user_id % 16），独立 INLINE 算法实例（表达式绑定表名前缀）
+        actualDataNodes: ds0.track_point_archive_$->{0..15}
+        tableStrategy:
+          standard:
+            shardingColumn: user_id
+            shardingAlgorithmName: track_point_archive_inline
     shardingAlgorithms:
       track_point_inline:
         type: INLINE
         props:
           algorithm-expression: track_point_$->{user_id % 16}
+      track_point_archive_inline:
+        type: INLINE
+        props:
+          algorithm-expression: track_point_archive_$->{user_id % 16}
 
 props:
   # SQL 展示默认关闭（TASK-139，规范「分片 SQL 展示默认关闭」）：热路径上不再打印
