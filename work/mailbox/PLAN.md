@@ -1482,3 +1482,17 @@ run `35802403723`（head `eba0108`，2026-09-23 00:31 UTC）——**web/build �
 | --- | --- |
 | 外部门槛 | GitHub Actions run `36958994260`（HEAD `763b837fb039f103e1428c9a3c2844673bec132d`，trigger=push/branch=main，https://github.com/fzdzzj/sport-record-verify/actions/runs/36958994260），conclusion=`success`；`web` 23s 全绿（10 步）、`build` 2m33s 全绿（11 步流水线＋后置清理）；第 5 步 `--mode=online verify` 与第 10 步词面门全 success |
 | 覆盖确证 | 外部 CI 确证 TASK-171 批内并发 N=2 生产落地（`relay-send-concurrency: 2`）在真实构建环境下 143 个测试用例全绿、Checkstyle ≤867（实测 862）通过、词面门通过 |
+
+## 验收记录：TASK-172 将在途提案 add-verify-outbox-relay-batch-mark 并入主规格并归档（2026-10-02，执行 agent，纯文档轮、零生产行为变化）
+
+| 项 | 实测 |
+| --- | --- |
+| 唯一问题 | 在途提案 `add-verify-outbox-relay-batch-mark` 的功能与配置已在生产完全生效（TASK-169 分块标记默认开启、TASK-171 叠加批内并发 N=2），但主规格尚未并入其需求、目录仍处于在途；本轮纯文档规格收敛 |
+| 开工基线 | HEAD `732c2b9a2b9bfc6713c99a443ced93d8e34a4f5c`；任务书 SHA256 `6c0c30d021edcdc2903f664cdad6af90c9459c9874bc34b17ff7ebb87fe06bfc`（逐位核验一致）；`origin/main` `763b837fb039f103e1428c9a3c2844673bec132d`；`git rev-list --left-right --count origin/main...main` = `0 1`；工作树未跟踪仅既有 `spec/changes/add-verify-degrade-status-index/`（零触碰）+ 本任务目录 |
+| 主规格并入 | 头部已归档清单 +1 行（58→**59**，第 59 项 `add-verify-outbox-relay-batch-mark`）；在「规则阈值可配置」与「outbox relay 批内并发投递默认关闭…」之间插入 2 个 Requirement（「outbox relay 有界分块标记 SENT 默认开启」＋「outbox relay 分块标记关闭路径与逐行等价保留」）与 4 个 Scenario；变更历史 +1 条目；`### Requirement:` 161→**163**；行数 3568→**3610**、CR==LF==3610、末 2 字节 `0d 0a` |
+| 提案闭环 | `tasks.json` Task 5 三步标 completed（文本同步为 TASK-169/171/172 已落地）、追加 Task 7「归档阶段」，7 个任务全 `passes=true`（allPass）；`git mv` 目录入 `spec/changes/archive/add-verify-outbox-relay-batch-mark`（`proposal.md`/`spec-delta.md` R100 逐字节保真、`tasks.json` R080）；archive 60→**61**、在途 tracked 6→**5** |
+| 门禁 | offline 七模块 `36/41/33/103/143/59/10` rc=0（Skipped 全 0、BUILD SUCCESS）；static `--static=verify-service` rc=1、Checkstyle 严格 **862**；词面门四形态（default / `LC_ALL=C` / `zh_CN.UTF-8` / `C.UTF-8`）全 ZERO_HIT rc=1；契约门无参收口 rc=0；`git diff --check` rc=0 |
+| 受保护 token | 22 个 token 在 PLAN.md 行命中数只增不减（本记录为纯追加；逐 token 基线/收口同法实测见 TASK-172 handoff §8） |
+| 提交 | C-01 `58e9c0f` `docs(spec): 将在途提案 add-verify-outbox-relay-batch-mark 并入主规格并归档（TASK-172）`（主规格并入 + tasks.json + git mv 归档，4 files / +67 −9）；C-02 `docs(mailbox): 登记 TASK-172 验收记录与任务两件套（TASK-172）`（PLAN 纯追加 + TASK-172 两件套）；未 push、未建 PR |
+| 外部门槛 | **未达外部门槛**（本地已提交、未 push、无 CI run；上一轮第十一次外部门槛为 run `36958994260`） |
+| 未覆盖/后续 | 纯文档轮不改任何 `.java`/`.kt`/`.yml`/`.properties`/`.sql`/`pom.xml`/`scripts/**`/`docs/**`；其余 5 个在途未定/测量提案目录零触碰；不翻案 TASK-143~171 任何数字；不跑性能负载、不起四服务、不碰 Docker |
