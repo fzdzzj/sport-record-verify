@@ -1524,3 +1524,18 @@ run `35802403723`（head `eba0108`，2026-09-23 00:31 UTC）——**web/build �
 | --- | --- |
 | 外部门槛 | GitHub Actions run `36992632143`（HEAD `7d7b3ae677ce7511ebc68ecb56477431f2ee0656`，trigger=push/branch=main，https://github.com/fzdzzj/sport-record-verify/actions/runs/36992632143），conclusion=`success`；`web` 23s 全绿（10 步）、`build` 2m49s 全绿（11 步流水线＋后置清理）；第 5 步 `--mode=online verify` 与第 10 步词面门全 success |
 | 覆盖确证 | 外部 CI 确证 TASK-173 聚合契约（api `RecordWithPointsDTO` 与 `RecordApi` 新端点、record-service 103→105、verify-service 143→144、全仓 425→428）在真实构建环境下全模块 428 个测试用例全绿与词面门通过；CI 静态门按既有边界仅覆盖 leaderboard-service（本记录门禁行的 verify-service Checkstyle 862≤867 系本地同 HEAD 实测读数，非 CI 判定项）；web 档类型检查与生成路由类型一致性亦全绿 |
+
+## 验收记录：TASK-174 点赞读路径防击穿治理与 pending 队列可观测（2026-10-02，执行 agent，代码轮）
+
+| 项 | 实测 |
+| --- | --- |
+| 唯一问题 | findings-summary F17：`RecordLikeService.readCount` Redis 计数键缺失时并发回源 DB COUNT（TASK-103 曾虚报 SETNX 修复，TASK-130 核实未落地）+ pending 队列 `like:pending:ops` 零度量。本轮落地：per-record Redisson 互斥重建锁（`lock:like:count-init:{recordId}`，tryLock 等 1s、lease=-1 看门狗）、0 计数 60s 空值哨兵、INCR/DECR 后 persist 清 TTL、`PendingOp.enqueuedAt` 与 flush 每轮 LLEN/队头年龄双 Gauge（堆积超 1000 WARN；不背压不拒写、不改 flush 周期/批大小/对账/幂等双保险/ADR-0009/LTRIM 时序） |
+| 开工基线 | 派发笔 HEAD `fe3ac4f1a9ad2d9f708c8b40f153ba10004bca04`（父 `c4f92abc7f…`=门槛基线、`origin/main` `af17908d…`、`git rev-list --left-right --count origin/main...main` = `0 2`，逐位一致）；工作树仅既有脏项 `spec/changes/add-verify-degrade-status-index/`（零触碰）；任务书与提案 proposal/spec-delta 零修改 |
+| 红绿 | 三轮：R1 仅测试改动（生产零触碰）编译红 rc=1（构造器 6 参 vs 7 参）；R2 最小脚手架（七参构造、零行为改动）判别式红 rc=1（`RecordLikeServiceTest` 28 中 7 Failures + 2 Errors：锁未释放、COUNT 误触、计数错读、persist 缺失、Gauge MeterNotFound）；实现后全绿 rc=0。既有 18 用例零翻转（唯一适配=setUp 七参构造，任务书明文要求） |
+| 实现落地 | 仅 `RecordLikeService.java`（+191/−14 量级）与 `RecordLikeServiceTest.java`（+10 用例）；互斥重建三私有方法 + 哨兵规则回填 + persist 配套 + enqueuedAt/parseOp 容错 + `observePendingQueue` 双 Gauge（构造时经 `SimpleMeterRegistry` 可注入的 `MeterRegistry` 注册，`AtomicLong` 载体初始 -1）；一处最小偏差：`getLock` 移入 try 块以满足任务书自身判别式（getLock 抛错须降级不抛，详见 handoff §1.1-1） |
+| 测试 | record-service 105→**115**（+10：互斥重建 5、哨兵 1、persist 2、队列度量 2，全为确定性 Mockito 判别式、真实 `SimpleMeterRegistry`、无多线程 latch）；全仓 428→**438**；既有 flush/兜底回填用例按任务书 §2.6-1 预期零适配通过 |
+| 门禁 | offline 七模块 `36/41/33/115/144/59/10` rc=0（Skipped 全 0、BUILD SUCCESS）；static `--static=verify-service` rc=1、Checkstyle 严格 **862**（与开工基线持平未增）；词面门四形态（default / `LC_ALL=C` / `zh_CN.UTF-8` / `C.UTF-8`）全 ZERO_HIT rc=1、正向探针 rc=0；在途契约门 `--open TASK-174 --baseline=fe3ac4f…` rc=0（开工态实测，TASK-173 §0 规程①口径；首测时序偏差与补丁往返还原见 handoff §1.2-1）；`git diff --check` rc=0 |
+| 受保护 token | PLAN.md 行命中数（`grep -cF`）只增不减：追加前 26 项与任务书 §5 逐位同值，追加后复测见 handoff/交付汇报 |
+| 提交 | C-01 `8088645` `feat(record): 点赞读路径互斥重建与空值哨兵及 pending 队列度量（TASK-174）`（2 files / +307 −14）；C-02 `docs(mailbox): 登记 TASK-174 验收记录与提案闭环（TASK-174）`（提案 tasks.json 闭环 + handoff + 本记录纯追加；哈希以 git log 实测为准，见交付汇报）。收口无参契约门于 C-02 后实测（判据 B 以无参为准），读数见交付汇报 |
+| 外部门槛 | **未到达外部门槛（本次不 push，待下次授权由 CI 复验）** |
+| 未覆盖/后续 | 真实 Redis/MySQL 下互斥锁/看门狗/哨兵 TTL/persist/Gauge 导出未做集成测试（record-service 无 IT 先例，仅 mock 交互断言）；`awaitSharedCount` 无退避三次紧循环为任务书逐字形态，高并发下等待者行为未实测；兜底直读路径在持锁者回填慢于重读窗口时仍各产生一次 COUNT，非「全场至多一次 COUNT」，不得外推；不宣称任何吞吐/延迟收益（并发正确性治理）；spotbugs/pmd 未覆盖（checkstyle 持平即止）；不翻案 TASK-103/130/137 任何登记；其余 6 个在途提案目录与主规格、archive、scripts、pom、配置、SQL 零触碰 |
