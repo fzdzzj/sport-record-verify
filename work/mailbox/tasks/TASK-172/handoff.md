@@ -112,6 +112,8 @@ work/mailbox/tasks/TASK-172/handoff.md
 | 提交 | 内容 | 文件数 / 行数 |
 | --- | --- | --- |
 | `58e9c0f` | C-01 `docs(spec): 将在途提案 add-verify-outbox-relay-batch-mark 并入主规格并归档（TASK-172）`（主规格并入 + tasks.json + git mv 归档） | 4 files / +67 −9 |
-| （C-02） | `docs(mailbox): 登记 TASK-172 验收记录与任务两件套（TASK-172）`（PLAN 纯追加 + 两件套） | 3 files |
+| `b83c02c` | C-02 `docs(mailbox): 登记 TASK-172 验收记录与任务两件套（TASK-172）`（PLAN 纯追加 + 两件套） | 3 files / +257 |
+| `（C-03）` | C-03 `docs(mailbox): 回填 TASK-172 handoff 收口提交哈希与终检读数（TASK-172）`（仅本 `handoff.md`） | 1 file |
 
+- 收口终检读数：契约门无参 `rc=0`（判据 A 两件套齐 + 判据 B 清单一致）、`git diff --check` `rc=0`、词面门四形态复跑全 `ZERO_HIT rc=1`。
 - 起点 `git rev-list --left-right --count origin/main...main = 0 1`；未 push、未建 PR。
