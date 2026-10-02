@@ -455,3 +455,10 @@ public class TrackPointArchiveService {
 ## 8. 交付物
 
 `work/mailbox/tasks/TASK-175/handoff.md`：开工读数逐位核对结果、偏差登记、红绿证据、逐门退出码、只改清单与 `git diff --name-only <开工 HEAD>` 逐条比对、未覆盖项如实登记。全部完成或触发 §0/提案停止条件后一次性汇报。
+
+---
+
+## 收口记录（执行 agent，2026-10-02）
+
+- 实现轮已收口（两笔本地提交，未 push）：C-01 `6559aeb9428abed23ab21b1832ec0e1336467426`（业务笔，任务书 §4 白名单 1-9）；C-02 为本台账笔（提案 tasks.json 闭环勾选 + 本收口记录纯追加 + handoff.md + PLAN.md 纯追加）。
+- 全项门禁退出码、偏差登记、红绿证据与未覆盖项详见 `work/mailbox/tasks/TASK-175/handoff.md`；验收台账见 `work/mailbox/PLAN.md` 本轮追加段。

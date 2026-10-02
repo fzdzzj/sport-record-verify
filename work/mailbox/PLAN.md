@@ -1548,3 +1548,18 @@ run `35802403723`（head `eba0108`，2026-09-23 00:31 UTC）——**web/build �
 | 推送与同步 | push `af17908..a8a08a8` rc=0，推送时 `git rev-list --left-right --count origin/main...main` = `0 0`，未建 PR |
 | 首次外部评判 | TASK-174 全链路经 CI online 全量 verify 与词面门复验：互斥重建（`lock:like:count-init:`、双重检查、自旋 3 次、兜底直读不回填、锁异常降级）、0 计数 60s 空值哨兵与 INCR/DECR 后 persist、pending 队列堆积量/队头年龄双 Gauge——record-service 105→115、全仓 428→438 均在 CI 复验全绿 |
 | 状态 | TASK-174 全链路闭环；课题 2（点赞读路径防击穿治理）封盘；后续进入课题 3（运动轨迹分库分表与冷热数据归档策略）提案编撰 |
+
+## 验收记录：TASK-175 轨迹点冷热分离归档与终态记录存储治理（2026-10-02，执行 agent，代码轮）
+
+| 项 | 实测 |
+| --- | --- |
+| 唯一问题 | 课题 3：`track_point` 按 `user_id%16` 分 16 物理表且全仓无任何旧数据清理/归档逻辑，终态完结记录的轨迹点永久驻留高频在线分片；轨迹读取全部按 record_id 维度（无时间过滤），verify 判定链路（`getRecordWithPoints`）前置 VERIFYING 恒热。本轮以「记录终态 + 完结时长（冷边界 90 天）」为确定性冷热边界落地归档：`track_point_archive` 16 归档分片表（同分片键同算法、独立 INLINE 实例，sql/05 建表）+ `sport_record.archived` 标志与 `idx_archive (archived, end_time)` 索引（既有库手动 ALTER 一次）；`TrackPointArchiveService` @Scheduled 默认 1h + RLock `lock:track:archive`（tryLock 不等待，锁异常跳过本轮）+ 候选扫描（archived=0 + 终态 PASSED/REJECTED/RE_PASSED/RE_CONFIRMED + end_time 非空早于冷边界 + ORDER BY id LIMIT 20）+ 幂等三步迁移（归档已有跳插、批插保留原雪花 id、删热表、事务外条件置 archived=1，崩溃重入自愈）+ Counter `track.archive.migrated.records`；`listPoints`/`pagePoints` 按 archived 冷热路由（(record_id,user_id) 双条件 + seq 升序），`getRecordWithPoints` 恒热零改动；申诉入口拒已归档（防复判读空） |
+| 开工基线 | 派发笔 HEAD `13ca77a8b54d96780a60622525f78c0216eaa547`（任务书 §3 所载 HEAD/计数为派发前读数 c9cbf9a/0 1，派发指令已显式更正为 13ca77a/0 2，实测逐位一致）；`origin/main` `a8a08a8…`、`git rev-list --left-right --count origin/main...main` = `0 2`；工作树仅既有脏项 `spec/changes/add-verify-degrade-status-index/`（零触碰）；PLAN.md 27 项 token 与任务书 §5 逐位一致；在途契约门 `--open TASK-175 --baseline=13ca77a…` rc=0（开工态实测）；sql/02 既有索引与 idx_archive 无前缀重复 |
+| 红绿 | 三轮：R1 仅测试改动（生产零触碰）编译红 rc=1（缺 TrackPointArchive/Mapper/Service 符号 7 处）；R2 最小脚手架（实体/Mapper/archived 字段/空壳 Service/六参构造，零行为）判别式红 rc=1（record-service 127 例 8 Failures + 1 Errors：扫描谓词/迁移三步/冷热路由/申诉防线，3 个守卫型用例平凡绿属 TASK-174 §1.2-2 同性质预期）；实现后全绿 rc=0。既有 115 用例零翻转（R2 红轮即 118 绿含既有 115 全过；唯一适配=setUp 六参构造，任务书 §2.9-3 明文预期） |
+| 实现落地 | 新建 sql/05-track-point-archive-shards.sql（16 张归档分片表 DDL 逐字段同 04 + 尾部 sport_record ALTER，非幂等注释注明）与 TrackPointArchive 实体、TrackPointArchiveMapper（批插保留原 id）、TrackPointArchiveService（任务书 §2.6 逐字）；SportRecord 加 archived 字段；SportRecordService listPoints/pagePoints 冷热路由 + routePoints/toHotPoint + 申诉防线（实际方法名 appeal，任务书称 submitAppeal，按 §2.8 预置指引语义落位并登记）；sharding.yaml 仅新增 track_point_archive 规则与独立 INLINE 算法（track_point 既有规则与 !SINGLE 零改动） |
+| 测试 | record-service 115→**127**（+12：TrackPointArchiveServiceTest 8 + SportRecordServiceTest 4，全为确定性 Mockito 判别式、真实 SimpleMeterRegistry、TableInfoHelper.initTableInfo 惯用法）；全仓 438→**450**；offline 七模块 `36/41/33/127/144/59/10` rc=0（Skipped 全 0、BUILD SUCCESS）；既有用例零翻转 |
+| 门禁 | static `--static=verify-service` rc=1、Checkstyle 严格 **862**（与开工基线持平，≤862 达标口径）；词面门四形态（default / `LC_ALL=C` / `zh_CN.UTF-8` / `C.UTF-8`，正则自 ci.yml 现场提取）全 ZERO_HIT rc=1、正向探针 rc=0；`git diff --check` rc=0；在途契约门 `--open TASK-175 --baseline=13ca77a…` rc=0（开工态实测）；收口无参契约门于 C-02 后实测（读数见交付汇报） |
+| 受保护 token | PLAN.md 行命中数（`grep -cF`）只增不减：追加前 27 项与任务书 §5 逐位同值，追加后复测见 handoff/交付汇报 |
+| 提交 | C-01 `6559aeb` `feat(record): 轨迹点冷热分离归档任务与读路径冷热路由（TASK-175）`（9 files / +937 −13）；C-02 `docs(mailbox): 登记 TASK-175 验收记录与提案闭环（TASK-175）`（提案 tasks.json 闭环 + 任务书收口记录纯追加 + handoff + 本记录纯追加；哈希以 git log 实测为准，见交付汇报） |
+| 外部门槛 | **未到达外部门槛（本次不 push，待下次授权由 CI 复验）** |
+| 未覆盖/后续 | 真实 MySQL/ShardingSphere 下归档表路由/批插/删除/幂等重入未做集成测试（record-service 无 IT 先例，仅 mock 交互断言）；sql/05 未在真实库执行（DDL 与既有 04 同构靠比对，既有库 ALTER 需运维手动执行一次）；归档任务 1h 调度与多实例锁竞争真实运行未实测；迁移完成至置标志间毫秒级窗口读空为已知边界（仅影响终态 90 天以上旧记录）；不宣称任何存储/查询性能收益（未实测）；spotbugs/pmd 未覆盖（checkstyle 持平即止）；其余 6 个在途提案目录与主规格、archive、scripts、构建脚本、配置、verify-service、api 零触碰 |
