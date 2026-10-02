@@ -3,6 +3,7 @@ package com.sportverify.record.service;
 import com.sportverify.api.record.RecordStatus;
 import com.sportverify.api.record.dto.RecordSubmitDTO;
 import com.sportverify.api.record.dto.RecordSubmitResultDTO;
+import com.sportverify.api.record.dto.RecordWithPointsDTO;
 import com.sportverify.api.record.dto.StatusCallbackDTO;
 import com.sportverify.api.record.dto.TrackPointDTO;
 import com.sportverify.common.exception.BizException;
@@ -12,12 +13,16 @@ import com.sportverify.record.entity.TrackPoint;
 import com.sportverify.record.mapper.SportRecordMapper;
 import com.sportverify.record.mapper.TrackPointMapper;
 import com.sportverify.record.mq.RecordEventProducer;
+import com.baomidou.mybatisplus.core.MybatisConfiguration;
+import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.baomidou.mybatisplus.core.metadata.TableInfoHelper;
 import com.sportverify.api.verify.VerifyApi;
 import com.sportverify.api.verify.dto.AppealDTO;
 import com.sportverify.api.verify.dto.VerificationResultDTO;
 import com.sportverify.common.result.Result;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.apache.ibatis.builder.MapperBuilderAssistant;
 import org.mockito.ArgumentCaptor;
 import org.springframework.dao.DuplicateKeyException;
 import org.springframework.test.util.ReflectionTestUtils;
@@ -570,6 +575,55 @@ class SportRecordServiceTest {
 
         assertEquals(1, out.size());
         verify(trackPointMapper).selectList(any());
+    }
+
+    /** 聚合拉取：记录存在 → 单次查主表 + 单次携带分片键查轨迹，字段与顺序正确 */
+    @Test
+    @SuppressWarnings("unchecked")
+    void getRecordWithPoints_routesByUserIdAndAssemblesDto() {
+        // MP 单测惯用初始化：注册 TrackPoint 列缓存，使 wrapper 的 lambda 列名可渲染
+        TableInfoHelper.initTableInfo(
+                new MapperBuilderAssistant(new MybatisConfiguration(), ""), TrackPoint.class);
+
+        SportRecord record = new SportRecord();
+        record.setId(1L);
+        record.setUserId(100L);
+        record.setStatus(RecordStatus.PASSED.getCode());
+        when(sportRecordMapper.selectById(1L)).thenReturn(record);
+        TrackPoint first = new TrackPoint();
+        first.setSeq(1);
+        TrackPoint second = new TrackPoint();
+        second.setSeq(2);
+        when(trackPointMapper.selectList(any())).thenReturn(List.of(first, second));
+
+        RecordWithPointsDTO out = service.getRecordWithPoints(1L);
+
+        assertEquals(1L, out.getRecord().getId());
+        assertEquals(100L, out.getRecord().getUserId());
+        assertEquals(RecordStatus.PASSED.getCode(), out.getRecord().getStatus());
+        assertEquals(2, out.getPoints().size());
+        assertEquals(1, out.getPoints().get(0).getSeq());
+        assertEquals(2, out.getPoints().get(1).getSeq());
+        verify(sportRecordMapper, times(1)).selectById(1L);
+        ArgumentCaptor<LambdaQueryWrapper> wrapper = ArgumentCaptor.forClass(LambdaQueryWrapper.class);
+        verify(trackPointMapper, times(1)).selectList(wrapper.capture());
+        String segment = wrapper.getValue().getSqlSegment();
+        assertTrue(segment.contains("user_id ="), "轨迹查询必须携带分片键 user_id：" + segment);
+        assertTrue(segment.contains("seq ASC"), "轨迹必须按 seq 升序：" + segment);
+        assertTrue(wrapper.getValue().getParamNameValuePairs().containsValue(100L),
+                "分片键取值必须为记录归属人 user_id=100");
+        assertTrue(wrapper.getValue().getParamNameValuePairs().containsValue(1L));
+    }
+
+    /** 聚合拉取：记录不存在 → 3001 且不触轨迹表 */
+    @Test
+    void getRecordWithPoints_recordNotFound_throws() {
+        when(sportRecordMapper.selectById(1L)).thenReturn(null);
+
+        BizException e = assertThrows(BizException.class, () -> service.getRecordWithPoints(1L));
+
+        assertEquals(ResultCode.RECORD_NOT_FOUND.getCode(), e.getCode());
+        verify(trackPointMapper, never()).selectList(any());
     }
 
     /** 分页轨迹：记录存在 → 透传分页结果 */

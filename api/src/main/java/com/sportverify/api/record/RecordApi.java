@@ -2,6 +2,7 @@ package com.sportverify.api.record;
 
 import com.sportverify.api.record.dto.LikeDTO;
 import com.sportverify.api.record.dto.LikeRequestDTO;
+import com.sportverify.api.record.dto.RecordWithPointsDTO;
 import com.sportverify.api.record.dto.SportRecordDTO;
 import com.sportverify.api.record.dto.StatusCallbackDTO;
 import com.sportverify.api.record.dto.TrackPointDTO;
@@ -50,6 +51,13 @@ public interface RecordApi {
      */
     @GetMapping("/records/{recordId}/points")
     Result<List<TrackPointDTO>> listPoints(@PathVariable("recordId") Long recordId);
+
+    /**
+     * 一次性拉取记录详情与全部轨迹点（聚合契约，供 verify 校验输入）。
+     * record-service 内部单次查询 sport_record 解析 user_id 并单分片路由查询 track_point。
+     */
+    @GetMapping("/records/{recordId}/with-points")
+    Result<RecordWithPointsDTO> getRecordWithPoints(@PathVariable("recordId") Long recordId);
 
     /**
      * 状态回调：verify 判定/终判后驱动 record 状态机迁移。

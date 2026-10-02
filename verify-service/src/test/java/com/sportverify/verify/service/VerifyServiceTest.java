@@ -6,6 +6,7 @@ import com.github.benmanes.caffeine.cache.Cache;
 import com.sportverify.api.event.RecordVerifyEvents;
 import com.sportverify.api.record.RecordStatus;
 import com.sportverify.api.record.SportType;
+import com.sportverify.api.record.dto.RecordWithPointsDTO;
 import com.sportverify.api.record.dto.SportRecordDTO;
 import com.sportverify.api.record.dto.StatusCallbackDTO;
 import com.sportverify.api.record.dto.TrackPointDTO;
@@ -48,6 +49,7 @@ import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -112,9 +114,9 @@ class VerifyServiceTest {
 
     private void stubHappyVerify() {
         when(verificationResultMapper.initVerifying(1L)).thenReturn(1);
-        when(recordApi.getRecord(1L)).thenReturn(Result.success(
-                record(1L, RecordStatus.VERIFYING.getCode(), SportType.RUNNING.getCode(), 0)));
-        when(recordApi.listPoints(1L)).thenReturn(Result.success(List.of(point())));
+        when(recordApi.getRecordWithPoints(1L)).thenReturn(Result.success(new RecordWithPointsDTO(
+                record(1L, RecordStatus.VERIFYING.getCode(), SportType.RUNNING.getCode(), 0),
+                List.of(point()))));
         when(ruleVersionService.getActiveRulesForUser(100L)).thenReturn(new VerifyProperties());
         when(verifyEngine.verify(any(), any(), any()))
                 .thenReturn(VerdictResult.builder().verdict(Verdict.PASSED).score(70).build());
@@ -165,6 +167,18 @@ class VerifyServiceTest {
 
         verify(outboxMapper).insert(any(VerifyEventOutbox.class));
         verify(rocketMQTemplate, never()).syncSend(anyString(), any(Message.class));
+    }
+
+    /** 判定前预取改走聚合契约：getRecordWithPoints 恰 1 次；原 getRecord / listPoints 恒 0 次 */
+    @Test
+    void verify_usesAggregatedFetch_neverCallsLegacyEndpoints() {
+        stubHappyVerify();
+
+        service.verify(1L);
+
+        verify(recordApi, times(1)).getRecordWithPoints(1L);
+        verify(recordApi, never()).getRecord(1L);
+        verify(recordApi, never()).listPoints(1L);
     }
 
     /** 结果已终判且 record 已同步 → 命中本地缓存直接返回，不重算、不重复排事件 */

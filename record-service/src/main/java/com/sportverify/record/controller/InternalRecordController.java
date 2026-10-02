@@ -2,6 +2,7 @@ package com.sportverify.record.controller;
 
 import com.sportverify.api.record.dto.LikeDTO;
 import com.sportverify.api.record.dto.LikeRequestDTO;
+import com.sportverify.api.record.dto.RecordWithPointsDTO;
 import com.sportverify.api.record.dto.SportRecordDTO;
 import com.sportverify.api.record.dto.StatusCallbackDTO;
 import com.sportverify.api.record.dto.TrackPointDTO;
@@ -47,6 +48,12 @@ public class InternalRecordController {
     @GetMapping("/records/{recordId}/points")
     public Result<List<TrackPointDTO>> listPoints(@PathVariable("recordId") Long recordId) {
         return Result.success(sportRecordService.listPoints(recordId));
+    }
+
+    /** 记录详情与轨迹点列表聚合（供 verify 校验判定单次拉取） */
+    @GetMapping("/records/{recordId}/with-points")
+    public Result<RecordWithPointsDTO> getRecordWithPoints(@PathVariable("recordId") Long recordId) {
+        return Result.success(sportRecordService.getRecordWithPoints(recordId));
     }
 
     /** 状态回调（乐观锁迁移，冲突 3003） */

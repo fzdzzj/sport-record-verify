@@ -6,6 +6,7 @@ import com.github.benmanes.caffeine.cache.Cache;
 import com.sportverify.api.record.RecordApi;
 import com.sportverify.api.record.RecordStatus;
 import com.sportverify.api.record.SportType;
+import com.sportverify.api.record.dto.RecordWithPointsDTO;
 import com.sportverify.api.record.dto.SportRecordDTO;
 import com.sportverify.api.record.dto.StatusCallbackDTO;
 import com.sportverify.api.record.dto.TrackPointDTO;
@@ -108,12 +109,15 @@ public class VerifyService {
         // 校验中占位（INSERT IGNORE，幂等）：对应状态机副作用「写 verification_result(VERIFYING)」
         verificationResultMapper.initVerifying(recordId);
 
-        // 拉取记录与轨迹（record-api Feign；record-service 内部先解析 user_id 再路由分片）
-        SportRecordDTO record = recordApi.getRecord(recordId).getData();
-        if (record == null) {
+        // 拉取记录与轨迹（聚合契约单次往返；record-service 内部单次查 sport_record 解析
+        // user_id 再单分片路由查 track_point，消除原 getRecord/listPoints 两次 Feign 与重复查询）
+        RecordWithPointsDTO recordWithPoints =
+                recordApi.getRecordWithPoints(recordId).getData();
+        if (recordWithPoints == null || recordWithPoints.getRecord() == null) {
             throw new BizException(ResultCode.RECORD_NOT_FOUND);
         }
-        List<TrackPointDTO> points = recordApi.listPoints(recordId).getData();
+        SportRecordDTO record = recordWithPoints.getRecord();
+        List<TrackPointDTO> points = recordWithPoints.getPoints();
 
         // 引擎判定：规则集经灰度路由——floorMod(userId,100)<gray_ratio 用 rule_version 库内
         // 灰度快照（不受 Nacos 瞬时变更影响），未命中走基线（ACTIVE 快照/Nacos 实时配置）；

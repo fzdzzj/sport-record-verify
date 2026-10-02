@@ -2,6 +2,7 @@ package com.sportverify.api.record;
 
 import com.sportverify.api.record.dto.LikeDTO;
 import com.sportverify.api.record.dto.LikeRequestDTO;
+import com.sportverify.api.record.dto.RecordWithPointsDTO;
 import com.sportverify.api.record.dto.SportRecordDTO;
 import com.sportverify.api.record.dto.StatusCallbackDTO;
 import com.sportverify.api.record.dto.TrackPointDTO;
@@ -41,6 +42,11 @@ public class RecordApiFallback implements FallbackFactory<RecordApi> {
             @Override
             public Result<List<TrackPointDTO>> listPoints(Long recordId) {
                 throw fail("listPoints:" + recordId, cause);
+            }
+
+            @Override
+            public Result<RecordWithPointsDTO> getRecordWithPoints(Long recordId) {
+                throw fail("getRecordWithPoints:" + recordId, cause);
             }
 
             @Override

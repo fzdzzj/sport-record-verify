@@ -7,6 +7,7 @@ import com.sportverify.api.record.RecordStatus;
 import com.sportverify.api.record.SportType;
 import com.sportverify.api.record.dto.RecordSubmitDTO;
 import com.sportverify.api.record.dto.RecordSubmitResultDTO;
+import com.sportverify.api.record.dto.RecordWithPointsDTO;
 import com.sportverify.api.record.dto.SportRecordDTO;
 import com.sportverify.api.record.dto.StatusCallbackDTO;
 import com.sportverify.api.record.dto.TrackPointDTO;
@@ -291,6 +292,28 @@ public class SportRecordService {
                         .eq(TrackPoint::getUserId, record.getUserId()) // 分片键：单分片路由
                         .orderByAsc(TrackPoint::getSeq))
                 .stream().map(this::toDto).toList();
+    }
+
+    /**
+     * 一次性拉取记录详情与全部轨迹点（聚合查询，供 verify 校验输入）。
+     * 先查一次 sport_record 得到元数据与 user_id，若不存在抛 3001；
+     * 再按 user_id 路由对应分片查询全部轨迹点（按 seq 升序）。
+     */
+    public RecordWithPointsDTO getRecordWithPoints(Long recordId) {
+        SportRecord record = sportRecordMapper.selectById(recordId);
+        if (record == null) {
+            throw new BizException(ResultCode.RECORD_NOT_FOUND);
+        }
+        SportRecordDTO recordDto = new SportRecordDTO();
+        BeanUtils.copyProperties(record, recordDto);
+
+        List<TrackPointDTO> points = trackPointMapper.selectList(new LambdaQueryWrapper<TrackPoint>()
+                        .eq(TrackPoint::getRecordId, recordId)
+                        .eq(TrackPoint::getUserId, record.getUserId())
+                        .orderByAsc(TrackPoint::getSeq))
+                .stream().map(this::toDto).toList();
+
+        return new RecordWithPointsDTO(recordDto, points);
     }
 
     /**
