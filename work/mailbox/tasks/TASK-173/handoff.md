@@ -117,8 +117,8 @@ work/mailbox/PLAN.md
 | 提交 | 内容 | 文件数 / 行数 |
 | --- | --- | --- |
 | `c34812d` | C-01 `feat(api): 新增 getRecordWithPoints 聚合契约并接入 verify 判定链路（TASK-173）`（api 三件 + record-service 实现 + verify-service 接入 + 两处测试） | 8 files / +151 −7 |
-| `（C-02）` | C-02 `docs(mailbox): 登记 TASK-173 验收记录与任务两件套（TASK-173）`（提案三件套 + PLAN 纯追加 + TASK-173 两件套） | 6 files |
+| `526a73d` | C-02 `docs(mailbox): 登记 TASK-173 验收记录与任务两件套（TASK-173）`（提案三件套 + PLAN 纯追加 + TASK-173 两件套） | 6 files / +555 |
 | `（C-03）` | C-03 `docs(mailbox): 回填 TASK-173 handoff 收口读数（TASK-173）`（仅本 `handoff.md`） | 1 file |
 
-- 收口终检读数（C-02 后实测，由 C-03 回填）：契约门无参 rc=0、`git diff --check` rc=0、词面门四形态复跑全 ZERO_HIT rc=1。
+- 收口终检读数（C-02 后实测）：契约门无参 **rc=0**（判据 A 两件套齐（含 0 个待办进行中）＋判据 B 清单一致，TASK-173 足迹不在工作树视为已收口）、`git diff --check` **rc=0**、词面门四形态复跑全 **ZERO_HIT rc=1**；收口后 `git status --porcelain` 仅剩既有脏项 `?? spec/changes/add-verify-degrade-status-index/`；`git rev-list --left-right --count origin/main...main = 0 3`。
 - 起点 `git rev-list --left-right --count origin/main...main = 0 1`；未 push、未建 PR。
