@@ -9,6 +9,7 @@ import com.sportverify.record.entity.RecordLike;
 import com.sportverify.record.entity.SportRecord;
 import com.sportverify.record.mapper.RecordLikeMapper;
 import com.sportverify.record.mapper.SportRecordMapper;
+import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.redisson.api.RLock;
@@ -29,6 +30,7 @@ import java.util.concurrent.TimeUnit;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.anyString;
@@ -59,6 +61,7 @@ class RecordLikeServiceTest {
     private RLock lock;
     private PlatformTransactionManager transactionManager;
     private RecordLikeService service;
+    private SimpleMeterRegistry meterRegistry;
 
     @BeforeEach
     @SuppressWarnings("unchecked")
@@ -84,8 +87,10 @@ class RecordLikeServiceTest {
         when(transactionManager.getTransaction(any(TransactionDefinition.class)))
                 .thenAnswer(inv -> new SimpleTransactionStatus());
 
+        // 真实 SimpleMeterRegistry（禁 mock MeterRegistry）：Gauge 读数用例直接取注册表实测
+        meterRegistry = new SimpleMeterRegistry();
         service = new RecordLikeService(sportRecordMapper, recordLikeMapper, redis, redissonClient,
-                new ObjectMapper(), transactionManager);
+                new ObjectMapper(), transactionManager, meterRegistry);
     }
 
     // ==================== 点赞（前置校验 + 幂等 T9） ====================
@@ -366,6 +371,163 @@ class RecordLikeServiceTest {
         verify(recordLikeMapper, never()).selectRecordLikePairs();
         verify(valueOps, never()).set(anyString(), anyString());
         verify(lock, never()).unlock();
+    }
+
+    // ==================== 防击穿互斥重建 / 空值哨兵（TASK-174） ====================
+
+    /** 判别式：miss 后获锁互斥重建——COUNT 恰 1 次、两参持久回填、finally 释放锁 */
+    @Test
+    void getLike_miss_rebuildUnderMutexLock() {
+        when(sportRecordMapper.selectById(1L)).thenReturn(record(RecordStatus.PASSED));
+        when(setOps.isMember("like:record:1:users", "100")).thenReturn(false);
+        when(valueOps.get("like:count:1")).thenReturn(null);
+        when(recordLikeMapper.countByRecordId(1L)).thenReturn(5L);
+
+        LikeDTO dto = service.getLike(1L, 100L);
+
+        assertEquals(5L, dto.getLikeCount());
+        verify(recordLikeMapper, times(1)).countByRecordId(1L);
+        verify(valueOps).set("like:count:1", "5");
+        verify(lock).unlock();
+    }
+
+    /** 判别式：获锁者双重检查命中缓存（等锁期间已被回填/对账覆盖）→ 不触发 DB COUNT */
+    @Test
+    void getLike_missAfterLock_doubleCheckHitsCache() {
+        when(sportRecordMapper.selectById(1L)).thenReturn(record(RecordStatus.PASSED));
+        when(setOps.isMember("like:record:1:users", "100")).thenReturn(false);
+        when(valueOps.get("like:count:1")).thenReturn(null, "7");
+
+        LikeDTO dto = service.getLike(1L, 100L);
+
+        assertEquals(7L, dto.getLikeCount());
+        verify(recordLikeMapper, never()).countByRecordId(anyLong());
+    }
+
+    /** 判别式：未获锁等待者自旋重读共享重建结果 → 全程不触发 DB COUNT */
+    @Test
+    void getLike_lockWaiter_readsSharedResult() throws InterruptedException {
+        doReturn(false).when(lock).tryLock(anyLong(), anyLong(), any(TimeUnit.class));
+        when(sportRecordMapper.selectById(1L)).thenReturn(record(RecordStatus.PASSED));
+        when(setOps.isMember("like:record:1:users", "100")).thenReturn(false);
+        when(valueOps.get("like:count:1")).thenReturn(null, "5");
+
+        LikeDTO dto = service.getLike(1L, 100L);
+
+        assertEquals(5L, dto.getLikeCount());
+        verify(recordLikeMapper, never()).countByRecordId(anyLong());
+    }
+
+    /** 判别式：等待者重试耗尽兜底直读 DB 返回，但不回填（两参/四参 set 均不得发生） */
+    @Test
+    void getLike_lockWaiter_fallbackDirectReadNoBackfill() throws InterruptedException {
+        doReturn(false).when(lock).tryLock(anyLong(), anyLong(), any(TimeUnit.class));
+        when(sportRecordMapper.selectById(1L)).thenReturn(record(RecordStatus.PASSED));
+        when(setOps.isMember("like:record:1:users", "100")).thenReturn(false);
+        when(valueOps.get("like:count:1")).thenReturn(null);
+        when(recordLikeMapper.countByRecordId(1L)).thenReturn(5L);
+
+        LikeDTO dto = service.getLike(1L, 100L);
+
+        assertEquals(5L, dto.getLikeCount());
+        verify(valueOps, never()).set(anyString(), anyString());
+        verify(valueOps, never()).set(anyString(), anyString(), anyLong(), any(TimeUnit.class));
+    }
+
+    /** 判别式：Redisson 锁服务异常 → 降级为既有直读回填，不向上抛锁异常 */
+    @Test
+    void getLike_redissonError_degradesToDirectBackfill() {
+        when(redissonClient.getLock("lock:like:count-init:1"))
+                .thenThrow(new RuntimeException("redisson down"));
+        when(sportRecordMapper.selectById(1L)).thenReturn(record(RecordStatus.PASSED));
+        when(setOps.isMember("like:record:1:users", "100")).thenReturn(false);
+        when(valueOps.get("like:count:1")).thenReturn(null);
+        when(recordLikeMapper.countByRecordId(1L)).thenReturn(5L);
+
+        LikeDTO dto = service.getLike(1L, 100L);
+
+        assertEquals(5L, dto.getLikeCount());
+        verify(valueOps).set("like:count:1", "5");
+    }
+
+    /** 判别式：0 计数回填 60s 空值哨兵（四参 set，TTL 60 秒） */
+    @Test
+    void getLike_zeroCount_sentinelShortTtl() {
+        when(sportRecordMapper.selectById(1L)).thenReturn(record(RecordStatus.PASSED));
+        when(setOps.isMember("like:record:1:users", "100")).thenReturn(false);
+        when(valueOps.get("like:count:1")).thenReturn(null);
+        when(recordLikeMapper.countByRecordId(1L)).thenReturn(0L);
+
+        LikeDTO dto = service.getLike(1L, 100L);
+
+        assertEquals(0L, dto.getLikeCount());
+        verify(valueOps).set("like:count:1", "0", 60L, TimeUnit.SECONDS);
+    }
+
+    /** 判别式：首次点赞 INCR 后 persist 清 TTL，防哨兵键过期计数幽灵回退 */
+    @Test
+    void like_firstLike_persistsCountKey() {
+        when(sportRecordMapper.selectById(1L)).thenReturn(record(RecordStatus.PASSED));
+        when(setOps.add("like:record:1:users", "100")).thenReturn(1L);
+        when(valueOps.increment("like:count:1")).thenReturn(1L);
+
+        LikeDTO dto = service.like(1L, 100L);
+
+        assertEquals(1L, dto.getLikeCount());
+        verify(redis).persist("like:count:1");
+    }
+
+    /** 判别式：确认取消 DECR 后 persist 清 TTL */
+    @Test
+    void unlike_success_persistsCountKey() {
+        when(sportRecordMapper.selectById(1L)).thenReturn(record(RecordStatus.PASSED));
+        when(setOps.remove("like:record:1:users", "100")).thenReturn(1L);
+        when(valueOps.decrement("like:count:1")).thenReturn(0L);
+
+        LikeDTO dto = service.unlike(1L, 100L);
+
+        assertEquals(0L, dto.getLikeCount());
+        verify(redis).persist("like:count:1");
+    }
+
+    // ==================== pending 队列可观测（TASK-174） ====================
+
+    /** 判别式：flush 每轮发布堆积量与队头年龄 Gauge（SimpleMeterRegistry 实测读数） */
+    @Test
+    void flush_publishesPendingGauges() {
+        long now = System.currentTimeMillis();
+        String headJson = "{\"recordId\":1,\"userId\":100,\"action\":\"LIKE\",\"enqueuedAt\":"
+                + (now - 5000) + "}";
+        when(listOps.size(RecordLikeService.PENDING_QUEUE_KEY)).thenReturn(2L);
+        when(listOps.range(RecordLikeService.PENDING_QUEUE_KEY, 0, 0)).thenReturn(List.of(headJson));
+        when(listOps.range(RecordLikeService.PENDING_QUEUE_KEY, 0, 199)).thenReturn(List.of(
+                headJson,
+                "{\"recordId\":1,\"userId\":101,\"action\":\"LIKE\",\"enqueuedAt\":"
+                        + (now - 3000) + "}"));
+        when(recordLikeMapper.batchInsertIgnore(any())).thenReturn(1);
+
+        service.flushPendingLikes();
+
+        assertEquals(2.0, meterRegistry.get("like.pending.queue.size").gauge().value(), 0.0001);
+        // 用例内捕获时钟差：队头 enqueuedAt=now-5000，age>0 即可，不做精确值断言
+        double headAge = meterRegistry.get("like.pending.head.age.ms").gauge().value();
+        assertTrue(headAge > 0);
+    }
+
+    /** 判别式：旧格式队头（无 enqueuedAt）年龄记 -1，不抛异常、主消费照常完成（trim 被调用） */
+    @Test
+    void flush_legacyHeadElement_ageUnknown() {
+        String legacy = "{\"recordId\":1,\"userId\":100,\"action\":\"LIKE\"}";
+        when(listOps.size(RecordLikeService.PENDING_QUEUE_KEY)).thenReturn(1L);
+        when(listOps.range(RecordLikeService.PENDING_QUEUE_KEY, 0, 0)).thenReturn(List.of(legacy));
+        when(listOps.range(RecordLikeService.PENDING_QUEUE_KEY, 0, 199)).thenReturn(List.of(legacy));
+        when(recordLikeMapper.batchInsertIgnore(any())).thenReturn(1);
+
+        service.flushPendingLikes();
+
+        assertEquals(-1.0, meterRegistry.get("like.pending.head.age.ms").gauge().value(), 0.0001);
+        assertEquals(1.0, meterRegistry.get("like.pending.queue.size").gauge().value(), 0.0001);
+        verify(listOps).trim(RecordLikeService.PENDING_QUEUE_KEY, 1, -1);
     }
 
     // ==================== 工具 ====================

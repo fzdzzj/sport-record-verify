@@ -10,7 +10,8 @@ import com.sportverify.record.entity.RecordLike;
 import com.sportverify.record.entity.SportRecord;
 import com.sportverify.record.mapper.RecordLikeMapper;
 import com.sportverify.record.mapper.SportRecordMapper;
-import lombok.RequiredArgsConstructor;
+import io.micrometer.core.instrument.Gauge;
+import io.micrometer.core.instrument.MeterRegistry;
 import lombok.extern.slf4j.Slf4j;
 import org.redisson.api.RLock;
 import org.redisson.api.RedissonClient;
@@ -27,6 +28,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicLong;
 
 /**
  * 点赞服务（审批版 §4.6，规范差异：点赞前置校验 / 点赞幂等 / 计数读热写冷 /
@@ -51,7 +53,6 @@ import java.util.concurrent.TimeUnit;
  */
 @Slf4j
 @Service
-@RequiredArgsConstructor
 public class RecordLikeService {
 
     private final SportRecordMapper sportRecordMapper;
@@ -61,6 +62,32 @@ public class RecordLikeService {
     private final ObjectMapper objectMapper;
     /** 仅用于 flush 两写同进退；热路径 like/unlike 不走事务（见 ADR-0009） */
     private final PlatformTransactionManager transactionManager;
+    /** Micrometer 注册表：pending 队列两 Gauge 的注册载体 */
+    private final MeterRegistry meterRegistry;
+
+    /** pending 队列堆积量 Gauge 载体（like.pending.queue.size） */
+    private final AtomicLong pendingQueueSize = new AtomicLong(-1);
+    /** pending 队头消费延迟 Gauge 载体（like.pending.head.age.ms；-1 表示旧格式无时间戳） */
+    private final AtomicLong pendingHeadAgeMs = new AtomicLong(-1);
+
+    public RecordLikeService(SportRecordMapper sportRecordMapper, RecordLikeMapper recordLikeMapper,
+                             StringRedisTemplate stringRedisTemplate, RedissonClient redissonClient,
+                             ObjectMapper objectMapper, PlatformTransactionManager transactionManager,
+                             MeterRegistry meterRegistry) {
+        this.sportRecordMapper = sportRecordMapper;
+        this.recordLikeMapper = recordLikeMapper;
+        this.stringRedisTemplate = stringRedisTemplate;
+        this.redissonClient = redissonClient;
+        this.objectMapper = objectMapper;
+        this.transactionManager = transactionManager;
+        this.meterRegistry = meterRegistry;
+        Gauge.builder("like.pending.queue.size", pendingQueueSize, AtomicLong::get)
+                .description("like pending queue backlog size (LLEN like:pending:ops)")
+                .register(meterRegistry);
+        Gauge.builder("like.pending.head.age.ms", pendingHeadAgeMs, AtomicLong::get)
+                .description("like pending head age in ms (-1 for legacy entries without timestamp)")
+                .register(meterRegistry);
+    }
 
     // ==================== Redis 键与常量 ====================
 
@@ -91,11 +118,22 @@ public class RecordLikeService {
     /** 锁等待上限（秒）：拿不到锁直接跳过本轮（下一轮再试） */
     private static final long LOCK_WAIT_SECONDS = 3;
 
+    /** 计数重建锁键前缀（per-record 互斥回源，防击穿 F17） */
+    static final String COUNT_INIT_LOCK_PREFIX = "lock:like:count-init:";
+    /** 重建锁等待上限（秒）：等待持锁者完成回填，实际等待≈回填耗时 */
+    private static final long COUNT_INIT_LOCK_WAIT_SECONDS = 1;
+    /** 未获锁者缓存重读次数上限（共享重建结果；耗尽走兜底直读） */
+    private static final int COUNT_REBUILD_READ_RETRIES = 3;
+    /** 空值哨兵 TTL（秒）：0 计数短 TTL 回填，防冷记录键长驻 */
+    private static final long ZERO_SENTINEL_TTL_SECONDS = 60;
+    /** pending 堆积告警阈值（观测下限，不背压不拒写） */
+    private static final long PENDING_ALERT_THRESHOLD = 1_000;
+
     /** pending 操作动作 */
     private enum Action { LIKE, UNLIKE }
 
-    /** pending 操作载体（Redis 队列元素，JSON 序列化） */
-    private record PendingOp(Long recordId, Long userId, Action action) {
+    /** pending 操作载体（Redis 队列元素，JSON 序列化；enqueuedAt 供队头年龄度量） */
+    private record PendingOp(Long recordId, Long userId, Action action, long enqueuedAt) {
         String key() {
             return recordId + ":" + userId;
         }
@@ -213,6 +251,7 @@ public class RecordLikeService {
             return;
         }
         try {
+            observePendingQueue();
             List<String> raw = stringRedisTemplate.opsForList().range(PENDING_QUEUE_KEY, 0, flushBatch - 1);
             if (raw == null || raw.isEmpty()) {
                 return;
@@ -250,6 +289,29 @@ public class RecordLikeService {
             log.info("flush 落库完成：点赞 {} 条、取消 {} 条", likes.size(), unlikes.size());
         } finally {
             unlock(lock, locked);
+        }
+    }
+
+    /** 队列可观测：每轮采集堆积量与队头消费延迟（仅度量，不背压不拒写） */
+    private void observePendingQueue() {
+        Long size = stringRedisTemplate.opsForList().size(PENDING_QUEUE_KEY);
+        long len = size == null ? 0 : size;
+        pendingQueueSize.set(len);
+        if (len == 0) {
+            pendingHeadAgeMs.set(0);
+            return;
+        }
+        long age = -1;
+        List<String> head = stringRedisTemplate.opsForList().range(PENDING_QUEUE_KEY, 0, 0);
+        if (head != null && !head.isEmpty()) {
+            PendingOp op = parseOp(head.get(0));
+            if (op != null && op.enqueuedAt() > 0) {
+                age = Math.max(0, System.currentTimeMillis() - op.enqueuedAt());
+            }
+        }
+        pendingHeadAgeMs.set(age);
+        if (len > PENDING_ALERT_THRESHOLD) {
+            log.warn("pending 队列堆积超阈值：len={}, threshold={}", len, PENDING_ALERT_THRESHOLD);
         }
     }
 
@@ -320,13 +382,15 @@ public class RecordLikeService {
                 || status == RecordStatus.RE_PASSED.getCode());
     }
 
-    /** 计数 +1（原子 INCR，不碰 DB） */
+    /** 计数 +1（原子 INCR，不碰 DB；随后清 TTL，防哨兵键过期引发计数回退） */
     private long incrementCount(Long recordId) {
-        Long count = stringRedisTemplate.opsForValue().increment(countKey(recordId));
+        String key = countKey(recordId);
+        Long count = stringRedisTemplate.opsForValue().increment(key);
+        persistCountKey(key);
         return count == null ? 0 : count;
     }
 
-    /** 计数 -1（原子 DECR，下限 0：重复取消/漂移时不允许出现负数） */
+    /** 计数 -1（原子 DECR，下限 0；随后清 TTL，防哨兵键过期引发计数回退） */
     private long decrementCount(Long recordId) {
         String key = countKey(recordId);
         Long count = stringRedisTemplate.opsForValue().decrement(key);
@@ -334,27 +398,93 @@ public class RecordLikeService {
             stringRedisTemplate.opsForValue().set(key, "0");
             return 0;
         }
+        persistCountKey(key);
         return count == null ? 0 : count;
     }
 
-    /** 读计数：优先 Redis，键缺失（未初始化/冷启动）兜底 DB COUNT(*) 并回填 */
+    /** 清除计数键 TTL：哨兵 60s 过期会让已点赞计数幽灵回退为 0（persist 失败不阻断热路径） */
+    private void persistCountKey(String key) {
+        try {
+            stringRedisTemplate.persist(key);
+        } catch (Exception e) {
+            log.warn("计数键 persist 失败：key={}", key, e);
+        }
+    }
+
+    /**
+     * 读计数：优先 Redis，键缺失（未初始化/冷启动）经互斥重建回填（防击穿 F17）。
+     *
+     * <p>miss 后以 per-record 锁 {@code lock:like:count-init:{recordId}} 互斥回源：
+     * 获锁者双重检查后查 DB 并按哨兵规则回填（0 计数写 60s 空值哨兵，非 0 持久回填）；
+     * 未获锁者重读缓存至多 3 次共享结果，耗尽后兜底直读 DB 返回（不回填，
+     * 不与持锁者竞争写）；锁服务异常时降级为既有直读回填（可用性优先）。</p>
+     */
     private long readCount(Long recordId) {
-        String cached = stringRedisTemplate.opsForValue().get(countKey(recordId));
+        String key = countKey(recordId);
+        String cached = stringRedisTemplate.opsForValue().get(key);
         if (cached != null) {
             return Long.parseLong(cached);
         }
+        RLock lock = null;
+        boolean locked = false;
+        try {
+            // getLock 与 tryLock 同属重建路径：锁服务任一步抛错都降级直读回填（spec-delta「锁服务异常降级」）
+            lock = redissonClient.getLock(COUNT_INIT_LOCK_PREFIX + recordId);
+            locked = lock.tryLock(COUNT_INIT_LOCK_WAIT_SECONDS, -1, TimeUnit.SECONDS);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+        } catch (Exception e) {
+            log.warn("计数重建锁服务异常，降级直读回填：recordId={}", recordId, e);
+            return rebuildCountFromDb(key, recordId);
+        }
+        if (locked) {
+            try {
+                // 双重检查：等锁期间可能已被回填（前一个持锁者 / 对账覆盖）
+                cached = stringRedisTemplate.opsForValue().get(key);
+                if (cached != null) {
+                    return Long.parseLong(cached);
+                }
+                return rebuildCountFromDb(key, recordId);
+            } finally {
+                lock.unlock();
+            }
+        }
+        return awaitSharedCount(key, recordId);
+    }
+
+    /** 回源 DB 计数并按哨兵规则回填（0 → 60s TTL 哨兵；非 0 → 持久回填） */
+    private long rebuildCountFromDb(String key, Long recordId) {
         Long dbCount = recordLikeMapper.countByRecordId(recordId);
         long count = dbCount == null ? 0 : dbCount;
-        stringRedisTemplate.opsForValue().set(countKey(recordId), String.valueOf(count));
+        if (count == 0) {
+            stringRedisTemplate.opsForValue().set(key, "0",
+                    ZERO_SENTINEL_TTL_SECONDS, TimeUnit.SECONDS);
+        } else {
+            stringRedisTemplate.opsForValue().set(key, String.valueOf(count));
+        }
         log.info("Redis 计数键缺失，DB 兜底回填：recordId={}, count={}", recordId, count);
         return count;
+    }
+
+    /** 未获锁等待者：重读缓存共享结果，耗尽后兜底直读 DB 返回（不回填） */
+    private long awaitSharedCount(String key, Long recordId) {
+        for (int i = 0; i < COUNT_REBUILD_READ_RETRIES; i++) {
+            String cached = stringRedisTemplate.opsForValue().get(key);
+            if (cached != null) {
+                return Long.parseLong(cached);
+            }
+        }
+        Long dbCount = recordLikeMapper.countByRecordId(recordId);
+        log.info("计数重建等待超限，兜底直读：recordId={}, count={}", recordId, dbCount);
+        return dbCount == null ? 0 : dbCount;
     }
 
     /** push 一条 pending 操作（JSON 进 Redis 队列；重启后仍在队列，flush 可重放） */
     private void pushPending(Long recordId, Long userId, Action action) {
         try {
             stringRedisTemplate.opsForList().rightPush(PENDING_QUEUE_KEY,
-                    objectMapper.writeValueAsString(new PendingOp(recordId, userId, action)));
+                    objectMapper.writeValueAsString(
+                            new PendingOp(recordId, userId, action, System.currentTimeMillis())));
         } catch (Exception e) {
             // 队列写失败不应阻断点赞主链路：计数与成员集已就绪，flush 轮空即可；
             // 该次落库缺失由对账任务以 DB 行为准兜底（此处记日志供排查）
@@ -362,13 +492,14 @@ public class RecordLikeService {
         }
     }
 
-    /** 解析 pending 队列元素（脏数据返回 null，由调用方跳过） */
+    /** 解析 pending 队列元素（脏数据返回 null，由调用方跳过；enqueuedAt 缺失记 -1，旧格式兼容） */
     private PendingOp parseOp(String json) {
         try {
             JsonNode node = objectMapper.readTree(json);
             return new PendingOp(node.get("recordId").asLong(),
                     node.get("userId").asLong(),
-                    Action.valueOf(node.get("action").asText()));
+                    Action.valueOf(node.get("action").asText()),
+                    node.has("enqueuedAt") ? node.get("enqueuedAt").asLong() : -1L);
         } catch (Exception e) {
             log.warn("pending 元素解析失败，跳过：{}", json, e);
             return null;
