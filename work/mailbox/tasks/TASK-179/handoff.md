@@ -196,7 +196,8 @@ work/mailbox/tasks/TASK-179/spec.md
 - `bash scripts/verify/mvn-verify.sh --mode=offline --static=record-service` rc=**1**、`You have 814 Checkstyle violations` ⇒ **不增**；
 - 收口 IT 复跑（`TASK179_IT_RUN=run4-closure-evidence`，独立 run 目录，不复写测量轮读数）：`Tests run: 9, Failures: 0, Errors: 0, Skipped: 0`，rc=**0**，67.84s；与测量轮**结构性计数逐位相同**——三档 SET/DEL/SADD 各 200、成员总数 10 000、`MONITOR` like 写命令 600、批次数 cap500=2 / cap1000=1、命令序 `identical=true`（两档）、变异红对照 200 vs 抽 DEL=0 / 颠倒=0、三支归属同为 GO、五项结构闭合检查两侧全 true；仅耗时浮动（J1 墙钟 1049.131 → 957.775ms；服务率基线三轮 2998.041 / 2832.446 / 2919.595 → 3479.996 / 3664.577 / 3421.904ms，候选 cap500 272.408 / 240.220 / 242.977 → 306.689 / 231.498 / 228.901ms，cap1000 202.952 / 162.381 / 195.108 → 210.842 / 224.231 / 194.045ms）⇒ 复现性成立，**报告与 JSON 取测量轮原值**，收口轮数字仅作复现证据登记；
 - 缺变量证明轮（同命令、不导出 `TASK179_IT_*`）：`Tests run: 0`、rc=**0**（修复见 §1.4 第 6 条）；
-- 契约门：**收口无参 rc=0**（读数见 §1.5）；
+- 契约门：**收口无参 rc=0**（HEAD=`ca39e7013f1ea596f01d271075750f7cd1b9c658`、`git status --porcelain` 0 行，`run7-closure-final/closure-final.log`）；
+- **最终 HEAD 上的 mvn 复跑**（`run7-closure-final/`，IT 收尾守卫修正之后）：offline 七模块 `36/41/33/127/144/59/10` = **450 恒等**、rc=**0**、BUILD SUCCESS；`--mode=offline --static=record-service` rc=**1**、**814** 持平；足迹 `git diff --name-only 0b5175b` 计数 **7**，与 §3 全 7 条一致；`origin/main...main` = `0 4`（本笔订正入库后为 `0 5`）；
 - 词面门（含台账四件后全仓复扫）：四形态 ZERO_HIT rc=1、探针四形态 HIT rc=0、`PROBE_GONE`；
 - token：29 项 PLAN.md 行命中数逐项 = 任务书 §5 基线 +2（开工 +1、本笔追加再 +1），`TOKEN_VIOLATIONS=0`；
 - `git diff --name-only 0b5175b` = §3 全 7 条；`git status --porcelain` 为空；PLAN.md 与任务书相对派发笔**纯追加**（删除行数 0）；
@@ -220,7 +221,7 @@ work/mailbox/tasks/TASK-179/spec.md
 1. **无线上/生产测量**：全部读数来自本机、scratch 库 `task179_it`、专用 Redis DB 13、单实例、无并发读 ⇒ 不得外推线上延迟或对账周期占用；服务率对比只登记绝对毫秒与提交次数，未计算任何百分比。
 2. **服务端批内硬中断未覆盖**：`CLIENT KILL ID` 在该连接工厂不支持 ⇒ 「批次写到一半被服务端断开」的已提交/未提交边界未实测，仅覆盖业务异常路径（§4.4）。
 3. **客户端库适用面**：结论仅对 `RedissonConnectionFactory` 上的 `executePipelined` 成立；不得外推为任意 Redis 客户端（含任务书假定的 Lettuce）的 pipeline 语义。
-4. **连接池与并发读未测**：候选在批内长时间占用借出连接，其对池水位、等待时延与生产 10min 节拍并发读的影响未测。
+4. **连接池与并发读未测**：候选在批内长时间占用借出连接，其对池水位、等待时延与生产 10min 节拍并发读的影响未测；`MONITOR` 记录的客户端地址数（基线档 49、候选档 30/29）含关键时点探测与轮询自身连接、且随运行时长变化，**不用作占用证据**（报告 §5 第 5 条同步改按未覆盖登记）。
 5. **分批参数不结论**：cap500/cap1000 的本机差值不足以支撑选参；真实约束（服务端输出缓冲、占用时长、失败粒度）须由实施提案另行判别。
 6. **热路径与积压未测**：`like()/unlike()/getLike()` 单次延迟、真实到达率下 pending 队列形态不在本轮。
 7. **规模与实例边界**：语义档 200 records、服务率档 2 000 records / 100 000 行；Redis 单机 7.2.16，未覆盖集群/哨兵/其他版本。
@@ -237,6 +238,6 @@ work/mailbox/tasks/TASK-179/spec.md
 
 ## 10. 通道还原与临时文件清理
 
-- Redis 宿主映射还原：`docker compose -f docker-compose.yml up -d redis` rc=**0**；`docker port sport-verify-redis` 回到仅 `0.0.0.0:6379->6379/tcp`（16379 追加映射已撤）；临时 override 文件 `task179-compose-override.tmp` 已删（`OVERRIDE_GONE`）。
+- Redis 宿主映射还原（一手读数 `run7-closure-final/channel-restore.log`）：还原前 `docker port` 为 `6379/tcp -> 0.0.0.0:6379` + `0.0.0.0:16379`（v4/v6 各两条）；`docker compose -f docker-compose.yml up -d redis` rc=**0**；还原后仅 `6379/tcp -> 0.0.0.0:6379` 与 `[::]:6379`，`docker ps` 显示 `0.0.0.0:6379->6379/tcp`；容器因重建 `run_id` 变为 `616288b123bb95dd314a9c4dbfc73f118c177950`（`redis_version 7.2.16`），16379 端口探测 `PROBE16379_AFTER_RESTORE_RC=1`（已拒绝）；临时 override 文件已删（`OVERRIDE_GONE=yes`）。
 - scratch 库：`@AfterAll` 执行 `DROP DATABASE IF EXISTS task179_it`；演示 `record_db` / `user_db` / `verify_db` 与用户数据卷零触碰；Redis 专用 DB 13 键（`like:*`、`lock:like:*`）跑前后清理，DB0 演示键零触碰。
 - 仓库根 `task179-*.tmp` 临时脚本与消息文件用毕全部删除；`docs/perf/data/raw/` 为 gitignore，不入库。
