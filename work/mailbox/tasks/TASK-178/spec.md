@@ -118,3 +118,12 @@
 2. **收口门禁（C-02 后亲跑留证入 handoff）**：offline 七模块 450 恒等分模块逐位；`--static=record-service` 不增；IT 直跑全绿 rc=0（完整命令留证）；契约门无参 rc=0；只改清单与 handoff 声明逐条全等；PLAN.md 自派发笔起纯追加。
 3. **提交结构**：C-01 证据笔（IT + 报告 + JSON；subject 沿仓库 test/docs 笔先例，禁性能改善措辞）；C-02 台账笔 `docs(mailbox): 登记 TASK-178 验收记录与测量闭环（TASK-178）`。
 4. **handoff.md**（沿 TASK-176/177 同构 §1-§10）：开工规程核验 / 偏差登记 / 一句话结论 / 只改清单 / 测量证据（E1 三形态、E2 三档、A1 三点关键读数与三支归属）/ 逐门实测表 / 受保护 token 前后读数 / 未覆盖项与不得推出的结论 / 提交表。
+
+---
+
+## 收口记录（执行 agent，2026-10-07）
+
+- 测量轮已收口（两笔本地提交，未 push）：C-01 `697be1f8ae77d04a24fe421044be07fdd2cb1521`（证据笔：`RecordLikeWritePathCapacityIT` 新文件 +1184、`docs/perf/测量-like-写路径-容量与对账.md` +243、`docs/perf/data/exp-like-write-path-capacity.json` +476，3 files / +1903 −0）；C-02 为本台账笔（提案任务清单闭环勾选 + 本收口记录纯追加 + handoff 回传 + 台账纯追加）。
+- 三支判定：**E1 / E2 / A1 均第一支（PASSED）**。E1 三形态 × 3 轮 13 项闭合断言逐轮全绿（LRANGE 总量 = LTRIM 总量 = seed 元素数、逐批 LTRIM = LRANGE、行数增量 = INSERT 影响 − DELETE 影响、终态 LLEN=0、终态行集 = 末次动作净结果），实测纯处理能力 4237–14845 队列元素/秒，与 `200 批 / 5s = 40 ops/s` 算术上界分口径登记 ⇒ 写路径排空时延由调度节拍与批次上限决定，非 DB 写或 Redis 往返。E2 三档 × 2 轮 7 项结构检查逐轮全绿，对账成本由逐 record 三次 Redis 往返主导（R3 100 万行写段占 96.3%、全表载入 3.0%，每 record 均摊 ≈1.7ms），稳态轮整轮重写无增量跳过。A1.1 单轮收敛、A1.2 两跳收敛实测通过；A1.3 DEL+SADD 非原子窗口按 §2.3 仅代码级审计登记（未注入并发 ⇒ 未覆盖）。
+- 偏差登记要点：① 首轮 IT 直跑 rc=1 的三条失败全部来自本侧判别式误设（排空轮预期多算 1；实测 `rounds == batchCount` 且其余 12 项检查全绿），属测量面缺陷而非被测语义异常，修正后复跑 rc=0，首轮日志与 rep1 原文保留于 gitignore 的 raw 目录，不记 FAILED；② 宿主 6379 被原生 redis-server 3.0.504 占用，沿 TASK-110/152 先例以临时 compose override 给既有容器追加 16379，双侧 `run_id` 互证；③ harness `--it` 分支硬编码 leaderboard 清单，本 IT 按 §0.2 直跑例外留证（Notice 延续）；④ 词面门首轮 rc=128 系 `--untracked` 误置 pattern 之后，按 PLAN L4 harness 红线订正为三态判定。
+- 全项门禁退出码、E1/E2/A1 读数、IT 直跑命令与退出码、缺变量跳过取证与未覆盖项详见 `work/mailbox/tasks/TASK-178/handoff.md`；验收台账见 `work/mailbox/PLAN.md` 本轮追加段。`src/main` 零触碰、无背压/告警/参数变更，全部数字限定本机隔离环境，未达外部门槛。
