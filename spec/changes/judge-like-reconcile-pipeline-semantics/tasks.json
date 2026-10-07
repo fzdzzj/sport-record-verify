@@ -1,0 +1,36 @@
+[
+  {
+    "number": 1,
+    "category": "基线",
+    "task": "固定被测语义与 J1 基线快照",
+    "steps": [
+      { "step": "记录 reconcileLikeCounts 当前实现要点（全表载入、内存分组、逐 record SET/DEL/SADD、锁）与环境核验（scratch MySQL + 受控真 Redis，沿 TASK-178 规程）", "completed": false },
+      { "step": "J1：真 Redis + scratch DB 上逐事件观测基线对账——中间可见态序列、DEL→SADD 空窗时长、并发 like 存活/覆盖行为、锁防重", "completed": false },
+      { "step": "J2 切片装配：test-only 受限切片复用生产装配（Mapper/RedisTemplate/Redisson），pipeline 候选命令序列设计落报告", "completed": false }
+    ],
+    "passes": false
+  },
+  {
+    "number": 2,
+    "category": "判别",
+    "task": "J2 对照观测与 J3 六判据裁决",
+    "steps": [
+      { "step": "J2：同数据同装配下 pipeline 候选（executePipelined）重放等价命令序列，逐事件观测同维度，差异逐条登记", "completed": false },
+      { "step": "J3：六判据逐项裁决（a 收敛态等价 / b 并发写不劣化 / c 无新增失败模式 / d 锁语义 / e 可重放 / f 服务率量化），任一 (a)-(e) 劣化即 NO-GO", "completed": false },
+      { "step": "变异红验证：判别切片对关键观测点至少一处注入式变异（如抽掉 DEL）能被观测捕获，证明判别力非空转", "completed": false },
+      { "step": "IT 落库（TASK179_IT_*，缺变量 assume 跳过不视为通过），GO/NO-GO 结论与全部证据入报告与 JSON", "completed": false }
+    ],
+    "passes": false
+  },
+  {
+    "number": 3,
+    "category": "验收",
+    "task": "三支判定与台账闭环",
+    "steps": [
+      { "step": "按预注册判定收口：GO = 六判据全过（服务率量化仅登记）；NO-GO = 任一 (a)-(e) 劣化（如实登记劣化证据）；UNDETERMINED = 环境不可用", "completed": false },
+      { "step": "判别报告 docs/perf/判别-like-对账-pipeline-语义边界.md + 机器摘要 JSON，全部数字限定本机隔离环境，不写改善百分比", "completed": false },
+      { "step": "台账闭环：tasks.json 全勾、handoff 与 PLAN.md 纯追加、门禁全项亲跑留证", "completed": false }
+    ],
+    "passes": false
+  }
+]
