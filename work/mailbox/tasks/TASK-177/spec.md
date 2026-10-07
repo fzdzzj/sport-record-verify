@@ -122,3 +122,11 @@
    - C-01 实施笔：D5 三文件 + verification.md attempt-2 追加。subject 类型沿仓库代码笔先例（开工 `git log` 考据 sql/ 相关提交措辞），禁性能改善措辞；
    - C-02 台账笔：`docs(mailbox): 登记 TASK-177 验收记录与提案闭环（TASK-177）`。
 4. **handoff.md**（沿 TASK-176 同构 §1-§10）：开工规程核验 / 偏差登记 / 一句话结论 / 只改清单 / 测量证据（四组合关键读数 + 三支归属）/ 逐门实测表 / 受保护 token 前后读数 / 未覆盖项与不得推出的结论 / 提交表。
+
+---
+
+## 收口记录（执行 agent，2026-10-07）
+
+- 实施轮已收口（两笔本地提交，未 push）：C-01 `2876cd8ab998064fff02db8f99abf5b5ee6e7dac`（实施笔：建表脚本一行 + 幂等迁移新文件 + IT 新文件 + `verification.md` attempt-2 追加，4 files / +496 −1）；C-02 为本台账笔（提案任务清单闭环勾选 + 本收口记录纯追加 + handoff 回传 + 台账纯追加）。
+- 三支判定：**第一支（PASSED）**——加索引后双形态计划均 `type=range key=idx_status_created`；S-sparse 前置实读 16000 行（全表级）→ 后置 3 行（status=1 条目级）；IT 2/2 绿。S-dense 后置劣化按 §2.2 预注册豁免、数字如实登记（前置实读 3266 / 后置 480，代价估计 9.82→216）。
+- 全项门禁退出码、四组合读数、迁移双跑幂等、IT 直跑命令与退出码、偏差登记（工具链词面门假阳性、契约门历史回传结构性交叉触发、harness `--it` 缺口 Notice）与未覆盖项详见 `work/mailbox/tasks/TASK-177/handoff.md`；验收台账见 `work/mailbox/PLAN.md` 本轮追加段。

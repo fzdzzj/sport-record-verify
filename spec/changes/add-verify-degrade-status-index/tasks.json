@@ -4,33 +4,33 @@
     "category": "基线",
     "task": "固定扫描 SQL、双形态种子与加索引前证据",
     "steps": [
-      { "step": "记录当前查询条件、现有三索引与滞留扫描 SQL 文本（复刻 attempt-1 记录口径）", "completed": false },
-      { "step": "在 scratch 库构建双形态种子各 16000 行（S-sparse：500 新鲜 + 3 滞留 VERIFYING + 14537 PASSED + 640 REJECTED + 320 MANUAL_REVIEW 交错注入；S-dense：14560 PASSED / 640 REJECTED / 480 全滞留 VERIFYING / 320 MANUAL_REVIEW），种子 SQL 全文入 verification.md", "completed": false },
-      { "step": "在 scratch 库记录加索引前双形态 EXPLAIN 与 EXPLAIN ANALYZE（每次捕获前 ANALYZE TABLE）", "completed": false }
+      { "step": "记录当前查询条件、现有三索引与滞留扫描 SQL 文本（复刻 attempt-1 记录口径）", "completed": true },
+      { "step": "在 scratch 库构建双形态种子各 16000 行（S-sparse：500 新鲜 + 3 滞留 VERIFYING + 14537 PASSED + 640 REJECTED + 320 MANUAL_REVIEW 交错注入；S-dense：14560 PASSED / 640 REJECTED / 480 全滞留 VERIFYING / 320 MANUAL_REVIEW），种子 SQL 全文入 verification.md", "completed": true },
+      { "step": "在 scratch 库记录加索引前双形态 EXPLAIN 与 EXPLAIN ANALYZE（每次捕获前 ANALYZE TABLE）", "completed": true }
     ],
-    "passes": false
+    "passes": true
   },
   {
     "number": 2,
     "category": "索引",
     "task": "只增加状态与创建时间复合索引",
     "steps": [
-      { "step": "在 sport_record 建表脚本 sql/02-record-db.sql 增加 idx_status_created(status, created_at)", "completed": false },
-      { "step": "新增幂等迁移 sql/migrations/add-idx-record-status.sql（information_schema 模式沿 add-idx-record-seq.sql 先例，仅 sport_record 单表），双跑验证幂等", "completed": false },
-      { "step": "保持查询、阈值、扫描上限和状态迁移不变（VerifyDegradeService.java 零改动，禁 index hints）", "completed": false }
+      { "step": "在 sport_record 建表脚本 sql/02-record-db.sql 增加 idx_status_created(status, created_at)", "completed": true },
+      { "step": "新增幂等迁移 sql/migrations/add-idx-record-status.sql（information_schema 模式沿 add-idx-record-seq.sql 先例，仅 sport_record 单表），双跑验证幂等", "completed": true },
+      { "step": "保持查询、阈值、扫描上限和状态迁移不变（VerifyDegradeService.java 零改动，禁 index hints）", "completed": true }
     ],
-    "passes": false
+    "passes": true
   },
   {
     "number": 3,
     "category": "验收",
     "task": "双形态前后对比、三支判定与台账闭环",
     "steps": [
-      { "step": "在 scratch 库记录加索引后双形态 EXPLAIN 与 EXPLAIN ANALYZE（前后之间仅差 ALTER ADD INDEX，数据不变）", "completed": false },
-      { "step": "按预注册三支判定收口：PASSED 需两形态计划均 key=idx_status_created 且 S-sparse 前置实读行数全表级、后置 status=1 条目级；S-dense 后置劣化属预注册豁免，数字如实登记；不把未跑的线上延迟写成已改善", "completed": false },
-      { "step": "IT SportRecordIndexMysqlIT 2/2（TASK177_IT_* 环境变量，缺变量 assume 跳过不视为通过）", "completed": false },
-      { "step": "台账闭环：tasks.json 全勾、handoff 与 PLAN.md 纯追加、门禁全项亲跑留证", "completed": false }
+      { "step": "在 scratch 库记录加索引后双形态 EXPLAIN 与 EXPLAIN ANALYZE（前后之间仅差 ALTER ADD INDEX，数据不变）", "completed": true },
+      { "step": "按预注册三支判定收口：PASSED 需两形态计划均 key=idx_status_created 且 S-sparse 前置实读行数全表级、后置 status=1 条目级；S-dense 后置劣化属预注册豁免，数字如实登记；不把未跑的线上延迟写成已改善", "completed": true },
+      { "step": "IT SportRecordIndexMysqlIT 2/2（TASK177_IT_* 环境变量，缺变量 assume 跳过不视为通过）", "completed": true },
+      { "step": "台账闭环：tasks.json 全勾、handoff 与 PLAN.md 纯追加、门禁全项亲跑留证", "completed": true }
     ],
-    "passes": false
+    "passes": true
   }
 ]
