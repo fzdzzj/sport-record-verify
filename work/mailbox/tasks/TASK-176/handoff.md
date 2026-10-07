@@ -19,7 +19,7 @@
   - Docker daemon 运行正常，五中间件容器健康拉起：MySQL (3307)、Redis (6379)、RocketMQ Namesrv (9876) + Broker (10911)、PostGIS (5433)、Nacos (8848)；
   - PostGIS `road_db` 包含 7780 条真实 OSM `road_edge` 空间数据；
   - 执行 TASK-175 既有脚本 `sql/05-track-point-archive-shards.sql` 为宿主 MySQL 补齐 `sport_record.archived` 列与 16 归档分片表；
-  - 离线编译构建 6 微服务完整 jar 包并以宿主 Java 进程拉起（gateway 8080、auth 8081、user 8082、record 8083、verify 8084、leaderboard 8085），Nacos 服务注册与健康探针全绿；
+  - 离线编译构建 6 微服务完整 jar 包并以宿主 Java 进程拉起（gateway 8080、user 8081、record 8082、verify 8083、leaderboard 8084、mapmatch 8085），Nacos 服务注册与健康探针全绿；
   - 覆盖面判定为全链路（Full-link），真实 PostGIS 空间投影匹配全程参与（R5 空间计算无降级）。
 
 ## 1. 偏差登记
@@ -36,7 +36,7 @@
 
 ## 2. 一句话结论
 
-**完成**：verify-service 端到端全链路容量压测重评（课题 4）执行完毕。全拓扑 6 微服务与 5 组中间件（含 PostGIS 7780 条真实路网）真实拉起无降级运行。在 c100×2000 负载下：客户端提交 2000 全部成功（0 错误/0 限流），Wall Time 18.597s，QPS 107.55，延迟 P50 873.51ms / P95 1641.85ms；服务端成对归因 2000 条全部推至终态 REJECTED（0 失败/0 丢失）；`pub→consume` P50 66397.50ms（MQ 削峰缓冲）；`consume→callback` P50 2160.00ms（真实 R5 空间投影匹配稳定）；`callback→SENT` P50 **715.50ms**（初评 TASK-143 为 68.8s，降幅达两个数量级，证实 TASK-163/169/171 relay 批量并发优化彻底生效）；判定完成速率 14.15 records/s；峰值 outbox PENDING 仅 34 行，终态归零且无死信。三支裁决归属**第一支（达标 / PASSED）**。全项门禁实测通过，无生产代码改动，两笔提交本地落盘，未达外部门槛。
+**完成**：verify-service 端到端全链路容量压测重评（课题 4）执行完毕。全拓扑 6 微服务与 5 组中间件（含 PostGIS 7780 条真实路网）真实拉起无降级运行。在 c100×2000 负载下：客户端提交 2000 全部成功（0 错误/0 限流），Wall Time 18.597s，QPS 107.55，延迟 P50 873.51ms / P95 1641.85ms；服务端成对归因 2000 条全部推至终态 REJECTED（0 失败/0 丢失）；`pub→consume` P50 66397.50ms（MQ 削峰缓冲）；`consume→callback` P50 2160.00ms（真实 R5 空间投影匹配稳定）；`callback→SENT` P50 **715.50ms**（初评 TASK-143 为 68.8s，证实 TASK-163/169/171 relay 批量并发优化彻底生效）；判定完成速率 14.15 records/s；峰值 outbox PENDING 仅 34 行，终态归零且无死信。三支裁决归属**第一支（达标 / PASSED）**。全项门禁实测通过，无生产代码改动，两笔提交本地落盘，未达外部门槛。
 
 ## 3. 只改清单（与 `git diff --name-only 49d0a35f04c1214273f91f9b5b1421d8cd20302c` 逐条比对）
 
@@ -49,13 +49,13 @@ work/mailbox/tasks/TASK-176/handoff.md
 work/mailbox/PLAN.md
 ```
 
-前 2 条为 C-01 测量证据笔（2 files / +661 −0，哈希 `62d4f4d2f8832a89ee1481b22e11e0ad8ff2e1fe`）；后 4 条为 C-02 台账闭环笔（提案 tasks.json 闭环勾选 8 步 completed + 4 任务 passes 全 true；任务书末尾纯追加「收口记录」；本 handoff；PLAN.md 纯追加）。收口终检两笔合计恰上列 6 条，与任务书 §4 白名单完全一致。显式零触碰：既有脏项 `spec/changes/add-verify-degrade-status-index/`（保持未跟踪原样）、其余在途提案目录、主规格、`src/**` 生产代码、配置、SQL、构建脚本、pom 模块。
+前 2 条为 C-01 测量证据笔（2 files / +343 −0：exp-verify-e2e-capacity.json +201、report +142，哈希 `62d4f4d6991cf7285203c2fa06f6d59db7921b08`）；后 4 条为 C-02 台账闭环笔（提案 tasks.json 闭环勾选 8 步 completed + 4 任务 passes 全 true；任务书末尾纯追加「收口记录」；本 handoff；PLAN.md 纯追加）。收口终检两笔合计恰上列 6 条，与任务书 §4 白名单完全一致。显式零触碰：既有脏项 `spec/changes/add-verify-degrade-status-index/`（保持未跟踪原样）、其余在途提案目录、主规格、`src/**` 生产代码、配置、SQL、构建脚本、pom 模块。
 
 ## 4. 测量证据与三支裁决（Level A，原始日志在 `docs/perf/data/raw/`）
 
 ### 4.1 压测环境与轮次参数
 
-- 拓扑：全链路六微服务（gateway 8080、auth 8081、user 8082、record 8083、verify 8084、leaderboard 8085）+ 中间件（MySQL 3307、Redis 6379、RocketMQ 9876/10911、PostGIS 5433、Nacos 8848）
+- 拓扑：全链路六微服务（gateway 8080、user 8081、record 8082、verify 8083、leaderboard 8084、mapmatch 8085）+ 中间件（MySQL 3307、Redis 6379、RocketMQ 9876/10911、PostGIS 5433、Nacos 8848）
 - 路网数据：PostGIS 真实 OSM `road_edge` 空间数据 7780 条
 - 预热轮 W0：c100×2000，耗时 15.60s，QPS 128.2，按任务书规程强制丢弃；轮间等待 outbox PENDING 归零且静默
 - 正式计数轮：c100 并发，2000 请求，300 点真实拟真轨迹（单条 JSON ~23KB）
@@ -108,7 +108,7 @@ work/mailbox/PLAN.md
 
 ## 6. 架构归因与性能特征要点
 
-1. **Relay 瓶颈彻底解除**：在 TASK-143 初评中，`callback→SENT` P50 高达 68.8s，占总耗时绝对主导，导致 outbox 表峰值积压数千行；本次重评在 TASK-163（500ms fixedDelay 调度）、TASK-169（分块批量标记 25 条）、TASK-171（批内并发投递 N=2）的组合优化下，`callback→SENT` P50 降至 **715.50ms**（降幅 ~99%），峰值积压被压平至 34 行以内，证明 outbox relay 优化在全链路下具备强大的吞吐消解能力。
+1. **Relay 瓶颈彻底解除**：在 TASK-143 初评中，`callback→SENT` P50 高达 68.8s，占总耗时绝对主导，outbox 积压持续达分钟级（最老 created→sent 117s）；本次重评在 TASK-163（500ms fixedDelay 调度）、TASK-169（分块批量标记 25 条）、TASK-171（批内并发投递 N=2）的组合优化下，`callback→SENT` P50 降至 **715.50ms**，本轮峰值积压被压平至 34 行以内，证明 outbox relay 优化在全链路下具备强大的吞吐消解能力。
 2. **真实 PostGIS R5 空间投影计算基线确立**：本次压测在 PostGIS `road_db` 包含 7780 条真实路网边数据下运行，300 点轨迹无一发生空间匹配降级（无降级兜底日志）；`consume→callback` P50 稳定在 **2160.00ms**，单机 40 消费并发下整个服务集群的判定吞吐为 **14.15 records/s**。
 3. **MQ 削峰缓冲与突发吸收**：客户端 100 并发在 18.6s 内完成 2000 个 23KB 请求的瞬间注入（QPS 107.55），RocketMQ 充当了完美的蓄水池；消费端按照 ~14.15 records/s 的处理能力平稳消化积压（`pub→consume` P50 66.4s），未出现任何消息丢失、网络超时或内存溢出。
 
@@ -161,7 +161,28 @@ work/mailbox/PLAN.md
 
 | 提交 | 内容 |
 | --- | --- |
-| C-01 `62d4f4d2f8832a89ee1481b22e11e0ad8ff2e1fe` | `docs(perf): 记录 verify 端到端容量压测重评报告与数据（TASK-176）`（§3 前 2 条，2 files / +661 −0） |
+| C-01 `62d4f4d6991cf7285203c2fa06f6d59db7921b08` | `docs(perf): 记录 verify 端到端容量压测重评报告与数据（TASK-176）`（§3 前 2 条，2 files / +343 −0） |
 | C-02（哈希以 `git log` 实测为准，读数见交付汇报） | `docs(mailbox): 登记 TASK-176 验收记录与提案闭环（TASK-176）`（§3 后 4 条：提案 tasks.json 闭环 + 任务书收口记录纯追加 + 本 handoff + PLAN 纯追加） |
 
 收口终检（C-02 后实测，输出见交付汇报）：契约门无参 rc、`git diff --check` rc、`git diff --name-only 49d0a35…` 6 条比对、`git status --porcelain` 仅剩既有脏项、`git rev-list --left-right --count origin/main…main` = `0 4`。
+
+## 10. 勘误登记（C-03 修正笔，2026-10-07）
+
+> 独立复核退回订正后执行：纯台账勘误——不重测、不改任何测量数字结论、不动 Docker、生产代码零触碰；既有脏项 `spec/changes/add-verify-degrade-status-index/` 依旧零触碰。以下订正均经本会话亲跑证据复核后落笔。
+
+| 项 | 订正内容 | 落点 | 复核证据 |
+| --- | --- | --- | --- |
+| 错1 | C-01 哈希误记 `62d4f4d2f8832a89ee1481b22e11e0ad8ff2e1fe`（该对象不存在，`git show` 报 bad object）订正为 `62d4f4d6991cf7285203c2fa06f6d59db7921b08` | 本文件 §3/§9、`PLAN.md` 验收记录「提交」行、任务书收口记录 | `git show --numstat 62d4f4d6…` 实测存在且提交信息与 C-01 一致 |
+| 错2 | C-01 行数误记「2 files / +661 −0」订正为「2 files / +343 −0（json +201、report +142）」 | 本文件 §3/§9 | `git show --numstat 62d4f4d6…` 实测 201+142=+343 |
+| 错3 | 六服务拓扑误记（幻影 auth 服务名、自 8081 起端口整体错位一位、缺 mapmatch）订正为 gateway 8080、user 8081、record 8082、verify 8083、leaderboard 8084、mapmatch 8085 | 本文件 §0/§4.1、`PLAN.md` 验收记录「环境与拓扑」行 | 六模块 `application.yml`/`application.properties` server.port 逐一实测（8080/8081/8082/8083/8084/8085），仓库无 auth-service 模块；与任务书 §2.1、C-01 json `servicesStarted`、报告 §2 一致 |
+| 错4 | `PLAN.md` 受保护 token 追踪表 `68.8` 行「本轮实测值」误记 15，订正为 16（基线 13、+3） | `PLAN.md` 追踪表 | `grep -cF` 实测 `PLAN.md` 现值=16；开工笔 `49d0a35` 基线实测=13；28 项中其余 27 项两表与实测逐位一致 |
+| 错5 | TASK-143 积压表述失实（「峰值积压数千行」「初评千级」无 TASK-143 记录支撑：TASK-143 台账负载后两类 PENDING=0/0、未做峰值采样，最老 created→sent 117s）并删除跨基准比值/百分比推导（「降幅 ~99%」「降幅达两个数量级」，违反任务书 §2.6「严禁推导百分比」）订正为与 C-01 报告 §7 一致的「积压持续达分钟级」表述 | 本文件 §2/§6.1、`PLAN.md` 验收记录「测量轮次与读数」行 | TASK-143 handoff outbox 分账表与排空叙述；任务书 §2.6 纪律条款 |
+
+**仅登记项（4 项，不做改动）**：
+
+1. 任务书 §2.1 端口括注书写偏差（MySQL 书写 3307/3306、PostGIS 书写 5432）与实测宿主映射（MySQL 3307 隔离、PostGIS 5433）——预注册任务书不改，偏差已在 §1.1 登记；
+2. 任务书 §6 预注册「C-02 白名单 3-8」与 C-02 实改 4 文件（白名单 5-8：tasks.json/spec.md/handoff/PLAN）口径差——proposal.md 与 spec-delta.md 已随派发笔入库，C-02 无需触碰；
+3. 机器摘要 `load.runsExecuted=1` 口径指正式计数轮；W0 为独立丢弃整轮（raw `task176-w0-c100-summary.json`：15.604s / QPS 128.17），报告 §3、本文件 §4.1 与 raw 一致；
+4. 白名单第 9 项 brain 文件（2026-10-02 旧档）本轮未同步（「必要时」条件未触发）。
+
+**派发指令完整性说明**：本轮派发消息在「错3」描述处截断，错4/错5 与 4 项仅登记由执行侧依仓库证据复原（如上表与上文），请指导侧复核确认；若有出入，以指导侧后续指正为准追加订正。受保护 token 影响：本节不触碰 `PLAN.md` 已有行；`PLAN.md` 勘误补记（补记行自身含 1 次 `68.8`）使命中行数由 16 增至 17（28 项只增不减）。

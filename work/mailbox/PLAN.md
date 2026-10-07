@@ -1578,12 +1578,12 @@ run `35802403723`（head `eba0108`，2026-09-23 00:31 UTC）——**web/build �
 | --- | --- |
 | 唯一问题 | 课题 4：verify-service 端到端全链路容量压测重评。承接 TASK-143（初评，暴露 outbox relay 单线程轮询瓶颈 callback→SENT P50 68.8s）及后续 TASK-163（500ms 调度提速）、TASK-169（分块批量标记 25）、TASK-171（批内并发投递 N=2）与 TASK-175（冷热分离归档），在六服务全拓扑与真实 PostGIS（7780 条真实路网）环境下重评端到端容量水位，检验 relay 优化落地效果与真实路网匹配开销 |
 | 开工基线 | 派发笔 HEAD `49d0a35f04c1214273f91f9b5b1421d8cd20302c`；`origin/main` `d6cf0462222925a5d43e85edf16bd8d3703eeeb9`；`git rev-list --left-right --count origin/main...main` = `0 2`；工作树仅受保护白名单脏项 `?? spec/changes/add-verify-degrade-status-index/`（全程零触碰）；PLAN.md 28 项受保护 token 开工实测与任务书 §5 逐位一致；在途契约门 `--open TASK-176 --baseline=49d0a35…` 开工态实测 rc=0 |
-| 环境与拓扑 | 全链路六微服务（gateway 8080、auth 8081、user 8082、record 8083、verify 8084、leaderboard 8085）+ 五中间件（MySQL 3307、Redis 6379、RocketMQ 9876/10911、PostGIS 5433、Nacos 8848）全栈拉起；PostGIS 加载 7780 条真实 OSM road_edge 空间数据；判定过程真实空间投影匹配全程参与（R5 空间计算无降级）；覆盖面判定为全链路（Full-link） |
-| 测量轮次与读数 | W0 预热轮（c100×2000，15.60s，QPS 128.2）执行后强制丢弃，轮间静默且 outbox PENDING 归零；正式计数轮（c100×2000）：客户端总计 2000 请求，成功 2000（100.00%），429 限流 0，错误 0（0.00%），Wall Time 18.597s，提交 QPS 107.55，延迟 P50 873.51ms / P95 1641.85ms / P99 1874.44ms；服务端成对归因 2000（失配 0、重复 0）：pub→consume P50 66397.50ms / P95 117922.05ms（客户端突发削峰缓冲）；consume→callback P50 2160.00ms / P95 3548.05ms（真实 R5 PostGIS 空间投影计算）；callback→SENT P50 715.50ms / P95 1234.30ms（对比初评 68.8s 剧烈下降，relay 优化彻底消除瓶颈）；判定完成速率 14.15 records/s（141.34s 消化 2000 轨迹）；峰值 PENDING 仅 34 行（初评千级），排空时间 104.23s，峰值排空斜率 0.33 rows/s，净投递速率 13.60 rows/s；终态 PENDING 归零，retry_count > 0 为 0 |
+| 环境与拓扑 | 全链路六微服务（gateway 8080、user 8081、record 8082、verify 8083、leaderboard 8084、mapmatch 8085）+ 五中间件（MySQL 3307、Redis 6379、RocketMQ 9876/10911、PostGIS 5433、Nacos 8848）全栈拉起；PostGIS 加载 7780 条真实 OSM road_edge 空间数据；判定过程真实空间投影匹配全程参与（R5 空间计算无降级）；覆盖面判定为全链路（Full-link） |
+| 测量轮次与读数 | W0 预热轮（c100×2000，15.60s，QPS 128.2）执行后强制丢弃，轮间静默且 outbox PENDING 归零；正式计数轮（c100×2000）：客户端总计 2000 请求，成功 2000（100.00%），429 限流 0，错误 0（0.00%），Wall Time 18.597s，提交 QPS 107.55，延迟 P50 873.51ms / P95 1641.85ms / P99 1874.44ms；服务端成对归因 2000（失配 0、重复 0）：pub→consume P50 66397.50ms / P95 117922.05ms（客户端突发削峰缓冲）；consume→callback P50 2160.00ms / P95 3548.05ms（真实 R5 PostGIS 空间投影计算）；callback→SENT P50 715.50ms / P95 1234.30ms（对比初评 68.8s 剧烈下降，relay 优化彻底消除瓶颈）；判定完成速率 14.15 records/s（141.34s 消化 2000 轨迹）；峰值 PENDING 仅 34 行（初评积压持续达分钟级），排空时间 104.23s，峰值排空斜率 0.33 rows/s，净投递速率 13.60 rows/s；终态 PENDING 归零，retry_count > 0 为 0 |
 | 三支裁决 | 第一支（达标 / PASSED）：客户端错误率 0.00% ≤ 1.00%，成对成功率 100.00% == 100%，第三段 callback→SENT P50 715.50ms ≤ 2000ms，终态 outbox PENDING=0 且无死信 |
 | 门禁 | 前置 offline 七模块 `36/41/33/127/144/59/10`（共 450）全绿 rc=0；static `--static=verify-service` Checkstyle 严格 862（≤862）；词面门四形态全 ZERO_HIT rc=1、正向探针 rc=0；收口无参契约门实测 rc=0；git diff --check rc=0 |
 | 受保护 token | 28 项受保护 token 行命中数（grep -cF）只增不减（逐项基线与终态见 handoff 与下方追踪表） |
-| 提交 | C-01 `62d4f4d2f8832a89ee1481b22e11e0ad8ff2e1fe` `docs(perf): 记录 verify 端到端容量压测重评报告与数据（TASK-176）`；C-02 `docs(mailbox): 登记 TASK-176 验收记录与提案闭环（TASK-176）` |
+| 提交 | C-01 `62d4f4d6991cf7285203c2fa06f6d59db7921b08` `docs(perf): 记录 verify 端到端容量压测重评报告与数据（TASK-176）`；C-02 `docs(mailbox): 登记 TASK-176 验收记录与提案闭环（TASK-176）` |
 | 外部门槛 | 未到达外部门槛（本次不 push，待下次授权由 CI 复验） |
 | 未覆盖/后续 | 本次数字严格限定于本机、Docker 容器与宿主协同拓扑及 c100×2000 负载模型，不向生产环境容量背书，不计算跨基准优化百分比；生产代码、SQL、配置、脚本与 pom 零修改 |
 
@@ -1594,7 +1594,7 @@ run `35802403723`（head `eba0108`，2026-09-23 00:31 UTC）——**web/build �
 | 13.4 | 16 | 17 | 只增不减 |
 | 18.0 | 18 | 19 | 只增不减 |
 | 73.93 | 17 | 18 | 只增不减 |
-| 68.8 | 13 | 15 | 只增不减 |
+| 68.8 | 13 | 16 | 只增不减 |
 | 6315 | 14 | 15 | 只增不减 |
 | 1.8612 | 13 | 14 | 只增不减 |
 | 3.3066 | 13 | 14 | 只增不减 |
@@ -1619,3 +1619,15 @@ run `35802403723`（head `eba0108`，2026-09-23 00:31 UTC）——**web/build �
 | 36995450125 | 1 | 2 | 只增不减 |
 | 37008317295 | 2 | 3 | 只增不减 |
 | 37021305016 | 2 | 3 | 只增不减 |
+
+### TASK-176 勘误补记（C-03 修正笔，2026-10-07）
+
+> 独立复核退回订正；纯台账勘误：不重测、不改任何测量数字结论、不动 Docker、生产代码零触碰。订正均经执行侧亲跑证据复核，明细与仅登记 4 项见 `work/mailbox/tasks/TASK-176/handoff.md` §10。
+
+| 项 | 订正 |
+| --- | --- |
+| 错1 | 验收记录「提交」行 C-01 哈希误记（`62d4f4d2f8832a89ee1481b22e11e0ad8ff2e1fe`，对象不存在）订正为 `62d4f4d6991cf7285203c2fa06f6d59db7921b08` |
+| 错3 | 「环境与拓扑」行六服务清单误记（幻影 auth、自 8081 起端口整体错位、缺 mapmatch）订正为 gateway 8080、user 8081、record 8082、verify 8083、leaderboard 8084、mapmatch 8085（与各服务 application.yml 实测端口一致） |
+| 错4 | 追踪表 token `68.8` 行「本轮实测值」15 订正为 16（基线 13、+3；`grep -cF` 实测）；本补记自身新增 1 次 `68.8` 命中，追加后 `PLAN.md` 实测 17（28 项只增不减） |
+| 错5 | 「测量轮次与读数」行「（初评千级）」订正为「（初评积压持续达分钟级）」（TASK-143 台账无峰值采样记录、负载后 PENDING 0/0；千级唯一在案数字属 TASK-138 PENDING 1012）；跨基准百分比推导已在 handoff §2/§6.1 删除（任务书 §2.6） |
+| 仅登记 | 任务书 §2.1 端口括注书写偏差（PostGIS 书写 5432 vs 实测 5433）；任务书 §6「C-02 白名单 3-8」与实改 4 文件（5-8）口径差；json `runsExecuted=1` 指正式轮、W0 为独立丢弃整轮（raw 15.604s / QPS 128.17）；白名单第 9 项 brain 文件未同步；派发消息于错3处截断，错4/错5 与仅登记项为执行侧依仓库证据复原 |
