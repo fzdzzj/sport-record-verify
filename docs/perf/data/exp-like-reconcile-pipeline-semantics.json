@@ -1,0 +1,829 @@
+{
+  "task": "TASK-179",
+  "topic": "like-reconcile pipeline semantics judgement",
+  "generatedFrom": "docs/perf/data/raw/task179/run2-j1j2-measurement",
+  "environment": {
+    "scratchDb": "task179_it",
+    "mysqlVersion": "8.0.46",
+    "redisHost": "127.0.0.1",
+    "redisPort": 16379,
+    "redisDb": 13,
+    "redisRunId": "3c7000f34fe52b6fc67c8d4754b09b4ad1a1ebbb",
+    "redisVersion": "7.2.16",
+    "javaVersion": "21.0.9",
+    "redisConnectionFactory": "org.redisson.spring.data.connection.RedissonConnectionFactory",
+    "tierSRecords": 200,
+    "tierMRecords": 2000,
+    "membersPerRecord": 50,
+    "chunkCommandCaps": [
+      500,
+      1000
+    ],
+    "sampledProbes": 8
+  },
+  "premiseDivergence": {
+    "specClaim": "task spec section 1.2 states StringRedisTemplate is Lettuce-backed",
+    "measuredFact": "redisson-spring-boot-starter excludes io.lettuce:lettuce-core; the resolved RedisConnectionFactory is org.redisson.spring.data.connection.RedissonConnectionFactory",
+    "handling": "candidate built on the same factory as production (executePipelined over RedissonConnectionFactory); batch caps 500/1000 kept as pre-registered"
+  },
+  "measurementInstruments": {
+    "clientSideCommandTiming": "instrumented StringRedisTemplate (per-command nanos, no production change)",
+    "independentReadOnlyConnection": "second Redisson client + plain StringRedisTemplate (critical-point probes + window polling)",
+    "serverSideMonitor": "raw-socket MONITOR on a dedicated connection; per-command server timestamps; disabled for the service-rate tier because it adds a write per command"
+  },
+  "j1BaselineSnapshot": {
+    "shape": {
+      "label": "baseline-S",
+      "records": 200,
+      "rows": 10000,
+      "reconcileWallMs": 1049.131,
+      "setCount": 200,
+      "deleteCount": 200,
+      "saddCount": 200,
+      "saddMembersTotal": 10000,
+      "monitorWriteCommandCount": 600,
+      "monitorTransactionWrapperCommands": [],
+      "checks": {
+        "setDeleteSaddCountsMatchRecords": true,
+        "saddMembersMatchRows": true,
+        "serverDelToSaddGapSamplesMatchRecords": true,
+        "criticalPointProbesEqualSampledCount": true,
+        "finalConvergenceEqualsDbAuthority": true
+      }
+    },
+    "delToSaddGap": {
+      "clientSideDelToSaddGapMs": {
+        "count": 200,
+        "minMs": 0.0391,
+        "p50Ms": 0.0661,
+        "p90Ms": 0.1113,
+        "maxMs": 16.4676,
+        "sumMs": 52.6431
+      },
+      "serverSideDelToSaddGapMs": {
+        "count": 200,
+        "minMs": 0.651,
+        "p50Ms": 0.975,
+        "p90Ms": 1.542,
+        "maxMs": 21.669,
+        "sumMs": 271.075
+      }
+    },
+    "criticalPointProbes": {
+      "probeCount": 8,
+      "observedCardHistogram": {
+        "0": 8
+      },
+      "sampleReadings": [
+        {
+          "recordId": 700000,
+          "probedAtNanos": 38789348032300,
+          "observedCard": 0,
+          "observedExists": false,
+          "observedCount": "50"
+        },
+        {
+          "recordId": 700025,
+          "probedAtNanos": 38789455486800,
+          "observedCard": 0,
+          "observedExists": false,
+          "observedCount": "50"
+        }
+      ]
+    },
+    "windowPoller": {
+      "sampledRecords": 8,
+      "cycles": 65,
+      "lastCycleMs": 15,
+      "observations": 520,
+      "emptyWindowObservations": 2,
+      "oldStateObservations": 338,
+      "emptyHitsByRecord": {
+        "700000": 1,
+        "700075": 1
+      },
+      "caveat": "轮询为采样观测：未命中不等于窗口不存在；周期与误差见 lastCycleMs 与 cycles"
+    },
+    "convergenceCensus": {
+      "records": 200,
+      "converged": 200,
+      "setOnly": 0,
+      "halfApplied": 0,
+      "untouched": 0,
+      "other": 0
+    }
+  },
+  "j2CandidateComparison": {
+    "cap500": {
+      "shape": {
+        "label": "candidate-cap500",
+        "chunkCommandCap": 500,
+        "pipelineFlushCount": 2,
+        "reconcileWallMs": 85.893,
+        "setCount": 200,
+        "deleteCount": 200,
+        "saddCount": 200,
+        "saddMembersTotal": 10000,
+        "monitorWriteCommandCount": 600,
+        "monitorTransactionWrapperCommands": [],
+        "checks": {
+          "setDeleteSaddCountsMatchRecords": true,
+          "saddMembersMatchRows": true,
+          "serverDelToSaddGapSamplesMatchRecords": true,
+          "criticalPointProbesEqualSampledCount": true,
+          "finalConvergenceEqualsDbAuthority": true
+        }
+      },
+      "delToSaddGap": {
+        "clientSideDelToSaddGapMs": {
+          "count": 200,
+          "minMs": 0.0026,
+          "p50Ms": 0.0086,
+          "p90Ms": 0.0124,
+          "maxMs": 3.9815,
+          "sumMs": 27.8779
+        },
+        "serverSideDelToSaddGapMs": {
+          "count": 200,
+          "minMs": 0.005,
+          "p50Ms": 0.006,
+          "p90Ms": 0.006,
+          "maxMs": 0.053,
+          "sumMs": 1.398
+        }
+      },
+      "criticalPointProbes": {
+        "probeCount": 8,
+        "observedCardHistogram": {
+          "51": 8
+        },
+        "sampleReadings": [
+          {
+            "recordId": 700000,
+            "probedAtNanos": 38791429015300,
+            "observedCard": 51,
+            "observedExists": true,
+            "observedCount": "999"
+          },
+          {
+            "recordId": 700025,
+            "probedAtNanos": 38791432543500,
+            "observedCard": 51,
+            "observedExists": true,
+            "observedCount": "999"
+          }
+        ]
+      },
+      "windowPoller": {
+        "sampledRecords": 8,
+        "cycles": 6,
+        "lastCycleMs": 16,
+        "observations": 48,
+        "emptyWindowObservations": 0,
+        "oldStateObservations": 40,
+        "emptyHitsByRecord": {},
+        "caveat": "轮询为采样观测：未命中不等于窗口不存在；周期与误差见 lastCycleMs 与 cycles"
+      },
+      "convergenceCensus": {
+        "records": 200,
+        "converged": 200,
+        "setOnly": 0,
+        "halfApplied": 0,
+        "untouched": 0,
+        "other": 0
+      }
+    },
+    "cap1000": {
+      "shape": {
+        "label": "candidate-cap1000",
+        "chunkCommandCap": 1000,
+        "pipelineFlushCount": 1,
+        "reconcileWallMs": 59.654,
+        "setCount": 200,
+        "deleteCount": 200,
+        "saddCount": 200,
+        "saddMembersTotal": 10000,
+        "monitorWriteCommandCount": 600,
+        "monitorTransactionWrapperCommands": [],
+        "checks": {
+          "setDeleteSaddCountsMatchRecords": true,
+          "saddMembersMatchRows": true,
+          "serverDelToSaddGapSamplesMatchRecords": true,
+          "criticalPointProbesEqualSampledCount": true,
+          "finalConvergenceEqualsDbAuthority": true
+        }
+      },
+      "delToSaddGap": {
+        "clientSideDelToSaddGapMs": {
+          "count": 200,
+          "minMs": 0.0029,
+          "p50Ms": 0.0035,
+          "p90Ms": 0.013,
+          "maxMs": 3.6981,
+          "sumMs": 26.7375
+        },
+        "serverSideDelToSaddGapMs": {
+          "count": 200,
+          "minMs": 0.006,
+          "p50Ms": 0.006,
+          "p90Ms": 0.007,
+          "maxMs": 0.07,
+          "sumMs": 1.573
+        }
+      },
+      "criticalPointProbes": {
+        "probeCount": 8,
+        "observedCardHistogram": {
+          "51": 8
+        },
+        "sampleReadings": [
+          {
+            "recordId": 700000,
+            "probedAtNanos": 38792783413300,
+            "observedCard": 51,
+            "observedExists": true,
+            "observedCount": "999"
+          },
+          {
+            "recordId": 700025,
+            "probedAtNanos": 38792786830600,
+            "observedCard": 51,
+            "observedExists": true,
+            "observedCount": "999"
+          }
+        ]
+      },
+      "windowPoller": {
+        "sampledRecords": 8,
+        "cycles": 4,
+        "lastCycleMs": 13,
+        "observations": 32,
+        "emptyWindowObservations": 0,
+        "oldStateObservations": 24,
+        "emptyHitsByRecord": {},
+        "caveat": "轮询为采样观测：未命中不等于窗口不存在；周期与误差见 lastCycleMs 与 cycles"
+      },
+      "convergenceCensus": {
+        "records": 200,
+        "converged": 200,
+        "setOnly": 0,
+        "halfApplied": 0,
+        "untouched": 0,
+        "other": 0
+      }
+    },
+    "interCommandGapComparison": null,
+    "commandOrder": {
+      "cap500": {
+        "chunkCommandCap": 500,
+        "baselineStreamSize": 600,
+        "candidateStreamSize": 600,
+        "identical": true,
+        "firstDifferenceIndex": -1,
+        "groupingDifference": {
+          "baselineInterCommandGapMs": {
+            "count": 599,
+            "minMs": 0.416,
+            "p50Ms": 0.603,
+            "p90Ms": 0.929,
+            "maxMs": 1.571,
+            "sumMs": 392.682
+          },
+          "candidateInterCommandGapMs": {
+            "count": 599,
+            "minMs": 0.002,
+            "p50Ms": 0.006,
+            "p90Ms": 0.011,
+            "maxMs": 3.793,
+            "sumMs": 8.034
+          },
+          "candidateCommandsPerFlush": {
+            "cap": 500,
+            "flushes": 2,
+            "min": 99,
+            "max": 501,
+            "total": 600
+          }
+        },
+        "recordOrderIdentical": true,
+        "candidateTransactionWrappers": [],
+        "baselineTransactionWrappers": [],
+        "candidateCommandsPerFlush": {
+          "cap": 500,
+          "flushes": 2,
+          "min": 99,
+          "max": 501,
+          "total": 600
+        }
+      },
+      "cap1000": {
+        "chunkCommandCap": 1000,
+        "baselineStreamSize": 600,
+        "candidateStreamSize": 600,
+        "identical": true,
+        "firstDifferenceIndex": -1,
+        "groupingDifference": {
+          "baselineInterCommandGapMs": {
+            "count": 599,
+            "minMs": 0.357,
+            "p50Ms": 0.57,
+            "p90Ms": 0.852,
+            "maxMs": 4.841,
+            "sumMs": 375.286
+          },
+          "candidateInterCommandGapMs": {
+            "count": 599,
+            "minMs": 0.002,
+            "p50Ms": 0.006,
+            "p90Ms": 0.01,
+            "maxMs": 0.059,
+            "sumMs": 3.868
+          },
+          "candidateCommandsPerFlush": {
+            "cap": 1000,
+            "flushes": 1,
+            "min": 600,
+            "max": 600,
+            "total": 600
+          }
+        },
+        "recordOrderIdentical": true,
+        "candidateTransactionWrappers": [],
+        "baselineTransactionWrappers": [],
+        "candidateCommandsPerFlush": {
+          "cap": 1000,
+          "flushes": 1,
+          "min": 600,
+          "max": 600,
+          "total": 600
+        }
+      }
+    }
+  },
+  "concurrentLikeInjection": {
+    "baselineDeterministicPoints": [
+      {
+        "point": "before-set",
+        "targetRecord": 700007,
+        "injectedUser": 930372,
+        "stateSeenBeforeInjection": {
+          "count": null,
+          "card": 0
+        },
+        "likeCountReturned": 1,
+        "afterReconcile": {
+          "count": "50",
+          "card": 50
+        },
+        "injectedMemberSurvived": false,
+        "dbRowsForTarget": 50,
+        "pendingQueueLength": 1
+      },
+      {
+        "point": "inside-del-to-sadd-window",
+        "targetRecord": 700007,
+        "injectedUser": 900848,
+        "stateSeenBeforeInjection": {
+          "count": "50",
+          "card": 0
+        },
+        "likeCountReturned": 51,
+        "afterReconcile": {
+          "count": "51",
+          "card": 51
+        },
+        "injectedMemberSurvived": true,
+        "dbRowsForTarget": 50,
+        "pendingQueueLength": 1
+      },
+      {
+        "point": "after-sadd",
+        "targetRecord": 700007,
+        "injectedUser": 946255,
+        "stateSeenBeforeInjection": {
+          "count": "50",
+          "card": 50
+        },
+        "likeCountReturned": 51,
+        "afterReconcile": {
+          "count": "51",
+          "card": 51
+        },
+        "injectedMemberSurvived": true,
+        "dbRowsForTarget": 50,
+        "pendingQueueLength": 1
+      }
+    ],
+    "candidateDeterministicPoints": [
+      {
+        "point": "candidate-inside-queue-between-del-and-sadd",
+        "targetRecord": 700007,
+        "injectedUser": 939338,
+        "stateSeenBeforeInjection": {
+          "count": null,
+          "card": 0
+        },
+        "likeCountReturned": 1,
+        "afterReconcile": {
+          "count": "50",
+          "card": 50
+        },
+        "injectedMemberSurvived": false,
+        "dbRowsForTarget": 50,
+        "pendingQueueLength": 1
+      },
+      {
+        "point": "candidate-after-chunk-commit",
+        "targetRecord": 700007,
+        "injectedUser": 935750,
+        "stateSeenBeforeInjection": {
+          "count": "50",
+          "card": 50
+        },
+        "likeCountReturned": 51,
+        "afterReconcile": {
+          "count": "51",
+          "card": 51
+        },
+        "injectedMemberSurvived": true,
+        "dbRowsForTarget": 50,
+        "pendingQueueLength": 1
+      }
+    ],
+    "baselineLossRate": {
+      "shape": "baseline",
+      "acceptedInjecties": 96,
+      "byTimingClass": {
+        "before-record-touched": {
+          "attempts": 26,
+          "lost": 25,
+          "lossRate": 0.961538
+        },
+        "inside-del-to-sadd-window": {
+          "attempts": 0,
+          "lost": 0,
+          "lossRate": null
+        },
+        "after-record-completed": {
+          "attempts": 70,
+          "lost": 0,
+          "lossRate": 0.0
+        }
+      },
+      "reconcileWallMs": 442.548,
+      "pendingQueueLength": 96,
+      "pendingRetainsAllInjectedOps": true,
+      "dbRowsUnchanged": true,
+      "countDriftRecordsSampled": [
+        "700025:count=51,card=51,db=50",
+        "700026:count=51,card=51,db=50",
+        "700027:count=51,card=51,db=50",
+        "700028:count=51,card=51,db=50",
+        "700029:count=51,card=51,db=50",
+        "700030:count=51,card=51,db=50",
+        "700031:count=51,card=51,db=50",
+        "700032:count=51,card=51,db=50",
+        "700033:count=51,card=51,db=50",
+        "700034:count=51,card=51,db=50",
+        "700035:count=51,card=51,db=50",
+        "700036:count=51,card=51,db=50"
+      ],
+      "postCompletionSurvivors": 10
+    },
+    "candidateLossRateCap500": {
+      "shape": "candidate500",
+      "acceptedInjecties": 17,
+      "byTimingClass": {
+        "before-record-touched": {
+          "attempts": 16,
+          "lost": 15,
+          "lossRate": 0.9375
+        },
+        "inside-del-to-sadd-window": {
+          "attempts": 0,
+          "lost": 0,
+          "lossRate": null
+        },
+        "after-record-completed": {
+          "attempts": 1,
+          "lost": 0,
+          "lossRate": 0.0
+        }
+      },
+      "reconcileWallMs": 22.153,
+      "pendingQueueLength": 17,
+      "pendingRetainsAllInjectedOps": true,
+      "dbRowsUnchanged": true,
+      "countDriftRecordsSampled": [
+        "700015:count=51,card=51,db=50",
+        "700016:count=51,card=51,db=50"
+      ],
+      "postCompletionSurvivors": 10
+    },
+    "candidateLossRateCap1000": {
+      "shape": "candidate1000",
+      "acceptedInjecties": 19,
+      "byTimingClass": {
+        "before-record-touched": {
+          "attempts": 19,
+          "lost": 18,
+          "lossRate": 0.947368
+        },
+        "inside-del-to-sadd-window": {
+          "attempts": 0,
+          "lost": 0,
+          "lossRate": null
+        },
+        "after-record-completed": {
+          "attempts": 0,
+          "lost": 0,
+          "lossRate": null
+        }
+      },
+      "reconcileWallMs": 21.595,
+      "pendingQueueLength": 19,
+      "pendingRetainsAllInjectedOps": true,
+      "dbRowsUnchanged": true,
+      "countDriftRecordsSampled": [
+        "700018:count=51,card=51,db=50"
+      ],
+      "postCompletionSurvivors": 10
+    }
+  },
+  "lockSemantics": {
+    "baseline": {
+      "shape": "baseline",
+      "secondTryLockAcquired": false,
+      "secondTryLockElapsedMs": 3011.793,
+      "productionLockWaitSeconds": 3,
+      "allWritesObservedInsideLock": true,
+      "workerCompleted": true
+    },
+    "candidate": {
+      "shape": "candidate-cap500",
+      "secondTryLockAcquired": false,
+      "secondTryLockElapsedMs": 3005.895,
+      "productionLockWaitSeconds": 3,
+      "allWritesObservedInsideLock": true,
+      "workerCompleted": true
+    }
+  },
+  "failureModes": {
+    "baselineAbortAfterThreeRecords": {
+      "shape": "baseline-per-record",
+      "mode": "after-records",
+      "errorSeenByCaller": "IllegalStateException: task179 injected failure after 3 records",
+      "errorSeenByCallerWasInjectedFailure": true,
+      "stepsBeforeThrow": 3,
+      "residue": {
+        "records": 200,
+        "converged": 2,
+        "setOnly": 0,
+        "halfApplied": 1,
+        "untouched": 197,
+        "other": 0
+      },
+      "lockReleasedAfterAbort": true,
+      "afterNextRound": {
+        "records": 200,
+        "converged": 200,
+        "setOnly": 0,
+        "halfApplied": 0,
+        "untouched": 0,
+        "other": 0
+      },
+      "nextRoundConverges": true
+    },
+    "candidateAbortAfterFirstChunk": {
+      "shape": "candidate-per-chunk",
+      "mode": "between-chunks",
+      "errorSeenByCaller": "IllegalStateException: task179 injected failure between batches after 1 committed batches",
+      "errorSeenByCallerWasInjectedFailure": true,
+      "stepsBeforeThrow": 0,
+      "residue": {
+        "records": 200,
+        "converged": 167,
+        "setOnly": 0,
+        "halfApplied": 0,
+        "untouched": 33,
+        "other": 0
+      },
+      "lockReleasedAfterAbort": true,
+      "afterNextRound": {
+        "records": 200,
+        "converged": 200,
+        "setOnly": 0,
+        "halfApplied": 0,
+        "untouched": 0,
+        "other": 0
+      },
+      "nextRoundConverges": true
+    },
+    "candidateAbortWhileQueueingBatch": {
+      "shape": "candidate-per-chunk",
+      "mode": "inside-batch",
+      "errorSeenByCaller": "IllegalStateException: task179 injected failure while queueing batch (1 commands queued, batch not committed)",
+      "errorSeenByCallerWasInjectedFailure": true,
+      "stepsBeforeThrow": 0,
+      "residue": {
+        "records": 200,
+        "converged": 0,
+        "setOnly": 1,
+        "halfApplied": 0,
+        "untouched": 199,
+        "other": 0
+      },
+      "lockReleasedAfterAbort": true,
+      "afterNextRound": {
+        "records": 200,
+        "converged": 200,
+        "setOnly": 0,
+        "halfApplied": 0,
+        "untouched": 0,
+        "other": 0
+      },
+      "nextRoundConverges": true
+    },
+    "serverSideMidBatchKill": {
+      "attempt": "CLIENT SETNAME 后从独立连接 CLIENT KILL ID 命中候选连接",
+      "clientIdReadable": false,
+      "covered": false,
+      "error": "UnsupportedOperationException: null"
+    }
+  },
+  "serviceRate": {
+    "records": 2000,
+    "rows": 100000,
+    "roundsPerShape": 3,
+    "measurementOrder": "baseline,cap500,cap1000 交替重复 3 轮",
+    "baselineRoundsMs": [
+      2998.041,
+      2832.446,
+      2919.595
+    ],
+    "baselineTotalMs": 8750.082,
+    "baselineCommandsPerRound": 6000,
+    "cap500": {
+      "candidateRoundsMs": [
+        272.408,
+        240.22,
+        242.977
+      ],
+      "candidateTotalMs": 755.605,
+      "baselineTotalMs": 8750.082,
+      "baselineCommands": 6000,
+      "candidateCommands": 6000,
+      "candidateFlushes": 36,
+      "candidateRoundTrips": 36,
+      "commandsPerFlushCap": 500
+    },
+    "cap1000": {
+      "candidateRoundsMs": [
+        202.952,
+        162.381,
+        195.108
+      ],
+      "candidateTotalMs": 560.441,
+      "baselineTotalMs": 8750.082,
+      "baselineCommands": 6000,
+      "candidateCommands": 6000,
+      "candidateFlushes": 18,
+      "candidateRoundTrips": 18,
+      "commandsPerFlushCap": 1000
+    }
+  },
+  "mutationRed": {
+    "controlBaseline": {
+      "records": 200,
+      "converged": 200,
+      "setOnly": 0,
+      "halfApplied": 0,
+      "untouched": 0,
+      "other": 0
+    },
+    "mutantDropDel": {
+      "records": 200,
+      "converged": 0,
+      "setOnly": 200,
+      "halfApplied": 0,
+      "untouched": 0,
+      "other": 0,
+      "deleteCommandCount": 0,
+      "saddCommandCount": 200
+    },
+    "mutantSwapDelSadd": {
+      "records": 200,
+      "converged": 0,
+      "setOnly": 0,
+      "halfApplied": 200,
+      "untouched": 0,
+      "other": 0,
+      "tripleOrderPreserved": false
+    }
+  },
+  "j3Verdict": {
+    "a_finalConvergence": {
+      "criterion": "a",
+      "baselineObservation": true,
+      "candidateOk": true,
+      "basis": "两方案对账后逐 record 计数与成员集均等于 DB 权威（含幽灵成员前置态）",
+      "adjudicated": true
+    },
+    "b_concurrentWriteBehaviour": {
+      "criterion": "b",
+      "baselineObservation": true,
+      "candidateOk": true,
+      "basis": "按注入时序分类对照：完成态后的注入在两形态下全部存活、窗口内丢失不增、pending 不被丢弃；基线读数={\"shape\":\"baseline\",\"acceptedInjecties\":96,\"byTimingClass\":{\"before-record-touched\":{\"attempts\":26,\"lost\":25,\"lossRate\":0.961538},\"inside-del-to-sadd-window\":{\"attempts\":0,\"lost\":0,\"lossRate\":null},\"after-record-completed\":{\"attempts\":70,\"lost\":0,\"lossRate\":0.0}},\"reconcileWallMs\":442.548,\"pendingQueueLength\":96,\"pendingRetainsAllInjectedOps\":true,\"dbRowsUnchanged\":true,\"countDriftRecordsSampled\":[\"700025:count=51,card=51,db=50\",\"700026:count=51,card=51,db=50\",\"700027:count=51,card=51,db=50\",\"700028:count=51,card=51,db=50\",\"700029:count=51,card=51,db=50\",\"700030:count=51,card=51,db=50\",\"700031:count=51,card=51,db=50\",\"700032:count=51,card=51,db=50\",\"700033:count=51,card=51,db=50\",\"700034:count=51,card=51,db=50\",\"700035:count=51,card=51,db=50\",\"700036:count=51,card=51,db=50\"],\"postCompletionSurvivors\":10} 候选500={\"shape\":\"candidate500\",\"acceptedInjecties\":17,\"byTimingClass\":{\"before-record-touched\":{\"attempts\":16,\"lost\":15,\"lossRate\":0.9375},\"inside-del-to-sadd-window\":{\"attempts\":0,\"lost\":0,\"lossRate\":null},\"after-record-completed\":{\"attempts\":1,\"lost\":0,\"lossRate\":0.0}},\"reconcileWallMs\":22.153,\"pendingQueueLength\":17,\"pendingRetainsAllInjectedOps\":true,\"dbRowsUnchanged\":true,\"countDriftRecordsSampled\":[\"700015:count=51,card=51,db=50\",\"700016:count=51,card=51,db=50\"],\"postCompletionSurvivors\":10} 候选1000={\"shape\":\"candidate1000\",\"acceptedInjecties\":19,\"byTimingClass\":{\"before-record-touched\":{\"attempts\":19,\"lost\":18,\"lossRate\":0.947368},\"inside-del-to-sadd-window\":{\"attempts\":0,\"lost\":0,\"lossRate\":null},\"after-record-completed\":{\"attempts\":0,\"lost\":0,\"lossRate\":null}},\"reconcileWallMs\":21.595,\"pendingQueueLength\":19,\"pendingRetainsAllInjectedOps\":true,\"dbRowsUnchanged\":true,\"countDriftRecordsSampled\":[\"700018:count=51,card=51,db=50\"],\"postCompletionSurvivors\":10}",
+      "adjudicated": true
+    },
+    "c_failureMode": {
+      "criterion": "c",
+      "baselineObservation": true,
+      "candidateOk": true,
+      "basis": "中断后残留态均可由下轮对账收敛；未覆盖项见 serverSideMidBatchKill={\"attempt\":\"CLIENT SETNAME 后从独立连接 CLIENT KILL ID 命中候选连接\",\"clientIdReadable\":false,\"covered\":false,\"error\":\"UnsupportedOperationException: null\"}",
+      "adjudicated": true
+    },
+    "d_lockSemantics": {
+      "criterion": "d",
+      "baselineObservation": true,
+      "candidateOk": true,
+      "basis": "候选全部写仍在同一对账锁内、第二把 tryLock 同样被拒、锁外可见中间态不多于基线",
+      "adjudicated": true
+    },
+    "d_midStateDetail": {
+      "baselineEmptyWindowProbes": 8,
+      "candidateEmptyWindowProbes": 0,
+      "candidateOldStateProbes": 8,
+      "baselinePollerEmptyObservations": 2,
+      "candidatePollerEmptyObservations": 0,
+      "candidateOk": true,
+      "note": "候选关键时点探测发生在批次提交之前，外部读到的是旧成员集仍在（未提交态），而非基线的空窗；两者是不同形态的中间态，均登记"
+    },
+    "e_commandOrder": {
+      "criterion": "e",
+      "baselineObservation": true,
+      "candidateOk": true,
+      "basis": "候选服务端命令序与基线逐条相同，仅提交分组不同（读数和间隔见 j2CommandOrder）",
+      "adjudicated": true
+    },
+    "f_serviceRate": {
+      "records": 2000,
+      "rows": 100000,
+      "roundsPerShape": 3,
+      "measurementOrder": "baseline,cap500,cap1000 交替重复 3 轮",
+      "baselineRoundsMs": [
+        2998.041,
+        2832.446,
+        2919.595
+      ],
+      "baselineTotalMs": 8750.082,
+      "baselineCommandsPerRound": 6000,
+      "cap500": {
+        "candidateRoundsMs": [
+          272.408,
+          240.22,
+          242.977
+        ],
+        "candidateTotalMs": 755.605,
+        "baselineTotalMs": 8750.082,
+        "baselineCommands": 6000,
+        "candidateCommands": 6000,
+        "candidateFlushes": 36,
+        "candidateRoundTrips": 36,
+        "commandsPerFlushCap": 500
+      },
+      "cap1000": {
+        "candidateRoundsMs": [
+          202.952,
+          162.381,
+          195.108
+        ],
+        "candidateTotalMs": 560.441,
+        "baselineTotalMs": 8750.082,
+        "baselineCommands": 6000,
+        "candidateCommands": 6000,
+        "candidateFlushes": 18,
+        "candidateRoundTrips": 18,
+        "commandsPerFlushCap": 1000
+      }
+    },
+    "mutationRedDetection": {
+      "mutantDropDelConverged": 0,
+      "mutantSwapConverged": 0,
+      "controlConverged": 200,
+      "records": 200
+    },
+    "branch": "GO",
+    "branchRule": "任一 (a)-(e) 劣化 ⇒ NO-GO；全过 ⇒ GO 且不改生产（另立提案）",
+    "j1Attribution": "J1 基线快照无论 J3 结果如何均为有效产出（A1.3 由代码级登记升级为实测）",
+    "j2Attribution": "候选对照未发现 (a)-(e) 劣化",
+    "j3Attribution": "GO",
+    "scopeCaveat": "本机、隔离环境、未达外部门槛；服务率只登记绝对数字，不写百分比、不外推生产收益"
+  },
+  "caveats": [
+    "All readings are from this machine, an isolated scratch DB and a dedicated Redis DB; no external gate reached and no production inference drawn.",
+    "Service-rate comparison registers absolute milliseconds only; no improvement percentage is stated.",
+    "MONITOR adds a server-side write per command, so semantic snapshots under MONITOR are not used as service-rate evidence.",
+    "Dimensions that could not be observed are listed as not-covered instead of being inferred from mathematical equivalence."
+  ]
+}
