@@ -6,14 +6,14 @@
     "steps": [
       {
         "step": "核对开工基线 HEAD、无未授权脏项，核验 Docker daemon 及 MySQL、Redis、RocketMQ、PostGIS 容器状态与端口无冲突",
-        "completed": false
+        "completed": true
       },
       {
         "step": "核验 gateway、user、record、verify、leaderboard、mapmatch 六服务健康状态与路网可用性；确定为全链路覆盖或登记局部覆盖降级分支",
-        "completed": false
+        "completed": true
       }
     ],
-    "passes": false
+    "passes": true
   },
   {
     "number": 2,
@@ -22,14 +22,14 @@
     "steps": [
       {
         "step": "丢弃预热轮（W0）并执行受控 c100×2000 压测负载，采集客户端 QPS、响应延迟百分位数与成功率",
-        "completed": false
+        "completed": true
       },
       {
         "step": "采集事件分段（pub→consume、consume→callback、callback→SENT）耗时、判定完成速率、outbox 排空斜率及两类 PENDING 积压数据",
-        "completed": false
+        "completed": true
       }
     ],
-    "passes": false
+    "passes": true
   },
   {
     "number": 3,
@@ -38,14 +38,14 @@
     "steps": [
       {
         "step": "清洗与配对日志样本，计算各段成对统计数据，分析是否存在 QPS 单调漂移及对分段耗时的影响",
-        "completed": false
+        "completed": true
       },
       {
         "step": "编撰 docs/perf/ 压测报告与机器摘要 JSON，如实登记环境覆盖范围、历史参考数字比对与未外推声明",
-        "completed": false
+        "completed": true
       }
     ],
-    "passes": false
+    "passes": true
   },
   {
     "number": 4,
@@ -54,13 +54,13 @@
     "steps": [
       {
         "step": "运行离线单元测试保持 450 全绿、词面门四形态 ZERO_HIT rc=1、git diff --check rc=0",
-        "completed": false
+        "completed": true
       },
       {
         "step": "执行 mailbox-contract.sh 契约校验 rc=0，完成 proposal tasks.json 闭环与 PLAN 验收台账登记",
-        "completed": false
+        "completed": true
       }
     ],
-    "passes": false
+    "passes": true
   }
 ]
