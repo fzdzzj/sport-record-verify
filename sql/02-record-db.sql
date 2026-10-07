@@ -24,7 +24,8 @@ CREATE TABLE IF NOT EXISTS `sport_record` (
     `created_at` DATETIME     DEFAULT NULL COMMENT '创建时间',
     PRIMARY KEY (`id`),
     UNIQUE KEY `uk_request_id` (`request_id`),
-    KEY `idx_user_time` (`user_id`, `created_at`)
+    KEY `idx_user_time` (`user_id`, `created_at`),
+    KEY `idx_status_created` (`status`, `created_at`)
 ) ENGINE = InnoDB
   DEFAULT CHARSET = utf8mb4 COMMENT ='运动记录表';
 
