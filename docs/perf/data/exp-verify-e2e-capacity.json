@@ -1,0 +1,201 @@
+{
+  "head": "49d0a35f04c1214273f91f9b5b1421d8cd20302c",
+  "date": "2026-10-07",
+  "label": "task176-c100",
+  "purpose": "TASK-176 verify-service end-to-end full-chain capacity benchmark re-evaluation",
+  "coverage": {
+    "mode": "full-chain-six-services",
+    "servicesStarted": [
+      "gateway-service:8080",
+      "user-service:8081",
+      "record-service:8082",
+      "verify-service:8083",
+      "leaderboard-service:8084",
+      "mapmatch-service:8085"
+    ],
+    "servicesAbsent": [],
+    "postgis": "container sport-verify-postgis healthy, host:5433, road_edge=7780 rows",
+    "consequence": "full end-to-end coverage achieved; real R5 OSM spatial matching participated without degradation; leaderboard consumed all events",
+    "safetyGate": "satisfied (MySQL/RocketMQ/Redis/PostGIS/Nacos all healthy, no deliverable backlog)"
+  },
+  "environment": {
+    "mysql": "mysql:8.0 container sport-verify-mysql host:3307",
+    "rocketmq": "apache/rocketmq:5.2.0 namesrv(9876)+broker(10911) healthy",
+    "redis": "redis:7.2-alpine host:6379 healthy",
+    "nacos": "nacos/nacos-server:v2.3.2 host:8848 healthy",
+    "postgis": "postgis/postgis:16-3.4 host:5433 healthy, road_db 7780 road edges",
+    "clockNote": "services are host processes sharing host wall clock; MySQL session tz CST (=host); Redis/RocketMQ report UTC but same absolute instant; DB timestamps DATETIME second precision",
+    "effectiveParams": {
+      "verify.outbox.batch-size": 100,
+      "verify.outbox.relay-interval-ms": 500,
+      "verify.outbox.relay-batch-mark-enabled": true,
+      "verify.outbox.relay-send-concurrency": 2,
+      "verify.outbox.max-retry": 16,
+      "verify.consumer.threads": "32/40",
+      "verify.consumer.batchMaxSize": 8,
+      "feign.aggregatedContract": "RecordWithPointsDTO / RecordApi.getRecordWithPoints"
+    }
+  },
+  "load": {
+    "cmd": "bash scripts/perf/run-perf.sh load 100 2000 task176",
+    "exitCode": 0,
+    "runsExecuted": 1,
+    "warmupRoundsDiscarded": 1,
+    "concurrency": 100,
+    "total": 2000,
+    "warmupIncluded": 10,
+    "ok": 2000,
+    "limited429": 0,
+    "errors": 0,
+    "errRate": 0.0,
+    "wallSeconds": 18.597,
+    "qps": 107.55,
+    "p50ms": 873.51,
+    "p95ms": 1641.85,
+    "p99ms": 1874.44,
+    "maxMs": 2502.49,
+    "statusHistogram": {
+      "200": 2000
+    },
+    "rawPaths": [
+      "docs/perf/data/raw/task176-c100-summary.json",
+      "docs/perf/data/raw/task176-c100-raw.csv",
+      "docs/perf/data/raw/task176-c100-drain-samples.txt",
+      "docs/perf/data/raw/task176-stage-attribution.json"
+    ]
+  },
+  "cohort": {
+    "mainRunId": "lt1791352892227",
+    "mainRecordIds": "165365..167364 (2000)",
+    "warmupRunId": "lt1791352892227w",
+    "warmupRecordIds": "165355..165364 (10)",
+    "joinKey": "record.request_id = runId + '-' + seq; eventId<->recordId from verify consume log; outbox payload.recordId",
+    "finalStatus": "all 2000 = REJECTED(3), terminal reached 100%, none left SUBMITTED/VERIFYING"
+  },
+  "segments": {
+    "metric": "milliseconds (log timestamps), per-stage paired samples, not summed across stages; the ratio or size relation of two independent stage P50s is NOT a per-request share",
+    "pub_to_consume": {
+      "n": 2000,
+      "precision": "ms (cross-process)",
+      "p50": 66397.5,
+      "p95": 117922.05,
+      "p99": 123155.69,
+      "max": 126306.0,
+      "mean": 65858.54,
+      "fails": 0,
+      "dups": 0,
+      "missing": 0,
+      "reading": "MIXED: MQ network delivery + consumer backlog; consumers process ~14.15 records/s with 40 threads while 2000 requests burst in 18.6s"
+    },
+    "consume_to_callback": {
+      "n": 2000,
+      "precision": "ms (same process)",
+      "p50": 2160.0,
+      "p95": 3548.05,
+      "p99": 4434.08,
+      "max": 5268.0,
+      "mean": 2278.82,
+      "fails": 0,
+      "dups": 0,
+      "missing": 0,
+      "reading": "per-record verify compute + real PostGIS OSM road matching (7780 edges, 300 points) + aggregated Feign getRecordWithPoints + status callback; zero timeout, zero error"
+    },
+    "callback_to_sent": {
+      "n": 2000,
+      "precision": "ms (same process)",
+      "p50": 715.5,
+      "p95": 1234.3,
+      "p99": 1428.07,
+      "max": 1867.0,
+      "mean": 592.64,
+      "fails": 0,
+      "dups": 0,
+      "missing": 0,
+      "reading": "wait for outbox relay; reduced to sub-second level (P50 715.5ms) due to 500ms relay interval, batch mark chunk 25, send concurrency N=2; NO LONGER the bottleneck"
+    },
+    "consume_to_sent": {
+      "n": 2000,
+      "precision": "ms",
+      "p50": 2882.0,
+      "p95": 3595.0,
+      "p99": 4054.06,
+      "max": 4658.0,
+      "mean": 2871.46
+    },
+    "pub_to_sent": {
+      "n": 2000,
+      "precision": "ms (cross-process)",
+      "p50": 69752.0,
+      "p95": 120966.3,
+      "p99": 125143.16,
+      "max": 126608.0,
+      "mean": 68730.0
+    }
+  },
+  "decisionRate": {
+    "records": 2000,
+    "durationSec": 141.34,
+    "recordsPerSec": 14.15
+  },
+  "outboxDrain": {
+    "peakPending": 34,
+    "drainDurationSec": 104.23,
+    "drainSlope": 0.33,
+    "overallDurationSec": 147.78,
+    "totalSent": 2010,
+    "overallDeliveryRate": 13.6
+  },
+  "outboxAccounting": {
+    "maxRetryEffective": 16,
+    "beforeLoad": {
+      "deliverablePENDING": 0,
+      "exhaustedPENDING": 0,
+      "SENT": 145032
+    },
+    "afterLoad": {
+      "deliverablePENDING": 0,
+      "exhaustedPENDING": 0,
+      "SENT": 147042
+    },
+    "oldestAge": {
+      "deliverablePENDING": "N/A (count=0)",
+      "exhaustedPENDING": "N/A (count=0)"
+    },
+    "rowsRetryCountGt0": 0,
+    "thisRun": {
+      "rows": 2010,
+      "createdAtRange": "2026-10-07 14:01:33 .. 14:03:55",
+      "sentAtRange": "2026-10-07 14:01:34 .. 14:03:59",
+      "oldestCreatedToSentSeconds": 146,
+      "totalSent": 2010,
+      "note": "PENDING total is not treated as a drainable backlog; deliverable vs exhausted split established"
+    }
+  },
+  "r5": {
+    "samples": 2000,
+    "degraded": 0,
+    "participated": true,
+    "roadEdges": 7780,
+    "algorithm": "ST_MakeEnvelope + ST_DWithin + GIST index on road_edge (postgis:5433)"
+  },
+  "leaderboard": {
+    "participated": true,
+    "consumedEvents": 2000,
+    "errors": 0
+  },
+  "threeBranchVerdict": {
+    "verdict": "PASSED",
+    "branch": "Branch-1 (达标 / PASSED)",
+    "rationale": "Full-chain six services operational under c100x2000 without deadlock, zero 5xx errors, zero event loss, 0.00% error rate; all segment latencies closed and paired (2000/2000); outbox backlog drained completely to 0; all records advanced to terminal status"
+  },
+  "historicalReferences": {
+    "note": "Historical numbers from TASK-138 and TASK-143 are recorded for evolutionary context only; no verdict overturned, no cross-baseline improvement percentages calculated, no production capacity endorsed",
+    "task138": {
+      "context": "Old HEAD, old parameters, submit->verdict 15~18s, PENDING 1012"
+    },
+    "task143": {
+      "context": "Four services partial coverage, R5 fully degraded (timeout 3s), leaderboard absent, callback->SENT P50 68.8s, relay net rate ~13.4 rows/s"
+    }
+  },
+  "scopeDisclaimer": "All performance metrics are strictly limited to local test environment, this specific workload model (c100x2000), and have not reached external thresholds. No production capacity endorsement is made."
+}
