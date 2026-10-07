@@ -1,0 +1,36 @@
+[
+  {
+    "number": 1,
+    "category": "基线",
+    "task": "固定被测语义、环境核验与形态种子",
+    "steps": [
+      { "step": "记录 flushPendingLikes/reconcileLikeCounts 当前实现要点（周期、批上限、锁、末次动作去重、事务后 LTRIM）与 record_like 建表脚本现状", "completed": false },
+      { "step": "环境核验：scratch MySQL 可达、受控真实 Redis 可达（检测宿主 6379 竞争，沿既有容器规程；不可达走 UNDETERMINED 分支如实登记）", "completed": false },
+      { "step": "E1 三形态队列种子与 E2 三档 record_like 规模种子方案落报告（行数配比、去重形态、每 record 固定 50 赞）", "completed": false }
+    ],
+    "passes": false
+  },
+  {
+    "number": 2,
+    "category": "测量",
+    "task": "flush 服务率、对账成本曲线与收敛审计",
+    "steps": [
+      { "step": "E1：三形态直调 flushPendingLikes 至排空，逐轮记录 LRANGE/去重净操作/事务批写/LTRIM 耗时，计数闭合断言（LTRIM 总量=处理总量、行数增量=净插入−净删除）", "completed": false },
+      { "step": "E2：三档规模（约 2 万/20 万/100 万行，固定每 record 50 赞）实测对账全表载入耗时、分组规模、逐 record Redis 写耗时与总耗时，登记曲线与外推边界", "completed": false },
+      { "step": "A1：pending 丢失漂移→对账单轮收敛；对账覆盖未落库 pending→flush→再对账两跳收敛，均以 test-only 用例留证；DEL+SADD 非原子窗口按代码级审计登记", "completed": false },
+      { "step": "IT 落库（TASK178_IT_* 环境变量，缺变量 assume 跳过不视为通过），实测读数与 40 ops/s 算术上界分口径登记", "completed": false }
+    ],
+    "passes": false
+  },
+  {
+    "number": 3,
+    "category": "验收",
+    "task": "三支判定与台账闭环",
+    "steps": [
+      { "step": "按预注册三支判定收口：PASSED 需全部计数闭合与收敛用例通过；FAILED 为闭合断言失败或收敛反例（如实登记，修复另立提案）；UNDETERMINED 为环境不可用", "completed": false },
+      { "step": "测量报告与机器摘要 JSON 落 docs/perf/，全部数字限定本机隔离环境，不写线上改善或容量背书", "completed": false },
+      { "step": "台账闭环：tasks.json 全勾、handoff 与 PLAN.md 纯追加、门禁全项亲跑留证", "completed": false }
+    ],
+    "passes": false
+  }
+]
