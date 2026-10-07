@@ -185,7 +185,8 @@ mvn -B -ntp -o -s .mvn-settings.xml -pl record-service -am test \
 ```
 
 实测：`Tests run: 9, Failures: 0, Errors: 0, Skipped: 0`，`IT_RUN_RC=0`，用时 60.70s（全文 `docs/perf/data/raw/task179/run2-j1j2-measurement/it-run.log`）。
-缺任一变则 assume 跳过：不导出 `TASK179_IT_*` 复跑同一命令得 `Tests run: 0`、rc=0，**按未覆盖记账，不记通过**。
+缺任一变则 assume 跳过：不导出 `TASK179_IT_*` 复跑同一命令得 `Tests run: 0, Failures: 0, Errors: 0, Skipped: 0`、`BUILD SUCCESS`、rc=**0**，**按未覆盖记账，不记通过**（`run4-closure-evidence/it-closure-run.log` 第二段）。
+收口复跑（`TASK179_IT_RUN=run4-closure-evidence`，独立 run 目录，不回写测量轮读数）：`Tests run: 9`，rc=**0**；与测量轮的结构性计数**逐位相同**——SET/DEL/SADD 各 200、成员总数 10 000、`MONITOR` like 写命令 600、批次数 2/1、命令序 `identical=true`、变异红对照 200 vs 变异各 0、三支归属 GO；仅耗时浮动（基线档墙钟 1049.131 → 957.775ms；服务率基线三轮 2998.041 / 2832.446 / 2919.595 → 3479.996 / 3664.577 / 3421.904ms）。报告与 JSON 的数字取**测量轮原值**。
 
 ## 13. 门禁实测表
 
@@ -222,3 +223,4 @@ mvn -B -ntp -o -s .mvn-settings.xml -pl record-service -am test \
 6. **(d) 候选暂停钩子曾挂错位置**：初版把候选的暂停挂在模板的 `chunk.commit` 事件上，而候选走 `RedisConnection` 不经模板方法 ⇒ 暂停未生效、第二把 tryLock 在 4.185ms 即成功（假读数，`attempt2-partial-readings/`）；改挂到候选自身的批次提交后探针位后复测为 3005.895ms 被拒。
 7. **(c) 「第 2 个批次后中断」在 200 records/cap500 档等于跑完全程**（残留为 0 的虚判据），改为「第 1 个批次后中断」以真正考察批粒度残留（`attempt5-failuremode-trivial/`）。
 8. 词面门 pattern 现场提取、`git grep` 的 `--untracked` 前置、Redis 探针补 `QUIT`、Bash 入口仅 `D:\git\Git\bin\bash.exe` 执行仓库根脚本文件——均沿用 PLAN.md 已登记口径与 TASK-178 先例。
+9. **跳过证明轮的收尾缺陷（已修，原文留档）**：C-01 落库后收口复跑时，`Tests run: 9` 全绿，但缺变量证明轮报 `Tests run: 1, Errors: 1`——`@BeforeAll` 正确 assume 跳过后 `@AfterAll` 仍尝试落 `task179-it-summary.json`，`rawDir` 为空即抛错。该路径正是 §2.5「缺变量不视为通过」的门禁凭据，故补 `@AfterAll` 守卫（环境门未过直接返回），复跑为 `Tests run: 0` rc=0。**测量逻辑与判据口径零改动**，缺陷轮读数留档 `run4-closure-evidence/attempt-skippath-defect/`。

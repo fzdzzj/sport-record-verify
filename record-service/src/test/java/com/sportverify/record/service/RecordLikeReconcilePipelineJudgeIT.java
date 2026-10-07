@@ -211,6 +211,10 @@ class RecordLikeReconcilePipelineJudgeIT {
 
     @AfterAll
     static void tearDownAll() {
+        if (rawDir == null) {
+            // 环境门未过（@BeforeAll 已 assume 跳过）：不落读数、不做清理，保持「跳过」而非「报错」
+            return;
+        }
         Map<String, Object> out = new LinkedHashMap<>();
         out.put("task", "TASK-179");
         out.put("run", runId);
