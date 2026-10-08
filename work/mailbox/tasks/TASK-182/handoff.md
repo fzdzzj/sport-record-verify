@@ -90,8 +90,10 @@
 | C-02 消费者 | `dfa186f3db066115e1366026491d7a4bc08fa048` | `feat(user): 判定事件通知消费者接线 RocketMQ（TASK-182）` |
 | C-03 读取入口与 IT | `da8b928ce7aadd7140ef521e6890ebc1068d5abd` | `feat(user): 通知读取接口与 RocketMQ 往返集成测试（TASK-182）`（偏差见 §4 D2） |
 | C-04 台账闭环 | `ec6cb77cad19c2607447c51ab27ee9ba46b8c636` | `docs(mailbox): 登记 TASK-182 通知中心验收与台账闭环（TASK-182）` |
+| C-04b 台账哈希终态化 | `fbb544099237512503a1556baf14e14775ea17d7` | `docs(mailbox): 终态化 TASK-182 台账笔提交哈希（TASK-182）` |
+| C-04c 台账父锚定订正 | `a4f358a7bc645b849295fb726bd03a2d65e1c284` | `docs(mailbox): 订正 TASK-182 台账父锚定为六笔终态（TASK-182）` |
 
-父锚定：C-04b 终态化提交后 `git rev-list --left-right --count origin/main...main` = `0 6`（派发笔 + C-01…C-04 五笔 + C-04b 终态化订正笔）。
+父锚定（C-04c 终态）：`git rev-list --left-right --count origin/main...main` = `0 7`（派发笔 + C-01…C-03 三笔 + C-04 台账笔 + C-04b/c 两笔台账订正）。C-04b/c 为台账哈希与父锚定的零构建面订正，仅补全提交明细表的显式 SHA（沿本仓「提交表显式哈希，禁时效指针」先例），不涉及任何业务改动。
 
 ## 9. 未覆盖项
 
