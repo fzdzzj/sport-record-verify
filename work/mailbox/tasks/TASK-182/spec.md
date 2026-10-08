@@ -99,7 +99,7 @@ CREATE TABLE IF NOT EXISTS `notification` (
 
 ## 7. 收口记录（执行侧 C-04 纯追加）
 
-- 提交：派发笔 `21392a5…` + C-01 `030c82d…` + C-02 `dfa186f…` + C-03 `da8b928…` + 本台账笔；收口后 `origin/main...main` = `0 5`。
+- 提交：派发笔 `21392a5…` + C-01 `030c82d…` + C-02 `dfa186f…` + C-03 `da8b928…` + 台账笔（C-04）+ 台账哈希终态化订正笔（C-04b）；收口后 `origin/main...main` = `0 6`。
 - 收口单测基线：新七模块 `36/41/63/127/144/59/10` = **480**（user-service 33→63，+30；其余逐位与派发笔基线相同），rc=0 全绿零跳过 ⇒ **450 只增不减满足**。
 - 静态基线：`--static=record-service` Checkstyle **811 持平**（不改不增）。
 - 契约门待收口无参 rc=0；词面门全任务 tracked 四形态 ZERO_HIT；token 29 项只增不减；只改清单全等。

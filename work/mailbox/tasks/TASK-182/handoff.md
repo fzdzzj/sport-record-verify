@@ -91,7 +91,7 @@
 | C-03 读取入口与 IT | `da8b928ce7aadd7140ef521e6890ebc1068d5abd` | `feat(user): 通知读取接口与 RocketMQ 往返集成测试（TASK-182）`（偏差见 §4 D2） |
 | C-04 台账闭环 | `ec6cb77cad19c2607447c51ab27ee9ba46b8c636` | `docs(mailbox): 登记 TASK-182 通知中心验收与台账闭环（TASK-182）` |
 
-父锚定：C-04 提交后 `git rev-list --left-right --count origin/main...main` = `0 5`（派发笔 + C-01…C-04 五笔）。
+父锚定：C-04b 终态化提交后 `git rev-list --left-right --count origin/main...main` = `0 6`（派发笔 + C-01…C-04 五笔 + C-04b 终态化订正笔）。
 
 ## 9. 未覆盖项
 
