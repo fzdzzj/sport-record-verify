@@ -15,9 +15,13 @@
 # 判据 A（两件套完备）：任务目录须同时含 spec.md 与 handoff.md。
 #   仅 spec.md → 判定进行中任务：声明于 --open 则列待办放行，否则判据 A 失败；
 #   仅 handoff.md → 有回传无契约，判据 A 失败；两者皆无但目录非空 → 异常态，判据 A 失败；空目录忽略。
-# 判据 B（清单比对）：把回传「改动清单」节声明的只改文件集与工作树相对基线的实际改动集比对。
-#   二者有交叠（回传在途）→ 要求完全一致，清单多报或改动集未声明多出任一文件都判据 B 失败；
-#   二者无交叠 → 视为已收口，不重审既存记录；改动集来源不可判定 → 退出码 3。
+# 判据 B（清单比对）：以「回传文件相对开工基线是否变动」判定在途回传——handoff.md 相对基线
+#   既无 diff 也非未跟踪 ⇒ 已收口，不重审（连共占计算都不做）；有变动才进入清单比对。
+#   只改清单只提取「改动清单」节内的列表行 token，否定句式行（零触碰/未碰/未触碰/不改/禁触）
+#   不产 token，清单节缺失时不回退整档扫描（该回传跳过比对并输出警示行）。
+#   在途回传要求清单与实际改动集完全一致，清单多报或改动集未声明多出任一文件都判据 B 失败；
+#   --diff-file 只解耦改动集来源，在途判定仍用 git 双查；非 git 上下文 + --diff-file 时
+#   在途判定降级为共占口径并输出注明行；改动集来源不可判定 → 退出码 3。
 #
 # 退出码：0 通过 / 1 契约或结构不符 / 2 参数错 / 3 差异来源不可判定（不是契约红，也不得记为通过）
 set -uo pipefail
@@ -109,8 +113,9 @@ if [ "$open_total" -gt 0 ]; then
 fi
 
 # ---------- 判据 B：改动集来源 ----------
-# 从回传 handoff 提取「改动清单」节的路径 token（path.ext 或 path.ext:line），去 :line 前缀、
-# 去 ./ 前缀、排序去重。无清单节时回退全文（供历史格式兼容，但不作为比对扩容来源）。
+# 提取「改动清单」节内的路径 token（path.ext 或 path.ext:line）。只认小节内列表行
+#（`^\s*(-|\d+\.)\s` 开头）中的 token；行内命中否定句式（零触碰|未碰|未触碰|不改|禁触）
+# 整行丢弃不产 token；小节缺失时不回退整档扫描（claims 为空，由调用方输出警示行并跳过）。
 extract_claims() {
   local hf="$1" block
   block="$(awk '
@@ -119,10 +124,10 @@ extract_claims() {
       if(cap==0){ if($0 ~ /只改|改动|文件清单/){ cap=1; next } }
       else{ cap=0 }
     }
-    cap==1{print}
+    cap==1 && /^[[:space:]]*(-|([0-9]+\.))[[:space:]]/{print}
   ' "$hf")"
-  [ -n "$block" ] || block="$(cat "$hf")"
   printf '%s\n' "$block" \
+    | grep -vE '零触碰|未碰|未触碰|不改|禁触' \
     | grep -oE '[A-Za-z0-9_./-]+\.(sh|md|java|kt|scala|groovy|js|jsx|ts|tsx|vue|json|ya?ml|xml|sql|patch|csv|txt|properties|css|html|d\.ts|example|editorconfig)' \
     | sed -E 's#^\./##' \
     | sort -u
@@ -159,14 +164,45 @@ else
 fi
 
 # ---------- 判据 B：清单与实际改动集比对 ----------
+# 前置在途判定门：handoff.md 相对基线既无 diff 也非未跟踪 ⇒ 已收口，不重审（连共占计算都不做）。
+# 只有确认为在途回传才做清单比对。--diff-file 只解耦改动集来源，在途判定仍用 git 双查；
+# 非 git 上下文（仅 --diff-file 可到此）+ 基线不可解析时在途判定降级为旧共占口径并注明。
 judge_b_failed=0
 for d in "${returned_dirs[@]}"; do
   name="$(basename "$d")"
-  claims="$(extract_claims "$d/handoff.md")"
-  if [ -z "$claims" ]; then
-    echo "[contract] $name：回传未解析到改动清单，跳过判据 B"
+  hf="$d/handoff.md"
+  downgrade_note=0
+
+  # --- 在途判定前置门 ---
+  in_transit=0
+  if [ "$IN_GIT" -eq 1 ] \
+     && git -C "$REPO_ROOT" rev-parse --verify --quiet "$BASELINE^{commit}" >/dev/null 2>&1; then
+    changed="$(git -C "$REPO_ROOT" diff --name-only "$BASELINE" -- "$hf" 2>/dev/null)"
+    untracked_hit="$(git -C "$REPO_ROOT" ls-files --others --exclude-standard -- "$hf" 2>/dev/null)"
+    if [ -n "$changed" ] || [ -n "$untracked_hit" ]; then
+      in_transit=1
+    fi
+  else
+    # 非 git 上下文（仅 --diff-file 能到此）或基线不可解析：在途判定降级为旧共占口径
+    in_transit=1
+    downgrade_note=1
+  fi
+
+  if [ "$in_transit" -eq 0 ]; then
+    echo "[contract] $name：已收口（回传文件无基线变动），不重审"
     continue
   fi
+
+  claims="$(extract_claims "$hf")"
+  if [ -z "$claims" ]; then
+    echo "[contract] $name：回传未解析到改动清单，跳过判据 B（警示：无清单小节，未整档扫描）"
+    continue
+  fi
+
+  if [ "$downgrade_note" -eq 1 ]; then
+    echo "[contract] $name：非 git 上下文：在途判定降级为共占口径"
+  fi
+
   unset C 2>/dev/null || true
   declare -A C
   for f in $claims; do [ -n "$f" ] && C["$f"]=1; done
@@ -179,25 +215,28 @@ for d in "${returned_dirs[@]}"; do
     [ "${ACTUAL[$f]:-0}" -eq 1 ] || only_claims=$((only_claims+1))
   done
 
-  if [ "$both" -gt 0 ]; then
-    if [ "$only_claims" -gt 0 ] || [ "$only_actual" -gt 0 ]; then
-      echo "[contract] $name：判据 B 失败（在途回传只改清单与实际改动集不一致；改动源 $actual_origin）" >&2
-      if [ "$only_claims" -gt 0 ]; then
-        for f in "${!C[@]}"; do
-          [ "${ACTUAL[$f]:-0}" -eq 1 ] || echo "[contract]   清单多报（实际未改动）：$f" >&2
-        done
-      fi
-      if [ "$only_actual" -gt 0 ]; then
-        for f in "${!ACTUAL[@]}"; do
-          [ "${C[$f]:-0}" -eq 1 ] || echo "[contract]   改动集未声明（工作树改动未进只改清单）：$f" >&2
-        done
-      fi
-      judge_b_failed=1
-    else
-      echo "[contract] $name：判据 B 通过（只改清单与实际改动集一致）"
-    fi
-  else
+  # 降级口径下以 both>0 复判在途；git 口径下已由前置门确认在途，直接比对。
+  if [ "$downgrade_note" -eq 1 ] && [ "$both" -eq 0 ]; then
     echo "[contract] $name：足迹不在工作树，视为已收口，不重审"
+    unset C
+    continue
+  fi
+
+  if [ "$only_claims" -gt 0 ] || [ "$only_actual" -gt 0 ]; then
+    echo "[contract] $name：判据 B 失败（在途回传只改清单与实际改动集不一致；改动源 $actual_origin）" >&2
+    if [ "$only_claims" -gt 0 ]; then
+      for f in "${!C[@]}"; do
+        [ "${ACTUAL[$f]:-0}" -eq 1 ] || echo "[contract]   清单多报（实际未改动）：$f" >&2
+      done
+    fi
+    if [ "$only_actual" -gt 0 ]; then
+      for f in "${!ACTUAL[@]}"; do
+        [ "${C[$f]:-0}" -eq 1 ] || echo "[contract]   改动集未声明（工作树改动未进只改清单）：$f" >&2
+      done
+    fi
+    judge_b_failed=1
+  else
+    echo "[contract] $name：判据 B 通过（只改清单与实际改动集一致）"
   fi
   unset C
 done
