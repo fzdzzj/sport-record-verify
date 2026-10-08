@@ -89,7 +89,7 @@
 | C-01 存储与好友接线 | `030c82d3a15674eaed7af96128ead9713982a19c` | `feat(user): 通知存储与服务层并接线好友通过通知（TASK-182）` |
 | C-02 消费者 | `dfa186f3db066115e1366026491d7a4bc08fa048` | `feat(user): 判定事件通知消费者接线 RocketMQ（TASK-182）` |
 | C-03 读取入口与 IT | `da8b928ce7aadd7140ef521e6890ebc1068d5abd` | `feat(user): 通知读取接口与 RocketMQ 往返集成测试（TASK-182）`（偏差见 §4 D2） |
-| C-04 台账闭环 | `<待本笔提交后回填>` | `docs(mailbox): 登记 TASK-182 通知中心验收与台账闭环（TASK-182）` |
+| C-04 台账闭环 | `ec6cb77cad19c2607447c51ab27ee9ba46b8c636` | `docs(mailbox): 登记 TASK-182 通知中心验收与台账闭环（TASK-182）` |
 
 父锚定：C-04 提交后 `git rev-list --left-right --count origin/main...main` = `0 5`（派发笔 + C-01…C-04 五笔）。
 
