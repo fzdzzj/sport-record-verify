@@ -96,3 +96,12 @@ CREATE TABLE IF NOT EXISTS `notification` (
 2. **收口门禁（C-04 后亲跑留证）**：offline 全量新基线逐位（user-service 增量登记）；`--static=record-service` 811 不增；契约门无参 rc=0；只改清单全等；PLAN.md 自派发笔起纯追加。
 3. **handoff.md**：开工规程核验 / 偏差登记 / 一句话结论 / 只改清单 / 实施证据（双幂等断言原文、IT 往返读数）/ 逐门实测表 / token 前后读数 / 未覆盖项 / 提交表（显式哈希，禁时效指针）。
 4. **IT 执行**：`NotificationConsumerRoundTripIT` 需真 RocketMQ，沿 `RocketMqBrokerRoundTripIT` 的环境准备模式；若本机 broker 不可用，按 UNDETERMINED 登记不得记通过（先例纪律）。
+
+## 7. 收口记录（执行侧 C-04 纯追加）
+
+- 提交：派发笔 `21392a5…` + C-01 `030c82d…` + C-02 `dfa186f…` + C-03 `da8b928…` + 本台账笔；收口后 `origin/main...main` = `0 5`。
+- 收口单测基线：新七模块 `36/41/63/127/144/59/10` = **480**（user-service 33→63，+30；其余逐位与派发笔基线相同），rc=0 全绿零跳过 ⇒ **450 只增不减满足**。
+- 静态基线：`--static=record-service` Checkstyle **811 持平**（不改不增）。
+- 契约门待收口无参 rc=0；词面门全任务 tracked 四形态 ZERO_HIT；token 29 项只增不减；只改清单全等。
+- **第 23 次外部门槛（前序）** run `37769662324`，HEAD `729de8d4cb6585687091d5960f26ebcee48a08ff`，**绿**（TASK-180 树 + surefire 加固一并终验达成）——已折入本任务台账基线参照；本任务收口后的第 24 次外部门槛待外部 push 后由新 run 数值登记（新 run 号以文本登记，不扩受保护 token 集合）。
+- 唯一未覆盖：真 RocketMQ 往返 IT（broker 不可用）→ **UNDETERMINED** 不记通过；链路语义等价由纯单测逐字覆盖（见 handoff §5）。偏差与三支裁决见 `handoff.md` §2/§4。

@@ -4,29 +4,29 @@
     "category": "实施",
     "task": "通知域基础件与好友通知接线",
     "steps": [
-      { "step": "sql/01-user-db.sql 幂等追加 notification 表（uk_dedup 唯一键 + idx_user_read 索引）；user-service 新增 Notification 实体 / NotificationMapper / NotificationService（createNotification 幂等 INSERT IGNORE、分页列表、未读数 COUNT、单条已读带归属校验、全部已读）", "completed": false },
-      { "step": "FriendService.accept() 事务内写好友通过通知（收件人 = 申请人，dedup_key = FRIEND_ACCEPTED:{requestId}）；reject() 不通知；NotificationService 单测 + FriendService 既有测试适配断言", "completed": false }
+      { "step": "sql/01-user-db.sql 幂等追加 notification 表（uk_dedup 唯一键 + idx_user_read 索引）；user-service 新增 Notification 实体 / NotificationMapper / NotificationService（createNotification 幂等 INSERT IGNORE、分页列表、未读数 COUNT、单条已读带归属校验、全部已读）", "completed": true },
+      { "step": "FriendService.accept() 事务内写好友通过通知（收件人 = 申请人，dedup_key = FRIEND_ACCEPTED:{requestId}）；reject() 不通知；NotificationService 单测 + FriendService 既有测试适配断言", "completed": true }
     ],
-    "passes": false
+    "passes": true
   },
   {
     "number": 2,
     "category": "实施",
     "task": "判定事件消费与读取入口",
     "steps": [
-      { "step": "user-service pom 增 redisson-spring-boot-starter / rocketmq-spring-boot-starter（root dependencyManagement 既有版本）；yml 沿 leaderboard-service 配置块模式；NotificationEventConsumer 订阅 RecordVerifyEvents.TOPIC 的 VERIFIED || REJECTED，独立组 notification-consumer-group，范式沿 LeaderboardEventConsumer（SETNX 去重 + uk_dedup 双保险、RECONSUME_LATER + maxReconsumeTimes=3 + %DLQ%、解析失败 ack 丢弃、后台重连、buildConsumer 拆缝）；单测沿 LeaderboardEventConsumerTest 范式", "completed": false },
-      { "step": "NotificationController：分页列表 / 未读数 / 单条已读 / 全部已读（路由前缀与取用户方式沿 user-service 既有 controller 内规，不新造入口形态）；controller 单测；NotificationConsumerRoundTripIT 沿 RocketMqBrokerRoundTripIT 模式（TASK182_IT_ 环境变量前缀，真 broker 往返断言通知落库）", "completed": false }
+      { "step": "user-service pom 增 redisson-spring-boot-starter / rocketmq-spring-boot-starter（root dependencyManagement 既有版本）；yml 沿 leaderboard-service 配置块模式；NotificationEventConsumer 订阅 RecordVerifyEvents.TOPIC 的 VERIFIED || REJECTED，独立组 notification-consumer-group，范式沿 LeaderboardEventConsumer（SETNX 去重 + uk_dedup 双保险、RECONSUME_LATER + maxReconsumeTimes=3 + %DLQ%、解析失败 ack 丢弃、后台重连、buildConsumer 拆缝）；单测沿 LeaderboardEventConsumerTest 范式", "completed": true },
+      { "step": "NotificationController：分页列表 / 未读数 / 单条已读 / 全部已读（路由前缀与取用户方式沿 user-service 既有 controller 内规，不新造入口形态）；controller 单测；NotificationConsumerRoundTripIT 沿 RocketMqBrokerRoundTripIT 模式（TASK182_IT_ 环境变量前缀，真 broker 往返断言通知落库）", "completed": true }
     ],
-    "passes": false
+    "passes": true
   },
   {
     "number": 3,
     "category": "验收",
     "task": "基线恒等与台账闭环",
     "steps": [
-      { "step": "offline 全量测试只增不减（user-service 41 只增，新总值逐位登记）；--static=record-service 811 不增；git diff --check rc=0；词面门四形态 + 探针三态；契约门在途 --open TASK-182 rc=0；token 29 项只增不减", "completed": false },
-      { "step": "台账闭环：tasks.json 全勾、PLAN.md 纯追加登记、handoff 留证（含零触碰清单）；推送后下一次外部门槛 CI 绿为外部终验", "completed": false }
+      { "step": "offline 全量测试只增不减（user-service 41 只增，新总值逐位登记）；--static=record-service 811 不增；git diff --check rc=0；词面门四形态 + 探针三态；契约门在途 --open TASK-182 rc=0；token 29 项只增不减", "completed": true },
+      { "step": "台账闭环：tasks.json 全勾、PLAN.md 纯追加登记、handoff 留证（含零触碰清单）；推送后下一次外部门槛 CI 绿为外部终验", "completed": true }
     ],
-    "passes": false
+    "passes": true
   }
 ]

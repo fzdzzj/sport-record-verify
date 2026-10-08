@@ -1898,3 +1898,16 @@ run `35802403723`（head `eba0108`，2026-09-23 00:31 UTC）——**web/build �
 - **台账字符串与实物不符**：handoff §8 的 C-03 行主题串按草稿写成「docs(pom): 订正 surefire 注释与实锁值一致（TASK-181）」，实际落库主题是「build(pom): 订正 surefire 版本注释与实锁值一致（TASK-181 订正笔）」；哈希列正确、主题列错误。提交串是读者复核入口，按本仓先例（TASK-179 订正笔③专修行数与哈希串）单开订正笔，不改写已入库提交。
 | 订正笔 C-05（指导侧终裁配套，零构建面） | 复核移交①落档：任务书 §8 纯追加「指导侧终裁与追认」——指导侧认账三处诊断错误（flake 初判、§1「间歇 attach 兜底」归档、§2.1「不锁版本沿现状继承」+ 改裁 3.6.0），追认锁 3.5.4 的授权链条闭环（两次回报 → 改裁 3.6.0 → 二次回报 → 授权 3.5.4 → 实施 → 复核佐证 → 终裁落档）；复核移交②：evidence §8 行尾句订正为点名式双事实句（指导侧亲测 `git ls-files --eol`：`pom.xml` 入库 LF/工作树 CRLF、`evidence.md` 双侧纯 LF）；handoff §8 提交明细表终态化（C-04 行补完整 SHA `af9e8c4789a63c7d747ff90c4fa80df0c1a8ce7a`、C-05 行父锚定 `0 6`）。提交结构终态＝派发笔 + C-01…C-05 六笔；第 23 次门槛绿仍为外部终验，同签名再现转深诊断。 |
 - **本笔范围**：仅 handoff §8 主题串 + §1.2.8 登记、任务书 §7 追加一条、本节追加——零构建面、零测试语义；受保护 token 29 项计数不变（三段追加文本均不含任何 token 字面量）。
+
+## 验收记录：TASK-182 add-notification-center 通知中心后端（2026-10-08，执行 agent）
+
+| 项 | 实测 |
+| --- | --- |
+| 开工基线 | 派发笔 HEAD `21392a52687ae8e5c4dcdba691ef6e0fa02528f8`；`origin/main...main` = `0 1`；工作树零残留；离线七模块 450（`36/41/33/127/144/59/10`），其中 **user-service 真实基线 33**（`41` 属 gateway，偏差 D1）；`--static=record-service` 811；受保护 token 29 项开工实测 SUM=451；词面门/契约门开工清 |
+| 实施四笔 | ①存储与好友接线（sql 幂等追加 notification 表 uk_dedup + idx_user_read；Notification 实体/Mapper/Service；FriendService.accept() 事务内好友通过通知 + 单测适配）②消费者（rocketmq-spring-boot-starter 依赖 + yml + NotificationEventConsumer 沿 LeaderboardEventConsumer 范式：SETNX 24h 去重 + uk_dedup 兜底、RECONSUME_LATER + maxReconsumeTimes=3 + %DLQ%、解析失败 ack 丢弃、后台 30s 重连、buildConsumer 拆缝 + 单测）③读取入口与 IT（NotificationController 四接口沿 FriendController 取用户内规 + 单测 + NotificationConsumerRoundTripIT 沿 RocketMqBrokerRoundTripIT）④台账闭环（本笔） |
+| 收口筑基 | offline 全量 `--mode=offline test` 新七模块 `36/41/63/127/144/59/10` = **480**（user-service 33→63，+30 确定性单测；其余六模块逐位零变化）rc=0 全绿零跳过 ⇒ 450 只增不减；`--static=record-service` Checkstyle **811 持平** rc=1 预期；契约门待收口无参 rc=0；词面门 tracked 四形态 ZERO_HIT rc=1；只改清单全等；`git status --porcelain` 收口后为空 |
+| 双幂等证据 | 层一 `NotificationService.createNotification` INSERT IGNORE（受影响行数判首写），单测 `createNotification_duplicateKeyZeroRows_false` 断言同 dedup_key 返回 false；层二 `NotificationEventConsumer.handleMessage` SETNX 24h，单测 `handleMessage_dedupKeyAlreadySet_skips` 断言 `verifyNoInteractions`；闭环 `NotificationConsumerRoundTripIT` 断言「一次成功落 1 行 + 重复投递仍 1 行」互锁（环境就绪即复绿） |
+| IT 往返读数 | `NotificationConsumerRoundTripIT` 直跑 `Tests run: 2, Failures: 0, Errors: 0, Skipped: 2` rc=0；本机 namesrv 9876 / broker 10911 不可达 ⇒ 真 RocketMQ 往返 **UNDETERMINED 不记通过**（环境变量前缀 `TASK182_IT_`，沿 TASK-177/181 直跑先例） |
+| 三支裁决 | 功能四件套齐 → **PASSED**；唯一未覆盖为真 broker 往返 IT（UNDETERMINED，链路语义等价由纯单测逐字覆盖）；无 FAILED 项 |
+| 第 23 次门槛折入 | 前序外部门槛 run `37769662324`（HEAD `729de8d…`）**绿**已折入任务书 §7 收口记录；本任务收口后第 24 次外部门槛待外部 push 后以新 run 数值登记（新 run 号文本登记，不扩受保护集合） |
+| 偏差 | D1 任务书 §5「user-service 41」实为 gateway，user-service 真实基线 33（以全量实测为唯一口径，480 逐位）；D2 C-03 主题串与任务书措辞非逐字（同词，登记不改写）；D3 依赖预注册「两依赖」实为「一新（rocketmq）一已有（redisson）」。详见 handoff §4 |
