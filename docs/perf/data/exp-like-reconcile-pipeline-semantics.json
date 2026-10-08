@@ -66,7 +66,9 @@
         "p50Ms": 0.975,
         "p90Ms": 1.542,
         "maxMs": 21.669,
-        "sumMs": 271.075
+        "sumMs": 271.075,
+        "archivedSamples": 12,
+        "caliberNote": "统计口径 n=200；空窗样本仅前 12 条落盘（serverGapSamplesMs，record 700000-700011）。p50/p90/合计不可由存档样本复算；maxMs 21.669 与存档 record 700000 的落盘值互证一致。"
       }
     },
     "criticalPointProbes": {
@@ -149,7 +151,9 @@
           "p50Ms": 0.006,
           "p90Ms": 0.006,
           "maxMs": 0.053,
-          "sumMs": 1.398
+          "sumMs": 1.398,
+          "archivedSamples": 12,
+          "caliberNote": "统计口径 n=200；空窗样本仅前 12 条落盘（serverGapSamplesMs，record 700000-700011）。p50/p90/合计与 maxMs 均不可由存档样本复算。"
         }
       },
       "criticalPointProbes": {
@@ -228,7 +232,9 @@
           "p50Ms": 0.006,
           "p90Ms": 0.007,
           "maxMs": 0.07,
-          "sumMs": 1.573
+          "sumMs": 1.573,
+          "archivedSamples": 12,
+          "caliberNote": "统计口径 n=200；空窗样本仅前 12 条落盘（serverGapSamplesMs，record 700000-700011）。p50/p90/合计与 maxMs 均不可由存档样本复算。"
         }
       },
       "criticalPointProbes": {

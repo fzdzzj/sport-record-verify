@@ -1,6 +1,6 @@
 # TASK-179 handoff：judge-like-reconcile-pipeline-semantics 对账 pipeline 化语义判别
 
-> 状态：**已收口（两笔本地提交，未 push）**。§0 开工规程与基线读数；§1 偏差登记；§2 一句话结论；§3 足迹清单；§4 判别证据；§5 逐门实测；§6 机制与口径；§7 token；§8 未覆盖项；§9 提交；§10 通道还原。
+> 状态：**已收口（本地六笔提交，未 push；结构见 §9）**。§0 开工规程与基线读数；§1 偏差登记；§2 一句话结论；§3 足迹清单；§4 判别证据；§5 逐门实测；§6 机制与口径；§7 token；§8 未覆盖项；§9 提交；§10 通道还原。
 > 证据等级：A = 本会话亲跑一手读数；B = 仓库文件比对或算术派生；C = 上游散文（未复核）。
 > 原始读数落 `docs/perf/data/raw/task179/<run>/`（gitignore，未入库）：`run1-g0-baseline`（开工门禁）、`run2-j1j2-measurement`（判别测量轮，历次缺陷另存 `attempt*/` 子目录）、`run3-precommit-c01`（预提交门禁与暂存核对）、`run4-closure-evidence`（收口 IT 复跑）、`run5-closure-gates`（收口 mvn 门禁）。仓库根 `task179-*.tmp` 为临时脚本，用毕删除。
 
@@ -81,7 +81,7 @@ work/mailbox/tasks/TASK-179/spec.md
 | --- | --- | --- |
 | 连接内逐命令计时 | `StringRedisTemplate` 子类 + JDK 动态代理包裹 `opsForValue/opsForSet/delete` | 基线＝真实往返；候选无逐命令往返，该栏改记批内排队间隔（栏内显式标注） |
 | 独立只读连接 | 第二个 Redisson 客户端 + 裸模板，做关键时点主动探测（8 条采样 record）与轮询采样 | 轮询为采样：未命中不等于窗口不存在，误差上界＝轮询周期（基线档末轮 15ms、65 轮 520 次观测） |
-| 服务端 `MONITOR` | 独立裸 socket 发 `MONITOR`，取服务端逐命令时间戳与客户端地址 | 每命令追加一次服务端写出，会拖慢逐命令处理 ⇒ **MONITOR 档耗时不作服务率证据**；服务率档不启用 |
+| 服务端 `MONITOR` | 独立裸 socket 发 `MONITOR`，取服务端逐命令时间戳与客户端地址 | 每命令追加一次服务端写出，会拖慢逐命令处理 ⇒ **MONITOR 档耗时不作服务率证据**；服务率档不启用。存档形态（订正笔② 同步）：命令流 600 条入档但**无时间戳**；时间戳派生的空窗时隙样本仅前 12 条落盘（**12/200**，record 700000–700011） |
 
 装配与生产同构：mapper 经 `MybatisSqlSessionFactoryBean` + `SqlSessionTemplate`；锁为真实 Redisson `tryLock(3, -1, SECONDS)` + 30s 看门狗（防重语义未降级）；连接工厂 `RedissonConnectionFactory`（§1.1）；数据前置态＝每 record「DB 的 50 个成员 + 1 个 DB 没有的幽灵成员 + 计数 999」，使 (a) 判据真正考验 `DEL` 的重建语义。
 
@@ -93,13 +93,15 @@ work/mailbox/tasks/TASK-179/spec.md
 | SADD 成员总数 | 10 000 | 10 000 | 10 000 |
 | 墙钟 ms（含 MONITOR 扰动） | 1049.131 | 85.893 | 59.654 |
 | 提交次数 | 600 次逐条往返 | 2（501 + 99 条命令） | 1（600 条命令） |
-| 服务端 `DEL→SADD` 空窗 p50 / p90 / max / 合计 ms | 0.975 / 1.542 / 21.669 / 271.075 | 0.006 / 0.006 / 0.053 / 1.398 | 0.006 / 0.007 / 0.070 / 1.573 |
+| 服务端 `DEL→SADD` 空窗 p50 / p90 / max / 合计 ms（统计口径 n=200，落盘抽样 12 条） | 0.975 / 1.542 / 21.669 / 271.075 | 0.006 / 0.006 / 0.053 / 1.398 | 0.006 / 0.007 / 0.070 / 1.573 |
 | 客户端栏 p50 / max / 合计 ms | 0.0661 / 16.4676 / 52.6431（往返间隔） | 0.0086 / 3.9815 / 27.8779（批内排队间隔） | 0.0035 / 3.6981 / 26.7375（批内排队间隔） |
 | 关键时点探测（8 条采样） | 8/8 读到 `SCARD=0` | 8/8 读到 `SCARD=51`（旧态） | 同 |
 | 轮询命中 | 空窗 2 / 旧态 338 / 520 次观测 | 空窗 0 / 旧态 40 / 48 次 | 空窗 0 / 旧态 24 / 32 次 |
 | `MONITOR` like 写命令数 | 600 | 600 | 600 |
 | `MULTI/EXEC` 包装命令 | 无 | 无 | 无 |
 | 5 项结构闭合检查 | 全 true | 全 true | 全 true |
+
+- **空窗统计口径（订正笔② 同步）**：服务端空窗行 p50 / p90 / max / 合计为测量轮内存计算的 **n=200 统计口径**，落盘抽样仅前 12 条（IT 内 `serverGapSamplesMs`，record 700000–700011）；p50 / p90 / 合计**不可由存档样本复算**；表中唯一可由存档互证的是基线档 max 21.669ms＝record 700000 的落盘值（候选两档 max 高于各自落盘样本最大值，不得据落盘样本反推统计 max）。口径与报告 §4、exp JSON 注记一致。
 
 ### 4.3 (b) 并发 like 注入（走生产 `like()` 序列：`SADD` 幂等闸门 → `INCR`+`PERSIST` → `RPUSH`）
 
@@ -183,7 +185,7 @@ work/mailbox/tasks/TASK-179/spec.md
 | G4 词面门 | ci.yml 现场提取 58 字节正则，四形态 + 三态判定 + 探针 | 四形态 ZERO_HIT rc=1、探针四形态 HIT rc=0、`PROBE_GONE`；新 IT 与报告单独复扫 0 命中 | 过 |
 | G5 契约门 | 开工 / C-01 在途 / C-02 在途 / 收口无参 | 开工 rc=**0**；C-01 在途 rc=**0**；C-02 在途 rc=**1**（本任务中文交付物名不可收割 + 历史回传交叉，见 §1.5）；收口无参 rc=**0** | 读数如实登记，收口过 |
 | G6 空白门 | `git diff --check` / `--cached --check` | 均 rc=**0** | 过 |
-| G7 足迹清单 | 与 §3 全 7 条比对 | C-01 恰 3 条、两笔合计恰 7 条，与任务书 §4 白名单全等 | 过 |
+| G7 足迹清单 | 与 §3 全 7 条比对 | C-01 恰 3 条、C-02 恰 4 条、合计恰 7 条，与任务书 §4 白名单全等；修正笔与两订正笔改动路径均在白名单内，足迹恒 7 | 过 |
 | G8 红线 | `src/main/**` 零改动、无并发 mvn、逐路径 add、bash 仅红线入口脚本 | `git diff --name-only 0b5175b -- '*/src/main/*'` = 0；暂存清单核对为 3 条；临时脚本用毕删除 | 过 |
 | G9 token | PLAN.md `grep -cF` 29 项只增不减 | 开工逐项 = 基线 +1；本笔追加后逐项 = 开工 +1；`TOKEN_VIOLATIONS=0` | 过 |
 | G10 tasks.json | `json.load` | rc=**0**（`TASKS_JSON_OK`），10 步 completed、3 分组 passes 全 true | 过 |
@@ -201,7 +203,7 @@ work/mailbox/tasks/TASK-179/spec.md
 - 词面门（含台账四件后全仓复扫）：四形态 ZERO_HIT rc=1、探针四形态 HIT rc=0、`PROBE_GONE`；
 - token：29 项 PLAN.md 行命中数逐项 = 任务书 §5 基线 +2（开工 +1、本笔追加再 +1），`TOKEN_VIOLATIONS=0`；
 - `git diff --name-only 0b5175b` = §3 全 7 条；`git status --porcelain` 为空；PLAN.md 与任务书相对派发笔**纯追加**（删除行数 0）；
-- 终态领先/落后：C-01 后 `0 2`、修正笔后 `0 3`、C-02 后 **`0 4`**（均以 `git rev-list --left-right --count origin/main...main` 实测登记，见 §9 与本节末）；
+- 终态领先/落后：C-01 后 `0 2`、修正笔后 `0 3`、C-02 后 `0 4`、订正笔① 后 `0 5`、订正笔② 落库后 **`0 6`**（均以 `git rev-list --left-right --count origin/main...main` 实测登记，见 §9）；
 - 通道还原读数见 §10。
 
 ## 6. 机制归因与口径要点
@@ -230,11 +232,16 @@ work/mailbox/tasks/TASK-179/spec.md
 
 ## 9. 提交
 
-| 提交 | 内容 |
-| --- | --- |
-| C-01 `6fbc95cfcd9eb3227db10287dcd97f38216fe403` | `test(record): 新增对账 pipeline 化语义判别 IT 与本机边界报告（TASK-179）`（3 files / +3457 −0；committed blob 实测 CR=0、末字节 0x0a，`run3-precommit-c01/blob-eol-check.log`） |
-| 修正笔 `7e73093a0026c6d98299b0d63586635575d495d2` | `test(record): 修复对账判别 IT 缺变量跳过路径的收尾落盘并订正报告读数（TASK-179）`（IT +4 / 报告 +2 −1；只动 `@AfterAll` 守卫与报告 §12、§15 读数，测量逻辑与判据口径零改动；两路径均在白名单内，故 §3 足迹不变） |
-| C-02 见 `git log -1` | `docs(mailbox): 登记 TASK-179 判别结论与台账闭环（TASK-179）`（tasks.json 10 步 completed + 3 分组 passes 全 true、任务书 §7 收口记录纯追加、本回传、PLAN.md 验收记录与 29 项 token 表纯追加） |
+| 提交 | 哈希 | 内容 |
+| --- | --- | --- |
+| 派发笔 | `0b5175bf405cb5d70eeb9b17f44bd21affeb465a` | `docs(spec): 派发 TASK-179 对账pipeline化语义判别提案与任务书`（本任务开工基线） |
+| C-01 证据笔 | `6fbc95cfcd9eb3227db10287dcd97f38216fe403` | `test(record): 新增对账 pipeline 化语义判别 IT 与本机边界报告（TASK-179）`（3 files / +3457 −0；committed blob 实测 CR=0、末字节 0x0a，`run3-precommit-c01/blob-eol-check.log`） |
+| 修正笔 | `7e73093a0026c6d98299b0d63586635575d495d2` | `test(record): 修复对账判别 IT 缺变量跳过路径的收尾落盘并订正报告读数（TASK-179）`（IT +4 / 报告 +2 −1；只动 `@AfterAll` 守卫与报告 §12、§15 读数，测量逻辑与判据口径零改动；两路径均在白名单内，故 §3 足迹不变） |
+| C-02 台账笔 | `ca39e7013f1ea596f01d271075750f7cd1b9c658` | `docs(mailbox): 登记 TASK-179 判别结论与台账闭环（TASK-179）`（tasks.json 10 步 completed + 3 分组 passes 全 true、任务书 §7 收口记录纯追加、本回传、PLAN.md 验收记录与 29 项 token 表纯追加） |
+| 订正笔① | `1a55888578d259c32d1c891be422fb87afc581a2` | `docs(perf): 订正 TASK-179 连接占用维度为未覆盖并登记收口复跑（TASK-179）` |
+| 订正笔② | 父锚定：父 = `1a55888578d259c32d1c891be422fb87afc581a2`；落库后 `git rev-list --left-right --count origin/main...main` = **`0 6`** | `docs(perf): 订正 TASK-179 台账提交表与空窗样本存档口径`（本笔：§9 提交表六笔化、证据节与报告及 exp JSON 空窗存档口径注记） |
+
+**提交结构（实际六笔）与偏差登记**：实际结构为「派发笔 + 证据笔 C-01 + 修正笔 + 台账笔 C-02 + 订正笔① + 订正笔②」共六笔，与任务书 §6.3 预注册的两笔结构（C-01 证据笔、C-02 台账笔）存在偏差——后三笔均属测量面修正与台账口径订正（修正笔修跳过路径收尾、订正笔①改连接占用维度登记、订正笔②订正提交表与空窗样本存档口径），**零 `src/main` 改动、足迹恒 7 条、判别结论 GO 与全部数字零改动**，沿 TASK-178 C-03 勘误先例登记。本表一律以**显式哈希**或**父锚定**登记提交，**禁用 `git log -1` 类时效指针**（原表「C-02 见 `git log -1`」即因后续订正笔落库失效，已按实际哈希订正）。PLAN.md TASK-179 段「三笔/样本口径」核查：**无**此类叙述（grep 零命中），故不编辑 PLAN.md。
 
 ## 10. 通道还原与临时文件清理
 
