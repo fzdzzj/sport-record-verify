@@ -1,0 +1,23 @@
+[
+  {
+    "number": 1,
+    "category": "实施",
+    "task": "契约门三层修缮",
+    "steps": [
+      { "step": "mailbox-contract.sh 提取层：extract_claims 只认清单小节列表行（^\\s*(-|\\d+\\.)\\s 开头）token；否定句式行（零触碰/未碰/未触碰/不改/禁触）不产 token；删除全文回退（小节缺失→claims 空→既有跳过分支+警示行）", "completed": false },
+      { "step": "mailbox-contract.sh 在途判定层：判据 B 前置 handoff.md 基线变动检查（git diff + untracked 双查，无变动→已收口不重审直跳）；--diff-file 模式沿用 git 判变动；非 git+--diff-file 降级旧共占在途判定并输出注明行；退出码 0/1/2/3 与判据 A 语义零改动；脚本头注释同步", "completed": false },
+      { "step": "scripts/verify/README.md 契约门专节同步（仅该节：在途判定新定义、提取规则、警示行）；合成 fixture 八例矩阵前后对照留证（gitignored 临时区，含①否定句式②已收口共占③节缺失④肯定列表行⑤多报仍红⑥未声明仍红⑦一致绿⑧退出码 2/3 路径）", "completed": false }
+    ],
+    "passes": false
+  },
+  {
+    "number": 2,
+    "category": "验收",
+    "task": "真实回归与台账闭环",
+    "steps": [
+      { "step": "真实回归：当前 HEAD 无参 rc=0（全部已收口不重审）；--open TASK-183 --baseline=1a92f26 开工态复演绿；本任务自身在途门按修复前口径跑留证（沿 TASK-181 §1.2.4 先例）+ 收口无参按修复后口径复跑；Java 抽验 offline 480 逐位 + static 811 不回归；词面门四形态；token 29 项只增不减", "completed": false },
+      { "step": "台账闭环：tasks.json 全勾、PLAN.md 纯追加登记、handoff 留证（合成八例前后 rc 对照表、脚本自举分层登记）；推送后下一次外部门槛 CI 绿为外部终验", "completed": false }
+    ],
+    "passes": false
+  }
+]
