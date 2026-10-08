@@ -61,6 +61,11 @@
         <!-- ===== 插件版本 ===== -->
         <maven-compiler-plugin.version>3.12.1</maven-compiler-plugin.version>
         <maven-enforcer-plugin.version>3.4.1</maven-enforcer-plugin.version>
+        <!-- Surefire 显式锁 3.6.0：与外部门槛 build job 实读值一致（第 22 次门槛日志 surefire:3.6.0:test），
+             显式给版本而非留空是必要的——留空会让 Maven 在计划演算阶段改走仓库 metadata 取版本，
+             本机 offline 口径（离线仓只有 3.1.2 的构件、没有该插件 metadata）直接构建失败，
+             两条本地门径都取不到证据；机制与实测见 work/mailbox/tasks/TASK-181/evidence.md。 -->
+        <maven-surefire-plugin.version>3.5.4</maven-surefire-plugin.version>
         <!-- JaCoCo 覆盖率（0.8.12 支持 Java 21；CI 与本地 shared 复用同一配置） -->
         <jacoco.version>0.8.12</jacoco.version>
     </properties>
@@ -217,6 +222,19 @@
                     <groupId>org.springframework.boot</groupId>
                     <artifactId>spring-boot-maven-plugin</artifactId>
                     <version>${spring-boot.version}</version>
+                </plugin>
+                <!-- 测试 JVM 启动参数加固（TASK-181）：@{argLine} 晚绑定取回 JaCoCo prepare-agent
+                     注入的 argLine property（写成 ${argLine} 会在属性尚未注入时展开为空、覆盖率 agent
+                     随之丢失），再追加 -Djdk.attach.allowAttachSelf=true，让 Mockito inline mock maker
+                     的 ByteBuddy agent 走进程内确定性 self-attach，不再依赖 JDK 21 默认禁用的
+                     外部子进程 attach 兜底路径。 -->
+                <plugin>
+                    <groupId>org.apache.maven.plugins</groupId>
+                    <artifactId>maven-surefire-plugin</artifactId>
+                    <version>${maven-surefire-plugin.version}</version>
+                    <configuration>
+                        <argLine>@{argLine} -Djdk.attach.allowAttachSelf=true</argLine>
+                    </configuration>
                 </plugin>
             </plugins>
         </pluginManagement>
