@@ -26,6 +26,7 @@
 6. **取证拼写经授权手拼**：`-X` 取证跑（`mvn -B -ntp -o -s .mvn-settings.xml -pl record-service -am clean test -X`）按任务书 §2.2 授权手拼，带齐 `-o -s` 与 `-am`；四组门禁结论一律出自 `scripts/verify/mvn-verify.sh`，全程无并发 mvn。
 7. **执行侧自纠一处实物缺陷（追加订正笔 C-03）**：C-01 入库后自查发现 `pom.xml` 里那段版本说明注释仍写「显式锁 3.6.0（第 22 次门槛日志 surefire:3.6.0:test）」，而实锁值已在授权后改为 `3.5.4`——改值时没同步注释，注释与实物不一致。C-03 只改该注释（把"3.6.0 是 CI 现读值""3.5.4 是上次绿的现读值""3.6.0 本机确定性致红"三件事写清），**构建语义零变更**（注释不入模型），并复跑官方 offline 门确认 450 恒等。纪律取舍：不 `git amend` 已入库的 C-01（本仓纪律是新提交优先），改走追加笔 + 台账登记；§6.3 的「两笔」结构因此变为三笔，本笔即 §8 的 C-03。
 8. **执行侧自纠第二处：台账字符串与实物不符（追加订正笔 C-04）**：写 §8 的 C-03 行时用了草稿主题「docs(pom): 订正 surefire 注释与实锁值一致（TASK-181）」，而实际落库主题是「build(pom): 订正 surefire 版本注释与实锁值一致（TASK-181 订正笔）」——哈希列对了、主题串抄错。台账的提交串是读者复核的入口，错了就得订正（先例：TASK-179 的订正笔③专修行数与哈希串）。C-04 只改 §8 的 C-03 主题串并追加本节，零构建面；本笔主题串先写进台账再逐字用作 `-F` 消息，避免同一个错再犯一次。
+9. **复核移交事项落笔与行尾口径句订正（追加订正笔 C-05，指导侧终裁配套，零构建面）**：独立复核采信 PASSED 的同时移交两件事——① 锁 3.5.4 的授权链条无独立 artifact（仅会话与执行侧自述）；② evidence.md §8 末句「全文件纯 CRLF 与仓库 autocrlf 口径一致、无 BOM」未点名所指文件，与 handoff §5 G5（evidence.md 纯 LF、LF=143/CR=0）构成歧义性矛盾（复核读法合理）。指导侧终裁处置：任务书 §8 纯追加「指导侧终裁与追认」（认账三处诊断错误 + 追认授权链条闭环）；evidence §8 末句逐字订正为点名式双事实句（指导侧亲测 `git ls-files --eol`：pom.xml 入库 LF/工作树 CRLF，evidence.md 双侧纯 LF）；本表 C-04 行补完整 SHA、新增 C-05 行（父锚定）。本笔恰好 4 路径，全部在 §3 只改清单内、零新增路径。
 
 ## 2. 一句话结论
 
@@ -147,4 +148,5 @@ CI 第 22 次同族签名：`Could not self-attach to current VM using external 
 | C-01 | `e560ddfd216dc9e11d1ba71ce9f5172e32b77416` | build(pom): 锁定 surefire 3.5.4 并启用测试 JVM 进程内 agent attach（TASK-181） | 2 文件（`pom.xml` +18；`work/mailbox/tasks/TASK-181/evidence.md` 新建 +143） |
 | C-02 | `c1727366eff6b7204eb31da558fe9c3ffcf57d97` | docs(mailbox): 登记 TASK-181 attach 加固验收与台账闭环（TASK-181） | 4 文件（`spec/changes/harden-surefire-agent-attach/tasks.json`、`work/mailbox/tasks/TASK-181/spec.md`、`work/mailbox/tasks/TASK-181/handoff.md`、`work/mailbox/PLAN.md`） |
 | C-03 | `3512d087aaa5c4de37aa9d37def063d79b36f3b1` | build(pom): 订正 surefire 版本注释与实锁值一致（TASK-181 订正笔） | 4 文件（`pom.xml` 注释订正、本 handoff、任务书收口追加一条、PLAN.md 订正记录纯追加），构建语义零变更 |
-| C-04 | 父锚定：父 = `3512d087aaa5c4de37aa9d37def063d79b36f3b1`（落库后 `git rev-list --left-right --count origin/main...main` = `0 5`） | docs(mailbox): 订正 TASK-181 handoff 的 C-03 主题字符串（订正笔②） | 3 文件（本 handoff §8 主题串订正 + §1.2.8 自纠登记、任务书 §7 纯追加一条、PLAN.md 订正记录纯追加），零构建面 |
+| C-04 | `af9e8c4789a63c7d747ff90c4fa80df0c1a8ce7a` | docs(mailbox): 订正 TASK-181 handoff 的 C-03 主题字符串（订正笔②） | 3 文件（本 handoff §8 主题串订正 + §1.2.8 自纠登记、任务书 §7 纯追加一条、PLAN.md 订正记录纯追加），零构建面 |
+| C-05 | 父锚定：父 = `af9e8c4789a63c7d747ff90c4fa80df0c1a8ce7a`（落库后 `origin/main...main` = `0 6`） | docs(mailbox): 登记 TASK-181 指导侧终裁追认并订正行尾口径句（TASK-181 订正笔③） | 4 文件（evidence.md §8 末句订正、任务书 §8 纯追加、本 handoff §1.2.9 登记与 §8 表终态化、PLAN.md TASK-181 小节订正记录纯追加），零构建面 |

@@ -140,4 +140,4 @@ Caused by: com.sun.tools.attach.AgentInitializationException: Agent JAR loaded b
 
 - 门禁与取证日志、脚本全部位于 gitignored 的 `.trae/tmp/`（`t181-01…t181-20` 成对 `.sh`/`.log`），作为上述读数的原文凭据保留；词面门探针 `t181-02-probe.txt.tmp` 用毕已删（`PROBE_GONE` 实读）；未生成 `*.orig`、`*.patch`、`*.bak`。
 - 未 `git add -A`、未 stash、未 push、未建 PR；派发笔三件套与本任务书正文（§0–§6 预注册部分）零改写，收口记录纯追加。
-- 取证期间曾把 root pom 短暂改回 `3.1.2` / `3.6.0` / 去 flag 等对照形态，均已按归因需要逐次复原；终态交付形态＝锁 3.5.4 + 双参数 argLine，`git diff --check` rc=0，`python -c xml.etree` 解析 OK，全文件纯 CRLF 与仓库 autocrlf 口径一致、无 BOM。
+- 取证期间曾把 root pom 短暂改回 `3.1.2` / `3.6.0` / 去 flag 等对照形态，均已按归因需要逐次复原；终态交付形态＝锁 3.5.4 + 双参数 argLine，`git diff --check` rc=0，`python -c xml.etree` 解析 OK。root `pom.xml`（仓库既有文件）入库 blob 纯 LF、工作树纯 CRLF（`autocrlf=true` 的 checkout 口径）、无 BOM；本 `evidence.md`（新增文件）入库与工作树均纯 LF（LF=143 / CR=0）、无 BOM、末尾换行完整（与 handoff §5 G5 同读数；实测 `git ls-files --eol`：`i/lf w/crlf` 与 `i/lf w/lf`）。
