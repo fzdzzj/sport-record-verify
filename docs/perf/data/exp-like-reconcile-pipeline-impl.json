@@ -1,0 +1,144 @@
+{
+  "task": "TASK-180",
+  "topic": "like-reconcile pipeline implementation",
+  "generatedFrom": "docs/perf/data/raw/task180/run3-measurement",
+  "environment": {
+    "scratchDb": "task180_it",
+    "mysqlVersion": "8.0",
+    "redisHost": "127.0.0.1",
+    "redisPort": 16379,
+    "redisDb": 13,
+    "redisRunId": "2b6a429ed450fde29f1a5f7cf1bcfc2337a00450",
+    "redisVersion": "7.2.16",
+    "javaVersion": "21",
+    "redisConnectionFactory": "org.redisson.spring.data.connection.RedissonConnectionFactory"
+  },
+  "adjudicationVerdict": "PASSED",
+  "batchSizing": {
+    "preTrial": {
+      "cap500": {
+        "cap": 500,
+        "flushes": 12,
+        "wallMs": 338.5772,
+        "records": 2000,
+        "totalCommands": 6000
+      },
+      "cap1000": {
+        "cap": 1000,
+        "flushes": 6,
+        "wallMs": 247.0058,
+        "records": 2000,
+        "totalCommands": 6000
+      },
+      "diffAbsoluteMs": 91.5714,
+      "recommendedDefault": 500,
+      "basis": "两档耗时差异在噪声范围内，500 档单批连接持有时间更短、服务端输出缓冲占用更小，故定档 500"
+    },
+    "finalSelectedBatchSize": 500
+  },
+  "semanticGates": {
+    "gateA_convergence": {
+      "passed": true,
+      "records": 200,
+      "wallMs": 261.2283,
+      "violationsCount": 0,
+      "violations": [],
+      "census": {
+        "converged": 200,
+        "setOnly": 0,
+        "halfApplied": 0,
+        "untouched": 0
+      }
+    },
+    "gateD_lockSemantics": {
+      "passed": true,
+      "secondTryLockAcquired": false,
+      "secondTryLockWaitMs": 3016,
+      "staticHasTryLock": true,
+      "staticHasUnlock": true,
+      "staticHasPipelined": true,
+      "staticCallInsideLockTry": true
+    },
+    "gateE_commandOrder": {
+      "passed": true,
+      "totalCaptured": 612,
+      "likeWritesCount": 600,
+      "setCount": 200,
+      "deleteCount": 200,
+      "saddCount": 200,
+      "triplesStrict": true,
+      "transactionWrappers": [],
+      "streamSampleFirst6": [
+        "SET like:count:700000",
+        "DEL like:record:700000:users",
+        "SADD like:record:700000:users",
+        "SET like:count:700001",
+        "DEL like:record:700001:users",
+        "SADD like:record:700001:users"
+      ]
+    }
+  },
+  "mutations": {
+    "mutation1_dropDel": {
+      "mutation": "DROP_DEL",
+      "converged": 0,
+      "expectedConverged": 0,
+      "caught": true,
+      "census": {
+        "converged": 0,
+        "setOnly": 200,
+        "halfApplied": 0,
+        "untouched": 0
+      }
+    },
+    "mutation2_swapDelSadd": {
+      "mutation": "SWAP_DEL_SADD",
+      "converged": 0,
+      "expectedConverged": 0,
+      "caught": true,
+      "census": {
+        "converged": 0,
+        "setOnly": 200,
+        "halfApplied": 0,
+        "untouched": 0
+      }
+    }
+  },
+  "defensiveBranch": {
+    "emptyRecordId": 700999,
+    "hasSaddForEmpty": false,
+    "observedCount": "10",
+    "observedCard": 2
+  },
+  "productionPerformance": {
+    "load": {
+      "records": 2000,
+      "rows": 100000,
+      "membersPerRecord": 50
+    },
+    "preRefactorMeasuredRoundsMs": [
+      5581.2256,
+      4583.4148,
+      5775.0382
+    ],
+    "preRefactorMeasuredTotalMs": 15939.6786,
+    "postRefactorBaselineControlRoundsMs": [
+      5137.6391,
+      4264.3059,
+      4829.5589
+    ],
+    "postRefactorBaselineControlTotalMs": 14231.5039,
+    "postRefactorProductionRoundsMs": [
+      225.2709,
+      182.7872,
+      166.837
+    ],
+    "postRefactorProductionTotalMs": 574.8951,
+    "note": "同数据同负载直跑，仅登记绝对数字，不计算百分比，不外推生产收益"
+  },
+  "inheritedUncoveredNotices": [
+    "连接占用维度未覆盖（继承 Notice）",
+    "(b) 桶并发写窗口为 0 判别力（继承 Notice）",
+    "CLIENT KILL 服务端硬中断不支持（继承 Notice）"
+  ]
+}

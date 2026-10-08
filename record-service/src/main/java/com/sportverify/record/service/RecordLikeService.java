@@ -16,12 +16,15 @@ import lombok.extern.slf4j.Slf4j;
 import org.redisson.api.RLock;
 import org.redisson.api.RedissonClient;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.data.redis.connection.RedisConnection;
+import org.springframework.data.redis.core.RedisCallback;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.support.TransactionTemplate;
 
+import java.nio.charset.StandardCharsets;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -29,6 +32,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicLong;
+import java.util.function.Consumer;
 
 /**
  * 点赞服务（审批版 §4.6，规范差异：点赞前置校验 / 点赞幂等 / 计数读热写冷 /
@@ -117,6 +121,8 @@ public class RecordLikeService {
     private static final long RECONCILE_INITIAL_DELAY_MS = 60_000;
     /** 锁等待上限（秒）：拿不到锁直接跳过本轮（下一轮再试） */
     private static final long LOCK_WAIT_SECONDS = 3;
+    /** 对账 Redis pipeline 分批提交大小（TASK-180 定档：默认 500）。 */
+    private static final int PIPELINE_BATCH_SIZE = 500;
 
     /** 计数重建锁键前缀（per-record 互斥回源，防击穿 F17） */
     static final String COUNT_INIT_LOCK_PREFIX = "lock:like:count-init:";
@@ -327,7 +333,8 @@ public class RecordLikeService {
      * <p>已知权衡：pending 尚未落库的操作（窗口内）会被 DB 权威值覆盖，下一轮 flush +
      * 再下一轮对账后收敛——这正是「最终一致」的定义，写路径从不等待落库。</p>
      */
-    @Scheduled(fixedDelay = RECONCILE_FIXED_DELAY_MS, initialDelay = RECONCILE_INITIAL_DELAY_MS)
+    @Scheduled(fixedDelay = RECONCILE_FIXED_DELAY_MS,
+            initialDelay = RECONCILE_INITIAL_DELAY_MS)
     void reconcileLikeCounts() {
         RLock lock = redissonClient.getLock(RECONCILE_LOCK_KEY);
         boolean locked = tryLock(lock);
@@ -340,23 +347,60 @@ public class RecordLikeService {
             List<RecordLike> pairs = recordLikeMapper.selectRecordLikePairs();
             Map<Long, List<Long>> usersByRecord = new LinkedHashMap<>();
             for (RecordLike pair : pairs) {
-                usersByRecord.computeIfAbsent(pair.getRecordId(), k -> new ArrayList<>()).add(pair.getUserId());
+                usersByRecord.computeIfAbsent(pair.getRecordId(),
+                        k -> new ArrayList<>()).add(pair.getUserId());
             }
             int corrected = 0;
+            List<Consumer<RedisConnection>> chunk = new ArrayList<>();
             for (Map.Entry<Long, List<Long>> entry : usersByRecord.entrySet()) {
                 Long recordId = entry.getKey();
                 List<Long> userIds = entry.getValue();
-                // 1) 计数以 DB 行为准覆盖
-                stringRedisTemplate.opsForValue().set(countKey(recordId), String.valueOf(userIds.size()));
-                // 2) 重建成员集（DEL + SADD），恢复「重复点赞幂等」防线；空成员只删不 SADD
-                //    （分组结果天然非空，保留空列表防御分支与旧行为语义对齐）
+                // 1) 构造段：逐 record 生成命令三元组（含空成员只 DEL）
+                byte[] countKeyBytes =
+                        countKey(recordId).getBytes(StandardCharsets.UTF_8);
+                byte[] countValBytes = String.valueOf(userIds.size())
+                        .getBytes(StandardCharsets.UTF_8);
+                chunk.add(conn -> conn.stringCommands().set(
+                        countKeyBytes, countValBytes));
+
                 String usersKey = usersKey(recordId);
-                stringRedisTemplate.delete(usersKey);
+                byte[] usersKeyBytes =
+                        usersKey.getBytes(StandardCharsets.UTF_8);
+                chunk.add(conn -> conn.keyCommands().del(usersKeyBytes));
+
                 if (!userIds.isEmpty()) {
-                    stringRedisTemplate.opsForSet().add(usersKey,
-                            userIds.stream().map(String::valueOf).toArray(String[]::new));
+                    byte[][] memberBytes = userIds.stream()
+                            .map(id -> String.valueOf(id)
+                                    .getBytes(StandardCharsets.UTF_8))
+                            .toArray(byte[][]::new);
+                    chunk.add(conn -> conn.setCommands().sAdd(
+                            usersKeyBytes, memberBytes));
                 }
                 corrected++;
+
+                // 2) 提交段：累积至 PIPELINE_BATCH_SIZE 即 executePipelined
+                if (chunk.size() >= PIPELINE_BATCH_SIZE) {
+                    List<Consumer<RedisConnection>> batch = chunk;
+                    stringRedisTemplate.executePipelined(
+                            (RedisCallback<Object>) connection -> {
+                                for (Consumer<RedisConnection> cmd : batch) {
+                                    cmd.accept(connection);
+                                }
+                                return null;
+                            });
+                    chunk = new ArrayList<>();
+                }
+            }
+            // 循环尾提交余量
+            if (!chunk.isEmpty()) {
+                List<Consumer<RedisConnection>> batch = chunk;
+                stringRedisTemplate.executePipelined(
+                        (RedisCallback<Object>) connection -> {
+                            for (Consumer<RedisConnection> cmd : batch) {
+                                cmd.accept(connection);
+                            }
+                            return null;
+                        });
             }
             log.info("点赞对账完成：纠正 {} 条记录的 Redis 计数与成员集", corrected);
         } finally {
