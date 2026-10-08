@@ -1834,3 +1834,55 @@ run `35802403723`（head `eba0108`，2026-09-23 00:31 UTC）——**web/build �
 | 37008317295 | 6 | 7 | 只增不减 |
 | 37021305016 | 7 | 8 | 只增不减 |
 | 37591580687 | 6 | 7 | 只增不减 |
+
+## 验收记录：TASK-181 harden-surefire-agent-attach surefire agent attach 加固与测试插件版本钉住（2026-10-08，执行 agent，机制加固轮、含根因订正、三支归属 PASSED）
+
+| 项 | 实测 |
+| --- | --- |
+| 唯一问题 | 第 22 次外部门槛（run `37736029636`，head `d44c29c`，06:08/06:21 两次执行）连续两次失败于 gateway-service 的 Mockito inline mock maker agent 挂载；两次失败后不再盲跑第三次，转仓库侧机制加固。 |
+| 开工基线 | 派发笔 HEAD `31733b636d80667101b35f854a2bc0fb7c8be046`；`origin/main...main` = `0 1`；工作树零残留；offline 七模块 `36/41/33/127/144/59/10` = **450** rc=0；`--static=record-service` = **811** rc=1（既有基线态）；在途契约门 `--open TASK-181 --baseline=31733b6…` rc=0。 |
+| 交付形态 | root pom 两处、共 +18 行：`<properties>` 内新增 `maven-surefire-plugin.version = 3.5.4`（与本 pom 既有插件版本写法同构）；`pluginManagement` 内新增 surefire 显式声明，`<argLine>@{argLine} -Djdk.attach.allowAttachSelf=true</argLine>`。未新增 Maven 插件，未触碰模块 pom、jacoco、enforcer、`ci.yml`、`scripts/`、`src/**`。 |
+| 生效取证 | offline `-X` 三行同现：`surefire:3.5.4:test (default-test) @ sport-verify-record-service`、`(s) argLine = @{argLine} -Djdk.attach.allowAttachSelf=true`、`Forking command line: … -javaagent:…org.jacoco.agent-0.8.12-runtime.jar=destfile=… -Djdk.attach.allowAttachSelf=true -jar …surefirebooter…jar` ⇒ 晚绑定保留 JaCoCo 注入、双参数不互相覆盖（spec-delta 场景 1 成立）。 |
+| 形态订正一 | 预注册的「不写 `<version>`」实测在本机 **offline 口径于计划演算阶段即失败**（`Error resolving version for plugin 'maven-surefire-plugin' … Plugin not found in any plugin repository`，parent FAILURE 0.004 s、零用例执行）：显式声明不给版本会让 Maven 改走仓库 metadata 取版本，而本机离线仓只有 3.1.2 的 jar、没有该插件 metadata。同形态 online 口径 rc=0、450 恒等。⇒ 与 §6.2「offline 450 分模块逐位」取证不可兼得，回报后指导侧裁定改锁版本。 |
+| 形态订正二 | 首次裁定锁 `3.6.0`（CI 第 22 次门槛实读版本）后，本机 offline 全量在 leaderboard-service 出现 `Tests run: 59, Failures: 0, Errors: 59`；去掉 flag 只留 `@{argLine}` 的对照同样 59 Errors（复跑两次一致）⇒ **致红变量是版本而非 flag**，且 flag 在 3.6.0 下救不回。改锁最近一次绿的 `3.5.4` 后四条门径全绿：offline 450 恒等 rc=0、同机 online 450 rc=0、静态 811 不增、`-X` 取证在场。 |
+| 根因归档与订正 | 派发笔 §1 记为「runner 机群条件漂移 + 外部子进程 attach 兜底间歇失败」；执行侧把"漂移"落到确切对象：**本仓从未声明测试插件版本 ⇒ 版本随 runner 镜像里 Maven 的默认绑定漂移**。外部读数（`gh run view --log` 只读，未触发 CI）——上次绿的 run `37722755341`（03:26Z，head `b6086b6`）= `surefire:3.5.4:test` ×14、全文零 attach 签名；红的 run `37736029636` = `surefire:3.6.0:test` ×3、gateway `Tests run: 41, Failures: 0, Errors: 14`，cause chain 为 `Could not self-attach to current VM using external process` → `Exception java.lang.NullPointerException [in thread "Attach Listener"]` → 级联 `NoClassDefFoundError: Could not initialize class org.apache.maven.surefire.api.report.StackWalkerStrategy`。修复因果链：声明并钉住版本（消除漂移）+ 进程内 self-attach（消除对外部子进程兜底的依赖）+ `@{argLine}` 晚绑定（保留覆盖率 agent）。本机可在 3.6.0 上确定性复现同族失败 ⇒ 该次门槛红不是纯间歇事件。 |
+| 三支裁决 | **PASSED**（450 恒等、静态 811 不增、双参数取证在场、门禁全绿），带 §1.2 的形态与根因订正；未触发 FAILED 分支。 |
+| 门禁 | 预提交：词面门四形态 ZERO_HIT rc=1 + 撤排除对照 HIT rc=0 + 探针 9/9 rc=0 + `PROBE_GONE`（权威解释器 git 2.20.1，三态判定）；`git diff --check` 与 `--cached --check` rc=0；tasks.json 语法 rc=0 且只翻 4 步 completed / 2 组 passes（正文零改写）；evidence.md 纯 LF、无 BOM、入库 blob CR=0；token 29 项只增不减。在途契约门 `--open TASK-181 --baseline=31733b6…` 开工态 rc=0、本笔 6 条路径入改动集后 rc=1——`extract_claims`（脚本 L114–L126）把历史 handoff「只改清单」小节正文里的**零触碰声明**（如 TASK-174 L43、TASK-005 L18–L19 的「未碰… `pom.xml`」）也提取成声明，小节缺失时还回退整档扫描，于是本笔真实改动的 `pom.xml` 与几十个历史任务的"声明"交叠、被逐个判「清单多报」；**本笔自身判据 B 通过**（`TASK-181：判据 B 通过（只改清单与实际改动集一致）`），实际改动集经 `git status --porcelain` 与 `git diff --name-only 31733b6…` 双读核对严格等于只改清单 6 条路径。 |
+| 受保护 token | 集合规模仍为 **29 项**（本轮无新增：新出现的 run 号 `37722755341`、`37736029636` 以文本登记，不扩集合）；逐项「开工实测 → 本笔追加后实测」见下方追踪表，只增不减。 |
+| 提交 | C-01 `e560ddfd216dc9e11d1ba71ce9f5172e32b77416` `build(pom): 锁定 surefire 3.5.4 并启用测试 JVM 进程内 agent attach（TASK-181）`（2 files / +161 −0：`pom.xml` +18、`work/mailbox/tasks/TASK-181/evidence.md` 新建 +143）；C-02 `docs(mailbox): 登记 TASK-181 attach 加固验收与台账闭环（TASK-181）`（4 文件：tasks.json、本任务书收口追加、handoff.md、本 PLAN 追加），父 = C-01。 |
+| 外部门槛 | **未到达外部门槛**（本轮不 push；`--mode=online` 权威口径仅用于本机取证跑）。第 22 次门槛红×2 的根因已归档并订正如上；**第 23 次门槛绿为修复有效性的外部终验**，同签名再现转深诊断、不以再重试刷绿。本笔只登记「已消除仓库侧该类失败的触发机制」，**不声称「已修复 CI 基础设施」**。 |
+| 未覆盖/后续 | ① 未诊断 3.6.0 内部机制（只证明「该版本下 attach 失败、与 flag 无关」，未拆解 fork/agent 装载环节，也未跑 `-Djacoco.skip` 隔离与覆盖率侧的耦合）；② `allowAttachSelf` 对 CI 那条路径的有效性不由本机证明（Windows 与 ubuntu runner 末端 cause 不同）；③ 未跑 `--it` 真中间件端到端（本笔零生产代码）；④ Dockerfile 交付面仅静态阅读、未在容器内实跑；⑤ 本机 `.m2-repo`（gitignored）经在线落料新增 surefire 相关 20 个 jar，属环境动作不属交付面；⑥ 后续变更候选：`extract_claims` 只应解析列表行，避免把「零触碰声明」的正文路径当声明提取。 |
+
+### TASK-181 受保护 token 追踪表（29 项）
+
+| Token | 开工实测值 | 本笔追加后实测值 | 变动说明 |
+| --- | --- | --- | --- |
+| 13.4 | 21 | 22 | 只增不减 |
+| 18.0 | 22 | 23 | 只增不减 |
+| 73.93 | 21 | 22 | 只增不减 |
+| 68.8 | 21 | 22 | 只增不减 |
+| 6315 | 18 | 19 | 只增不减 |
+| 1.8612 | 17 | 18 | 只增不减 |
+| 3.3066 | 17 | 18 | 只增不减 |
+| 5.7056 | 17 | 18 | 只增不减 |
+| 9.408 | 17 | 18 | 只增不减 |
+| 36525962432 | 17 | 18 | 只增不减 |
+| 36586847965 | 16 | 17 | 只增不减 |
+| 36438897772 | 17 | 18 | 只增不减 |
+| 36399582548 | 16 | 17 | 只增不减 |
+| 36098038547 | 16 | 17 | 只增不减 |
+| 2806 | 23 | 24 | 只增不减 |
+| 598 | 16 | 17 | 只增不减 |
+| 36736221648 | 15 | 16 | 只增不减 |
+| 36808102571 | 10 | 11 | 只增不减 |
+| 36821040708 | 8 | 9 | 只增不减 |
+| 36845152965 | 7 | 8 | 只增不减 |
+| 36871294588 | 7 | 8 | 只增不减 |
+| 36880083885 | 8 | 9 | 只增不减 |
+| 36958994260 | 8 | 9 | 只增不减 |
+| 36976873215 | 8 | 9 | 只增不减 |
+| 36992632143 | 7 | 8 | 只增不减 |
+| 36995450125 | 5 | 6 | 只增不减 |
+| 37008317295 | 6 | 7 | 只增不减 |
+| 37021305016 | 7 | 8 | 只增不减 |
+| 37591580687 | 6 | 7 | 只增不减 |
