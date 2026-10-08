@@ -1,0 +1,137 @@
+package com.sportverify.user.service;
+
+import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
+import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
+import com.sportverify.api.common.PageResult;
+import com.sportverify.user.dto.NotificationView;
+import com.sportverify.user.entity.Notification;
+import com.sportverify.user.mapper.NotificationMapper;
+import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
+import org.springframework.stereotype.Service;
+
+import java.time.LocalDateTime;
+import java.util.List;
+
+/**
+ * 通知服务（user_db.notification，TASK-182 add-notification-center）。
+ *
+ * <p>服务层覆盖：幂等写入（INSERT IGNORE 以受影响行数判断首次）、分页列表（id 倒序）、
+ * 未读数（COUNT + 索引）、单条已读（带 user_id 归属校验，非本人影响 0 行视为不存在）、
+ * 全部已读（批量流转 is_read 并回填 read_at）。</p>
+ *
+ * <p>读路径可见性与已读操作权一律限定收件人本人（userId 由网关注入的 X-User-Id 认定，
+ * 见 ADR-0007），不信任请求体显式携带值。</p>
+ */
+@Slf4j
+@Service
+@RequiredArgsConstructor
+public class NotificationService {
+
+    private final NotificationMapper notificationMapper;
+
+    /**
+     * 幂等写入通知：INSERT IGNORE，以受影响行数判断是否首次。
+     *
+     * <p>同一 {@code dedupKey}（判定事件=MQ eventId，好友=FRIEND_ACCEPTED:{requestId}）
+     * 重复写入至多一条——唯一键冲突被吞掉并返回 false，不产生第二行。</p>
+     *
+     * @return true = 首次落库；false = 同 dedup_key 已存在（幂等跳过）
+     */
+    public boolean createNotification(Long userId, String type, Long sourceId,
+                                      String title, String content, String dedupKey) {
+        Notification n = new Notification();
+        n.setUserId(userId);
+        n.setType(type);
+        n.setSourceId(sourceId);
+        n.setTitle(title);
+        n.setContent(content);
+        n.setIsRead(0);
+        n.setDedupKey(dedupKey);
+        n.setCreatedAt(LocalDateTime.now());
+        int rows = notificationMapper.insertIgnore(n);
+        return rows > 0;
+    }
+
+    /**
+     * 分页通知列表（仅收件人本人，id 倒序）。
+     */
+    public PageResult<NotificationView> pageNotifications(Long userId, long page, long size) {
+        if (userId == null) {
+            throw new IllegalArgumentException("userId 不能为空");
+        }
+        Page<Notification> result = notificationMapper.selectPage(new Page<>(page, size),
+                new LambdaQueryWrapper<Notification>()
+                        .eq(Notification::getUserId, userId)
+                        .orderByDesc(Notification::getId));
+        List<NotificationView> records = result.getRecords().stream().map(this::toView).toList();
+        return new PageResult<>(result.getCurrent(), result.getSize(), result.getTotal(), records);
+    }
+
+    /**
+     * 未读数量：COUNT(user_id=?, is_read=0)，走 idx_user_read 复合索引，不引入 Redis 计数器。
+     */
+    public long unreadCount(Long userId) {
+        if (userId == null) {
+            throw new IllegalArgumentException("userId 不能为空");
+        }
+        Long count = notificationMapper.selectCount(new LambdaQueryWrapper<Notification>()
+                .eq(Notification::getUserId, userId)
+                .eq(Notification::getIsRead, 0));
+        return count == null ? 0 : count;
+    }
+
+    /**
+     * 单条标记已读：带 user_id 归属校验，非本人通知影响 0 行（视为不存在）。
+     * 已读流转幂等：重复标记已读为无操作。
+     *
+     * @return true = 归属本人且标记成功；false = 通知不存在或非本人
+     */
+    public boolean markRead(Long userId, Long id) {
+        if (userId == null || id == null) {
+            return false;
+        }
+        LocalDateTime now = LocalDateTime.now();
+        int rows = notificationMapper.update(null,
+                new LambdaUpdateWrapper<Notification>()
+                        .eq(Notification::getId, id)
+                        .eq(Notification::getUserId, userId)
+                        .eq(Notification::getIsRead, 0)
+                        .set(Notification::getIsRead, 1)
+                        .set(Notification::getReadAt, now));
+        return rows > 0;
+    }
+
+    /**
+     * 全部标记已读：批量流转 is_read=1 并回填 read_at；重复全部已读为无操作。
+     *
+     * @return 受影响行数（本次实际从未读流转为已读的条数）
+     */
+    public int markAllRead(Long userId) {
+        if (userId == null) {
+            return 0;
+        }
+        LocalDateTime now = LocalDateTime.now();
+        return notificationMapper.update(null,
+                new LambdaUpdateWrapper<Notification>()
+                        .eq(Notification::getUserId, userId)
+                        .eq(Notification::getIsRead, 0)
+                        .set(Notification::getIsRead, 1)
+                        .set(Notification::getReadAt, now));
+    }
+
+    /** 实体 → 视图 DTO（is_read 码不变，读路径不做枚举名转换） */
+    private NotificationView toView(Notification n) {
+        NotificationView v = new NotificationView();
+        v.setId(n.getId());
+        v.setType(n.getType());
+        v.setSourceId(n.getSourceId());
+        v.setTitle(n.getTitle());
+        v.setContent(n.getContent());
+        v.setIsRead(n.getIsRead());
+        v.setCreatedAt(n.getCreatedAt());
+        v.setReadAt(n.getReadAt());
+        return v;
+    }
+}

@@ -46,3 +46,21 @@ CREATE TABLE IF NOT EXISTS `friendship` (
     CONSTRAINT `ck_friendship_low_lt_high` CHECK (`user_low` < `user_high`)
 ) ENGINE = InnoDB
   DEFAULT CHARSET = utf8mb4 COMMENT ='好友关系表（user_low < user_high）';
+
+-- 通知表（TASK-182 add-notification-center）
+CREATE TABLE IF NOT EXISTS `notification` (
+    `id`         BIGINT       NOT NULL AUTO_INCREMENT COMMENT '通知ID',
+    `user_id`    BIGINT       NOT NULL COMMENT '收件人',
+    `type`       VARCHAR(30)  NOT NULL COMMENT '类型：RECORD_VERIFIED 记录通过 / RECORD_REJECTED 记录驳回 / FRIEND_ACCEPTED 好友通过',
+    `source_id`  BIGINT       NOT NULL COMMENT '聚合根ID（recordId / requestId）',
+    `title`      VARCHAR(100) NOT NULL COMMENT '标题',
+    `content`    VARCHAR(255) DEFAULT NULL COMMENT '内容',
+    `is_read`    TINYINT      NOT NULL DEFAULT 0 COMMENT '已读：0 未读，1 已读',
+    `dedup_key`  VARCHAR(80)  NOT NULL COMMENT '幂等键：判定事件=MQ eventId；好友=FRIEND_ACCEPTED:{requestId}',
+    `created_at` DATETIME     NOT NULL COMMENT '创建时间',
+    `read_at`    DATETIME     DEFAULT NULL COMMENT '已读时间',
+    PRIMARY KEY (`id`),
+    UNIQUE KEY `uk_dedup` (`dedup_key`),
+    KEY `idx_user_read` (`user_id`, `is_read`, `id`)
+) ENGINE = InnoDB
+  DEFAULT CHARSET = utf8mb4 COMMENT ='通知表';

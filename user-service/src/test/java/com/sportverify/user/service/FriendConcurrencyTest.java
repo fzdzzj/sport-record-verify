@@ -141,7 +141,9 @@ class FriendConcurrencyTest {
         when(userMapper.selectById(1001L)).thenReturn(user(1001L, "A"));
         when(userMapper.selectById(1002L)).thenReturn(user(1002L, "B"));
 
-        service = new FriendService(requestMapper, friendshipMapper, userMapper, redissonClient);
+        NotificationService notificationService = mock(NotificationService.class);
+        service = new FriendService(requestMapper, friendshipMapper, userMapper, redissonClient,
+                notificationService);
     }
 
     /** T7：A、B 同时互发申请 → 仅一条 PENDING 单、一条 friendship；两方向同一锁键 */

@@ -11,6 +11,7 @@ import com.sportverify.user.entity.FriendRequest;
 import com.sportverify.user.entity.Friendship;
 import com.sportverify.user.entity.User;
 import com.sportverify.user.enums.FriendRequestStatus;
+import com.sportverify.user.enums.NotificationType;
 import com.sportverify.user.mapper.FriendRequestMapper;
 import com.sportverify.user.mapper.FriendshipMapper;
 import com.sportverify.user.mapper.UserMapper;
@@ -53,6 +54,7 @@ public class FriendService {
     private final FriendshipMapper friendshipMapper;
     private final UserMapper userMapper;
     private final RedissonClient redissonClient;
+    private final NotificationService notificationService;
 
     /** 锁等待上限（秒） */
     private static final long LOCK_WAIT_SECONDS = 5;
@@ -181,6 +183,12 @@ public class FriendService {
                 // 并发互加兜底：另一方向已落关系 → 幂等成功，不产生重复行
                 log.info("friendship 已存在，幂等跳过：{}_{}", low, high);
             }
+            // —— 好友通过通知（TASK-182）：收件人 = 申请人（from_user），与申请状态更新、
+            //    friendship 插入同本地事务；dedup_key = FRIEND_ACCEPTED:{requestId}，重复 accept
+            //    幂等（INSERT IGNORE 受影响 0 行即已存在）。reject 不通知（产品裁决）。
+            notificationService.createNotification(
+                    request.getFromUser(), NotificationType.FRIEND_ACCEPTED, requestId,
+                    "好友申请已被通过", null, "FRIEND_ACCEPTED:" + requestId);
             request.setStatus(FriendRequestStatus.ACCEPTED.getCode());
             request.setUpdatedAt(now);
             log.info("同意好友申请：requestId={}, 关系 {}_{}", requestId, low, high);

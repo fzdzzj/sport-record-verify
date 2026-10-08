@@ -58,6 +58,7 @@ class FriendServiceTest {
     private UserMapper userMapper;
     private RedissonClient redissonClient;
     private RLock lock;
+    private NotificationService notificationService;
     private FriendService service;
 
     @BeforeEach
@@ -66,12 +67,14 @@ class FriendServiceTest {
         friendshipMapper = mock(FriendshipMapper.class);
         userMapper = mock(UserMapper.class);
         redissonClient = mock(RedissonClient.class);
+        notificationService = mock(NotificationService.class);
         lock = mock(RLock.class);
         // RLock.tryLock 声明 throws InterruptedException，用 doReturn 形式规避检查型异常
         doReturn(true).when(lock).tryLock(anyLong(), anyLong(), any(TimeUnit.class));
         when(redissonClient.getLock(anyString())).thenReturn(lock);
         // 注意：构造参数顺序与 @RequiredArgsConstructor 字段声明顺序一致
-        service = new FriendService(requestMapper, friendshipMapper, userMapper, redissonClient);
+        service = new FriendService(requestMapper, friendshipMapper, userMapper, redissonClient,
+                notificationService);
     }
 
     // ==================== 好友申请创建 ====================
@@ -180,6 +183,9 @@ class FriendServiceTest {
         assertEquals(1002L, captor.getValue().getUserHigh());
         assertTrue(captor.getValue().getUserLow() < captor.getValue().getUserHigh(),
                 "friendship 必须强制 user_low < user_high");
+        // TASK-182：accept 事务内写好友通过通知（收件人=申请人，dedup_key=FRIEND_ACCEPTED:{requestId}）
+        verify(notificationService).createNotification(1001L, "FRIEND_ACCEPTED", 5L,
+                "好友申请已被通过", null, "FRIEND_ACCEPTED:5");
     }
 
     /** 申请不存在 → 5002，不写关系 */
@@ -216,6 +222,9 @@ class FriendServiceTest {
         FriendRequestDTO dto = service.accept(5L);
 
         assertEquals("ACCEPTED", dto.getStatus());
+        // 关系冲突吞掉仍是幂等成功，好友通过通知照常写（同事务）
+        verify(notificationService).createNotification(eq(1001L), eq("FRIEND_ACCEPTED"), eq(5L),
+                any(), any(), eq("FRIEND_ACCEPTED:5"));
     }
 
     /**
@@ -240,6 +249,9 @@ class FriendServiceTest {
         var inOrder = inOrder(requestMapper, friendshipMapper);
         inOrder.verify(requestMapper).updateStatus(eq(5L), eq(0), eq(1), any());
         inOrder.verify(friendshipMapper).insert(any(Friendship.class));
+        // TASK-182：好友通过通知在 accept 事务内直写（同方法体，不跨服务）
+        verify(notificationService).createNotification(1001L, "FRIEND_ACCEPTED", 5L,
+                "好友申请已被通过", null, "FRIEND_ACCEPTED:5");
     }
 
     /** 规范差异「拒绝申请」：PENDING→REJECTED，不落 friendship */
@@ -252,6 +264,9 @@ class FriendServiceTest {
 
         assertEquals("REJECTED", dto.getStatus());
         verify(friendshipMapper, never()).insert(ArgumentMatchers.<Friendship>any());
+        // TASK-182：拒绝不通知（产品裁决），reject 不得写通知
+        verify(notificationService, never()).createNotification(any(), any(), any(),
+                any(), any(), any());
     }
 
     /** 拒绝非 PENDING 申请 → 5002 */
