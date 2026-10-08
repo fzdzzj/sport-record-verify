@@ -82,3 +82,18 @@
 2. **收口门禁（C-02 后亲跑留证入 handoff）**：offline 450 分模块逐位；`--static=record-service` 不增；IT 直跑全绿 rc=0；契约门无参 rc=0；只改清单全等；PLAN.md 自派发笔起纯追加。
 3. **提交结构**：C-01 实施笔 `feat(record): 对账 Redis 往返 pipeline 化分批提交（TASK-180）`（沿仓库 feat 先例，禁性能改善措辞入 subject）；C-02 台账笔 `docs(mailbox): 登记 TASK-180 实施验收与台账闭环（TASK-180）`。
 4. **handoff.md**（沿 TASK-179 同构）：开工规程核验 / 偏差登记 / 一句话结论 / 只改清单 / 实施证据（定档读数、语义门 (a)(d)(e)、变异红、前后耗时绝对数字）/ 逐门实测表 / token 前后读数 / 未覆盖项与不得推出的结论 / 提交表（显式哈希，禁时效指针）。
+
+---
+
+## 7. 收口记录（执行侧 2026-10-08 纯追加，不改写上文任何预注册口径）
+
+- **三支归属**：**PASSED**（语义门 (a)(d)(e) 全绿，变异红两项全捕获，500/1000 定档 500，Checkstyle 811 未增，offline 450 不减）。环境两路可达 ⇒ 无 UNDETERMINED 分支。
+- **实施关键读数**：
+  - 定档实测：500 档（12 批，338.5772 ms）vs 1000 档（6 批，247.0058 ms），耗时差异仅 91.5714 ms 处于噪声区间，定档 500（单批连接占用短、缓冲小）；
+  - 生产方法同负载（2000 records × 50 赞 = 100 000 行）：逐条往返基线 3 轮合计 14231.5039 ms（独立基线轮 15939.6786 ms），改造后生产方法 3 轮合计 574.8951 ms；
+  - 语义门：(a) 全量收敛 200/200 违规 0；(d) 运行时排他等待 3016 ms 第二锁被拒，静态源码断言 pipeline 提交在锁 try 块内；(e) MONITOR 捕获 600 条命令流，SET->DEL->SADD 三元组严格保序，无 MULTI/EXEC 事务包装；
+  - 防御分支：空成员记录仅执行 SET 与 DEL，不发射 SADD；
+  - 变异红测试：抽 DEL 与乱序 SADD 注入均产生收敛数 0，成功被收敛门捕获；
+- **门禁**：offline 七模块 `36/41/33/127/144/59/10` = **450 恒等**、rc=0（经用户授权将 `RecordLikeServiceTest.java` 纳入白名单并更新单测断言以适配 `executePipelined` 分批提交）；`--static=record-service` 从 814 降至 811（净减 3，不增）；IT 直跑 9/9 rc=0，缺变量跳过 0 项 rc=0；词面门四形态 ZERO_HIT rc=1 + 探针四形态 HIT rc=0；`git diff --check` rc=0；tasks.json 全勾语法 rc=0；受保护 token 29 项只增不减。
+- **偏差登记（详见 handoff §1）**：经用户授权将 `RecordLikeServiceTest.java` 纳入白名单并更新单测断言以校验 `executePipelined` 分批提交（恢复 offline 450 基线）；继承 TASK-179 未覆盖项（连接占用维度未覆盖、(b) 桶并发写窗口为 0 判别力、CLIENT KILL 服务端硬中断不支持）；scratch MySQL 建表补 `archived` 列与 `request_id` 字段；宿主 6379 竞争沿临时 16379 override 映射，测毕还原。
+- **未达外部门槛**：全部读数限定本机隔离环境，不写百分比，不外推生产收益，未 push。

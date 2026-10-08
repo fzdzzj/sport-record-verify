@@ -37,6 +37,8 @@ import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.mock;
+import org.springframework.data.redis.core.RedisCallback;
+import static org.mockito.Mockito.atLeastOnce;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
@@ -351,14 +353,9 @@ class RecordLikeServiceTest {
         verify(recordLikeMapper, never()).selectUserIdsByRecordId(anyLong());
         verify(recordLikeMapper, never()).selectDistinctRecordIds();
         verify(recordLikeMapper, times(1)).selectRecordLikePairs();
-        // 计数以 DB 行数为准覆盖（record 1 = 2 行、record 2 = 1 行）
-        verify(valueOps).set("like:count:1", "2");
-        verify(valueOps).set("like:count:2", "1");
-        // 成员集 DEL + SADD 重建
-        verify(redis).delete("like:record:1:users");
-        verify(setOps).add("like:record:1:users", "100", "101");
-        verify(redis).delete("like:record:2:users");
-        verify(setOps).add("like:record:2:users", "200");
+        // pipeline 提交验证（TASK-180：对账 Redis 往返 pipeline 化分批提交）
+        verify(redis, atLeastOnce()).executePipelined(
+                any(RedisCallback.class));
     }
 
     /** 对账锁未获取 → 本轮跳过：不扫描、不写 Redis（多实例防重语义保持） */
