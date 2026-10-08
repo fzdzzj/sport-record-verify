@@ -1,0 +1,23 @@
+[
+  {
+    "number": 1,
+    "category": "实施",
+    "task": "API 封装与通知面前端",
+    "steps": [
+      { "step": "web/src/api/client.ts 纯追加：NotificationViewDTO 前端类型（与后端 NotificationView 逐字段对齐）+ listNotifications / getUnreadCount / markNotificationRead / markAllNotificationsRead 四函数（/user/api/notifications 前缀，不传 userId，沿 friends 内规）", "completed": false },
+      { "step": "web/src/composables/useNotificationBell.ts 新增（模块级共享 unread ref + refreshUnread，登录态挂载拉取、60 秒轮询、visibilitychange 恢复刷新/不可见暂停）；App.vue 顶栏追加 a-badge + BellOutlined 铃铛（点击跳 /notifications，未登录不展示未读数）", "completed": false },
+      { "step": "web/src/pages/notifications.page.vue 新增（沿 friends.page.vue 范式：分页表格 + 单条已读 + 全部已读展示流转条数 + 刷新；5003 等错误码直接展示；操作后经共享 composable 即时同步未读数）；pnpm build 后 typed-router.d.ts 重新生成并入库", "completed": false }
+    ],
+    "passes": false
+  },
+  {
+    "number": 2,
+    "category": "验收",
+    "task": "web 门禁与台账闭环",
+    "steps": [
+      { "step": "web 门禁三件套亲跑留证：pnpm --dir web type-check rc=0 + pnpm --dir web build rc=0 + typed-router.d.ts 与提交一致；Java 侧不回归抽验（offline 全量 480 逐位、--static=record-service 811 不增）；git diff --check rc=0；词面门四形态 ZERO_HIT；契约门在途 --open TASK-183；token 29 项只增不减", "completed": false },
+      { "step": "台账闭环：tasks.json 全勾、PLAN.md 纯追加登记、handoff 留证（含零触碰清单与未登录不请求证据）；推送后下一次外部门槛 CI 绿（web 档 + build 档双绿）为外部终验", "completed": false }
+    ],
+    "passes": false
+  }
+]
