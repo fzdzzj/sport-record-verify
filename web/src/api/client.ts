@@ -253,3 +253,31 @@ export async function activateRuleVersion(id: number | string): Promise<Result<a
 export async function reviewAppeal(id: number | string, dto: { operator: string; pass: boolean; recheckResult?: string }): Promise<Result<any>> {
   return api.post(`/admin/api/appeals/${id}/review`, dto)
 }
+
+// ===== Notifications (add-notification-web-bell) — userId omitted when auth (gateway injects) =====
+export interface NotificationViewDTO {
+  id: number
+  type: string // RECORD_VERIFIED | RECORD_REJECTED | FRIEND_ACCEPTED
+  sourceId?: number
+  title: string
+  content: string
+  isRead: number // 0 unread, 1 read
+  createdAt?: string
+  readAt?: string
+}
+
+export async function listNotifications(page = 1, size = 20): Promise<Result<PageResult<NotificationViewDTO>>> {
+  return api.get('/user/api/notifications', { params: { page, size } })
+}
+
+export async function getUnreadCount(): Promise<Result<number>> {
+  return api.get('/user/api/notifications/unread-count')
+}
+
+export async function markNotificationRead(id: number): Promise<Result<any>> {
+  return api.patch(`/user/api/notifications/${id}/read`)
+}
+
+export async function markAllNotificationsRead(): Promise<Result<number>> {
+  return api.patch('/user/api/notifications/read-all')
+}

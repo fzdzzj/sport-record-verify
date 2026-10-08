@@ -9,6 +9,11 @@
         <a-button type="link" style="color: #fff;" @click="goTo('/leaderboard')">榜单</a-button>
         <a-button v-if="isAdmin" type="link" style="color: #0ff; font-weight: bold;" @click="goTo('/admin-rules')">规则版本</a-button>
         <a-button v-if="isAdmin" type="link" style="color: #0ff; font-weight: bold;" @click="goTo('/admin-appeal')">申诉终判</a-button>
+        <a-badge :count="unread" :overflow-count="99">
+          <a-button type="link" style="color: #fff;" @click="goTo('/notifications')">
+            <BellOutlined />
+          </a-button>
+        </a-badge>
         <a-button type="link" style="color: #fff;" @click="goTo('/probe')">探活</a-button>
         <a-button type="link" style="color: #fff;" @click="goTo('/register')">注册</a-button>
         <a-button type="link" style="color: #fff;" @click="goTo('/login')">登录</a-button>
@@ -27,11 +32,16 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import { useRouter } from 'vue-router/auto'
+import { BellOutlined } from '@ant-design/icons-vue'
 import { clearTokens, getRole } from '@/utils/token'
+import { useNotificationBell } from '@/composables/useNotificationBell'
 
 const router = useRouter()
 
 const isAdmin = computed(() => getRole() === 'ADMIN')
+
+// 未读数共享 composable：App.vue 常驻，挂载启动轮询、卸载清 interval（随会话存续）
+const { unread } = useNotificationBell()
 
 function goTo(path: string) {
   router.push(path)
