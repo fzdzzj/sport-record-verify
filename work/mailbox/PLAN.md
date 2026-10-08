@@ -1933,3 +1933,14 @@ run `35802403723`（head `eba0108`，2026-09-23 00:31 UTC）——**web/build �
 | 三支裁决 | 前端五 file 齐 + web 三件套全绿 + Java 抽验不回归 + 验收要点全达成 → **PASSED**；无 FAILED 项；外部终验待推送后下一次外部门槛 CI 绿（web 档 + build 档双绿，第 25 次） |
 | 偏差 | D1：C-01 build 首跑因本机系统 `%TEMP%` 上 esbuild 清理临时目录 `Access is denied` 而 rc=1，属 Windows 环境工具面；把 TMP/TEMP/TMPDIR 指到仓内 `.trae/esbuild-tmp`（gitignored）后 build rc=0。非代码问题，见 handoff §4。 |
 | 未覆盖项 | 本机 auth 默认态不展开真门手动演示（需网关+服务 auth=true 且登录会话，登记为 §6.4 说明项不判失败）；web 无单测框架，如实登记不虚构单测数；实时推送在范围外（60s 轮询承载） |
+
+**TASK-183 补记（push 触发 CI 后实测，外部门槛第 25 次达成，2026-10-08）**
+
+| 项目 | 内容 |
+| --- | --- |
+| 外部门槛 | GitHub Actions run `37789544509`（HEAD `85937a030a25e25ef31596f008f848781191b991`，trigger=push/branch=main，https://github.com/fzdzzj/sport-record-verify/actions/runs/37789544509），conclusion=`success`；`web` 26s 全绿、`build` 2m55s 全绿（11 步流水线＋后置清理）；第 5 步 `Build and test`（`--mode=online verify`）与第 10 步 `Public docs wording self-check` 词面门全 success；本批 8 笔：`8258d40`（TASK-182 第 24 次门槛补记笔）+ TASK-183 七笔——`1a92f26`（派发笔）、`4a24865`（C-01 前端实现五文件）、`5f8a420`（C-02 台账收口）、`a5c7f96`（C-02b 提交表终态化）、`5ee8f95`（C-02c 父锚定订正）、`377ac47`（C-02d 五笔显式哈希）、`85937a0`（C-02e 手尾措辞定格，终态 HEAD） |
+| 推送与同步 | push `ef9cd8d..85937a0` rc=0（推送时 `origin/main...main` = `0 8`，推送后 `0 0`），未建 PR |
+| 首次外部评判 | TASK-183 全链路（Web 通知铃铛与通知列表页：API 封装 / 共享未读数 composable / 顶栏铃铛 / 通知页 / typed-router 生成物，及台账闭环与四笔订正）首次经过外部验证：**CI web 档三件套**（pnpm frozen-lockfile 安装 + type-check + build + `typed-router.d.ts` 与提交一致）**首次评判 `/notifications` 新页面**，build 档 online 全量 verify 与词面门同轮全绿；离线 480 与静态 811 在 CI 复验（Java 零改动证不回归） |
+| 指导侧终裁 | 复核五块全 pass 无阻断项，PASSED 维持；偏差 D1（esbuild `%TEMP%` 权限，环境工具面）、D2（3→7 笔零构建面订正，沿 TASK-182 先例）处置如登记；复核发现项 N1（handoff §8 表列 5 笔 vs 实际链 7 笔）**接受为终态不另开订正笔**——末尾手尾笔以回传报告显式值定格、追表存在自指无限回归，七笔显式哈希以本补记为终态登记面完成闭环 |
+| 受保护 token | 29 项既有集合不动；第 25 次 run 号 `37789544509` 以文本登记（沿 TASK-181/182 期口径，不扩集合） |
+| 状态 | TASK-183 全链路闭环，**外部终验达成**；**通知中心课题（后端 TASK-182 + 前端 TASK-183）全线封盘**；外部门槛计数更新为 **25 次**（24 绿 1 红）。下一课题候选：契约门 extract_claims「正文即声明」盲区修缮（TASK-181 §1.2.4 / TASK-182 C-02 两次现身）或其他方向，待用户定向 |
