@@ -61,10 +61,11 @@
         <!-- ===== 插件版本 ===== -->
         <maven-compiler-plugin.version>3.12.1</maven-compiler-plugin.version>
         <maven-enforcer-plugin.version>3.4.1</maven-enforcer-plugin.version>
-        <!-- Surefire 显式锁 3.6.0：与外部门槛 build job 实读值一致（第 22 次门槛日志 surefire:3.6.0:test），
+        <!-- Surefire 显式锁 3.5.4：与上一次全绿外部门槛 run 37722755341 的实读版本一致（surefire:3.5.4:test），
              显式给版本而非留空是必要的——留空会让 Maven 在计划演算阶段改走仓库 metadata 取版本，
-             本机 offline 口径（离线仓只有 3.1.2 的构件、没有该插件 metadata）直接构建失败，
-             两条本地门径都取不到证据；机制与实测见 work/mailbox/tasks/TASK-181/evidence.md。 -->
+             本机 offline 口径（离线仓缺该插件 metadata）直接构建失败，两条本地门径都取不到证据；
+             第 22 次门槛的 3.6.0 经本机实测确定性致红（leaderboard-service 59 例 Errors，去掉 flag 同红）。
+             机制与实测见 work/mailbox/tasks/TASK-181/evidence.md。 -->
         <maven-surefire-plugin.version>3.5.4</maven-surefire-plugin.version>
         <!-- JaCoCo 覆盖率（0.8.12 支持 Java 21；CI 与本地 shared 复用同一配置） -->
         <jacoco.version>0.8.12</jacoco.version>

@@ -24,6 +24,7 @@
 4. **在途契约门 rc=1（历史回传的"零触碰声明"被当声明提取，非本笔超范围改动）**：`--open TASK-181 --baseline=31733b6…` 开工态（工作树空）rc=0；本笔 6 条路径进入改动集后 rc=1。逐条核对到脚本层面：`mailbox-contract.sh` 的 `extract_claims`（L114–L126）只认标题含「只改 / 改动 / 文件清单」的小节，并把该小节**正文里所有文件名样 token** 提取为声明，缺该小节时回退为整档扫描；历史 handoff 普遍在同小节写「显式零触碰：… `pom.xml` …」（如 TASK-174 L43、TASK-005 L18–L19），于是 `pom.xml` 成了几十个历史任务的"声明"。本笔真实改动含 `pom.xml` ⇒ 与这些声明交叠 ⇒ 判据 B 对被交叠的每个历史任务都要求两集合完全一致，遂逐个判「清单多报」（多报清单里 `PLAN.md` 与 `pom.xml` 命中数为 0，正说明它们是被匹配上的交叠项）。**本笔自身判据 B 通过**——原文 `[contract] TASK-181：判据 B 通过（只改清单与实际改动集一致）`（`.trae/tmp/t181-23-contract-out.log:1206`），且实际改动集经 `git status --porcelain` 与 `git diff --name-only 31733b6…` 双读核对，严格等于 §3 的 6 条路径。同型过冲在 TASK-160 G8、TASK-174 §1.2.1 已登记在册；权威收口口径是无参复跑（见 §5 G13）。
 5. **提交主题按实施形态订正**：任务书 §6.3 预注册主题为「surefire 测试 JVM 启用进程内 agent attach」，只覆盖 argLine 一半；交付形态含版本锁定（真实修法），故 C-01 主题改为 `build(pom): 锁定 surefire 3.5.4 并启用测试 JVM 进程内 agent attach（TASK-181）`，版本漂移与 flag 两件事都在主题里可见。
 6. **取证拼写经授权手拼**：`-X` 取证跑（`mvn -B -ntp -o -s .mvn-settings.xml -pl record-service -am clean test -X`）按任务书 §2.2 授权手拼，带齐 `-o -s` 与 `-am`；四组门禁结论一律出自 `scripts/verify/mvn-verify.sh`，全程无并发 mvn。
+7. **执行侧自纠一处实物缺陷（追加订正笔 C-03）**：C-01 入库后自查发现 `pom.xml` 里那段版本说明注释仍写「显式锁 3.6.0（第 22 次门槛日志 surefire:3.6.0:test）」，而实锁值已在授权后改为 `3.5.4`——改值时没同步注释，注释与实物不一致。C-03 只改该注释（把"3.6.0 是 CI 现读值""3.5.4 是上次绿的现读值""3.6.0 本机确定性致红"三件事写清），**构建语义零变更**（注释不入模型），并复跑官方 offline 门确认 450 恒等。纪律取舍：不 `git amend` 已入库的 C-01（本仓纪律是新提交优先），改走追加笔 + 台账登记；§6.3 的「两笔」结构因此变为三笔，本笔即 §8 的 C-03。
 
 ## 2. 一句话结论
 
@@ -89,7 +90,7 @@ CI 第 22 次同族签名：`Could not self-attach to current VM using external 
 | G10 白名单足迹 | 实际改动集 vs §3 | `pom.xml` + `evidence.md`（C-01，2 files / +161 −0）；tasks.json + spec.md + handoff.md + PLAN.md（C-02）；其余路径零触碰 | 通过 |
 | G11 红线 | 仅 root pom 一处、不引入新插件、未碰 jacoco/enforcer/模块 pom/`ci.yml`/`scripts`/`src` | 改动面＝root pom 的 properties 一行 + pluginManagement 一个块 | 通过 |
 | G12 提交信息 | `git commit -F` 文件、无 BOM、UTF-8 | 消息文件无 BOM；提交 blob CR=0 | 通过 |
-| G13 收口复跑 | offline 450 / 静态 811 / 契约门无参 rc=0 / PLAN 纯追加 | 在 C-02 落库后亲跑；读数见执行侧回传报告（提交自指不可入本笔正文） | 见回传 |
+| G13 收口复跑 | 官方 `--mode=offline test` + `--static=record-service` + 无参契约门（C-02 与 C-03 落库后各一轮） | offline 逐位 `36/41/33/127/144/59/10` = 450 恒等 rc=0（两轮一致：C-02 后 `.trae/tmp/t181-26-closing-mvn.log:4255`，C-03 后 `t181-28-c03-offline.log:4254`）；静态 811 rc=1（不增）；**契约门无参 rc=0**（`判据 A 两件套齐（含 0 个待办进行中）+ 判据 B 清单一致`，`t181-27-closing-nonmvn.log:6`）；PLAN.md 与任务书 numstat 删除数为 0（纯追加）；派发笔三件套 `git diff` 零改动 | 通过 |
 
 ## 6. 受保护 token（PLAN.md 行命中数 `grep -cF`）
 
@@ -143,4 +144,5 @@ CI 第 22 次同族签名：`Could not self-attach to current VM using external 
 | 批次 | 完整 SHA | 提交主题 | 涉及文件 |
 | --- | --- | --- | --- |
 | C-01 | `e560ddfd216dc9e11d1ba71ce9f5172e32b77416` | build(pom): 锁定 surefire 3.5.4 并启用测试 JVM 进程内 agent attach（TASK-181） | 2 文件（`pom.xml` +18；`work/mailbox/tasks/TASK-181/evidence.md` 新建 +143） |
-| C-02 | 父锚定：父 = `e560ddfd216dc9e11d1ba71ce9f5172e32b77416`（落库后 `git rev-list --left-right --count origin/main...main` = `0 3`） | docs(mailbox): 登记 TASK-181 attach 加固验收与台账闭环（TASK-181） | 4 文件（`spec/changes/harden-surefire-agent-attach/tasks.json`、`work/mailbox/tasks/TASK-181/spec.md`、`work/mailbox/tasks/TASK-181/handoff.md`、`work/mailbox/PLAN.md`） |
+| C-02 | `c1727366eff6b7204eb31da558fe9c3ffcf57d97` | docs(mailbox): 登记 TASK-181 attach 加固验收与台账闭环（TASK-181） | 4 文件（`spec/changes/harden-surefire-agent-attach/tasks.json`、`work/mailbox/tasks/TASK-181/spec.md`、`work/mailbox/tasks/TASK-181/handoff.md`、`work/mailbox/PLAN.md`） |
+| C-03 | 父锚定：父 = `c1727366eff6b7204eb31da558fe9c3ffcf57d97`（落库后 `git rev-list --left-right --count origin/main...main` = `0 4`） | docs(pom): 订正 surefire 注释与实锁值一致（TASK-181） | 4 文件（`pom.xml` 注释订正、本 handoff、任务书收口追加一条、PLAN.md 订正记录纯追加），构建语义零变更 |
