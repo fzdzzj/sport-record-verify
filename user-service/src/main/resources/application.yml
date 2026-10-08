@@ -31,6 +31,15 @@ spring:
       host: 127.0.0.1
       port: 6379
 
+# RocketMQ（TASK-182 add-notification-center）：判定事件通知消费者订阅
+# record-verify-events 的 VERIFIED/REJECTED Tag，独立消费组 notification-consumer-group，
+# 与 leaderboard 消费组同 Topic 不同组不同位点。IT 环境变量前缀 TASK182_IT_
+rocketmq:
+  name-server: 127.0.0.1:9876
+  notification:
+    consumer:
+      group: notification-consumer-group
+
 # ===== 认证鉴权（add-jwt-auth，见 ADR-0007）=====
 # 认证域是本服务的签发端：注册/登录/刷新签发 HS256 双 token；
 # 业务接口的 token 校验统一由网关 GlobalFilter 承担（本服务不自行校验 token）。

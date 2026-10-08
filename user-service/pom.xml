@@ -71,6 +71,15 @@
             <artifactId>redisson-spring-boot-starter</artifactId>
         </dependency>
 
+        <!-- 消息：RocketMQ（TASK-182 add-notification-center）——判定事件通知消费者
+             NotificationEventConsumer 订阅 RecordVerifyEvents.TOPIC 的 VERIFIED/REJECTED Tag，
+             独立消费组 notification-consumer-group；编程式 DefaultMQPushConsumer 规避
+             rocketmq-spring 2.3.1 监听容器不兼容点（版本由 root dependencyManagement 既有锁定） -->
+        <dependency>
+            <groupId>org.apache.rocketmq</groupId>
+            <artifactId>rocketmq-spring-boot-starter</artifactId>
+        </dependency>
+
         <!-- 认证域（add-jwt-auth，见 ADR-0007）：
              spring-security-crypto 只引 BCrypt 哈希，避免拉 Spring Security 全家桶
              （全家桶会触发自动安全过滤链，与网关统一鉴权 + 无状态的骨架冲突）；
