@@ -6,7 +6,7 @@
 
 ## 0. 开工规程与基线读数逐位核验（Level A）
 
-- 开工 HEAD（派发笔）：`0b5175bf405cb5d70eeb9b17f44bd21affeb465a`，`git log -1 --format=%s` = `docs(spec): 派发 TASK-179 对账pipeline化语义判别提案与任务书`；
+- 开工 HEAD（派发笔）：`0b5175bf405cb5d70eeb9b17f44bd21affeb465a`，`git log -1 --format=%s 0b5175bf405cb5d70eeb9b17f44bd21affeb465a` = `docs(spec): 派发 TASK-179 对账pipeline化语义判别提案与任务书`；
 - `git rev-list --left-right --count origin/main...main` = **`0 1`**；`git status --porcelain` 为空——零残留核验通过；
 - 离线基线：`bash scripts/verify/mvn-verify.sh --mode=offline test` rc=**0**，分模块 `36/41/33/127/144/59/10`、合计 **450**，Failures/Errors/Skipped 全 0，BUILD SUCCESS（`run1-g0-baseline/g0-offline-test-mvn.log`）；
 - 静态基线：`bash scripts/verify/mvn-verify.sh --static=record-service` rc=**1**、`You have 814 Checkstyle violations`（严格 814 持平口径）；
@@ -236,7 +236,7 @@ work/mailbox/tasks/TASK-179/spec.md
 | --- | --- | --- |
 | 派发笔 | `0b5175bf405cb5d70eeb9b17f44bd21affeb465a` | `docs(spec): 派发 TASK-179 对账pipeline化语义判别提案与任务书`（本任务开工基线） |
 | C-01 证据笔 | `6fbc95cfcd9eb3227db10287dcd97f38216fe403` | `test(record): 新增对账 pipeline 化语义判别 IT 与本机边界报告（TASK-179）`（3 files / +3457 −0；committed blob 实测 CR=0、末字节 0x0a，`run3-precommit-c01/blob-eol-check.log`） |
-| 修正笔 | `7e73093a0026c6d98299b0d63586635575d495d2` | `test(record): 修复对账判别 IT 缺变量跳过路径的收尾落盘并订正报告读数（TASK-179）`（IT +4 / 报告 +2 −1；只动 `@AfterAll` 守卫与报告 §12、§15 读数，测量逻辑与判据口径零改动；两路径均在白名单内，故 §3 足迹不变） |
+| 修正笔 | `7e73093a0026c6d98299b0d63586635575d495d2` | `test(record): 修复对账判别 IT 缺变量跳过路径的收尾落盘并订正报告读数（TASK-179）`（IT +4 / 报告 +3 −1；只动 `@AfterAll` 守卫与报告 §12、§15 读数，测量逻辑与判据口径零改动；两路径均在白名单内，故 §3 足迹不变） |
 | C-02 台账笔 | `ca39e7013f1ea596f01d271075750f7cd1b9c658` | `docs(mailbox): 登记 TASK-179 判别结论与台账闭环（TASK-179）`（tasks.json 10 步 completed + 3 分组 passes 全 true、任务书 §7 收口记录纯追加、本回传、PLAN.md 验收记录与 29 项 token 表纯追加） |
 | 订正笔① | `1a55888578d259c32d1c891be422fb87afc581a2` | `docs(perf): 订正 TASK-179 连接占用维度为未覆盖并登记收口复跑（TASK-179）` |
 | 订正笔② | 父锚定：父 = `1a55888578d259c32d1c891be422fb87afc581a2`；落库后 `git rev-list --left-right --count origin/main...main` = **`0 6`** | `docs(perf): 订正 TASK-179 台账提交表与空窗样本存档口径`（本笔：§9 提交表六笔化、证据节与报告及 exp JSON 空窗存档口径注记） |
