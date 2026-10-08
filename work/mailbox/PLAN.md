@@ -1911,3 +1911,13 @@ run `35802403723`（head `eba0108`，2026-09-23 00:31 UTC）——**web/build �
 | 三支裁决 | 功能四件套齐 → **PASSED**；唯一未覆盖为真 broker 往返 IT（UNDETERMINED，链路语义等价由纯单测逐字覆盖）；无 FAILED 项 |
 | 第 23 次门槛折入 | 前序外部门槛 run `37769662324`（HEAD `729de8d…`）**绿**已折入任务书 §7 收口记录；本任务收口后第 24 次外部门槛待外部 push 后以新 run 数值登记（新 run 号文本登记，不扩受保护集合） |
 | 偏差 | D1 任务书 §5「user-service 41」实为 gateway，user-service 真实基线 33（以全量实测为唯一口径，480 逐位）；D2 C-03 主题串与任务书措辞非逐字（同词，登记不改写）；D3 依赖预注册「两依赖」实为「一新（rocketmq）一已有（redisson）」。详见 handoff §4 |
+
+**TASK-182 补记（push 触发 CI 后实测，外部门槛第 24 次达成，2026-10-08）**
+
+| 项目 | 内容 |
+| --- | --- |
+| 外部门槛 | GitHub Actions run `37779966984`（HEAD `ef9cd8de00c284c06d14125bfd678a6d713e172f`，trigger=push/branch=main，https://github.com/fzdzzj/sport-record-verify/actions/runs/37779966984），conclusion=`success`；`web` 28s 全绿、`build` 3m20s 全绿（11 步流水线＋后置清理）；第 5 步 `Build and test`（`--mode=online verify`）与第 10 步 `Public docs wording self-check` 词面门全 success；本批 9 笔：`21392a5`（派发笔）、`030c82d`（C-01 存储与好友接线）、`dfa186f`（C-02 消费者）、`da8b928`（C-03 读取入口与 IT）、`ec6cb77`（C-04 台账闭环）、`fbb5440`（C-04b 哈希终态化）、`a4f358a`（C-04c 父锚定订正）、`06557d8`（C-04d 提交表补全）、`ef9cd8d`（提交表订正笔） |
+| 推送与同步 | push `729de8d..ef9cd8d` rc=0（推送时 `origin/main...main` = `0 9`，推送后 `0 0`），未建 PR |
+| 首次外部评判 | TASK-182 全链路（通知中心后端四件套：notification 表与双幂等 / RocketMQ 消费者 / 四 REST 接口 / 往返 IT 代码，及台账闭环与四笔订正）首次经过外部 online 全量 verify 与词面门验证；离线 480（`36/41/63/127/144/59/10`）与静态 811 在 CI 复验；真 broker 往返 IT 仍属本机 UNDETERMINED 口径（CI 无 MQ service，`*IT` 不被收集，不记通过） |
+| 受保护 token | 29 项既有集合不动；第 24 次 run 号 `37779966984` 以文本登记（沿 TASK-181/182 期口径，不扩集合） |
+| 状态 | TASK-182 全链路闭环，**外部终验达成**；外部门槛计数更新为 **24 次**（23 绿 1 红）。下一课题：`add-notification-web-bell`（TASK-183，Web 通知铃铛与通知列表页）提案已由指导侧编撰，待派发 |
