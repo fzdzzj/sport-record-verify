@@ -51,7 +51,7 @@
 | # | 偏差 | 性质与处置 |
 | --- | --- | --- |
 | D1 | **C-01 build 首跑 rc=1：esbuild 在系统 `%TEMP%` 清理临时目录 `remove ... Access is denied`**（`C:\Users\fzdzzj\AppData\Local\Temp\esbuild-*`）。3279 模块全部 transform 成功，失败仅在 esbuild 服务临时目录删除这一 OS 文件权限面；同一 `TMP/TEMP/TMPDIR` 指到仓内 `.trae/esbuild-tmp` 后 build rc=0，`dist/` 正常产出。直测 PowerShell 在 `%TEMP%` 建/删文件不受限，判定为本机 Windows 环境工具面（esbuild 服务目录句柄/权限）而非代码问题。 | 环境工具面工作区化处置：构建用仓内可写 TMP（`.trae/esbuild-tmp`，gitignored，用毕保留于 gitignored 目录）；非代码、非任务书偏差，登记不进 FAILED。type-check / build 绿为权威读数。 |
-| D2 | C-02 自身提交哈希因自指（handoff 含 §8）无法在写文件时预知，故 handoff §8 用文字说明、显式哈希在回传报告中给出（不写 `HEAD`/`~N` 时效指针）。 | 沿本仓「提交表显式哈希」口味的诚实登记；属 single-commit 自指固有事实，非交付缺失。C-01 主题串与任务书 §4 逐字一致，无主题偏差。 |
+| D2 | C-02 提交后补 C-02b「提交表终态化订正」笔：为满足「提交表显式哈希」且 C-02 自身哈希因自指无法预写，按本仓 TASK-182 C-04b/c 先例追加一笔零构建面订正，回填 C-02 显式哈希并订正父锚定 `0 3`→`0 4`。 | 台账提交表终态化（单一自指固有事实的仓库惯例处置）；C-01/C-02 主题串与任务书 §4 逐字一致，无主题偏差。 |
 
 ## 5. 实施证据（含验收要点判据）
 
@@ -105,9 +105,10 @@
 | --- | --- | --- |
 | 派发笔 | `1a92f26e5ec8d1bbd696dc2a62e5e67310074963` | `docs(spec): 派发 TASK-183 通知 Web 铃铛提案与任务书` |
 | C-01 前端实现 | `4a2486524a8fe9d75cd99f676264499c5aa2322f` | `feat(web): 通知铃铛与通知列表页接入通知中心（TASK-183）` |
-| C-02 台账收口 | 本提交（C-02 自身哈希因自指不可预写，显式哈希在回传报告中给出；禁时效指针，不用 `HEAD`/`~N`） | `docs(mailbox): 登记 TASK-183 前端验收与台账闭环（TASK-183）` |
+| C-02 台账收口 | `5f8a420634d65209d2108f7300bfe3d5aa9c0bca` | `docs(mailbox): 登记 TASK-183 前端验收与台账闭环（TASK-183）` |
+| C-02b 提交表终态化订正 | 终态提交（自身哈希不预写自身表项，沿 TASK-182 终态笔先例，由回传报告以显式哈希给出） | `docs(mailbox): 终态化 TASK-183 台账笔提交表（TASK-183）` |
 
-父锚定（C-02 后）：`git rev-list --left-right --count origin/main...main` = `0 3`。C-01 提交后 `0 3`；派发笔后 `0 2`；开工 `0 1`。push 由指导侧另行授权执行，执行侧不推送。
+父锚定（终态）：`git rev-list --left-right --count origin/main...main` = `0 4`（派发笔 + C-01 + C-02 三笔 + C-02b 提交表订正笔）。C-01 提交后 `0 3`；派发笔后 `0 2`；开工 `0 1`。push 由指导侧另行授权执行，执行侧不推送。C-02b 为台账提交表的哈希与父锚定订正（补 C-02 显式哈希、父锚定 `0 3`→`0 4`），零构建面，仅改 handoff §8，沿本仓 TASK-182 C-04b/c 先例。
 
 ## 9. 未覆盖项
 
