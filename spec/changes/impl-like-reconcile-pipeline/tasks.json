@@ -1,0 +1,35 @@
+[
+  {
+    "number": 1,
+    "category": "基线",
+    "task": "固定实施读数与生产方法基线",
+    "steps": [
+      { "step": "记录 reconcileLikeCounts 当前逐 record 基线（HEAD 源码行锚定）与环境核验（scratch MySQL + 受控真 Redis，沿 TASK-178/179 规程）", "completed": false },
+      { "step": "同负载（判别轮 (f) 档规模）对生产方法跑基线耗时（改造前），绝对数字留档", "completed": false },
+      { "step": "pipeline 两档（500/1000）预试读数落报告，按判别轮口径定档并登记依据", "completed": false }
+    ],
+    "passes": false
+  },
+  {
+    "number": 2,
+    "category": "实施",
+    "task": "生产方法 pipeline 化改造与语义门直测",
+    "steps": [
+      { "step": "reconcileLikeCounts 改造：命令构造与分批提交分离，executePipelined 提交等价命令序；锁/分组/日志语义不变；调度参数与批外参数零改动", "completed": false },
+      { "step": "IT RecordLikeReconcilePipelineIT 直测生产方法：(a) 收敛态等价 + (d) 锁内执行 + (e) 命令序一致复验（沿判别轮装配，TASK180_IT_* 环境变量，缺变量 assume 跳过不视为通过）", "completed": false },
+      { "step": "同负载改造后耗时登记（绝对数字）；继承三条未覆盖项（连接占用、(b) 桶零判别力、CLIENT KILL 不支持）直入报告未覆盖清单", "completed": false }
+    ],
+    "passes": false
+  },
+  {
+    "number": 3,
+    "category": "验收",
+    "task": "三支判定与台账闭环",
+    "steps": [
+      { "step": "按预注册判定收口：PASSED = 语义门 (a)(d)(e) 复验全绿 + offline 450 不减 + 静态不增；FAILED = 任一语义门劣化（回滚改造并如实登记）；UNDETERMINED = 环境不可用", "completed": false },
+      { "step": "实施报告与机器摘要 JSON 落 docs/perf/，raw 按 run 目录隔离；全部数字限定本机隔离环境", "completed": false },
+      { "step": "台账闭环：tasks.json 全勾、handoff 与 PLAN.md 纯追加、门禁全项亲跑留证", "completed": false }
+    ],
+    "passes": false
+  }
+]
