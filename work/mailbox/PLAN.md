@@ -1921,3 +1921,15 @@ run `35802403723`（head `eba0108`，2026-09-23 00:31 UTC）——**web/build �
 | 首次外部评判 | TASK-182 全链路（通知中心后端四件套：notification 表与双幂等 / RocketMQ 消费者 / 四 REST 接口 / 往返 IT 代码，及台账闭环与四笔订正）首次经过外部 online 全量 verify 与词面门验证；离线 480（`36/41/63/127/144/59/10`）与静态 811 在 CI 复验；真 broker 往返 IT 仍属本机 UNDETERMINED 口径（CI 无 MQ service，`*IT` 不被收集，不记通过） |
 | 受保护 token | 29 项既有集合不动；第 24 次 run 号 `37779966984` 以文本登记（沿 TASK-181/182 期口径，不扩集合） |
 | 状态 | TASK-182 全链路闭环，**外部终验达成**；外部门槛计数更新为 **24 次**（23 绿 1 红）。下一课题：`add-notification-web-bell`（TASK-183，Web 通知铃铛与通知列表页）提案已由指导侧编撰，待派发 |
+
+## 验收记录：TASK-183 add-notification-web-bell 通知 Web 铃铛与通知列表页（2026-10-08，执行 agent）
+
+| 项 | 实测 |
+| --- | --- |
+| 开工基线 | 派发笔 HEAD `8258d40ee30b69e2c96ef3ed1d507d41e3af3eaa`；`origin/main...main` = `0 1`；工作树仅两组在途；`--static=record-service` 811；受保护 token 29 项开工实测 SUM=451；词面门/契约门开工清 |
+| 实施三笔 | ①派发笔入库四件套零改动 ②C-01 前端实现五文件（client.ts 尾部纯追加 NotificationViewDTO+四函数 / useNotificationBell.ts 模块级共享未读数 composable / App.vue 顶栏 a-badge+BellOutlined 铃铛 / notifications.page.vue 分页表格+单条已读+全部已读+刷新 / typed-router.d.ts pnpm build 再生成入库存 /notifications）③C-02 台账收口（本笔） |
+| 收口筑基 | web 三件套：type-check rc=0、build rc=0（TMP 工作区化，见 handoff §4 D1）、`git diff --exit-code -- web/src/typed-router.d.ts` 无未入库漂移；Java 抽验 offline 全量 `36/41/63/127/144/59/10` = **480** 逐位 rc=0（Java 零改动证不回归）、`--static=record-service` Checkstyle **811 持平** rc=1 预期；契约门待收口无参 rc=0；词面门 C-01 文件集四形态 ZERO_HIT rc=1 + 探针三态 rc=0；token 29 项只增不减；`git status --porcelain` 收口后为空 |
+| 验收要点证据 | 未登录 `hasAccessToken()` 为 false 不发起任何通知请求（refreshUnread 首行短路 + 通知页 loggedIn 门控）；未读数与 /unread-count 一致且单条/全部已读操作后经共享 composable 即时同步；5003 等业务错误码以 `[code] message` a-alert 直接展示且单条失败列表不变；空列表正常态与未登录引导提示齐备 |
+| 三支裁决 | 前端五 file 齐 + web 三件套全绿 + Java 抽验不回归 + 验收要点全达成 → **PASSED**；无 FAILED 项；外部终验待推送后下一次外部门槛 CI 绿（web 档 + build 档双绿，第 25 次） |
+| 偏差 | D1：C-01 build 首跑因本机系统 `%TEMP%` 上 esbuild 清理临时目录 `Access is denied` 而 rc=1，属 Windows 环境工具面；把 TMP/TEMP/TMPDIR 指到仓内 `.trae/esbuild-tmp`（gitignored）后 build rc=0。非代码问题，见 handoff §4。 |
+| 未覆盖项 | 本机 auth 默认态不展开真门手动演示（需网关+服务 auth=true 且登录会话，登记为 §6.4 说明项不判失败）；web 无单测框架，如实登记不虚构单测数；实时推送在范围外（60s 轮询承载） |

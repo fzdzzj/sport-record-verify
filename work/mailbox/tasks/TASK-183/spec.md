@@ -88,3 +88,14 @@
 ## 7. 收口记录（执行侧 C-02 纯追加）
 
 （空位：提交哈希、web 三件套读数、Java 抽验读数、token 前后读数、未覆盖项、三支裁决，由执行侧回填）
+
+### 7.1 收口记录（执行侧回填，2026-10-08）
+
+| 项 | 实测 |
+| --- | --- |
+| 提交哈希 | 派发笔 `1a92f26e5ec8d1bbd696dc2a62e5e67310074963`；C-01 `4a2486524a8fe9d75cd99f676264499c5aa2322f`；C-02 见 handoff §8 |
+| web 三件套 | type-check rc=0；build rc=0（构建需把 TMP/TEMP/TMPDIR 指到可写目录，因本机系统 `%TEMP%` 上 esbuild 清理临时目录 `Access is denied`，属 Windows 环境工具面，非代码问题）；typed-router.d.ts 与提交一致（含 `/notifications` 路由） |
+| Java 抽验 | offline 全量 `36/41/63/127/144/59/10` = **480** 逐位 rc=0 全绿零跳过；`--static=record-service` Checkstyle **811 持平** rc=1 预期（本任务 Java 零改动，只为证不回归） |
+| token 前后 | 开工 29 项 SUM=451；收口复测只增不减（详见 handoff §6） |
+| 未覆盖项 | 真门 + 网关登录态的手动功能演示在本机 auth 默认态不展开（属§6.4 说明项）；其余全部达成 |
+| 三支裁决 | **PASSED**（web 三件套全绿 + Java 抽验不回归 + 验收要点全达成）；外部终验待推送后下一次外部门槛 CI 绿 |
