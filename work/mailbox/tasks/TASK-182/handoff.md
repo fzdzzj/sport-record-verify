@@ -92,8 +92,9 @@
 | C-04 台账闭环 | `ec6cb77cad19c2607447c51ab27ee9ba46b8c636` | `docs(mailbox): 登记 TASK-182 通知中心验收与台账闭环（TASK-182）` |
 | C-04b 台账哈希终态化 | `fbb544099237512503a1556baf14e14775ea17d7` | `docs(mailbox): 终态化 TASK-182 台账笔提交哈希（TASK-182）` |
 | C-04c 台账父锚定订正 | `a4f358a7bc645b849295fb726bd03a2d65e1c284` | `docs(mailbox): 订正 TASK-182 台账父锚定为六笔终态（TASK-182）` |
+| C-04d 台账提交表订正 | `06557d861b95d00abdb53c27422c39efbb0b582d` | `docs(mailbox): 补全 TASK-182 台账提交表订正笔（TASK-182）` |
 
-父锚定（C-04c 终态）：`git rev-list --left-right --count origin/main...main` = `0 7`（派发笔 + C-01…C-03 三笔 + C-04 台账笔 + C-04b/c 两笔台账订正）。C-04b/c 为台账哈希与父锚定的零构建面订正，仅补全提交明细表的显式 SHA（沿本仓「提交表显式哈希，禁时效指针」先例），不涉及任何业务改动。
+父锚定（终态）：`git rev-list --left-right --count origin/main...main` = `0 8`（派发笔 + C-01…C-03 三笔 + C-04 台账笔 + C-04b/c/d 三笔台账订正）。C-04b/c/d 均为台账哈希与父锚定的**零构建面订正**，仅补全提交明细表的显式 SHA 与计数（沿本仓「提交表显式哈希，禁时效指针」先例），不涉及任何业务改动。提交表以本行为准。
 
 ## 9. 未覆盖项
 
