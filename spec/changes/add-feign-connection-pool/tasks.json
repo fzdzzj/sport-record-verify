@@ -1,0 +1,25 @@
+[
+  {
+    "number": 1,
+    "category": "实施",
+    "task": "Feign 连接池引入（api 依赖 + 三消费服务配置 + 装配判别式单测）",
+    "steps": [
+      { "step": "api 模块 pom.xml：+1 依赖 io.github.openfeign:feign-hc5（无版本号，注释说明坐标实证修正 findings 原文表述 + 版本仲裁链 spring-cloud-dependencies 2023.0.1 → feign-bom 13.2.1 与 feign-core 同源；httpclient5 5.2.3 / httpcore5 5.2.4 由 Boot 3.2.4 BOM 仲裁）；父 pom 与其它模块 pom 零触碰", "completed": false },
+      { "step": "record-service application.properties：Feign 段新增 5 行（properties 键风格沿既有段）——spring.cloud.openfeign.httpclient.hc5.enabled=true / .max-connections=200 / .max-connections-per-route=50 / .time-to-live=300 / .time-to-live-unit=seconds，注释说明池化动机与 ttl 300 拓扑感知理由；既有超时/熔断段零改动", "completed": false },
+      { "step": "verify-service 与 leaderboard-service application.yml：openfeign 段新增 httpclient 子段（同 5 键，yml 嵌套风格）；既有 circuitbreaker / client.config 段零改动", "completed": false },
+      { "step": "三服务各新增 config 包测试类 FeignConnectionPoolConfigTest（纯 JVM 确定性，不启 Spring 上下文）：① Class.forName(\"feign.hc5.ApacheHttp5Client\") 类路径判别式（依赖经 api 传递到位）；② 读真实配置文件（record 用 PropertiesLoaderUtils、verify/leaderboard 用 YamlPropertySourceLoader）经 Spring Binder 绑定 FeignHttpClientProperties 断言 maxConnections=200 / maxConnectionsPerRoute=50 / timeToLive=300 / timeToLiveUnit=SECONDS；③ 断言 hc5.enabled 键值为 true", "completed": false }
+    ],
+    "passes": false
+  },
+  {
+    "number": 2,
+    "category": "验收",
+    "task": "门禁与台账闭环",
+    "steps": [
+      { "step": "离线门禁依赖面核验：确认 feign-hc5 13.2.1 / httpclient5 5.2.3 / httpcore5 5.2.4 / httpcore5-h2 5.2.4 在 .m2-repo 后跑 offline 全量；若缺构件按预置预案在线补料（mvn -s .mvn-settings.xml -pl api -am clean install -DskipTests，登记为环境准备非验收读数）再复跑 offline；Java offline 全量新基线逐位登记（541 只增不减，增量预计落 record/verify/leaderboard 三模块）+ --static=record-service 811 不增；零 main 代码核验（git diff 确认仅 pom + 配置 + 测试）；零 SQL DDL / 前端 / ci.yml / compose / 父 pom 触碰核验", "completed": false },
+      { "step": "契约门在途 --open TASK-189 --baseline=<派发笔哈希> rc=0；词面门四形态 ZERO_HIT + 探针（正则字面量与受保护 token 字面量均不入新文档，沿 TASK-184 F1 与 TASK-188 N1 教训）；token 29 项只增不减（口径 repo 全量 git grep -cF，开工实测为准，收口读数以收口态实测）", "completed": false },
+      { "step": "台账闭环：tasks.json 全勾、PLAN.md 纯追加登记、handoff 留证（含坐标实证修正记录、离线依赖面核验读数、传递面说明项、UNDETERMINED 真实链路口径、性能数字零 claim 说明）；推送后下一次外部门槛 CI 绿为外部终验（第 31 次）", "completed": false }
+    ],
+    "passes": false
+  }
+]
