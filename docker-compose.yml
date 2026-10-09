@@ -8,6 +8,8 @@
 # 说明：MySQL 采用单实例三库（逻辑独立），如需物理隔离拆成三个 service 即可（见 ADR-0001）；
 #       监控栈见 ADR-0003——本地内存预算吃紧时可先 docker compose up -d prometheus 前的六件套，
 #       prometheus/grafana 单独按需拉起
+# 安全：仅限本地开发——中间件口令必填（先 cp scripts/verify/env.example .env），
+#       十处端口仅绑定 127.0.0.1 回环；生产部署须整体重审（密钥管理 / 鉴权 / 内网）
 # ============================================================
 name: sport-verify
 
@@ -24,8 +26,8 @@ services:
       - JVM_XMS=256m
       - JVM_XMX=512m
     ports:
-      - "8848:8848"   # 控制台与 HTTP 接口
-      - "9848:9848"   # gRPC 端口（Nacos 2.x 客户端必需）
+      - "127.0.0.1:8848:8848"   # 控制台与 HTTP 接口
+      - "127.0.0.1:9848:9848"   # gRPC 端口（Nacos 2.x 客户端必需）
     healthcheck:
       test: ["CMD", "curl", "-f", "http://127.0.0.1:8848/nacos/v1/console/health/readiness"]
       interval: 10s
@@ -40,11 +42,11 @@ services:
     image: mysql:8.0
     container_name: sport-verify-mysql
     environment:
-      MYSQL_ROOT_PASSWORD: root
+      MYSQL_ROOT_PASSWORD: "${MYSQL_ROOT_PASSWORD:?required: cp scripts/verify/env.example .env}"
       TZ: Asia/Shanghai
     ports:
       # 宿主机端口可用 MYSQL_PORT 覆盖（默认 3306；宿主机已有 MySQL 时设 3307 即可，服务侧同步注入同名变量）
-      - "${MYSQL_PORT:-3306}:3306"
+      - "127.0.0.1:${MYSQL_PORT:-3306}:3306"
     command:
       - --character-set-server=utf8mb4
       - --collation-server=utf8mb4_unicode_ci
@@ -53,7 +55,7 @@ services:
       - ./sql:/docker-entrypoint-initdb.d:ro
       - mysql-data:/var/lib/mysql
     healthcheck:
-      test: ["CMD", "mysqladmin", "ping", "-h", "127.0.0.1", "-uroot", "-proot"]
+      test: ["CMD", "mysqladmin", "ping", "-h", "127.0.0.1", "-uroot", "-p${MYSQL_ROOT_PASSWORD}"]
       interval: 10s
       timeout: 5s
       retries: 12
@@ -66,7 +68,7 @@ services:
     image: redis:7.2-alpine
     container_name: sport-verify-redis
     ports:
-      - "6379:6379"
+      - "127.0.0.1:6379:6379"
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 10s
@@ -81,7 +83,7 @@ services:
     container_name: sport-verify-rocketmq-namesrv
     command: sh mqnamesrv
     ports:
-      - "9876:9876"   # NameServer 端口
+      - "127.0.0.1:9876:9876"   # NameServer 端口
     healthcheck:
       # 镜像内无 ss/nc（iproute2 未装，会永远 unhealthy），用 bash /dev/tcp 探测端口
       test: ["CMD", "bash", "-c", "echo > /dev/tcp/127.0.0.1/9876"]
@@ -109,8 +111,8 @@ services:
       # 关闭 JVM 容器感知绕开该路径（读 /proc/meminfo 兜底），见压测变更交付说明
       JAVA_OPT_EXT: "-XX:-UseContainerSupport"
     ports:
-      - "10911:10911"  # Broker 主端口
-      - "10909:10909"  # 快速重连端口（vIP 通道）
+      - "127.0.0.1:10911:10911"  # Broker 主端口
+      - "127.0.0.1:10909:10909"  # 快速重连端口（vIP 通道）
     volumes:
       # brokerIP1 指向宿主机回环地址：本机 Java 服务（宿主进程）直连 127.0.0.1 可通
       - ./rocketmq/broker.conf:/home/rocketmq/conf/broker.conf:ro
@@ -133,11 +135,11 @@ services:
     environment:
       # 库名随容器首次初始化创建；导入脚本（scripts/mapmatch/import-road-network.sh）建 road_edge 路网表
       POSTGRES_DB: road_db
-      POSTGRES_PASSWORD: postgres
+      POSTGRES_PASSWORD: "${POSTGRES_PASSWORD:?required: cp scripts/verify/env.example .env}"
       TZ: Asia/Shanghai
     ports:
       # 宿主机端口可用 POSTGRES_PORT 覆盖（默认 5432；宿主机已有 PostgreSQL 时设 5433，服务侧同步注入同名变量）
-      - "${POSTGRES_PORT:-5432}:5432"
+      - "127.0.0.1:${POSTGRES_PORT:-5432}:5432"
     volumes:
       - postgis-data:/var/lib/postgresql/data
     healthcheck:
@@ -168,7 +170,7 @@ services:
       - ./prometheus/alert-rules.yml:/etc/prometheus/alert-rules.yml:ro
       - prometheus-data:/prometheus
     ports:
-      - "9090:9090"   # 控制台与查询 API（Targets / Alerts / Graph）
+      - "127.0.0.1:9090:9090"   # 控制台与查询 API（Targets / Alerts / Graph）
     networks:
       - sport-verify-net
 
@@ -177,15 +179,15 @@ services:
     image: grafana/grafana:10.4.2
     container_name: sport-verify-grafana
     environment:
-      # 本地演示固定账号密码；生产环境改走密钥管理/SSO，勿硬编码
-      - GF_SECURITY_ADMIN_USER=admin
-      - GF_SECURITY_ADMIN_PASSWORD=admin
+      # 账号口令经 .env 注入（本地样例见 scripts/verify/env.example）；生产改走密钥管理/SSO
+      - GF_SECURITY_ADMIN_USER=${GRAFANA_ADMIN_USER:-admin}
+      - "GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_ADMIN_PASSWORD:?required: cp scripts/verify/env.example .env}"
     volumes:
       # 左：数据源 + dashboard provider 预置；右：预置面板 JSON（8 面板总览）
       - ./grafana/provisioning:/etc/grafana/provisioning:ro
       - ./grafana/dashboards:/var/lib/grafana/dashboards:ro
     ports:
-      - "3000:3000"   # 控制台（admin/admin，登录后打开预置面板「全局监控总览」）
+      - "127.0.0.1:3000:3000"   # 控制台（账号口令见 .env，登录后打开预置面板「全局监控总览」）
     depends_on:
       - prometheus
     networks:

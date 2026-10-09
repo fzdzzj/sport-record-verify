@@ -33,7 +33,8 @@ spring:
     # 宿主机 5432 被本机 PostgreSQL 占用时，compose 侧设 POSTGRES_PORT=5433，服务侧注入同名变量即可
     url: jdbc:postgresql://127.0.0.1:${POSTGRES_PORT:5432}/road_db?stringtype=unspecified
     username: postgres
-    password: postgres
+    # 数据源口令经环境变量注入（与 compose .env 变量同名）；默认 postgres 仅限本地未导出环境时
+    password: ${POSTGRES_PASSWORD:postgres}
     # 容错口径与 MySQL 三库一致：PostGIS 未启动时服务仍可起（连接延迟到首次匹配请求），
     # 配合 verify 侧 R5 熔断降级，匹配库故障不拖垮校验主链路
     hikari:

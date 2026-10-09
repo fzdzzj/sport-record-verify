@@ -43,6 +43,10 @@
 前置条件：JDK 21、Maven 3.9+、Docker（Compose v2）。
 
 ```bash
+# 0. 准备环境变量：复制样例为仓库根 .env 并改掉占位口令（口令仅在数据卷首次初始化生效，
+#    存量卷换口令见样例头部说明）
+cp scripts/verify/env.example .env
+
 # 1. 一键拉起中间件（Nacos / MySQL×3库 / Redis / RocketMQ / PostGIS 路网库，含健康检查与依赖顺序）
 docker compose up -d
 
@@ -61,6 +65,7 @@ bash scripts/mapmatch/import-road-network.sh
 bash scripts/verify/mvn-verify.sh package
 
 # 4. 启动六个服务（各开一个终端；可选 G1 停顿目标，禁止 -Xms1g/-Xmx1g）
+#    启动前先导出口令变量（Git Bash：set -a; . ./.env; set +a），使数据源口令与 compose 一致
 #    export JAVA_OPTS="-XX:MaxGCPauseMillis=50"   # Windows PowerShell: $env:JAVA_OPTS="..."
 java $JAVA_OPTS -jar gateway-service/target/sport-verify-gateway-service-0.1.0-SNAPSHOT.jar
 java $JAVA_OPTS -jar user-service/target/sport-verify-user-service-0.1.0-SNAPSHOT.jar

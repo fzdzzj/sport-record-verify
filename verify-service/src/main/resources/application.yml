@@ -43,7 +43,8 @@ spring:
     # 宿主机已有 MySQL 占用 3306 时，compose 侧设 MYSQL_PORT=3307，服务侧注入同名变量即可，默认仍 3306
     url: jdbc:mysql://127.0.0.1:${MYSQL_PORT:3306}/verify_db?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai&useSSL=false&allowPublicKeyRetrieval=true
     username: root
-    password: root
+    # 数据源口令经环境变量注入（与 compose .env 变量同名）；默认 root 仅限本地未导出环境时
+    password: ${MYSQL_ROOT_PASSWORD:root}
     # 骨架阶段容错：中间件未启动时服务仍可启动（连接延迟到首次访问）
     hikari:
       initialization-fail-timeout: -1
