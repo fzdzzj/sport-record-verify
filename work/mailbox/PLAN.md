@@ -2003,3 +2003,14 @@ run `35802403723`（head `eba0108`，2026-09-23 00:31 UTC）——**web/build �
 | 偏差 | D1：C-02 自指哈希按 TASK-182/183/185 台账终态化先例；D2：词面门 repo 全量按 CI 权威 exclude 口径（历史存档/ci.yml 为公开排除项）。详见 handoff §4 |
 | 未覆盖项 | 本机真实链路联调（网关 + user-service + Redis + 双浏览器标签）中间件不可达 → UNDETERMINED 沿 TASK-182/185 口径不判失败；同端幂等双刷为无害说明项；client→server STOMP SEND / 离线断流历史回执补发明确不做。详见 handoff §9 |
 | 提交表 | 派发笔 `38bbcad`、C-01 `d4ebd92`、C-02 台账收口（显式哈希以回传报告为准）；父锚定 `0 1 → 0 2 → 0 3 → 0 4`；push 由指导侧另行授权执行 |
+
+**TASK-186 补记（push 触发 CI 后实测，外部门槛第 28 次达成，2026-10-09）**
+
+| 项目 | 内容 |
+| --- | --- |
+| 外部门槛 | GitHub Actions run `37887165869`（HEAD `51d9c96253cc356cea1f5f657b616e7b29ef5551`，trigger=push/branch=main，https://github.com/fzdzzj/sport-record-verify/actions/runs/37887165869），conclusion=`success`；`web` 18s 全绿、`build` 2m42s 全绿（11 步流水线＋后置清理）；第 5 步 `Build and test`（`--mode=online verify`，离线基线首次以 **512**（`36/41/95/127/144/59/10`）在 CI 复验）与第 10 步 `Public docs wording self-check` 词面门全 success；本批 4 笔：`4007fc5`（TASK-185 第 27 次门槛补记笔）+ TASK-186 三笔——`38bbcad`（派发笔）、`d4ebd92`（C-01 已读回执管道实施）、`51d9c96`（C-02 台账收口，终态 HEAD） |
+| 推送与同步 | push `02a1f51..51d9c96` rc=0（推送时 `origin/main...main` = `0 4`，推送后 `0 0`），未建 PR |
+| 首次外部评判 | TASK-186 全链路（已读回执管道：NotificationReadReceipt record / relay 双 topic 双退对称 / service 已读钩子三态 / 前端第二队列复用回调，及台账闭环）首次经过外部验证；build 档 online 全量 verify **512 新基线**（user-service 81→95）+ 静态 811 同轮复验（零依赖、零 DB、REST 契约零改动） |
+| 指导侧终裁 | 独立复核五块全 pass 无阻断项，PASSED 维持；N1（token +29 归因措辞——实际全部来自 C-02 handoff §7 逐项展开表而非派发笔 spec.md §5，实测真值 1972 无误、逐项 +1 只增不减合规）以实测为准，归因更正落定本补记；N2（在途契约门收口态 rc=1 为基线性自指伪影）沿 TASK-185 N3 框架，同轮独立证实历史任务零误伤——TASK-184 修缮持续生效 |
+| 受保护 token | 29 项既有集合不动；第 28 次 run 号 `37887165869` 以文本登记（沿 181-185 期口径，不扩集合） |
+| 状态 | TASK-186 全链路闭环，**外部终验达成**；**已读回执课题封盘**（跨端已读同步 60s 轮询周期 → 秒级，WS 管道双队列成形：notification:push + notification:read）；外部门槛计数更新为 **28 次**（27 绿 1 红）。通知中心运营面三期候选：通知偏好设置 / 点赞通知（需扩 NotificationType）或其他方向，待用户定向 |
