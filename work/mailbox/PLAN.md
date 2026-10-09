@@ -2076,3 +2076,14 @@ run `35802403723`（head `eba0108`，2026-09-23 00:31 UTC）——**web/build �
 | 偏差 | D1：C-02 自指哈希按 TASK-182/185/186/187/188 台账终态化先例；D2：词面门 repo 全量按 CI 权威 exclude 口径（历史存档/ci.yml 为公开排除项）。详见 handoff §4 |
 | 未覆盖项 | 本机真实链路联调（Nacos + 双服务真实 Feign 调用观察连接复用）中间件未全栈启动 → UNDETERMINED 沿 TASK-182/185/186/187/188 口径不判失败；连接池容量压测定参由后续课题负责；性能数字零 claim。详见 handoff §9 |
 | 提交表 | 派发笔 `e4490c5`、C-01 `b19d474`、C-02 台账收口（显式哈希以回传报告为准）；父锚定 `0 1 → 0 2 → 0 3 → 0 4`；push 由指导侧另行授权执行 |
+
+**TASK-189 补记（push 触发 CI 后实测，外部门槛第 31 次达成，2026-10-09）**
+
+| 项目 | 内容 |
+| --- | --- |
+| 外部门槛 | GitHub Actions run `37934224420`（HEAD `220767b72b2d84e94c68bff99816058894188e88`，trigger=push/branch=main，https://github.com/fzdzzj/sport-record-verify/actions/runs/37934224420），conclusion=`success`；`web` 全绿（frozen lockfile / type-check / build / typed-router match committed）、`build` 15 步全绿；`Build and test`（`--mode=online verify`，离线新基线首次以 **550**（`36/41/117/137/147/62/10`）在 CI 复验）与词面门全 success；本批 4 笔：`015517b`（TASK-188 第 30 次门槛补记笔）+ TASK-189 三笔——`e4490c5`（派发笔）、`b19d474`（C-01 api 依赖与三服务配置及判别式单测）、`220767b`（C-02 台账收口，终态 HEAD） |
+| 推送与同步 | push `794f439..220767b` rc=0（推送时 `origin/main...main` = `0 4`，推送后 `0 0`），未建 PR |
+| 首次外部评判 | TASK-189 全链路（Feign 传输层池化：api 模块单点引入 feign-hc5 13.2.1〔坐标实证修正——Spring Cloud OpenFeign 4.1.1 装配探测类 feign.hc5.ApacheHttp5Client，非 findings 原文表述的 feign-httpclient5，防引错坐标池静默失效〕+ record/verify/leaderboard 三消费服务 httpclient 池 5 键显式化〔hc5.enabled=true / max-connections=200 / per-route=50 / ttl 300s〕+ 三服务 FeignConnectionPoolConfigTest 装配判别式各 3 例 + user/mapmatch 传递面零行为影响，及台账闭环）首次经过外部验证；build 档 online 全量 verify **550 新基线**（record-service 134→137、verify-service 144→147、leaderboard-service 59→62）+ 静态 811 同轮复验（父 pom / ci.yml / compose / gateway / web / SQL / user / mapmatch 零触碰） |
+| 指导侧终裁 | 独立复核五块全 pass 无阻断项，PASSED 维持。读数交叉：指导侧亲跑（offline 550 逐位 / 静态 811 / 快门禁五项）与复核子 agent 独立复跑逐项一致，与执行侧自报亦逐项一致（本课题无虚报）；token 收口真值 **2030** 持平零自增（新文档不枚举 token 字面量，TASK-188 N1 型失准未复现）；非阻断四项 N1（C-02 自指哈希沿 D1，实际 `220767b` 已落定）/ N2（真实链路联调 UNDETERMINED 沿 182-188 口径不判失败）/ N3（user/mapmatch 传递面说明项，两服务 offline 全绿 41/10 旁证零影响）/ N4（契约门在途为 C-01 前历史读数，收口无参 rc=0 已确证）处置闭合，不开启订正笔；连接池容量压测定参留待后续课题（200/50/ttl-300s 为官方默认显式化，调参仅改配置零代码） |
+| 受保护 token | 29 项既有集合不动；第 31 次 run 号 `37934224420` 以文本登记（沿 181-188 期口径，不扩集合）；收口真值 2030 持平 |
+| 状态 | TASK-189 全链路闭环，**外部终验达成**；**Feign 连接池课题封盘**；外部门槛计数更新为 **31 次**（30 绿 1 红）。下一课题候选待用户定向 |
