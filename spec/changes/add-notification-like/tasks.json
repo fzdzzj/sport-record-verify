@@ -1,0 +1,26 @@
+[
+  {
+    "number": 1,
+    "category": "实施",
+    "task": "点赞通知事件链路（生产端+消费端+偏好扩展+前端）",
+    "steps": [
+      { "step": "api 模块：RecordLikeEvents 常量类（TOPIC=record-like-events / TAG_LIKED=LIKED / EVENT_LIKED=LIKED）+ LikeEventDTO（eventId/recordId/likerId/recordOwnerId/occurredAt，沿 VerifyEventDTO 结构与注释风格）", "completed": false },
+      { "step": "record-service 生产端：LikeEventProducer（新，沿 RecordEventProducer asyncSend 模式逐字——traceId 捕获恢复 + onFailure 仅告警无补偿）；RecordLikeService.like() firstLike 分支注入发布（自赞 liker==record.getUserId() 短路；unlike/幂等跳过零发布）；零 pom 零配置（rocketmq-spring-boot-starter 与 producer 配置已在）", "completed": false },
+      { "step": "user-service 消费端：LikeEventConsumer（新，沿 NotificationEventConsumer 范式逐字——编程式 DefaultMQPushConsumer + 独立消费组 notification-like-consumer-group + SETNX 24h + maxReconsumeTimes=3 + %DLQ% + 后台重连）；LIKED → createNotification(recordOwnerId, RECORD_LIKED, recordId, 标题, null, RECORD_LIKED:{recordId}:{likerId})；NotificationType 扩 RECORD_LIKED + NotificationPreferenceService.SUPPORTED_TYPES 扩四类；application.yml 沿既有键风格新增 like 消费组键", "completed": false },
+      { "step": "前端：notifications.page.vue 偏好卡片三开关扩四开关（prefRecordLiked ref + applyPreferences 分支 + savePreferences payload + 模板行「收到点赞」）；client.ts / verdict.page.vue / typed-router / notificationWs / useNotificationBell 零触碰", "completed": false },
+      { "step": "单测（Mockito 离线确定性）：RecordLikeServiceTest 扩（firstLike 非自赞发布 / 自赞零发布 / 幂等跳过零发布 / unlike 零发布）；LikeEventProducerTest（新，asyncSend 成败回调与事件体断言）；LikeEventConsumerTest（新，沿 NotificationEventConsumerTest 模式：订阅参数 / SETNX 幂等 / 解析失败丢弃 / 未知类型跳过 / 落通知调用与 dedupKey）；NotificationPreferenceServiceTest 扩（四类视图 / RECORD_LIKED 闸门）", "completed": false }
+    ],
+    "passes": false
+  },
+  {
+    "number": 2,
+    "category": "验收",
+    "task": "门禁与台账闭环",
+    "steps": [
+      { "step": "Java offline 全量新基线逐位登记（只增不减，预计 +14 上下落在 record-service 与 user-service，以实测为准）+ --static=record-service 811 不增；零依赖增量核验（后端零 pom、前端零 lockfile、零 SQL DDL）；web 三件套 + frozen-lockfile 预演 + typed-router 零漂移", "completed": false },
+      { "step": "契约门在途 --open TASK-188 --baseline=<派发笔哈希> rc=0；词面门四形态 ZERO_HIT + 探针三态（正则字面量不入任何 tracked 文档）；token 29 项只增不减（口径 repo 全量 git grep -cF，开工实测为准，收口读数以收口态实测）", "completed": false },
+      { "step": "台账闭环：tasks.json 全勾、PLAN.md 纯追加登记、handoff 留证（含触发挂点裁决记录、防轰炸三闸门说明、best-effort 无补偿说明项、UNDETERMINED 联调口径）；推送后下一次外部门槛 CI 绿为外部终验（第 30 次）", "completed": false }
+    ],
+    "passes": false
+  }
+]
