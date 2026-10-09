@@ -1979,3 +1979,14 @@ run `35802403723`（head `eba0108`，2026-09-23 00:31 UTC）——**web/build �
 | 偏差 | D1：新后端依赖 `spring-boot-starter-websocket:3.2.4` 在项目离线仓 `.m2-repo` 缺缓存（BOM 管理版本树零冲突），经 `mvn-verify.sh --mode=online test` 解析后补入 gitignored `.m2-repo`，offline 498 全绿；D2：C-02 自指哈希按 TASK-182/183 台账终态化先例；D3：词面门 repo 全量按 CI 权威 exclude 口径（历史存档/ci.yml 为公开排除项）。详见 handoff §4 |
 | 未覆盖项 | 本机真实链路联调（网关 ws upgrade + 真 Redis 扇出 + 浏览器收推）中间件不可达 → UNDETERMINED 沿 TASK-182 口径不判失败；SockJS 降级 / 已读回执 / 外部 STOMP broker relay 明确不做。详见 handoff §9 |
 | 提交表 | 派发笔 `aaad18d`、C-01 `d19dc74`、C-02 台账收口（显式哈希以回传报告为准）；父锚定 `0 1 → 0 2 → 0 3 → 0 4`；push 由指导侧另行授权执行 |
+
+**TASK-185 补记（push 触发 CI 后实测，外部门槛第 27 次达成，2026-10-09）**
+
+| 项目 | 内容 |
+| --- | --- |
+| 外部门槛 | GitHub Actions run `37880894795`（HEAD `02a1f51ae812759add70f823903faba90b2383aa`，trigger=push/branch=main，https://github.com/fzdzzj/sport-record-verify/actions/runs/37880894795），conclusion=`success`；`web` 26s 全绿、`build` 2m39s 全绿（11 步流水线＋后置清理）；第 5 步 `Build and test`（`--mode=online verify`，离线基线首次以 **498**（`36/41/81/127/144/59/10`）在 CI 复验）与第 10 步 `Public docs wording self-check` 词面门全 success；本批 4 笔：`c95cb52`（TASK-184 第 26 次门槛补记笔）+ TASK-185 三笔——`aaad18d`（派发笔）、`d19dc74`（C-01 WS+STOMP 管道实施）、`02a1f51`（C-02 台账收口，终态 HEAD） |
+| 推送与同步 | push `e0da404..02a1f51` rc=0（推送时 `origin/main...main` = `0 4`，推送后 `0 0`），未建 PR |
+| 首次外部评判 | TASK-185 全链路（WS+STOMP 推送管道：三新类 / CONNECT 帧鉴权 / RTopic 扇出 / 发布钩子 / 网关白名单 / 前端 stompjs 接线，及台账闭环）首次经过外部验证；**CI web 档首次评判 `@stomp/stompjs` lockfile**（frozen-lockfile 安装 + type-check + build 全绿，锁文件与清单同笔入库纪律生效）；build 档 online 全量 verify 498 新基线 + 静态 811 同轮复验 |
+| 指导侧终裁 | 独立复核五块全 pass 无阻断项，PASSED 维持；N1（C-02 tasks.json 占位符 `63→新值` 落地 `63→81`，台账终态化一部分）接受；N2（token 收口读数登记 1914 为 C-01 后时点读数，收口态实测 **1943**——TASK-184 N2 同型误差第二现，只增不减红线两期均无违）以实测为准落定本补记，并立固定纪律：**收口读数以收口态实测为准**；N3（在途契约门收口态 rc=1 为基线性自指伪影，非修缮漏网——复核独立证实改 `pom.xml` 触发零历史任务误伤，TASK-184 修缮经 TASK-185 实战受益验证）沿 D1 时点读数框架登记 |
+| 受保护 token | 29 项既有集合不动；第 27 次 run 号 `37880894795` 以文本登记（沿 181-184 期口径，不扩集合） |
+| 状态 | TASK-185 全链路闭环，**外部终验达成**；**通知实时推送课题封盘**（60s 轮询 → WS+STOMP 秒级推送 + 轮询兜底三层降级：内建重连 / 轮询 / 未登录零请求）；外部门槛计数更新为 **27 次**（26 绿 1 红）。下一课题候选：通知偏好设置 / 点赞通知（运营面二期）或已读回执（WS 双向管道已就绪）或其他方向，待用户定向 |
