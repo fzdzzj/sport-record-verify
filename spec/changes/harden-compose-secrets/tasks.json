@@ -1,0 +1,27 @@
+[
+  {
+    "number": 1,
+    "category": "实施",
+    "task": "compose 口令必填插值 + 十端口回环绑定 + 服务侧占位符补齐 + 绑定判别式单测",
+    "steps": [
+      { "step": "docker-compose.yml：头部说明段追加仅限本地警示（口令走 .env、端口仅回环、生产须整体重审）；mysql 的 MYSQL_ROOT_PASSWORD 改 ${MYSQL_ROOT_PASSWORD:?required: cp scripts/verify/env.example .env}、healthcheck -proot 改 -p${MYSQL_ROOT_PASSWORD}、端口改 127.0.0.1:${MYSQL_PORT:-3306}:3306；postgis 的 POSTGRES_PASSWORD 必填插值 + 端口回环；grafana 的 GF_SECURITY_ADMIN_PASSWORD 必填插值 + GF_SECURITY_ADMIN_USER 保持 :-admin + 端口回环；nacos 8848/9848、redis 6379、rocketmq 9876/10911/10909、prometheus 9090 端口全部 127.0.0.1 前缀（合共十处）；镜像/卷/网络/既有注释段零改动", "completed": false },
+      { "step": "scripts/verify/env.example：占位值升级为 SvLocal-<组件>-<8位hex>-ChangeMe 模式（执行侧新生成互不相同，MYSQL_PASSWORD 与 MYSQL_ROOT_PASSWORD 同值，GRAFANA_ADMIN_USER=admin 不变）；注释补回环绑定口径与 Redis 不设口令说明；变量名零增删，端口与 IT 测试变量段零改动", "completed": false },
+      { "step": "user-service / verify-service / leaderboard-service application.yml：password: root 改 ${MYSQL_ROOT_PASSWORD:root} + 注释（沿 record sharding.yaml 先例，环境变量注入生效）；mapmatch-service application.yml：password: postgres 改 ${POSTGRES_PASSWORD:postgres} + 注释；其余行（username/url/hikari 段）零改动", "completed": false },
+      { "step": "四服务各新增 DataSourcePasswordEnvBindingTest（包 com.sportverify.<svc>.config，纯 JVM 确定性不启上下文，各 2 例）：读真实 application.yml 经 YamlPropertySourceLoader（多 document 逐个装入 MutablePropertySources）+ new Binder(ConfigurationPropertySources.get(ps), new PropertySourcesPlaceholdersResolver(ps)) 绑定 DataSourceProperties——①注入 MapPropertySource(口令变量=it-injected-credential) 断言 getPassword()=注入值（回归字面量即红）②仅装 yaml 源（不含任何系统环境源）断言回退 root（mapmatch 为 postgres）", "completed": false },
+      { "step": "README.md 快速开始：前置条件后、docker compose up -d 前插入第 0 步 cp scripts/verify/env.example .env（提示改掉占位口令 + 口令仅数据卷首次初始化生效）；启动六服务段补导出提示（Git Bash）set -a; . ./.env; set +a 使数据源口令与 compose 一致；其余段落零改动", "completed": false }
+    ],
+    "passes": false
+  },
+  {
+    "number": 2,
+    "category": "验收",
+    "task": "门禁与台账闭环",
+    "steps": [
+      { "step": "compose 三判别式亲跑留证：①正向（仓库根，有 .env）docker compose -f docker-compose.yml -f docker-compose.services.yml config -q rc=0（CI 同款命令，干净 shell 未导出口令变量）②插值读数 docker compose -f docker-compose.yml config 输出——十处端口映射逐一确认 127.0.0.1 前缀计数留证、口令键已插值（值脱敏：登记「与 .env 同值」或长度表述，禁明文入台账）③负向（.trae/tmp 复制 docker-compose.yml 无 .env 环境）docker compose -f docker-compose.yml config -q 必失败且报错含 MYSQL_ROOT_PASSWORD（证明无弱默认兜底），临时文件用毕即删", "completed": false },
+      { "step": "离线门禁：bash scripts/verify/mvn-verify.sh --mode=offline test 全量新基线逐位登记（550 只增不减，+8 预计落 user/verify/leaderboard/mapmatch 各 +2）+ --static=record-service 811 不增；零 main Java 核验（git diff --name-only <派发笔>..HEAD 仅白名单 11 文件）；typed-router 零漂移（git diff --exit-code rc=0）", "completed": false },
+      { "step": "契约门在途 --open TASK-190 --baseline=<派发笔哈希> rc=0；词面门四形态 ZERO_HIT + 探针（正则字面量与受保护 token 字面量均不入新文档，沿 TASK-184 F1 与 TASK-188 N1 教训）；token 29 项只增不减（口径 repo 全量 git grep -cF，开工实测为准，收口读数以收口态实测）；git diff --check 干净；新增文件纯 LF 末尾换行完整，修改文件保持既有行尾（docker-compose.yml/README/user 工作区 CRLF、mapmatch/env.example LF、leaderboard/verify 混合——仅动目标行）", "completed": false },
+      { "step": "台账闭环：tasks.json 全勾、PLAN.md 纯追加登记、handoff 留证（开工核验、compose 三判别式读数、四服务单测读数、脱敏口径说明、UNDETERMINED 运行时联调与存量卷迁移为使用方操作说明、零触碰面核验、口令零明文核验）；推送后下一次外部门槛 CI 绿为外部终验（第 32 次）", "completed": false }
+    ],
+    "passes": false
+  }
+]
