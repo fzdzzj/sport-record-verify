@@ -2038,3 +2038,16 @@ run `35802403723`（head `eba0108`，2026-09-23 00:31 UTC）——**web/build �
 | 指导侧终裁 | 独立复核五块全 pass 无阻断项，PASSED 维持；闸门代码亲手抽查与预注册逐字一致。四个重点核验：①NotificationControllerTest 属既有扩展（TASK-182 引入）合规；②模块名误述仅报告层、台账零污染；③scratch DB 容器级独立复跑 ROW_COUNT 1/0/2 断言闭合；④token 收口真值 **2001**（声明 1972 为未计入 handoff §7 枚举自身 +29 的失准——TASK-186 N1 同型第三现，只增不减合规，以实测为准落定本补记）；在途契约门收口态 rc=1 为基线性自指伪影沿 185 N3 / 186 N2 框架 |
 | 受保护 token | 29 项既有集合不动；第 29 次 run 号 `37907554041` 以文本登记（沿 181-186 期口径，不扩集合） |
 | 状态 | TASK-187 全链路闭环，**外部终验达成**；**通知偏好设置课题封盘**（通知中心运营面三期四课题全部收官：TASK-183 铃铛与列表页 / TASK-185 WS 推送 / TASK-186 已读回执 / TASK-187 偏好开关）；外部门槛计数更新为 **29 次**（28 绿 1 红）。下一课题候选：点赞通知（需扩 NotificationType 与触发源）或其他方向，待用户定向 |
+
+## 验收记录：TASK-188 add-notification-like 点赞通知·记录收到点赞时通知作者（2026-10-09，执行 agent）
+
+| 项 | 实测 |
+| --- | --- |
+| 开工基线 | 派发笔 HEAD `c34eb94`（TASK-188 派发）；`origin/main...main` = `0 2`；工作树仅在途两件套；`--static=record-service` 811；受保护 token 29 项开工实测 SUM=2001；词面门/契约门开工清 |
+| 实施三笔 | ①派发笔入库四件套零改动 ②C-01 实施笔（api 模块新增 RecordLikeEvents 与 LikeEventDTO + record-service 生产端 LikeEventProducer 与 RecordLikeService 热路径注入发布 + 扩展单测 RecordLikeServiceTest 与新增 LikeEventProducerTest + user-service 消费端 LikeEventConsumer 编程式监听与 SETNX 24h 幂等 + NotificationType 与 NotificationPreferenceService 偏好扩展 + application.yml 独立消费组键 + 扩展单测 NotificationPreferenceServiceTest 与新增 LikeEventConsumerTest + 前端 notifications.page.vue 第四开关接线）③C-02 台账收口（本笔） |
+| 收口基线 | web 三件套：type-check rc=0、build rc=0（TMP 工作区化）、typed-router.d.ts 零漂移、lockfile frozen 预演 rc=0；Java 抽验 offline 全量 `36/41/117/134/144/59/10` = **541** 逐位 rc=0（基线 527→541，+14：record-service 127→134，user-service 110→117，只增不减）+ `--static=record-service` Checkstyle **811 持平** rc=1 预期；契约门在途 `--baseline=c34eb94 --open TASK-188` rc=0；词面门改动文件集 + repo 全量（CI 权威 exclude 口径）四形态 ZERO_HIT + 探针三态 rc=0；token 29 项只增不减（开工 2001、收口态 2001）；`git status --porcelain` 收口后为空 |
+| 验收要点证据 | 触发挂点定于 RecordLikeService.like() 热路径 firstLike 分支；防轰炸三闸门（自赞发布前短路、幂等跳过与取消不发、表级终身一次 dedupKey 与偏好闸门）；生产端 best-effort 异步发送无补偿；消费端 DefaultMQPushConsumer 原生重试 3 次进 DLQ + Redisson 24h SETNX 去重；前端偏好卡片第四开关正常解析与保存 |
+| 三支裁决 | 后端生产端/消费端/DTO/常量/偏好扩展 + 前端偏好第四开关 + 单测矩阵全绿 + web 三件套 + Java 541/811 不回归 + 全门禁绿 → **PASSED**；无 FAILED 项；外部终验待推送后下一次外部门槛 CI 绿（第 30 次） |
+| 偏差 | D1：C-02 自指哈希按 TASK-182/185/186/187 台账终态化先例；D2：词面门 repo 全量按 CI 权威 exclude 口径（历史存档/ci.yml 为公开排除项）。详见 handoff §4 |
+| 未覆盖项 | 本机真实链路联调（RocketMQ broker + 双服务 + Redis 端到端点赞到通知推送）中间件未全栈启动 → UNDETERMINED 沿 TASK-182/185/186/187 口径不判失败；best-effort 无补偿与终身 dedupKey 为设计说明项。详见 handoff §9 |
+| 提交表 | 派发笔 `c34eb94`、C-01 `1b208b1`、C-02 台账收口（显式哈希以回传报告为准）；父锚定 `0 1 → 0 2 → 0 3 → 0 4`；push 由指导侧另行授权执行 |

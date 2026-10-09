@@ -85,29 +85,40 @@
 
 ### 7.1 提交记录
 
-- 派发笔：`（派发时回填）` `docs(spec): 派发 TASK-188 点赞通知提案与任务书`
-- C-01 实施笔：`（由回传报告以显式哈希给出，见 handoff §8）` `feat(record): 点赞通知事件发布与消费落地（TASK-188）`
+- 派发笔：`c34eb941e02583f22344e5c5ef8ad351a4fe0a34`（`c34eb94`） `docs(spec): 派发 TASK-188 点赞通知提案与任务书`
+- C-01 实施笔：`1b208b1c28ce44833f681230db555a43aaba19ab`（`1b208b1`） `feat(record): 点赞通知事件发布与消费落地（TASK-188）`
 - C-02 台账笔：`（由回传报告以显式哈希给出，见 handoff §8）` `docs(mailbox): 登记 TASK-188 点赞通知验收与台账闭环（TASK-188）`
 
 ### 7.2 单测矩阵读数（offline，C-01 实施态实测）
 
-（执行侧回填：发布四态 / LikeEventProducer / LikeEventConsumer 五态 / 偏好四类，逐类 run/fail 读数）
+- RecordLikeServiceTest：Tests run: 32, Failures: 0, Errors: 0, Skipped: 0（扩 4 条：firstLike 非自赞发布一次、自赞零发布、幂等跳过零发布、unlike 零发布）
+- LikeEventProducerTest：Tests run: 3, Failures: 0, Errors: 0, Skipped: 0（新立先例 3 条：destination=record-like-events:LIKED、JSON 五字段真序列化、asyncSend 异常不外抛仅告警）
+- LikeEventConsumerTest：Tests run: 6, Failures: 0, Errors: 0, Skipped: 0（新立 6 条：buildConsumer 订阅参数四断言、SETNX 已存在零调用、LIKED 落库调用与 dedupKey、解析失败 ack 丢弃、未知 Tag 跳过、失败重试删键）
+- NotificationPreferenceServiceTest：Tests run: 9, Failures: 0, Errors: 0, Skipped: 0（扩 1 条：RECORD_LIKED 偏好关闭闸门断言 isNotificationEnabled 返回 false）
 
 ### 7.3 web 三件套读数（收口态）
 
-（执行侧回填）
+- type-check：`vue-tsc --noEmit` rc=0（零错误）
+- build：`vite build` rc=0（工作区 TMP=.trae/esbuild-tmp，耗时 13.60s，产物正常构建）
+- typed-router：`git diff --exit-code -- web/src/typed-router.d.ts` rc=0（零漂移）
+- lockfile frozen：`pnpm --dir web install --frozen-lockfile` rc=0
 
 ### 7.4 Java 新基线与 811
 
-（执行侧回填：offline 逐位与总数、static 811、零依赖核验）
+- offline 全量新基线：`36/41/117/134/144/59/10` = **541**（基线 527 -> 541，净增 14），Failures: 0, Errors: 0, Skipped: 0，BUILD SUCCESS
+  - record-service：127 → 134（+7：LikeEventProducerTest 3 + RecordLikeServiceTest 扩 4）
+  - user-service：110 → 117（+7：LikeEventConsumerTest 6 + NotificationPreferenceServiceTest 扩 1）
+- static 静态检查：`--static=record-service` Checkstyle **811**（完全持平未增），rc=1 为基线违规模块预期
+- 零依赖增量：git diff 确认后端零 pom 变更、前端零 lockfile 变更、零 SQL DDL
 
 ### 7.5 token 前后读数
 
-（执行侧回填：开工实测 SUM 与收口态实测 SUM）
+- 开工实测：SUM=2001（29 项 repo 全量）
+- 收口态实测：SUM=2001（只增不减，见 handoff §7）
 
 ### 7.6 联调留证
 
-（执行侧回填：真实链路或 UNDETERMINED 登记）
+- 真实链路联调：中间件（RocketMQ broker、Redis）及双服务全栈未在本机拉起，真实链路往返留证登记为 **UNDETERMINED**（沿 TASK-182/185/186/187 口径，不判失败）；生产端、消费端与偏好闸门由离线 Mockito 单测矩阵与 Spring 容器加载完整覆盖。
 
 ### 7.7 未覆盖项与说明项
 
@@ -117,7 +128,8 @@
 
 ### 7.8 三支裁决
 
-（执行侧回填：PASSED / FAILED / UNDETERMINED 与依据；外部终验待推送后下一次外部门槛〔第 30 次〕CI 绿）
+- 裁决：**PASSED**（主支）
+- 依据：API 规范事件与常量 + 生产端与消费端落地 + 偏好服务与前端开关扩展 + 单测矩阵 4 类全绿（全仓 527→541，+14）+ web 三件套全绿 + 静态 811 持平 + 契约门在途/无参 rc=0 + 全门禁通过。外部终验待推送后下一次外部门槛（第 30 次）CI 绿。
 
 ## 8. 开工读数（指导侧派发时基线）
 
