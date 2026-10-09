@@ -56,10 +56,10 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, onBeforeUnmount } from 'vue'
 import { listNotifications, markNotificationRead, markAllNotificationsRead, type NotificationViewDTO } from '@/api/client'
 import { hasAccessToken } from '@/utils/token'
-import { refreshUnread } from '@/composables/useNotificationBell'
+import { refreshUnread, onNotification } from '@/composables/useNotificationBell'
 
 const loggedIn = computed(() => hasAccessToken())
 
@@ -148,10 +148,25 @@ function onSizeChange(_current: number, s: number) {
   loadList()
 }
 
+let unregisterNotification: (() => void) | null = null
+
 onMounted(() => {
   if (loggedIn.value) {
     loadList()
     refreshUnread()
+  }
+  // 实时推送（TASK-185）：页面打开期间收到新通知即刷新当前页；卸载时注销
+  unregisterNotification = onNotification(() => {
+    if (loggedIn.value) {
+      loadList()
+    }
+  })
+})
+
+onBeforeUnmount(() => {
+  if (unregisterNotification) {
+    unregisterNotification()
+    unregisterNotification = null
   }
 })
 </script>

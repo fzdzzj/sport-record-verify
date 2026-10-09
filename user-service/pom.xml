@@ -30,6 +30,14 @@
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-web</artifactId>
         </dependency>
+        <!-- 通知实时推送（TASK-185 add-notification-ws-push）：WebSocket+STOMP 长连接。
+             spring-boot-starter-websocket 由父 pom import 的 spring-boot-dependencies BOM 管理版本
+             （与 starter-web 同源 Boot 3.2.4，版本树零冲突）；@EnableWebSocketMessageBroker +
+             SimpleBroker 承担 /ws-notifications 端点与 /user 用户目标队列 -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-websocket</artifactId>
+        </dependency>
         <!-- Bean Validation 实现（hibernate-validator）：@Valid + DTO 注解在控制器层触发校验 -->
         <dependency>
             <groupId>org.springframework.boot</groupId>

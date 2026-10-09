@@ -7,8 +7,11 @@ import com.sportverify.api.common.PageResult;
 import com.sportverify.user.dto.NotificationView;
 import com.sportverify.user.entity.Notification;
 import com.sportverify.user.mapper.NotificationMapper;
+import com.sportverify.user.ws.NotificationPushMessage;
+import com.sportverify.user.ws.NotificationPushRelay;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
 import java.time.LocalDateTime;
@@ -23,6 +26,10 @@ import java.util.List;
  *
  * <p>读路径可见性与已读操作权一律限定收件人本人（userId 由网关注入的 X-User-Id 认定，
  * 见 ADR-0007），不信任请求体显式携带值。</p>
+ *
+ * <p>实时推送（TASK-185 add-notification-ws-push）：{@link #createNotification} 首插落库
+ * 成功后发布通知推送（尽力而为）。推送侧可选注入 {@link NotificationPushRelay}——落库
+ * 成功才发布、发布失败仅告警不回滚落库（推送是尽力而为，前端 60s 轮询兜底，见 §2.1 取舍）。</p>
  */
 @Slf4j
 @Service
@@ -31,11 +38,18 @@ public class NotificationService {
 
     private final NotificationMapper notificationMapper;
 
+    /** 通知推送中继（TASK-185，尽力而为）：可选注入——旧构造/旧单测不含该依赖时为空，落库成功分支跳过发布 */
+    @Autowired(required = false)
+    NotificationPushRelay notificationPushRelay;
+
     /**
      * 幂等写入通知：INSERT IGNORE，以受影响行数判断是否首次。
      *
      * <p>同一 {@code dedupKey}（判定事件=MQ eventId，好友=FRIEND_ACCEPTED:{requestId}）
      * 重复写入至多一条——唯一键冲突被吞掉并返回 false，不产生第二行。</p>
+     *
+     * <p>实时推送（TASK-185）：首插落库成功后触发通知推送发布（尽力而为，push 失败仅告警
+     * 不回滚落库——推送是尽力而为，前端 60s 轮询兜底保证新鲜度不劣于纯轮询基线）。</p>
      *
      * @return true = 首次落库；false = 同 dedup_key 已存在（幂等跳过）
      */
@@ -51,7 +65,22 @@ public class NotificationService {
         n.setDedupKey(dedupKey);
         n.setCreatedAt(LocalDateTime.now());
         int rows = notificationMapper.insertIgnore(n);
+        if (rows > 0) {
+            publishPush(new NotificationPushMessage(userId, type, sourceId, content, n.getCreatedAt()));
+        }
         return rows > 0;
+    }
+
+    /** 发布通知推送（尽力而为）：relay 未注入或发布失败都不影响落库结果（轮询兜底语义） */
+    private void publishPush(NotificationPushMessage message) {
+        if (notificationPushRelay == null) {
+            return;
+        }
+        try {
+            notificationPushRelay.publish(message);
+        } catch (Exception e) {
+            log.warn("通知推送发布失败（尽力而为，轮询兜底）：userId={}", message.userId(), e);
+        }
     }
 
     /**
