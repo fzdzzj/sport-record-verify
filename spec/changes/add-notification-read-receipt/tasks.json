@@ -1,0 +1,24 @@
+[
+  {
+    "number": 1,
+    "category": "实施",
+    "task": "已读回执管道（后端扇出+前端订阅）",
+    "steps": [
+      { "step": "后端三处：ws/NotificationReadReceipt.java 新增（record userId/kind/notificationId/readAt + 静态工厂 single/all）；NotificationPushRelay 增第二订阅 READ_TOPIC=notification:read → READ_QUEUE=/queue/notification-read（PostConstruct 双订/PreDestroy 双退对称，publishRead 失败仅告警）；NotificationService.markRead/markAllRead 影响行数>0 后 publishReceipt（零行不发、异常不影响返回值、javadoc 载明尽力而为）", "completed": false },
+      { "step": "前端一处：notificationWs.ts onConnect 增订 /user/queue/notification-read，复用同一 onMessage 回调（回执与新推反应同构：刷新未读+重载列表，注释说明两种载荷形态）；useNotificationBell.ts / notifications.page.vue / client.ts / typed-router.d.ts / App.vue 零触碰", "completed": false },
+      { "step": "单测（Mockito 离线确定性）：NotificationPushRelayTest 增回执扇出（正确用户与目标/JSON 往返全等/非法载荷丢弃/发布失败不抛）；NotificationServicePushTest 增已读钩子（markRead 成功发 single、零行不发、markAllRead N>0 发 all、零行不发、publish 异常返回值不变）", "completed": false }
+    ],
+    "passes": false
+  },
+  {
+    "number": 2,
+    "category": "验收",
+    "task": "门禁与台账闭环",
+    "steps": [
+      { "step": "Java offline 全量新基线逐位登记（只增不减，预计 +8 上下 user-service 81→~89，以实测为准）+ --static=record-service 811 不增；web 三件套 + pnpm frozen-lockfile 预演 + typed-router 零漂移（本任务零前端依赖增量）", "completed": false },
+      { "step": "契约门在途 --open TASK-186 --baseline=<派发笔哈希> rc=0；词面门四形态 ZERO_HIT + 探针三态（正则字面量不入任何 tracked 文档）；token 29 项只增不减（口径 repo 全量 git grep -cF，开工实测为准，收口读数以收口态实测——TASK-185 立固定纪律）", "completed": false },
+      { "step": "台账闭环：tasks.json 全勾、PLAN.md 纯追加登记、handoff 留证（含回执风暴载荷级设计、同端幂等双刷说明项、UNDETERMINED 联调口径）；推送后下一次外部门槛 CI 绿为外部终验", "completed": false }
+    ],
+    "passes": false
+  }
+]
