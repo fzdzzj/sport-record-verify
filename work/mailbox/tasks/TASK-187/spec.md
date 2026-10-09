@@ -80,7 +80,60 @@ CREATE TABLE IF NOT EXISTS `notification_preference` (
 
 ## 7. 收口记录（执行侧 C-02 纯追加）
 
-（空位：提交哈希、单测矩阵读数、Java 新基线与 811、scratch DB 留证、web 三件套读数、token 前后读数、联调留证或 UNDETERMINED、未覆盖项、三支裁决，由执行侧回填）
+### 7.1 提交记录
+
+- 派发笔：`aa7e6aa1825b30ae0e4434fdc5954f628d7a1ecf`（`aa7e6aa`）`docs(spec): 派发 TASK-187 通知偏好提案与任务书`
+- C-01 实施笔：`7472774e9c2bc89e101b631f7c8d331605c5ad49`（`7472774`）`feat(user): 通知偏好按类型开关闸门与设置端点（TASK-187）`
+- C-02 台账笔：`（由回传报告以显式哈希给出，见 handoff §8）` `docs(mailbox): 登记 TASK-187 通知偏好验收与台账闭环（TASK-187）`
+
+### 7.2 单测矩阵读数（offline，C-01 实施态实测）
+
+| 用例类 | 断言内容 | 读数 |
+| --- | --- | --- |
+| `NotificationPreferenceServiceTest` | 缺行补默认全 true；已有行覆盖默认；upsert 插入新行；upsert 重复同值幂等；批量更新返回更新后全量视图；偏好闸门三态判定（缺行/开启返 true、关闭返 false） | 8 run, 0 fail |
+| `NotificationServicePushTest` | 偏好关闭 → insertIgnore 零调用 + relay publish 零调用 + 返回 false；偏好开启 → 落库 + publish + 返回 true；偏好服务缺省 → 兼容开启落库 + publish + 返回 true | 12 run, 0 fail（含既有 9 条 + 偏好 3 条） |
+| `NotificationControllerTest` | 偏好查询（auth=false 显式携带命中服务）；偏好更新（auth=false 显式携带命中服务）；偏好查询（auth=true 缺失 X-User-Id 拒绝 401）；偏好更新（auth=true 缺失 X-User-Id 拒绝 401） | 14 run, 0 fail（含既有 10 条 + 偏好 4 条） |
+
+### 7.3 web 三件套读数（收口态）
+
+| 项 | 读数 | rc |
+| --- | --- | --- |
+| type-check | `vue-tsc --noEmit` 无输出 | 0 |
+| build | `vite build` ✓ built（TMP 工作区化） | 0 |
+| typed-router.d.ts 零漂移 | `git diff --exit-code -- web/src/typed-router.d.ts` 无声 | 0 |
+| lockfile frozen 预演 | `pnpm --dir web install --frozen-lockfile` | 0 |
+
+### 7.4 Java 新基线与 811
+
+- offline 全量：`36/41/110/127/144/59/10` = **527**（user-service 95→110，只增不减，净增 15；其余六模块逐位不变，总数较 512 净增 15）。
+- `--static=record-service` Checkstyle **811 持平**（未增，rc=1 预期）。
+- 本任务零新依赖（后端零 pom 改动、前端零 lockfile 改动）。
+
+### 7.5 scratch DB 验证留证
+
+- MySQL 8.0 容器环境执行 `notification_preference` 建表 DDL 成功。
+- 首次插入新行：`ROW_COUNT() = 1`。
+- 重复同值 upsert：`ROW_COUNT() = 0`，`COUNT(*) = 1`（无新增行，行级原子幂等）。
+- 值翻转 update：`ROW_COUNT() = 2`，更新为目标值 `enabled = 1`。
+
+### 7.6 token 前后读数
+
+- 开工实测 SUM=**1972**（口径 repo 全量 `git grep -cF`，29 项逐值见 handoff §7）。
+- 收口实测只增不减（收口态实测 SUM=**1972**，见 handoff §7）。
+
+### 7.7 联调留证
+
+本机真实链路（网关 + user-service + Redis + 浏览器偏好开关）因中间件全栈未起未展开，登记为 **UNDETERMINED**（沿 TASK-182/185/186 口径，不判失败）；链路语义等价由单测及 scratch DB 验证覆盖。
+
+### 7.8 未覆盖项与说明项
+
+1. **不追溯补发历史**（说明项）：偏好重新开启仅对未来通知生效，不追溯补发历史。
+2. **SETNX 24h 窗口边界**（说明项）：MQ 判定事件被偏好闸门拦截后，Redis SETNX 已置 24h 去重标记；24h 内若用户开启偏好且 MQ 发生重试投递，由于 SETNX 尚未过期将不再重投落库，登记为说明项。
+3. **真实链路联调 UNDETERMINED**：中间件不可达，沿 182/185/186 口径登记。
+
+### 7.9 三支裁决
+
+**PASSED**：后端实体+Mapper+Service+闸门+端点全部落地 + 前端 Client+Vue 偏好卡片接入 + 单测矩阵全绿（user-service 95→110，全仓 512→527）+ web 三件套全绿 + 静态 811 持平 + scratch DB 留证齐备 + 全门禁通过。无 FAILED 项。外部终验待推送后下一次外部门槛（第 29 次）CI 绿。
 
 ## 8. 开工读数（指导侧派发时基线）
 

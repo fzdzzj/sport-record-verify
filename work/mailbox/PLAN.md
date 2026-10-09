@@ -2014,3 +2014,16 @@ run `35802403723`（head `eba0108`，2026-09-23 00:31 UTC）——**web/build �
 | 指导侧终裁 | 独立复核五块全 pass 无阻断项，PASSED 维持；N1（token +29 归因措辞——实际全部来自 C-02 handoff §7 逐项展开表而非派发笔 spec.md §5，实测真值 1972 无误、逐项 +1 只增不减合规）以实测为准，归因更正落定本补记；N2（在途契约门收口态 rc=1 为基线性自指伪影）沿 TASK-185 N3 框架，同轮独立证实历史任务零误伤——TASK-184 修缮持续生效 |
 | 受保护 token | 29 项既有集合不动；第 28 次 run 号 `37887165869` 以文本登记（沿 181-185 期口径，不扩集合） |
 | 状态 | TASK-186 全链路闭环，**外部终验达成**；**已读回执课题封盘**（跨端已读同步 60s 轮询周期 → 秒级，WS 管道双队列成形：notification:push + notification:read）；外部门槛计数更新为 **28 次**（27 绿 1 红）。通知中心运营面三期候选：通知偏好设置 / 点赞通知（需扩 NotificationType）或其他方向，待用户定向 |
+
+## 验收记录：TASK-187 add-notification-preference 通知偏好设置·按类型开关（2026-10-09，执行 agent）
+
+| 项 | 实测 |
+| --- | --- |
+| 开工基线 | 派发笔 HEAD `aa7e6aa`（TASK-187 派发）；`origin/main...main` = `0 2`；工作树仅在途两件套；`--static=record-service` 811；受保护 token 29 项开工实测 SUM=1972；词面门/契约门开工清 |
+| 实施三笔 | ①派发笔入库四件套零改动 ②C-01 实施笔（sql/01-user-db.sql 追加 notification_preference 表 + NotificationPreference 实体 + NotificationPreferenceMapper 复合键原生 upsert + NotificationPreferenceService 偏好读写服务与单一权威闸门 + NotificationService 首行闸门与 javadoc 扩展 + NotificationController GET/PUT 端点与 DTO + client.ts 纯追加函数与接口 + notifications.page.vue 内嵌偏好卡片与门控 + 15 条确定性单测）③C-02 台账收口（本笔） |
+| 收口基线 | web 三件套：type-check rc=0、build rc=0（TMP 工作区化）、typed-router.d.ts 零漂移、lockfile frozen 预演 rc=0；Java 抽验 offline 全量 `36/41/110/127/144/59/10` = **527** 逐位 rc=0（user-service 95→110，只增不减，+15）+ `--static=record-service` Checkstyle **811 持平** rc=1 预期；scratch DB 验证 MySQL 8.0 容器实跑通过；契约门在途 `--baseline=aa7e6aa --open TASK-187` rc=0；词面门改动文件集 + repo 全量（CI 权威 exclude 口径）四形态 ZERO_HIT + 探针三态 rc=0；token 29 项只增不减（开工 1972、收口态 1972）；`git status --porcelain` 收口后为空 |
+| 验收要点证据 | 闸门单一权威位置（createNotification 落库前，关闭类型直接 return false，不落库不推送不计未读）；读取缺行默认全开（无预填充）；更新行级原子幂等（ON DUPLICATE KEY UPDATE）；前端设置卡片登录态门控与三类中文开关；不追溯历史与 SETNX 24h 窗口边界载明 |
+| 三支裁决 | 后端实体/服务/闸门/端点 + 前端接线 + 单测矩阵全绿 + web 三件套 + Java 527/811 不回归 + scratch DB 留证 + 全门禁绿 → **PASSED**；无 FAILED 项；外部终验待推送后下一次外部门槛 CI 绿（第 29 次） |
+| 偏差 | D1：C-02 自指哈希按 TASK-182/185/186 台账终态化先例；D2：词面门 repo 全量按 CI 权威 exclude 口径（历史存档/ci.yml 为公开排除项）。详见 handoff §4 |
+| 未覆盖项 | 本机真实链路联调（网关 + user-service + Redis + 浏览器偏好开关）中间件全栈未起 → UNDETERMINED 沿 TASK-182/185/186 口径不判失败；不追溯历史与 SETNX 24h 窗口边界为设计说明项；偏好实时广播明确不做。详见 handoff §9 |
+| 提交表 | 派发笔 `aa7e6aa`、C-01 `7472774`、C-02 台账收口（显式哈希以回传报告为准）；父锚定 `0 1 → 0 2 → 0 3 → 0 4`；push 由指导侧另行授权执行 |
