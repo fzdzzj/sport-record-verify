@@ -1,0 +1,23 @@
+[
+  {
+    "number": 1,
+    "category": "实施",
+    "task": "WS+STOMP 推送管道（后端+前端）",
+    "steps": [
+      { "step": "后端：user-service pom.xml + spring-boot-starter-websocket；WebSocketNotificationConfig（@EnableWebSocketMessageBroker，端点 /ws-notifications，SimpleBroker 用户目标 /queue/notifications，STOMP 心跳 10s/10s + TaskScheduler bean）；StompConnectAuthInterceptor（CONNECT 帧 Authorization 头 → JwtUtil 解析 → Principal，无效/过期/缺失拒绝）；NotificationPushRelay（RTopic notification:push 订阅 → 本地 convertAndSendToUser）；NotificationService.createNotification 成功落库后发布钩子；gateway application.yml 白名单追加 /user/ws-notifications；全部按 Checkstyle 既有规则", "completed": false },
+      { "step": "前端：@stomp/stompjs 入库（package.json + pnpm-lock.yaml 本机 pnpm 真实生成）；web/src/api/notificationWs.ts 新增（stompjs Client，brokerURL 同源 /user/ws-notifications，connectHeaders Bearer，订阅 /user/queue/notifications，reconnectDelay 内建重连，deactivate 清理）；useNotificationBell.ts 接线（登录态开 WS，notification 消息 → refreshUnread，60s 轮询保留兜底，未登录不开流）；notifications.page.vue 注册消息回调刷新当前页", "completed": false },
+      { "step": "离线单测：拦截器三态（有效 token → Principal / 无效过期 → 拒绝 / 无 token → 拒绝）；relay 扇出（RTopic 消息 → convertAndSendToUser 正确用户与目标、JSON 往返）；发布钩子（落库成功才 publish、失败不 publish）；心跳配置注入短周期验证", "completed": false }
+    ],
+    "passes": false
+  },
+  {
+    "number": 2,
+    "category": "验收",
+    "task": "门禁与台账闭环",
+    "steps": [
+      { "step": "web 三件套（type-check rc=0 + build rc=0 + typed-router 零漂移 + lockfile 一致）；Java offline 全量新基线实测登记（≥480 逐位，user-service 63→新值）+ --static=record-service 811 不增；词面门四形态 ZERO_HIT；契约门无参 rc=0（含 TASK-184 修缮后首个受益任务验证：本任务 pom.xml 改动不再触发历史任务误伤）；token 29 项只增不减；本机真实链路联调（网关 ws upgrade + 真 Redis 扇出 + 浏览器收推）可选项——环境就绪留证、不可达 UNDETERMINED 登记", "completed": false },
+      { "step": "台账闭环：tasks.json 全勾、PLAN.md 纯追加、handoff 留证（单测矩阵读数、内建重连与轮询兜底语义、跨实例无双推说明）；推送后下一次外部门槛 CI 绿为外部终验", "completed": false }
+    ],
+    "passes": false
+  }
+]
