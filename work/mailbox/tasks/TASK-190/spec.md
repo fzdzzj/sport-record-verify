@@ -114,16 +114,26 @@
 
 ### 7.1 提交记录
 
-- 派发笔：`（C-02 回填显式哈希）` `docs(spec): 派发 TASK-190 compose 口令治理提案与任务书`
-- C-01 实施笔：`（由回传报告以显式哈希给出，见 handoff 提交表）` `fix(compose): 中间件弱口令 .env 化与全端口回环绑定（TASK-190）`
-- C-02 台账笔：`（由回传报告以显式哈希给出，见 handoff 提交表）` `docs(mailbox): 登记 TASK-190 compose 口令治理验收与台账闭环（TASK-190）`
+- 派发笔：`a77e0bd02b854ab47066983fe64a5cc6548d717e`（`a77e0bd`） `docs(spec): 派发 TASK-190 compose 口令治理提案与任务书`
+- C-01 实施笔：`ad038179553546333265d85704310c74a7b6f217`（`ad03817`） `fix(compose): 中间件弱口令 .env 化与全端口回环绑定（TASK-190）`
+- C-02 台账笔：`（本笔自指：显式哈希以回传报告与 handoff §8 给出）` `docs(mailbox): 登记 TASK-190 compose 口令治理验收与台账闭环（TASK-190）`
 
 ### 7.2 单测矩阵读数（offline，C-01 实施态实测回填）
 
-- user-service：`DataSourcePasswordEnvBindingTest` Tests run: _, Failures: 0, Errors: 0, Skipped: 0（credentialInjectedFromEnvironment / localFallbackDefaultWithoutInjection 逐例登记）
-- verify-service / leaderboard-service / mapmatch-service：同构登记
+- user-service：`DataSourcePasswordEnvBindingTest` Tests run: 2, Failures: 0, Errors: 0, Skipped: 0
+  - `credentialInjectedFromEnvironment`：pass（真实 application.yml 经占位符解析绑定，注入 MapPropertySource 后 getPassword() 等于注入值）
+  - `localFallbackDefaultWithoutInjection`：pass（仅装 yaml 源、不含系统源，getPassword() 等于 root）
+- verify-service：同上（同构 2 例全 pass，回退默认 root）
+- leaderboard-service：同上（同构 2 例全 pass，回退默认 root）
+- mapmatch-service：同上（同构 2 例全 pass，回退默认 postgres）
 
 ### 7.3 门禁读数（收口态实测回填）
 
-- compose 三判别式逐项 rc 与读数（正向 / 插值读数十端口计数 / 负向报错含变量名）
-- offline 全量逐位 / 静态门 811 / 契约门在途与无参 / 词面门四形态 / token 29 项前后读数 / 只改清单全等核验 / git diff --check / 行尾核验
+- compose 三判别式：①正向 `docker compose -f docker-compose.yml -f docker-compose.services.yml config -q` rc=0；②插值读数 `docker compose -f docker-compose.yml config` 十处端口映射（3000/3307/8848/9848/5433/9090/6379/10911/10909/9876）逐一带 `host_ip: 127.0.0.1`，三个口令键已插值（值脱敏）；③负向 `.trae/tmp/` 无 .env 副本 `config -q` rc=1，报错含必填变量名（compose 报告次序不定，观测到 POSTGRES_PASSWORD 与 MYSQL_ROOT_PASSWORD，均证明无弱默认兜底）
+- offline 全量逐位：`36/41/119/137/149/64/12` = **558**（基线 550 只增不减，+8 全落 user 117→119 / verify 147→149 / leaderboard 62→64 / mapmatch 10→12），Failures/Errors/Skipped 全 0，BUILD SUCCESS
+- 静态门：`--static=record-service` Checkstyle **811 持平**未增，rc=1 为基线违规模块预期
+- 契约门在途：`bash scripts/verify/mailbox-contract.sh --open TASK-190 --baseline=a77e0bd` rc=0（判据 A 两件套齐 + 判据 B 清单一致）
+- 词面门四形态：改动文件集与 repo 全量（CI 权威 exclude 口径）四形态（default / C / zh_CN.UTF-8 / C.UTF-8）全 ZERO_HIT rc=1，探针三态 HIT rc=0，PROBE_GONE=yes
+- token 29 项：开工实测 SUM=2030；C-01 后实测 SUM=2030；收口态实测 SUM=2030 只增不减（新文档不枚举 token 字面量，沿 TASK-188 N1 教训）
+- 只改清单全等核验：C-01 恰白名单 11 文件，零 main Java 代码；C-02 恰白名单 4 文件；typed-router.d.ts 零漂移（`git diff --exit-code -- web/src/typed-router.d.ts` rc=0）
+- 行尾与末尾换行核验：修改文件保持既有行尾（docker-compose.yml / README / user 工作区 CRLF、mapmatch / env.example LF、leaderboard / verify 混合，仅动目标行）；四个新测试文件纯 LF + 末尾换行完整
