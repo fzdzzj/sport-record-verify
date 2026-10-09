@@ -4,23 +4,23 @@
     "category": "实施",
     "task": "strict 联动硬校验 + F08 网关 health 明细收口 + README 上线检查清单",
     "steps": [
-      { "step": "gateway-service AuthGlobalFilter.java：init() 头部（governanceToken 检查之前）新增 strictMode && !authEnabled → IllegalStateException（消息中文含 app.security.strict 与 app.auth.enabled 两键名及「生产姿态必须开启鉴权」要旨）；类 Javadoc 补一行联动说明（strict=true 时鉴权开与密钥齐同列生产硬约束）；其余方法零改动", "completed": false },
-      { "step": "AuthGlobalFilterTest.java 追加 3 例（纯 JVM 确定性，ReflectionTestUtils 构造 + 直调 init()）：strictModeWithAuthDisabledFailsStartup（strict=true + authEnabled=false → assertThrows IllegalStateException 且消息含两开关名）/ strictModeWithAuthEnabledInitializesCleanly（strict=true + authEnabled=true + governanceToken 有效 → 不抛）/ laxModeKeepsLocalDemoUnaffected（strict=false + authEnabled=false → 不抛）；既有 18 例零改动", "completed": false },
-      { "step": "gateway application.yml 两处：①L164 show-details: always → never（行上注释说明对齐其余五服务 TASK-125 口径、health 状态聚合仍可用仅组件明细不匿名暴露）②L106-108 strict 注释段补一句（true 时强制 app.auth.enabled=true，鉴权关闭即启动失败）；app.auth.enabled: false 默认值、whitelist、admin.paths、路由、CORS、sentinel、management 其余段零改动", "completed": false },
-      { "step": "README.md 鉴权小节（降级开关说明行之后）插入「上线前加固清单」小块：APP_AUTH_ENABLED=true（或 yml 覆盖）/ JWT_SECRET 强随机注入（≥32 字节）/ GOVERNANCE_TOKEN 注入 / APP_SECURITY_STRICT=true（密钥缺失或鉴权关闭即拒启，本课题联动）/ actuator 收敛引用（引既有 L216 说明）；其余段落零改动", "completed": false }
+      { "step": "gateway-service AuthGlobalFilter.java：init() 头部（governanceToken 检查之前）新增 strictMode && !authEnabled → IllegalStateException（消息中文含 app.security.strict 与 app.auth.enabled 两键名及「生产姿态必须开启鉴权」要旨）；类 Javadoc 补一行联动说明（strict=true 时鉴权开与密钥齐同列生产硬约束）；其余方法零改动", "completed": true },
+      { "step": "AuthGlobalFilterTest.java 追加 3 例（纯 JVM 确定性，ReflectionTestUtils 构造 + 直调 init()）：strictModeWithAuthDisabledFailsStartup（strict=true + authEnabled=false → assertThrows IllegalStateException 且消息含两开关名）/ strictModeWithAuthEnabledInitializesCleanly（strict=true + authEnabled=true + governanceToken 有效 → 不抛）/ laxModeKeepsLocalDemoUnaffected（strict=false + authEnabled=false → 不抛）；既有 18 例零改动", "completed": true },
+      { "step": "gateway application.yml 两处：①L164 show-details: always → never（行上注释说明对齐其余五服务 TASK-125 口径、health 状态聚合仍可用仅组件明细不匿名暴露）②L106-108 strict 注释段补一句（true 时强制 app.auth.enabled=true，鉴权关闭即启动失败）；app.auth.enabled: false 默认值、whitelist、admin.paths、路由、CORS、sentinel、management 其余段零改动", "completed": true },
+      { "step": "README.md 鉴权小节（降级开关说明行之后）插入「上线前加固清单」小块：APP_AUTH_ENABLED=true（或 yml 覆盖）/ JWT_SECRET 强随机注入（≥32 字节）/ GOVERNANCE_TOKEN 注入 / APP_SECURITY_STRICT=true（密钥缺失或鉴权关闭即拒启，本课题联动）/ actuator 收敛引用（引既有 L216 说明）；其余段落零改动", "completed": true }
     ],
-    "passes": false
+    "passes": true
   },
   {
     "number": 2,
     "category": "验收",
     "task": "门禁与台账闭环",
     "steps": [
-      { "step": "离线门禁：bash scripts/verify/mvn-verify.sh --mode=offline test 全量新基线逐位登记（558 只增不减，+3 预计落 gateway-service 41→44，全量 561=36/44/119/137/149/64/12 以实测为准）+ --static=record-service 811 不增；零越界核验（git diff --name-only <派发笔>..HEAD 仅白名单 9 文件，main Java 仅 AuthGlobalFilter.java）；typed-router 零漂移", "completed": false },
-      { "step": "契约门在途 --open TASK-191 --baseline=<派发笔哈希> rc=0；词面门四形态 ZERO_HIT + 探针（正则字面量与受保护 token 字面量均不入新文档）；token 29 项只增不减（开工实测为准，TASK-190 收口真值 2030 参照）；git diff --check 干净；修改文件保持既有行尾（README/gateway yml/gateway 测试 CRLF、findings LF，仅动目标行）", "completed": false },
-      { "step": "findings-summary.md 核实标注（C-02 内）：F01 追加核实段（TASK-191，2026-10-09——①降级/白名单剥离已在 add-auth-degrade-header-strip 落地〔stripIdentityHeaders + 3 单测〕行号订正 :79→:143-145/:195-204；②strict 联动硬校验与③README 上线检查项由 TASK-191 收口；F01 关闭）；F08 追加网关残留收口标注（:164 always→never，六服务齐）；沿 F03/F05/F06 核实段格式", "completed": false },
-      { "step": "台账闭环：tasks.json 全勾、PLAN.md 纯追加登记、handoff 留证（开工核验、strict 联动三例读数、yml 双处与 README diff 证据、findings 核实标注、UNDETERMINED 无〔本课题全离线可验证〕、零触碰面核验）；推送后下一次外部门槛 CI 绿为外部终验（第 33 次）", "completed": false }
+      { "step": "离线门禁：bash scripts/verify/mvn-verify.sh --mode=offline test 全量新基线逐位登记（558 只增不减，+3 预计落 gateway-service 41→44，全量 561=36/44/119/137/149/64/12 以实测为准）+ --static=record-service 811 不增；零越界核验（git diff --name-only <派发笔>..HEAD 仅白名单 9 文件，main Java 仅 AuthGlobalFilter.java）；typed-router 零漂移", "completed": true },
+      { "step": "契约门在途 --open TASK-191 --baseline=<派发笔哈希> rc=0；词面门四形态 ZERO_HIT + 探针（正则字面量与受保护 token 字面量均不入新文档）；token 29 项只增不减（开工实测为准，TASK-190 收口真值 2030 参照）；git diff --check 干净；修改文件保持既有行尾（README/gateway yml/gateway 测试 CRLF、findings LF，仅动目标行）", "completed": true },
+      { "step": "findings-summary.md 核实标注（C-02 内）：F01 追加核实段（TASK-191，2026-10-09——①降级/白名单剥离已在 add-auth-degrade-header-strip 落地〔stripIdentityHeaders + 3 单测〕行号订正 :79→:143-145/:195-204；②strict 联动硬校验与③README 上线检查项由 TASK-191 收口；F01 关闭）；F08 追加网关残留收口标注（:164 always→never，六服务齐）；沿 F03/F05/F06 核实段格式", "completed": true },
+      { "step": "台账闭环：tasks.json 全勾、PLAN.md 纯追加登记、handoff 留证（开工核验、strict 联动三例读数、yml 双处与 README diff 证据、findings 核实标注、UNDETERMINED 无〔本课题全离线可验证〕、零触碰面核验）；推送后下一次外部门槛 CI 绿为外部终验（第 33 次）", "completed": true }
     ],
-    "passes": false
+    "passes": true
   }
 ]

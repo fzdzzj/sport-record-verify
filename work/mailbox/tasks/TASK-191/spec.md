@@ -85,14 +85,24 @@ if (strictMode && !authEnabled) {
 
 ### 7.1 提交记录
 
-- 派发笔：`（C-02 回填显式哈希）` `docs(spec): 派发 TASK-191 网关生产姿态硬约束提案与任务书`
-- C-01 实施笔：`（由回传报告以显式哈希给出，见 handoff 提交表）` `fix(gateway): strict 联动强制鉴权与 health 明细收口（TASK-191）`
-- C-02 台账笔：`（由回传报告以显式哈希给出，见 handoff 提交表）` `docs(mailbox): 登记 TASK-191 网关鉴权硬约束验收与台账闭环（TASK-191）`
+- 派发笔：`94ae3c1bb9458ce7a37f4f446803ee2351f0c515`（`94ae3c1`） `docs(spec): 派发 TASK-191 网关生产姿态硬约束提案与任务书`
+- C-01 实施笔：`bade91b044025c466997c2a338805eb50a1364ae`（`bade91b`） `fix(gateway): strict 联动强制鉴权与 health 明细收口（TASK-191）`
+- C-02 台账笔：`（本笔自指：显式哈希以回传报告与 handoff §8 给出）` `docs(mailbox): 登记 TASK-191 网关鉴权硬约束验收与台账闭环（TASK-191）`
 
 ### 7.2 单测矩阵读数（offline，C-01 实施态实测回填）
 
-- gateway-service：`AuthGlobalFilterTest` Tests run: _, Failures: 0, Errors: 0, Skipped: 0（strictModeWithAuthDisabledFailsStartup / strictModeWithAuthEnabledInitializesCleanly / laxModeKeepsLocalDemoUnaffected 逐例登记；既有 18 例零回归）
+- gateway-service：`AuthGlobalFilterTest` Tests run: 21, Failures: 0, Errors: 0, Skipped: 0
+  - `strictModeWithAuthDisabledFailsStartup`：pass（strictMode=true 且 authEnabled=false 抛 IllegalStateException，异常消息含 app.security.strict 与 app.auth.enabled 两个开关名）
+  - `strictModeWithAuthEnabledInitializesCleanly`：pass（strictMode=true、authEnabled=true 且 governanceToken="test-governance-token" 时 init() 正常完成不抛异常，联动不误伤合法生产姿态）
+  - `laxModeKeepsLocalDemoUnaffected`：pass（strictMode=false 且 authEnabled=false 时 init() 正常完成不抛异常，lax 零扰动守护，本地演示/压测口径不受影响）
+  - 既有 18 例零回归（全类 21 例全绿）
 
 ### 7.3 门禁读数（收口态实测回填）
 
-- offline 全量逐位（预期 561=36/44/119/137/149/64/12）/ 静态门 811 / 契约门在途与无参 / 词面门四形态 / token 29 项前后读数 / 只改清单全等核验（C-01 4 + C-02 5 = 9 文件）/ git diff --check / 行尾核验
+- offline 全量逐位：`36/44/119/137/149/64/12` = **561**（基线 558 只增不减，+3 全落 gateway-service 41→44），Failures/Errors/Skipped 全 0，BUILD SUCCESS
+- 静态门：`--static=record-service` Checkstyle **811 持平**未增，rc=1 为基线违规模块预期
+- 契约门在途：`bash scripts/verify/mailbox-contract.sh --open TASK-191 --baseline=94ae3c1` rc=0（判据 A 两件套齐 + 判据 B 清单一致）
+- 词面门四形态：改动文件集与 repo 全量（CI 权威 exclude 口径）四形态（default / C / zh_CN.UTF-8 / C.UTF-8）全 ZERO_HIT rc=1，探针三态 HIT rc=0，PROBE_GONE=yes
+- token 29 项：开工实测 SUM=2030；C-01 后实测 SUM=2030；收口态实测 SUM=2030 只增不减（新文档不枚举 token 字面量，沿 TASK-188 N1 教训）
+- 只改清单全等核验：C-01 恰白名单 4 文件，main Java 仅 AuthGlobalFilter.java；C-02 恰白名单 5 文件；合共 9 文件；typed-router.d.ts 零漂移（`git diff --exit-code -- web/src/typed-router.d.ts` rc=0）
+- 行尾与末尾换行核验：修改文件保持既有行尾（README.md / gateway application.yml / AuthGlobalFilterTest.java / AuthGlobalFilter.java 工作区 CRLF，findings-summary.md LF，仅动目标行）

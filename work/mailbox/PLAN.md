@@ -2113,3 +2113,18 @@ run `35802403723`（head `eba0108`，2026-09-23 00:31 UTC）——**web/build �
 | 指导侧终裁 | 独立复核五块全 pass 无阻断项，PASSED 维持。读数交叉：指导侧亲跑（offline 558 逐位 / 静态 811 / compose 三判别式 / 契约门 / token 2030 独立复算）与复核子 agent 独立复跑逐项一致，与执行侧自报亦逐项一致（本课题无虚报）；token 收口真值 **2030** 持平零自增；偏差 D1（C-02 自指哈希 `6586b1c` 已落定）/ D2（必填插值 YAML 标量加引号最小修正）/ D3（负向判别式首缺失变量名次序不定，机制不变）/ D4（词面门 repo 全量 CI 权威 exclude 口径）处置合规；非阻断四项 N1（词面门四形态未独立复跑，风险极低）/ N2（负向首变量名次序）/ N3（运行时全栈联调 UNDETERMINED 沿 182-189 口径不判失败）/ N4（C-02 自指哈希 D1 固有）处置闭合，不开启订正笔 |
 | 受保护 token | 29 项既有集合不动；第 32 次 run 号 `37953261815` 以文本登记（沿 181-189 期口径，不扩集合）；收口真值 2030 持平 |
 | 状态 | TASK-190 全链路闭环，**外部终验达成**；**compose 口令治理课题封盘**；外部门槛计数更新为 **32 次**（31 绿 1 红）。下一课题候选待用户定向 |
+
+## 验收记录：TASK-191 harden-gateway-auth-posture strict 联动强制鉴权与网关 health 明细收口（2026-10-09，执行 agent）
+
+| 项 | 实测 |
+| --- | --- |
+| 开工基线 | 派发笔 HEAD `94ae3c1`（TASK-191 派发），父 `9bdd46a`（TASK-190 补记笔）；`origin/main...main` = `0 2`；工作树零残留；离线七模块 558（`36/41/119/137/149/64/12`）；`--static=record-service` 811；受保护 token 29 项开工实测 SUM=2030；词面门/契约门开工清 |
+| 实施笔 | ①派发笔入库四件套零改动 ②C-01 实施笔（AuthGlobalFilter.java init 头部插入 strictMode && !authEnabled 硬联动校验 + Javadoc 补充说明；AuthGlobalFilterTest.java 纯 JVM 确定性追加 3 例测试；gateway application.yml show-details: never 对齐六服务收口 + strict 注释段联动说明；README 鉴权小节插入上线前加固清单）③C-02 台账收口（本笔） |
+| 收口基线 | offline 全量 `--mode=offline test` 新七模块 `36/44/119/137/149/64/12` = **561**（基线 558→561，+3：gateway-service 41→44，只增不减）rc=0 全绿零跳过；`--static=record-service` Checkstyle **811 持平**未增，rc=1 预期；typed-router.d.ts 零漂移；契约门在途/无参均 rc=0；词面门改动文件集 + repo 全量（CI 权威 exclude 口径）四形态全 ZERO_HIT rc=1 + 探针三态 HIT rc=0；token 29 项只增不减（开工 2030、收口态 2030）；`git status --porcelain` 收口后为空 |
+| 验收要点证据 | strictMode && !authEnabled → IllegalStateException 生产姿态硬约束在位（置于 governanceToken 校验之前）；AuthGlobalFilterTest 3 例纯 JVM 单测落地（strict+disabled 拒启 / strict+enabled 干净启动 / lax 模式零扰动守护）；gateway show-details: never 收口匿名明细泄漏；README 上线前加固清单明确生产配置项；findings F01/F08 核实标注回填（F01 关闭，F08 六服务齐）；main Java 仅 1 文件 |
+| 三支裁决 | strict 联动强制鉴权 + health 明细收口 + README 加固清单 + 单测矩阵全绿（41→44）+ Java 561/811 不回归 + 零越界 + 全门禁绿 → **PASSED**；无 FAILED 项；外部终验待推送后下一次外部门槛 CI 绿（第 33 次） |
+| 偏差 | D1：C-02 自指哈希按台账终态化先例；D2：报错次序调整（strictMode 下同时关鉴权且缺凭证时首个报错指向鉴权开关，符合身份边界优先原则）；D3：词面门 repo 全量按 CI 权威 exclude 口径。详见 handoff §4 |
+| 未覆盖项 | 本课题全离线可验证，无 UNDETERMINED 项；运行时真机启动验证沿口径可选登记；性能/安全收益数字零 claim。详见 handoff §9 |
+| 提交表 | 派发笔 `94ae3c1`、C-01 `bade91b`、C-02 台账收口（显式哈希以回传报告为准）；父锚定 `0 2 → 0 3 → 0 4`；push 由指导侧另行授权执行 |
+| 受保护 token | 29 项既有集合不动；本课题推送后 CI 绿以文本登记，不扩集合；收口真值 2030 持平 |
+| 状态 | TASK-191 全链路闭环，**外部终验待推送后第 33 次外部门槛**；**网关鉴权生产姿态硬约束课题封盘**；下一课题候选待用户定向 |

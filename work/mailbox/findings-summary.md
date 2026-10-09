@@ -9,6 +9,7 @@ P0=必修（安全/数据丢失）；P1=应修（可靠性/性能）；P2=建议
 - 位置：gateway-service AuthGlobalFilter.java:79；application.yml:106（app.auth.enabled 默认 false）
 - 证据：enabled=false 时直接 `chain.filter(exchange)`，**不剥离**外部传入的 X-User-Id/X-Role 头；下游服务只认这两个头认定身份 → 任何人自带 `X-User-Id: 1` 即可冒充任意用户，连 token 都不需要。
 - 改法：① enabled=false 的降级路径也必须 remove X-User-Id/X-Role 后再透传；② 提供 profile 化默认（prod 强制 true）；③ README 明确「上线前必须开启」检查项。
+- 核实（TASK-191，2026-10-09）：**全部收口并关闭**。① 降级/白名单剥离已在 `add-auth-degrade-header-strip` 落地〔`stripIdentityHeaders()` + 3 单测〕，行号按 TASK-191 时点订正：:79 → :143-145/:195-204；② strict 联动硬校验与 ③ README 上线检查项由 TASK-191 收口，3 例纯 JVM 单测守护；F01 关闭。
 
 ### F02 中间件弱口令 + 全端口绑定宿主机（安全）
 - 位置：docker-compose.yml:43（MYSQL_ROOT_PASSWORD=root）、:136（POSTGRES_PASSWORD=postgres）、Redis 无密码（:65-76）、Nacos NACOS_AUTH_ENABLE=false（:23）、Grafana admin/admin（:181-182）；3306/6379/8848/9090/3000 全部端口映射宿主机。
@@ -69,6 +70,7 @@ P0=必修（安全/数据丢失）；P1=应修（可靠性/性能）；P2=建议
   但 **gateway application.yml:158 仍为 `always`**：TASK-125 spec 目标写「六个服务 always→never」，
   其只改文件只列了 5 个后端服务 + 网关 whitelist 一行，该行遂成遗漏；而 `/actuator/health`
   恰在网关白名单内且免 token → 匿名可读网关 health 组件明细。一行可修（P2，建议随下一轮治理面变更收尾）。
+- 收口核实（TASK-191，2026-10-09）：网关自身残留一处已由 TASK-191 收口。gateway application.yml（行号按 TASK-191 时点为 :164）`show-details: always` → `never`，六服务齐；`/actuator/health` 端点状态聚合仍可用，组件明细不再对匿名暴露。
 
 ### F09 自建 DLQ 与 RocketMQ 原生重试双轨 + 重试计数键泄漏（可靠性/工程）【仍在（2026-09-23 核实 TASK-128）】
 - 位置：verify-service VerifyEventConsumer.java:52-54,225-233；leaderboard-service LeaderboardEventConsumer.java:55-57,215-224（两处复制同构代码）
