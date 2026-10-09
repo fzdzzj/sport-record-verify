@@ -1957,4 +1957,13 @@ run `35802403723`（head `eba0108`，2026-09-23 00:31 UTC）——**web/build �
 | 未覆盖项 | 非 git + `--diff-file` 降级口径实跑（本仓工作流不发生，静态可读登记）；真 broker 往返 / 外部 CI 门处外部终验路径。详见 handoff §9 |
 | 订正：C-03 | **订正：C-03 修 handoff 词面残留与 token 收口真值**：独立复核阻断项 F1——handoff D2 行将词面门正则字面量逐字写入 tracked 文档，CI 词面门（未排除 work/mailbox/**）提交态实为红，且逐门实测表「四形态 ZERO_HIT 门绿」为 D2 行落盘前时点读数误标；处置：删字面量改「八词 alternation、字面量以 ci.yml 现行为准、不在文档复述」，同格与 §7 实测表改述实时序，追加 D4 行。N2——token 收口 1681 为 C-01 后时点读数误标，HEAD 实测收口真值 **1885**。零构建面，单笔 C-03，不跑 Java 门禁（480/811 沿 C-02 实测不动）。详见 handoff §4 D4 与 spec §7.8 |
 
-**TASK-184 补记位（push 触发 CI 后实测外部门槛，第 26 次达成后填）**：GitHub Actions run（新 run 号以文本登记，不扩受保护集合），HEAD 与 conclusion 待 push 后回填。
+**TASK-184 补记（push 触发 CI 后实测，外部门槛第 26 次达成，2026-10-09）**
+
+| 项目 | 内容 |
+| --- | --- |
+| 外部门槛 | GitHub Actions run `37875523302`（HEAD `e0da404f0b593d643c43d729171218f6d91001eb`，trigger=push/branch=main，https://github.com/fzdzzj/sport-record-verify/actions/runs/37875523302），conclusion=`success`；`web` 19s 全绿、`build` 2m54s 全绿（11 步流水线＋后置清理）；第 5 步 `Build and test`（`--mode=online verify`）与第 10 步 `Public docs wording self-check` 词面门全 success；本批 5 笔：`f3305a5`（TASK-183 第 25 次门槛补记笔）+ TASK-184 四笔——`0010d6c`（派发笔）、`1e1ee96`（C-01 契约门提取层收紧与在途判定重构）、`832242b`（C-02 台账收口）、`e0da404`（C-03 订正 handoff 词面残留与 token 收口真值，终态 HEAD） |
+| 推送与同步 | push `85937a0..e0da404` rc=0（推送时 `origin/main...main` = `0 5`，推送后 `0 0`），未建 PR |
+| 首次外部评判 | TASK-184 全链路（契约门 `mailbox-contract.sh` 提取层收紧〔列表行 token / 否定句式丢弃 / 删全文回退〕+ 在途判定重构〔handoff 基线变动门槛，已收口不重审〕+ README 同步，及台账闭环与 C-03 订正）首次经过外部验证；**第 10 步词面门绿 = F1 订正（C-03 去正则字面量）经 CI 实战验证有效**——若未订正该步必红；build 档 online 全量 verify（离线 480 与静态 811 同轮复验，Java 零改动证不回归） |
+| 指导侧终裁 | 独立复核五块 A/B/C/D/E 除 F1 外全 pass（八例矩阵独立复跑 ⑤⑥仍红 = 鉴别力不降、判据 A 与退出码语义零改动、Java 480/811 不回归）；F1（词面门正则字面量入 tracked 文档）经 C-03 LIGHT 档订正笔消除，终验三读数（词面门全仓 ZERO_HIT / 契约门无参 rc=0 / 提交链干净）亲手复跑通过，PASSED 恢复；N1（时点读数不可复现，`--baseline=HEAD` 清洁态等价复现已留证）、N2（token 收口真值 1885 订正）处置接受 |
+| 受保护 token | 29 项既有集合不动；第 26 次 run 号 `37875523302` 以文本登记（沿 TASK-181/182/183 期口径，不扩集合） |
+| 状态 | TASK-184 全链路闭环，**外部终验达成**；**契约门盲区课题封盘**（四次同型过冲 TASK-160/174/181/182 的根因两层修缮：正文即声明 + 文件名共占）；外部门槛计数更新为 **26 次**（25 绿 1 红）。下一课题候选：通知中心运营面扩展（点赞通知 / WS-SSE 推送升级 / 通知偏好）或其他方向，待用户定向 |
