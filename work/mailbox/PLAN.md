@@ -2102,3 +2102,14 @@ run `35802403723`（head `eba0108`，2026-09-23 00:31 UTC）——**web/build �
 | 提交表 | 派发笔 `a77e0bd`、C-01 `ad03817`、C-02 台账收口（显式哈希以回传报告为准）；父锚定 `0 2 → 0 3 → 0 4`；push 由指导侧另行授权执行 |
 | 受保护 token | 29 项既有集合不动；本课题推送后 CI 绿以文本登记，不扩集合；收口真值 2030 持平 |
 | 状态 | TASK-190 全链路闭环，**外部终验待推送后第 32 次外部门槛**；**compose 口令治理课题封盘**；下一课题候选待用户定向 |
+
+**TASK-190 补记（push 触发 CI 后实测，外部门槛第 32 次达成，2026-10-09）**
+
+| 项目 | 内容 |
+| --- | --- |
+| 外部门槛 | GitHub Actions run `37953261815`（HEAD `6586b1c2c60d9c4e67dffc7bd04a2b1cfac041bf`，trigger=push/branch=main，https://github.com/fzdzzj/sport-record-verify/actions/runs/37953261815），conclusion=`success`；`web` 全绿（frozen lockfile / type-check / build / typed-router match committed）、`build` 全绿；`Build and test`（`--mode=online verify`，离线新基线首次以 **558**（`36/41/119/137/149/64/12`）在 CI 复验）与词面门全 success；本批 4 笔：`bc2388e`（TASK-189 第 31 次门槛补记笔）+ TASK-190 三笔——`a77e0bd`（派发笔）、`ad03817`（C-01 compose 口令 .env 必填插值与十端口回环及四服务占位符与判别式单测）、`6586b1c`（C-02 台账收口，终态 HEAD） |
+| 推送与同步 | push `220767b..6586b1c` rc=0（推送时 `origin/main...main` = `0 4`，推送后 `0 0`），未建 PR |
+| 首次外部评判 | TASK-190 全链路（compose 中间件口令治理：三处口令 `${VAR:?}` 必填插值〔无弱默认兜底〕+ healthcheck 同源 + 十端口全绑 127.0.0.1 回环 + 头部仅限本地警示；env.example 占位值升级 SvLocal 模式；README 第 0 步 cp .env 引导；user/verify/leaderboard/mapmatch 四服务数据源口令补占位符；四服务 DataSourcePasswordEnvBindingTest 判别式各 2 例，及台账闭环）首次经过外部验证；build 档 online 全量 verify **558 新基线**（user-service 117→119、verify-service 147→149、leaderboard-service 62→64、mapmatch-service 10→12）+ 静态 811 同轮复验（ci.yml 零触碰下 compose parse 门维持绿） |
+| 指导侧终裁 | 独立复核五块全 pass 无阻断项，PASSED 维持。读数交叉：指导侧亲跑（offline 558 逐位 / 静态 811 / compose 三判别式 / 契约门 / token 2030 独立复算）与复核子 agent 独立复跑逐项一致，与执行侧自报亦逐项一致（本课题无虚报）；token 收口真值 **2030** 持平零自增；偏差 D1（C-02 自指哈希 `6586b1c` 已落定）/ D2（必填插值 YAML 标量加引号最小修正）/ D3（负向判别式首缺失变量名次序不定，机制不变）/ D4（词面门 repo 全量 CI 权威 exclude 口径）处置合规；非阻断四项 N1（词面门四形态未独立复跑，风险极低）/ N2（负向首变量名次序）/ N3（运行时全栈联调 UNDETERMINED 沿 182-189 口径不判失败）/ N4（C-02 自指哈希 D1 固有）处置闭合，不开启订正笔 |
+| 受保护 token | 29 项既有集合不动；第 32 次 run 号 `37953261815` 以文本登记（沿 181-189 期口径，不扩集合）；收口真值 2030 持平 |
+| 状态 | TASK-190 全链路闭环，**外部终验达成**；**compose 口令治理课题封盘**；外部门槛计数更新为 **32 次**（31 绿 1 红）。下一课题候选待用户定向 |
