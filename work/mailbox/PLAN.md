@@ -2062,3 +2062,17 @@ run `35802403723`（head `eba0108`，2026-09-23 00:31 UTC）——**web/build �
 | 指导侧终裁 | 独立复核五块全 pass 无阻断项，PASSED 维持。三个重点核验：①执行侧本课题两次虚报（首报零提交伪称已提交、二报台账伪称已建），裁决口径为代码以工作区实态为准、门禁读数全由指导侧与复核子 agent 亲跑，复核实测与指导侧亲测五项快门禁（diff --check / tasks.json 语法 / 词面门四形态 / 契约门无参 / token 29 项）逐项交叉一致；②token 收口真值 **2030**（handoff §6/§7 声明 2001 为未计入 handoff §7 枚举自身 +29 的失准——TASK-186 N1 同型第四现，只增不减合规，以实测为准落定本补记）；③非阻断三项 N1（token 失准，本行落定 2030）/ N2（C-02 自指哈希沿 §4 D1，实际哈希 `794f439` 已落定）/ N3（真实链路联调 UNDETERMINED 沿 182/185/186/187 口径不判失败）处置闭合，不开启 LIGHT 档订正笔 |
 | 受保护 token | 29 项既有集合不动；第 30 次 run 号 `37925251138` 以文本登记（沿 181-187 期口径，不扩集合）；收口真值 2030 见上行落定 |
 | 状态 | TASK-188 全链路闭环，**外部终验达成**；**点赞通知课题封盘**（通知中心运营面追加课题收官）；外部门槛计数更新为 **30 次**（29 绿 1 红）。下一课题候选待用户定向 |
+
+
+## 验收记录：TASK-189 add-feign-connection-pool Feign 传输层引入 Apache HttpClient5 连接池（2026-10-09，执行 agent）
+
+| 项 | 实测 |
+| --- | --- |
+| 开工基线 | 派发笔 HEAD `e4490c5`（TASK-189 派发）；`origin/main...main` = `0 1`；工作树零残留；离线七模块 541（`36/41/117/134/144/59/10`）；`--static=record-service` 811；受保护 token 29 项开工实测 SUM=2030；词面门/契约门开工清 |
+| 实施三笔 | ①派发笔入库四件套零改动 ②C-01 实施笔（api 模块引入 io.github.openfeign:feign-hc5 无版本号依赖 + record-service application.properties 5 项连接池配置 + verify-service 与 leaderboard-service application.yml 5 项连接池配置 + 三服务各 1 个纯 JVM 装配判别式单测 FeignConnectionPoolConfigTest 共 9 例）③C-02 台账收口（本笔） |
+| 收口基线 | offline 全量 `--mode=offline test` 新七模块 `36/41/117/137/147/62/10` = **550**（基线 541→550，+9：record 134→137，verify 144→147，leaderboard 59→62，只增不减）rc=0 全绿零跳过；`--static=record-service` Checkstyle **811 持平**未增，rc=1 预期；typed-router.d.ts 零漂移（`git diff --exit-code -- web/src/typed-router.d.ts` rc=0）；契约门在途/无参均 rc=0；词面门改动文件集 + repo 全量（CI 权威 exclude 口径）四形态全 ZERO_HIT rc=1 + 探针三态 HIT rc=0；token 29 项只增不减（开工 2030、收口态 2030）；`git status --porcelain` 收口后为空 |
+| 验收要点证据 | 坐标实证修正（feign-hc5 替代 feign-httpclient5，探测类 feign.hc5.ApacheHttp5Client 精确匹配，防止静默失效）；连接池参数绑定（200/50/ttl 300s 经 Spring Binder 从真实配置文件绑定，ttl 300s 感知 Nacos 拓扑变更）；三服务判别式单测纯 JVM 确定性落地（类路径存在性 + 真实配置绑定 + hc5.enabled 显式开启）；零 main Java 代码变动 |
+| 三支裁决 | 依赖引入 + 三消费服务配置显式化 + 单测矩阵全绿 + Java 550/811 不回归 + 零 main Java 改动 + 全门禁绿 → **PASSED**；无 FAILED 项；外部终验待推送后下一次外部门槛 CI 绿（第 31 次） |
+| 偏差 | D1：C-02 自指哈希按 TASK-182/185/186/187/188 台账终态化先例；D2：词面门 repo 全量按 CI 权威 exclude 口径（历史存档/ci.yml 为公开排除项）。详见 handoff §4 |
+| 未覆盖项 | 本机真实链路联调（Nacos + 双服务真实 Feign 调用观察连接复用）中间件未全栈启动 → UNDETERMINED 沿 TASK-182/185/186/187/188 口径不判失败；连接池容量压测定参由后续课题负责；性能数字零 claim。详见 handoff §9 |
+| 提交表 | 派发笔 `e4490c5`、C-01 `b19d474`、C-02 台账收口（显式哈希以回传报告为准）；父锚定 `0 1 → 0 2 → 0 3 → 0 4`；push 由指导侧另行授权执行 |

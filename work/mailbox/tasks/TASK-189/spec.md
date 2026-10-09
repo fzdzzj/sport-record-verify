@@ -108,14 +108,31 @@ verify-service / leaderboard-service application.yml（spring.cloud.openfeign �
 
 ### 7.1 提交记录
 
-- 派发笔：`（由回传报告以显式哈希给出）` `docs(spec): 派发 TASK-189 Feign 连接池提案与任务书`
-- C-01 实施笔：`（由回传报告以显式哈希给出）` `feat(api): Feign 传输层引入 Apache HttpClient5 连接池（TASK-189）`
+- 派发笔：`e4490c5186f306fb70ba79eac3f6a84da93a4c35`（`e4490c5`） `docs(spec): 派发 TASK-189 Feign 连接池提案与任务书`
+- C-01 实施笔：`b19d4745fb3623c2a864e4a1f68607a23fcdae0a`（`b19d474`） `feat(api): Feign 传输层引入 Apache HttpClient5 连接池（TASK-189）`
 - C-02 台账笔：`（由回传报告以显式哈希给出，见 handoff 提交表）` `docs(mailbox): 登记 TASK-189 Feign 连接池验收与台账闭环（TASK-189）`
 
 ### 7.2 单测矩阵读数（offline，C-01 实施态实测）
 
-- （执行侧回填：三服务 FeignConnectionPoolConfigTest 各自 Tests run / Failures / Errors / Skipped 读数与三用例逐项结果）
+- record-service：`FeignConnectionPoolConfigTest` Tests run: 3, Failures: 0, Errors: 0, Skipped: 0
+  - `hc5ClientOnClasspath`：pass
+  - `poolParametersBoundFromRealConfigFile`：pass（maxConnections=200, maxConnectionsPerRoute=50, timeToLive=300, timeToLiveUnit=SECONDS）
+  - `hc5EnabledKeyPresent`：pass（spring.cloud.openfeign.httpclient.hc5.enabled=true）
+- verify-service：`FeignConnectionPoolConfigTest` Tests run: 3, Failures: 0, Errors: 0, Skipped: 0
+  - `hc5ClientOnClasspath`：pass
+  - `poolParametersBoundFromRealConfigFile`：pass（maxConnections=200, maxConnectionsPerRoute=50, timeToLive=300, timeToLiveUnit=SECONDS）
+  - `hc5EnabledKeyPresent`：pass（spring.cloud.openfeign.httpclient.hc5.enabled=true）
+- leaderboard-service：`FeignConnectionPoolConfigTest` Tests run: 3, Failures: 0, Errors: 0, Skipped: 0
+  - `hc5ClientOnClasspath`：pass
+  - `poolParametersBoundFromRealConfigFile`：pass（maxConnections=200, maxConnectionsPerRoute=50, timeToLive=300, timeToLiveUnit=SECONDS）
+  - `hc5EnabledKeyPresent`：pass（spring.cloud.openfeign.httpclient.hc5.enabled=true）
 
 ### 7.3 门禁读数（收口态实测）
 
-- （执行侧回填：offline 全量逐位 / 811 / 契约门 / 词面门四形态 / token 29 项前后 / 只改清单全等核验 / 离线依赖面核验读数）
+- offline 全量逐位：`36/41/117/137/147/62/10` = **550**（基线 541 只增不减，+9 全落 record 134→137 / verify 144→147 / leaderboard 59→62 三模块），Failures/Errors/Skipped 全 0，BUILD SUCCESS
+- 静态门：`--static=record-service` Checkstyle **811 持平**未增，rc=1 为基线违规模块预期
+- 契约门在途：`bash scripts/verify/mailbox-contract.sh --open TASK-189 --baseline=e4490c5` rc=0（判据 A 两件套齐 + 判据 B 清单一致）
+- 词面门四形态：改动文件集与 repo 全量（CI 权威 exclude 口径）四形态（default / C / zh_CN.UTF-8 / C.UTF-8）全 ZERO_HIT rc=1，探针三态 HIT rc=0，PROBE_GONE=yes
+- token 29 项：开工实测 SUM=2030；C-01 后实测 SUM=2030；收口态实测 SUM=2030 只增不减（新文档不枚举 token 字面量，沿 TASK-188 N1 教训）
+- 只改清单全等核验：C-01 恰白名单 7 文件，零 main Java 代码；C-02 恰白名单 4 文件；typed-router.d.ts 零漂移（`git diff --exit-code -- web/src/typed-router.d.ts` rc=0）
+- 离线依赖面核验读数：.m2-repo 四构件（feign-hc5 13.2.1 / httpclient5 5.2.3 / httpcore5 5.2.4 / httpcore5-h2 5.2.4）`ls` 留证在位，首跑 offline 绿，无需在线补料
