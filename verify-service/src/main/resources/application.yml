@@ -19,6 +19,15 @@ spring:
     openfeign:
       circuitbreaker:
         enabled: true
+      # Feign 传输层连接池（TASK-189，findings F07）：hc5 池化客户端装配（默认 true 显式化）；
+      # 200/50 官方默认显式化；ttl 300s 防连接粘住已下线实例（Nacos 拓扑感知）
+      httpclient:
+        hc5:
+          enabled: true
+        max-connections: 200
+        max-connections-per-route: 50
+        time-to-live: 300
+        time-to-live-unit: seconds
       # 全局默认超时 + mapmatch 显式覆盖（同值，便于检索）
       client:
         config:
