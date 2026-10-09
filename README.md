@@ -189,6 +189,12 @@ stderr 打出"按口径记为未覆盖"的提示，台账须照此记录，不�
 - **refresh 轮换**：refresh 存 Redis（`auth:refresh:{userId}:{jti}`，TTL=7d），刷新时 GETDEL 原子作废旧 jti → 防重放。
 - **降级开关**：`app.auth.enabled`（默认 false）= 旧行为（显式携带 userId，压测脚本不破坏）；
   切 true 强制鉴权 + 数据隔离（需同步更新压测脚本带 token）。
+- **上线前加固清单**（TASK-191 生产姿态硬约束）：
+  - 开启鉴权：`APP_AUTH_ENABLED=true`（环境变量）或 yml 覆盖（网关唯一身份边界，关闭时业务面裸透传）
+  - `JWT_SECRET` 强随机注入（≥32 字节，与 user-service 一致）
+  - `GOVERNANCE_TOKEN` 注入（治理面专用凭证，无演示默认）
+  - `APP_SECURITY_STRICT=true`：密钥缺失或鉴权关闭即拒启（本课题联动后为双重硬约束）
+  - actuator 收敛：见既有「生产 profile 应收敛 actuator」说明（:216 附近）
 - **登录失败锁定**（add-login-lockout）：窗口（15min）内连续登录失败达阈值（5）→ 写 `auth:lock:{phone}`
   （Redis，TTL=锁定时长），登录入口前置检查直接拒绝（403/1002「账号已临时锁定」，不校验密码、防撞库 + 省 BCrypt）；
   到期自动解锁、登录成功清零计数与锁定；`app.auth.lock.*` 可配，`enabled=false` 回退仅计数告警，Redis 故障降级仅告警不阻断登录（见 ADR-0007）。

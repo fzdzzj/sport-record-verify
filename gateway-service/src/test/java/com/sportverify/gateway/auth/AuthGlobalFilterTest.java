@@ -17,7 +17,10 @@ import java.nio.charset.StandardCharsets;
 import java.util.List;
 import java.util.concurrent.atomic.AtomicReference;
 
+import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
  * AuthGlobalFilter 单元测试（治理面角色校验：add-admin-rbac，见 ADR-0007）。
@@ -279,5 +282,44 @@ class AuthGlobalFilterTest {
             return Mono.empty();
         }).block();
         return exchange;
+    }
+
+    /**
+     * strict=true 且 authEnabled=false 时，网关拒绝启动并抛 IllegalStateException。
+     * 校验异常信息包含 app.security.strict 与 app.auth.enabled 两个开关名。
+     */
+    @Test
+    void strictModeWithAuthDisabledFailsStartup() {
+        AuthGlobalFilter fresh = new AuthGlobalFilter(parser);
+        ReflectionTestUtils.setField(fresh, "strictMode", true);
+        ReflectionTestUtils.setField(fresh, "authEnabled", false);
+        IllegalStateException ex = assertThrows(IllegalStateException.class, fresh::init);
+        assertTrue(ex.getMessage().contains("app.security.strict"));
+        assertTrue(ex.getMessage().contains("app.auth.enabled"));
+    }
+
+    /**
+     * strict=true、authEnabled=true 且治理凭证有效时，init() 正常完成，不抛异常。
+     * 确保联动不误伤合法的生产姿态。
+     */
+    @Test
+    void strictModeWithAuthEnabledInitializesCleanly() {
+        AuthGlobalFilter fresh = new AuthGlobalFilter(parser);
+        ReflectionTestUtils.setField(fresh, "strictMode", true);
+        ReflectionTestUtils.setField(fresh, "authEnabled", true);
+        ReflectionTestUtils.setField(fresh, "governanceToken", "test-governance-token");
+        assertDoesNotThrow(fresh::init);
+    }
+
+    /**
+     * strict=false、authEnabled=false 时，init() 正常完成，不抛异常。
+     * 守护 lax 默认姿态零扰动，确保本地演示与压测口径不受影响。
+     */
+    @Test
+    void laxModeKeepsLocalDemoUnaffected() {
+        AuthGlobalFilter fresh = new AuthGlobalFilter(parser);
+        ReflectionTestUtils.setField(fresh, "strictMode", false);
+        ReflectionTestUtils.setField(fresh, "authEnabled", false);
+        assertDoesNotThrow(fresh::init);
     }
 }

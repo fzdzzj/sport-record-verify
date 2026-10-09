@@ -34,7 +34,7 @@ import java.util.List;
  *       X-Gateway-Governance-Token；仅当 auth.enabled、JWT 有效、role=ADMIN、admin.enabled、
  *       专用凭证均有效时向治理目标注入。任一前提不成立时治理目标失败关闭。普通路径不注入。
  *       独立于 X-Internal-Token；专用令牌非签名，持有者可复用是剩余风险。</li>
- *   <li><b>降级</b>：auth.enabled=false 时非治理路径透传；治理路径仍失败关闭。</li>
+ *   <li><b>降级</b>：auth.enabled=false 时非治理路径透传；治理路径仍失败关闭。strict=true 时鉴权关闭即启动失败（身份边界与密钥齐同列生产硬约束）。</li>
  * </ul>
  *
  * <p>透传路径剥离外部 X-User-Id/X-Role（add-auth-degrade-header-strip）。</p>
@@ -99,6 +99,10 @@ public class AuthGlobalFilter implements GlobalFilter, Ordered {
         // 白名单/治理路径必须自行解析，否则 yml 配置永不命中
         whitelist = splitPatterns(whitelistConfig);
         adminPaths = splitPatterns(adminPathsConfig);
+        if (strictMode && !authEnabled) {
+            throw new IllegalStateException(
+                    "app.security.strict=true 但 app.auth.enabled=false：生产姿态必须开启鉴权，网关拒绝启动");
+        }
         if (strictMode && !isValidGovernanceToken(governanceToken)) {
             throw new IllegalStateException(
                     "app.security.strict=true 但 app.governance.token 未显式注入，网关拒绝启动");

@@ -105,7 +105,7 @@ app:
     token: ${GOVERNANCE_TOKEN:}
   # 密钥治理开关（add-strict-secret-fail-fast / TASK-126）：true=任一密钥项缺失
   # （JWT 密钥、内部接口 token 回落到演示默认值）即启动失败；默认 false 本地演示零扰动，
-  # 下方各密钥的演示默认值原样保留
+  # 下方各密钥的演示默认值原样保留；true 时强制 app.auth.enabled=true，鉴权关闭即启动失败（TASK-191 联动）
   security:
     strict: false
   auth:
@@ -161,7 +161,8 @@ management:
             requests: true
   endpoint:
     health:
-      show-details: always
+      # 对齐其余五服务（TASK-125 口径收尾）；health 状态聚合仍可用，仅组件明细不再匿名暴露（health 在网关白名单内免 token）
+      show-details: never
 
 # 请求贯穿：MDC traceId（add-request-tracing）
 logging:
