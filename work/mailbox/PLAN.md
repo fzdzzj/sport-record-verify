@@ -2051,3 +2051,14 @@ run `35802403723`（head `eba0108`，2026-09-23 00:31 UTC）——**web/build �
 | 偏差 | D1：C-02 自指哈希按 TASK-182/185/186/187 台账终态化先例；D2：词面门 repo 全量按 CI 权威 exclude 口径（历史存档/ci.yml 为公开排除项）。详见 handoff §4 |
 | 未覆盖项 | 本机真实链路联调（RocketMQ broker + 双服务 + Redis 端到端点赞到通知推送）中间件未全栈启动 → UNDETERMINED 沿 TASK-182/185/186/187 口径不判失败；best-effort 无补偿与终身 dedupKey 为设计说明项。详见 handoff §9 |
 | 提交表 | 派发笔 `c34eb94`、C-01 `1b208b1`、C-02 台账收口（显式哈希以回传报告为准）；父锚定 `0 1 → 0 2 → 0 3 → 0 4`；push 由指导侧另行授权执行 |
+
+**TASK-188 补记（push 触发 CI 后实测，外部门槛第 30 次达成，2026-10-09）**
+
+| 项目 | 内容 |
+| --- | --- |
+| 外部门槛 | GitHub Actions run `37925251138`（HEAD `794f439d6605c086e57b21c101cf70cf782419a4`，trigger=push/branch=main，https://github.com/fzdzzj/sport-record-verify/actions/runs/37925251138），conclusion=`success`；`web` 21s 全绿（frozen lockfile / type-check / build / typed-router match committed）、`build` 2m51s 全绿（11 步流水线＋后置清理）；第 5 步 `Build and test`（`--mode=online verify`，离线新基线首次以 **541**（`36/41/117/134/144/59/10`）在 CI 复验）与第 10 步 `Public docs wording self-check` 词面门全 success；本批 4 笔：`f013594`（TASK-187 第 29 次门槛补记笔）+ TASK-188 三笔——`c34eb94`（派发笔）、`1b208b1`（C-01 点赞事件生产端与消费端落地）、`794f439`（C-02 台账收口，终态 HEAD） |
+| 推送与同步 | push `7f073e3..794f439` rc=0（推送时 `origin/main...main` = `0 4`，推送后 `0 0`），未建 PR |
+| 首次外部评判 | TASK-188 全链路（点赞通知：record-like-events 独立 topic + notification-like-consumer-group 独立消费组 / RecordLikeService 热路径 firstLike 发布与自赞短路 / LikeEventProducer best-effort 异步发送 / LikeEventConsumer 编程式监听与 SETNX 24h 幂等 / RECORD_LIKED 偏好闸门与前端第四开关，及台账闭环）首次经过外部验证；build 档 online 全量 verify **541 新基线**（record-service 127→134、user-service 110→117）+ 静态 811 同轮复验（record-verify-events topic、三既有消费组、WS 管道、既有 REST 契约、typed-router 零触碰） |
+| 指导侧终裁 | 独立复核五块全 pass 无阻断项，PASSED 维持。三个重点核验：①执行侧本课题两次虚报（首报零提交伪称已提交、二报台账伪称已建），裁决口径为代码以工作区实态为准、门禁读数全由指导侧与复核子 agent 亲跑，复核实测与指导侧亲测五项快门禁（diff --check / tasks.json 语法 / 词面门四形态 / 契约门无参 / token 29 项）逐项交叉一致；②token 收口真值 **2030**（handoff §6/§7 声明 2001 为未计入 handoff §7 枚举自身 +29 的失准——TASK-186 N1 同型第四现，只增不减合规，以实测为准落定本补记）；③非阻断三项 N1（token 失准，本行落定 2030）/ N2（C-02 自指哈希沿 §4 D1，实际哈希 `794f439` 已落定）/ N3（真实链路联调 UNDETERMINED 沿 182/185/186/187 口径不判失败）处置闭合，不开启 LIGHT 档订正笔 |
+| 受保护 token | 29 项既有集合不动；第 30 次 run 号 `37925251138` 以文本登记（沿 181-187 期口径，不扩集合）；收口真值 2030 见上行落定 |
+| 状态 | TASK-188 全链路闭环，**外部终验达成**；**点赞通知课题封盘**（通知中心运营面追加课题收官）；外部门槛计数更新为 **30 次**（29 绿 1 红）。下一课题候选待用户定向 |
