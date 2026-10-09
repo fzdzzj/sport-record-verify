@@ -1,0 +1,25 @@
+[
+  {
+    "number": 1,
+    "category": "实施",
+    "task": "偏好闸门与读写链路（后端+前端）",
+    "steps": [
+      { "step": "DB 与后端读：sql/01-user-db.sql 追加 notification_preference(user_id, type, enabled, updated_at, PK(user_id, type))；entity/NotificationPreference + mapper（upsert 用 INSERT ... ON DUPLICATE KEY UPDATE）+ NotificationPreferenceService（getPreferences 缺行补默认全 true / upsert 幂等）", "completed": false },
+      { "step": "后端闸门与端点：NotificationService.createNotification 首行偏好闸门（关闭类型 return false 不落库不推送，返回语义扩展 javadoc 载明）；NotificationController 增 GET/PUT /api/notifications/preferences 两端点 + View DTO（沿既有 controller 模式与 X-User-Id 口径）", "completed": false },
+      { "step": "前端：client.ts 尾部纯追加（NotificationPreferenceView DTO + getNotificationPreferences / updateNotificationPreferences 两函数，/user/api/notifications 前缀不传 userId）；notifications.page.vue 内嵌偏好卡片（3 个 a-switch + 保存，未登录不发请求，失败沿 [code] message alert 内规）；typed-router.d.ts / App.vue / notificationWs.ts / useNotificationBell.ts 零触碰", "completed": false },
+      { "step": "单测（Mockito 离线确定性）：偏好闸门三态（关闭不落库不推送返回 false / 缺省与开启正常落库推送返回 true）；getPreferences 缺行补默认；upsert 重复同值幂等；端点契约按 user-service 既有 controller 测试先例（无先例则 service 层覆盖并登记）", "completed": false }
+    ],
+    "passes": false
+  },
+  {
+    "number": 2,
+    "category": "验收",
+    "task": "门禁与台账闭环",
+    "steps": [
+      { "step": "Java offline 全量新基线逐位登记（只增不减，预计 +10 上下，以实测为准）+ --static=record-service 811 不增；scratch DB 建表与 upsert 行为验证（沿 TASK-182 口径）；web 三件套 + frozen-lockfile 预演 + typed-router 零漂移（零前端依赖增量）", "completed": false },
+      { "step": "契约门在途 --open TASK-187 --baseline=<派发笔哈希> rc=0；词面门四形态 ZERO_HIT + 探针三态（正则字面量不入任何 tracked 文档）；token 29 项只增不减（口径 repo 全量 git grep -cF，开工实测为准，收口读数以收口态实测）", "completed": false },
+      { "step": "台账闭环：tasks.json 全勾、PLAN.md 纯追加登记、handoff 留证（含闸门位置裁决记录、不追溯说明项、SETNX 窗口边界说明项、UNDETERMINED 联调口径）；推送后下一次外部门槛 CI 绿为外部终验", "completed": false }
+    ],
+    "passes": false
+  }
+]
