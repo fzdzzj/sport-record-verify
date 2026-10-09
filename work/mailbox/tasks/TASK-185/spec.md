@@ -79,3 +79,52 @@
 ## 7. 收口记录（执行侧 C-02 纯追加）
 
 （空位：提交哈希、单测矩阵读数、web 三件套读数、Java 新基线与 811、token 前后读数、联调留证或 UNDETERMINED、未覆盖项、三支裁决，由执行侧回填）
+
+### 7.1 提交哈希
+
+| 笔 | 提交 | 主题 |
+| --- | --- | --- |
+| 派发笔 | `aaad18d` | `docs(spec): 派发 TASK-185 通知 WS 推送提案与任务书` |
+| C-01 实施 | `d19dc74` | `feat(user): 通知实时推送 WebSocket+STOMP 管道并前端接线（TASK-185）` |
+| C-02 台账收口 | 见 §7 末尾（本笔自身哈希） | `docs(mailbox): 登记 TASK-185 WS 推送验收与台账闭环（TASK-185）` |
+
+### 7.2 单测矩阵读数（offline，C-01 提交前实测）
+
+| 用例类 | 断言内容 | 读数 |
+| --- | --- | --- |
+| `StompConnectAuthInterceptorTest` | 有效 token → Principal=userId；无效/过期 → 拒；缺失 → 拒；SUBSCRIBE 直通 | 5 run, 0 fail |
+| `WebSocketNotificationConfigTest` | 端点 /ws-notifications、broker /queue、用户前缀 /user、心跳 10s/10s、TaskScheduler 注入、拦截器注册 | 4 run, 0 fail |
+| `NotificationPushRelayTest` | 扇出 → convertAndSendToUser 正确用户/目标、JSON 往返全等；无会话不抛；发布序列化；发布失败不抛 | 6 run, 0 fail |
+| `NotificationServicePushTest` | 落库成功 → publish 一次且载荷正确；落库失败(0行) → 不 publish；publish 异常不影响返回 true | 3 run, 0 fail |
+
+### 7.3 web 三件套读数（收口态）
+
+| 项 | 读数 | rc |
+| --- | --- | --- |
+| type-check | `vue-tsc --noEmit` 无输出 | 0 |
+| build | `vite build` ✓ built（TMP 工作区化见 handoff §4 D1） | 0 |
+| typed-router.d.ts 零漂移 | `git diff --exit-code -- web/src/typed-router.d.ts` 无声 | 0 |
+| lockfile 预演 | `pnpm --dir web install --frozen-lockfile` | 0 |
+
+### 7.4 Java 新基线与 811
+
+- offline 全量：`36/41/81/127/144/59/10` = **498**（user-service 63→81，只增不减；其余六模块逐位不变）。
+- `--static=record-service` Checkstyle **811 持平**（未增）。
+- 新依赖 `spring-boot-starter-websocket:3.2.4` 由父 pom import 的 spring-boot-dependencies BOM 管理，版本树零冲突；本机离线仓需补充该构件（见 handoff §4 D1）。
+
+### 7.5 token 前后读数
+
+- 开工实测 SUM=**1885**（口径 repo 全量 `git grep -cF`，29 项逐值见 handoff §7）。
+- 收口复测只增不减（PASSED 台帐与 handoff 不引入任何受保护 token 字面量）。
+
+### 7.6 联调留证
+
+本机真实链路（网关 + user-service + Redis + 浏览器 WS）因中间件环境不可达未展开，登记为 **UNDETERMINED**（沿 TASK-182 IT 口径，不判失败）；链路语义等价由单测逐字覆盖。
+
+### 7.7 三支裁决
+
+**PASSED**：管道三新类 + 前端接线落地 + 单测矩阵全绿 + web 三件套 + Java 新基线只增不减（498）+ 811 不增 + 全门禁绿（含 TASK-184 修缮后契约门首个受益验证 rc=0）。无 FAILED 项。外部终验待推送后下一次外部门槛 CI 绿。
+
+### 7.8 C-02 台账笔哈希（本笔收口）
+
+C-02 提交哈希：`（由回传报告以显式哈希给出，见 handoff §8）`

@@ -1967,3 +1967,15 @@ run `35802403723`（head `eba0108`，2026-09-23 00:31 UTC）——**web/build �
 | 指导侧终裁 | 独立复核五块 A/B/C/D/E 除 F1 外全 pass（八例矩阵独立复跑 ⑤⑥仍红 = 鉴别力不降、判据 A 与退出码语义零改动、Java 480/811 不回归）；F1（词面门正则字面量入 tracked 文档）经 C-03 LIGHT 档订正笔消除，终验三读数（词面门全仓 ZERO_HIT / 契约门无参 rc=0 / 提交链干净）亲手复跑通过，PASSED 恢复；N1（时点读数不可复现，`--baseline=HEAD` 清洁态等价复现已留证）、N2（token 收口真值 1885 订正）处置接受 |
 | 受保护 token | 29 项既有集合不动；第 26 次 run 号 `37875523302` 以文本登记（沿 TASK-181/182/183 期口径，不扩集合） |
 | 状态 | TASK-184 全链路闭环，**外部终验达成**；**契约门盲区课题封盘**（四次同型过冲 TASK-160/174/181/182 的根因两层修缮：正文即声明 + 文件名共占）；外部门槛计数更新为 **26 次**（25 绿 1 红）。下一课题候选：通知中心运营面扩展（点赞通知 / WS-SSE 推送升级 / 通知偏好）或其他方向，待用户定向 |
+## 验收记录：TASK-185 add-notification-ws-push 通知实时推送 WebSocket+STOMP 升级（2026-10-09，执行 agent）
+
+| 项 | 实测 |
+| --- | --- |
+| 开工基线 | 派发笔 HEAD `aaad18d`（TASK-185 派发）；`origin/main...main` = `0 1`；工作树仅在途两件套；`--static=record-service` 811；受保护 token 29 项开工实测 SUM=1885；词面门/契约门开工清（bash 需提权创建信号管道，本机 MSYS 环境面） |
+| 实施三笔 | ①派发笔入库四件套零改动 ②C-01 实施笔（后端三新类 + NotificationService 发布钩子 + gateway 白名单显式化 + 前端 @stomp/stompjs 真实安装 + notificationWs.ts / useNotificationBell.ts / notifications.page.vue 接线 + 四单测类）③C-02 台账收口（本笔） |
+| 收口基线 | web 三件套：type-check rc=0、build rc=0（TMP 工作区化）、typed-router.d.ts 零漂移、lockfile frozen 预演 rc=0；Java 抽验 offline 全量 `36/41/81/127/144/59/10` = **498** 逐位 rc=0（user-service 63→81，只增不减）+ `--static=record-service` Checkstyle **811 持平** rc=1 预期；契约门在途 `--baseline=aaad18d --open TASK-185` rc=0（TASK-184 修缮后首个受益验证：改 pom.xml 不再触发历史「零触碰」误伤）；词面门改动文件集 + repo 全量（CI 权威 exclude 口径）四形态 ZERO_HIT + 探针三态 rc=0；token 29 项只增不减（开工 1885、C-01 后 1914）；`git status --porcelain` 收口后为空 |
+| 验收要点证据 | 鉴权三态（有效 token → Principal=userId / 无效过期缺失 → 拒 / SUBSCRIBE 直通）；relay 扇出（RTopic → convertAndSendToUser 正确用户与目标、JSON 往返全等、跨实例无双推机制）；发布钩子（落库成功才 publish、失败不 publish、publish 异常不影响返回 true）；前端未登录不开流不开轮询、60s 轮询兜底零删改、reconnectDelay 内建重连 |
+| 三支裁决 | 后端 + 前端 + 单测矩阵全绿 + web 三件套 + Java 498/811 不回归 + 全门禁绿 → **PASSED**；无 FAILED 项；外部终验待推送后下一次外部门槛 CI 绿（第 27 次） |
+| 偏差 | D1：新后端依赖 `spring-boot-starter-websocket:3.2.4` 在项目离线仓 `.m2-repo` 缺缓存（BOM 管理版本树零冲突），经 `mvn-verify.sh --mode=online test` 解析后补入 gitignored `.m2-repo`，offline 498 全绿；D2：C-02 自指哈希按 TASK-182/183 台账终态化先例；D3：词面门 repo 全量按 CI 权威 exclude 口径（历史存档/ci.yml 为公开排除项）。详见 handoff §4 |
+| 未覆盖项 | 本机真实链路联调（网关 ws upgrade + 真 Redis 扇出 + 浏览器收推）中间件不可达 → UNDETERMINED 沿 TASK-182 口径不判失败；SockJS 降级 / 已读回执 / 外部 STOMP broker relay 明确不做。详见 handoff §9 |
+| 提交表 | 派发笔 `aaad18d`、C-01 `d19dc74`、C-02 台账收口（显式哈希以回传报告为准）；父锚定 `0 1 → 0 2 → 0 3 → 0 4`；push 由指导侧另行授权执行 |
