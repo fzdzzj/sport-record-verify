@@ -52,12 +52,48 @@
         />
       </div>
     </a-card>
+
+    <!-- 通知偏好设置卡片（TASK-187 add-notification-preference） -->
+    <a-card title="通知偏好" class="mb-4">
+      <p class="text-gray-600 mb-2">按类型开关通知接收（缺行默认开启）。关闭后该类型新通知不落库、不推送、不计未读；重新开启仅对未来通知生效。</p>
+      <div v-if="!loggedIn" class="text-gray-400">未登录：通知需登录会话，当前仅展示空态，不发起请求。</div>
+      <div v-else>
+        <div class="space-y-4 max-w-md">
+          <div class="flex items-center justify-between py-2 border-b">
+            <span>记录通过</span>
+            <a-switch v-model:checked="prefRecordVerified" />
+          </div>
+          <div class="flex items-center justify-between py-2 border-b">
+            <span>记录驳回</span>
+            <a-switch v-model:checked="prefRecordRejected" />
+          </div>
+          <div class="flex items-center justify-between py-2 border-b">
+            <span>好友通过</span>
+            <a-switch v-model:checked="prefFriendAccepted" />
+          </div>
+        </div>
+        <div class="mt-4 flex items-center">
+          <a-button type="primary" :loading="savingPrefs" @click="savePreferences">保存</a-button>
+          <a-button class="ml-2" :loading="loadingPrefs" @click="loadPreferences">刷新偏好</a-button>
+        </div>
+        <a-alert v-if="prefErrorMessage" type="error" :message="prefErrorMessage" class="mt-2" />
+      </div>
+    </a-card>
   </div>
 </template>
 
 <script setup lang="ts">
 import { ref, computed, onMounted, onBeforeUnmount } from 'vue'
-import { listNotifications, markNotificationRead, markAllNotificationsRead, type NotificationViewDTO } from '@/api/client'
+import { message } from 'ant-design-vue'
+import {
+  listNotifications,
+  markNotificationRead,
+  markAllNotificationsRead,
+  getNotificationPreferences,
+  updateNotificationPreferences,
+  type NotificationViewDTO,
+  type NotificationPreferenceView,
+} from '@/api/client'
 import { hasAccessToken } from '@/utils/token'
 import { refreshUnread, onNotification } from '@/composables/useNotificationBell'
 
@@ -148,12 +184,70 @@ function onSizeChange(_current: number, s: number) {
   loadList()
 }
 
+// ===== 通知偏好（TASK-187 add-notification-preference） =====
+const prefRecordVerified = ref(true)
+const prefRecordRejected = ref(true)
+const prefFriendAccepted = ref(true)
+const loadingPrefs = ref(false)
+const savingPrefs = ref(false)
+const prefErrorMessage = ref('')
+
+function applyPreferences(list?: NotificationPreferenceView[]) {
+  if (!list) return
+  for (const item of list) {
+    if (item.type === 'RECORD_VERIFIED') {
+      prefRecordVerified.value = item.enabled
+    } else if (item.type === 'RECORD_REJECTED') {
+      prefRecordRejected.value = item.enabled
+    } else if (item.type === 'FRIEND_ACCEPTED') {
+      prefFriendAccepted.value = item.enabled
+    }
+  }
+}
+
+async function loadPreferences() {
+  if (!loggedIn.value) return
+  loadingPrefs.value = true
+  prefErrorMessage.value = ''
+  try {
+    const res = await getNotificationPreferences()
+    applyPreferences(res.data)
+  } catch (e: any) {
+    prefErrorMessage.value = e.code ? `[${e.code}] ${e.message}` : (e.message || '加载通知偏好失败')
+  } finally {
+    loadingPrefs.value = false
+  }
+}
+
+async function savePreferences() {
+  if (!loggedIn.value) return
+  savingPrefs.value = true
+  prefErrorMessage.value = ''
+  try {
+    const payload = [
+      { type: 'RECORD_VERIFIED', enabled: prefRecordVerified.value },
+      { type: 'RECORD_REJECTED', enabled: prefRecordRejected.value },
+      { type: 'FRIEND_ACCEPTED', enabled: prefFriendAccepted.value },
+    ]
+    const res = await updateNotificationPreferences(payload)
+    message.success('通知偏好保存成功')
+    if (res.data) {
+      applyPreferences(res.data)
+    }
+  } catch (e: any) {
+    prefErrorMessage.value = e.code ? `[${e.code}] ${e.message}` : (e.message || '保存通知偏好失败')
+  } finally {
+    savingPrefs.value = false
+  }
+}
+
 let unregisterNotification: (() => void) | null = null
 
 onMounted(() => {
   if (loggedIn.value) {
     loadList()
     refreshUnread()
+    loadPreferences()
   }
   // 实时推送（TASK-185）：页面打开期间收到新通知即刷新当前页；卸载时注销
   unregisterNotification = onNotification(() => {

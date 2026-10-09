@@ -4,7 +4,10 @@ import com.sportverify.api.common.PageResult;
 import com.sportverify.common.exception.BizException;
 import com.sportverify.common.result.Result;
 import com.sportverify.common.result.ResultCode;
+import com.sportverify.user.dto.NotificationPreferenceView;
 import com.sportverify.user.dto.NotificationView;
+import com.sportverify.user.dto.UpdateNotificationPreferenceRequest;
+import com.sportverify.user.service.NotificationPreferenceService;
 import com.sportverify.user.service.NotificationService;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
@@ -34,6 +37,7 @@ import static org.mockito.Mockito.when;
 class NotificationControllerTest {
 
     private NotificationService service;
+    private NotificationPreferenceService preferenceService;
     private NotificationController controller;
     private HttpServletRequest request;
     private HttpServletResponse response;
@@ -47,7 +51,8 @@ class NotificationControllerTest {
     @BeforeEach
     void setUp() {
         service = mock(NotificationService.class);
-        controller = new NotificationController(service);
+        preferenceService = mock(NotificationPreferenceService.class);
+        controller = new NotificationController(service, preferenceService);
         request = mock(HttpServletRequest.class);
         response = mock(HttpServletResponse.class);
     }
@@ -163,5 +168,61 @@ class NotificationControllerTest {
         controller.handleBizException(new BizException(ResultCode.SYSTEM_ERROR), response);
         verify(response, never()).setStatus(eq(403));
         verify(response, never()).setStatus(eq(401));
+    }
+
+    // ==================== 通知偏好端点契调（TASK-187） ====================
+
+    /** 偏好查询：降级态（auth=false）显式携带 userId 命中服务并返回数据 */
+    @Test
+    void getPreferences_claimsUserIdWhenAuthDisabled() {
+        List<NotificationPreferenceView> list = List.of(new NotificationPreferenceView("RECORD_VERIFIED", true, null));
+        when(preferenceService.getPreferences(1001L)).thenReturn(list);
+
+        Result<List<NotificationPreferenceView>> r = controller.getPreferences(1001L, request);
+
+        assertEquals(ResultCode.SUCCESS.getCode(), r.getCode());
+        assertEquals(1, r.getData().size());
+        verify(preferenceService).getPreferences(1001L);
+    }
+
+    /** 偏好更新：降级态（auth=false）显式携带 userId 命中服务 */
+    @Test
+    void updatePreferences_claimsUserIdWhenAuthDisabled() {
+        UpdateNotificationPreferenceRequest body = new UpdateNotificationPreferenceRequest(List.of(
+                new UpdateNotificationPreferenceRequest.PreferenceItem("RECORD_VERIFIED", false)
+        ));
+        List<NotificationPreferenceView> list = List.of(new NotificationPreferenceView("RECORD_VERIFIED", false, null));
+        when(preferenceService.updatePreferences(1001L, body)).thenReturn(list);
+
+        Result<List<NotificationPreferenceView>> r = controller.updatePreferences(1001L, body, request);
+
+        assertEquals(ResultCode.SUCCESS.getCode(), r.getCode());
+        assertEquals(1, r.getData().size());
+        verify(preferenceService).updatePreferences(1001L, body);
+    }
+
+    /** 偏好查询：auth=true 时缺失 X-User-Id 头抛 401 UNAUTHORIZED */
+    @Test
+    void getPreferences_missingXUserIdWhenAuthEnabled_throwsUnauthorized() {
+        ReflectionTestUtils.setField(controller, "authEnabled", true);
+        when(request.getHeader("X-User-Id")).thenReturn(null);
+
+        BizException ex = assertThrows(BizException.class,
+                () -> controller.getPreferences(null, request));
+
+        assertEquals(ResultCode.UNAUTHORIZED.getCode(), ex.getCode());
+    }
+
+    /** 偏好更新：auth=true 时缺失 X-User-Id 头抛 401 UNAUTHORIZED */
+    @Test
+    void updatePreferences_missingXUserIdWhenAuthEnabled_throwsUnauthorized() {
+        ReflectionTestUtils.setField(controller, "authEnabled", true);
+        when(request.getHeader("X-User-Id")).thenReturn(null);
+        UpdateNotificationPreferenceRequest body = new UpdateNotificationPreferenceRequest(List.of());
+
+        BizException ex = assertThrows(BizException.class,
+                () -> controller.updatePreferences(null, body, request));
+
+        assertEquals(ResultCode.UNAUTHORIZED.getCode(), ex.getCode());
     }
 }

@@ -40,12 +40,26 @@ public class NotificationService {
 
     private final NotificationMapper notificationMapper;
 
+    /** 通知偏好服务（TASK-187，权威闸门）：可选注入保证兼容，偏好与通知同库同命运 */
+    @Autowired(required = false)
+    NotificationPreferenceService notificationPreferenceService;
+
     /** 通知推送中继（TASK-185，尽力而为）：可选注入——旧构造/旧单测不含该依赖时为空，落库成功分支跳过发布 */
     @Autowired(required = false)
     NotificationPushRelay notificationPushRelay;
 
+    public NotificationService(NotificationMapper notificationMapper, NotificationPreferenceService notificationPreferenceService) {
+        this.notificationMapper = notificationMapper;
+        this.notificationPreferenceService = notificationPreferenceService;
+    }
+
     /**
      * 幂等写入通知：INSERT IGNORE，以受影响行数判断是否首次。
+     *
+     * <p>通知偏好闸门（TASK-187 add-notification-preference）：落库前单一权威闸门，
+     * 若用户偏好关闭了该类型通知，则直接返回 false，不落库、不推送、不计未读；
+     * 返回 false 语义扩展：false = 同 dedup_key 已存在（幂等跳过）或 偏好关闭。
+     * 偏好与通知同库同命运，不预设 fail-open 分支。</p>
      *
      * <p>同一 {@code dedupKey}（判定事件=MQ eventId，好友=FRIEND_ACCEPTED:{requestId}）
      * 重复写入至多一条——唯一键冲突被吞掉并返回 false，不产生第二行。</p>
@@ -53,10 +67,15 @@ public class NotificationService {
      * <p>实时推送（TASK-185）：首插落库成功后触发通知推送发布（尽力而为，push 失败仅告警
      * 不回滚落库——推送是尽力而为，前端 60s 轮询兜底保证新鲜度不劣于纯轮询基线）。</p>
      *
-     * @return true = 首次落库；false = 同 dedup_key 已存在（幂等跳过）
+     * @return true = 首次落库成功且推送；false = 同 dedup_key 已存在（幂等跳过）或偏好已关闭
      */
     public boolean createNotification(Long userId, String type, Long sourceId,
                                       String title, String content, String dedupKey) {
+        if (notificationPreferenceService != null && !notificationPreferenceService.isNotificationEnabled(userId, type)) {
+            log.info("用户通知偏好已关闭该类型，跳过落库与推送：userId={}, type={}", userId, type);
+            return false;
+        }
+
         Notification n = new Notification();
         n.setUserId(userId);
         n.setType(type);

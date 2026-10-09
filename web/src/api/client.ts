@@ -281,3 +281,28 @@ export async function markNotificationRead(id: number): Promise<Result<any>> {
 export async function markAllNotificationsRead(): Promise<Result<number>> {
   return api.patch('/user/api/notifications/read-all')
 }
+
+// ===== Notification Preferences (add-notification-preference) — userId omitted when auth (gateway injects) =====
+export interface NotificationPreferenceView {
+  type: string
+  enabled: boolean
+  updatedAt?: string
+}
+
+export interface UpdateNotificationPreferenceRequest {
+  preferences: {
+    type: string
+    enabled: boolean
+  }[]
+}
+
+export async function getNotificationPreferences(): Promise<Result<NotificationPreferenceView[]>> {
+  return api.get('/user/api/notifications/preferences')
+}
+
+export async function updateNotificationPreferences(
+  prefs: UpdateNotificationPreferenceRequest | { type: string; enabled: boolean }[]
+): Promise<Result<NotificationPreferenceView[]>> {
+  const body = Array.isArray(prefs) ? { preferences: prefs } : prefs
+  return api.put('/user/api/notifications/preferences', body)
+}

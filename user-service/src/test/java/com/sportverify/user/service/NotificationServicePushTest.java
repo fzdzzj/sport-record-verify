@@ -180,4 +180,51 @@ class NotificationServicePushTest {
 
         assertEquals(3, rows, "回执发布失败不应影响标记全部已读返回的受影响行数");
     }
+
+    // ==================== 偏好闸门测试（TASK-187） ====================
+
+    /** 偏好关闭 → insertIgnore 零调用 + relay publish 零调用 + 返回 false */
+    @Test
+    void createNotification_preferenceDisabled_returnsFalseAndSkipsDbAndPush() {
+        NotificationPreferenceService preferenceService = mock(NotificationPreferenceService.class);
+        when(preferenceService.isNotificationEnabled(1001L, "RECORD_VERIFIED")).thenReturn(false);
+        service.notificationPreferenceService = preferenceService;
+
+        boolean created = service.createNotification(1001L, "RECORD_VERIFIED", 7L,
+                "记录已通过", null, "evt-pref-off");
+
+        assertFalse(created, "偏好关闭应返回 false");
+        verify(mapper, never()).insertIgnore(any());
+        verify(relay, never()).publish(any());
+    }
+
+    /** 偏好开启 → 正常落库 + publish + 返回 true */
+    @Test
+    void createNotification_preferenceEnabled_insertsAndPublishes() {
+        NotificationPreferenceService preferenceService = mock(NotificationPreferenceService.class);
+        when(preferenceService.isNotificationEnabled(1001L, "RECORD_VERIFIED")).thenReturn(true);
+        service.notificationPreferenceService = preferenceService;
+        when(mapper.insertIgnore(any(Notification.class))).thenReturn(1);
+
+        boolean created = service.createNotification(1001L, "RECORD_VERIFIED", 7L,
+                "记录已通过", null, "evt-pref-on");
+
+        assertTrue(created, "偏好开启应正常落库返回 true");
+        verify(mapper).insertIgnore(any());
+        verify(relay).publish(any());
+    }
+
+    /** 偏好服务未注入（缺省兼容态） → 正常落库 + publish + 返回 true */
+    @Test
+    void createNotification_preferenceServiceNull_defaultsToEnabled() {
+        service.notificationPreferenceService = null;
+        when(mapper.insertIgnore(any(Notification.class))).thenReturn(1);
+
+        boolean created = service.createNotification(1001L, "FRIEND_ACCEPTED", 18L,
+                "好友申请已通过", null, "evt-pref-null");
+
+        assertTrue(created, "偏好服务缺省时应默认开启落库");
+        verify(mapper).insertIgnore(any());
+        verify(relay).publish(any());
+    }
 }

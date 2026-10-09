@@ -64,3 +64,13 @@ CREATE TABLE IF NOT EXISTS `notification` (
     KEY `idx_user_read` (`user_id`, `is_read`, `id`)
 ) ENGINE = InnoDB
   DEFAULT CHARSET = utf8mb4 COMMENT ='通知表';
+
+-- 通知偏好表（TASK-187 add-notification-preference）
+CREATE TABLE IF NOT EXISTS `notification_preference` (
+    `user_id`    BIGINT      NOT NULL COMMENT '用户ID',
+    `type`       VARCHAR(30) NOT NULL COMMENT '通知类型（NotificationType 三类）',
+    `enabled`    TINYINT     NOT NULL DEFAULT 1 COMMENT '是否接收：1 开启，0 关闭',
+    `updated_at` DATETIME    NOT NULL COMMENT '更新时间',
+    PRIMARY KEY (`user_id`, `type`)
+) ENGINE = InnoDB
+  DEFAULT CHARSET = utf8mb4 COMMENT ='通知偏好表';

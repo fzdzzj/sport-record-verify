@@ -4,21 +4,30 @@ import com.sportverify.api.common.PageResult;
 import com.sportverify.common.exception.BizException;
 import com.sportverify.common.result.Result;
 import com.sportverify.common.result.ResultCode;
+import com.sportverify.user.dto.NotificationPreferenceView;
 import com.sportverify.user.dto.NotificationView;
+import com.sportverify.user.dto.UpdateNotificationPreferenceRequest;
+import com.sportverify.user.service.NotificationPreferenceService;
 import com.sportverify.user.service.NotificationService;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PutMapping;
+import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
+
+import java.util.List;
+
 
 /**
  * 通知中心读取域对外接口（网关 /user/api/notifications/** → StripPrefix → 本控制器，
@@ -36,6 +45,16 @@ import org.springframework.web.bind.annotation.RestController;
 public class NotificationController {
 
     private final NotificationService notificationService;
+
+    /** 通知偏好服务（TASK-187 add-notification-preference） */
+    @Autowired(required = false)
+    NotificationPreferenceService notificationPreferenceService;
+
+    public NotificationController(NotificationService notificationService,
+                                  NotificationPreferenceService notificationPreferenceService) {
+        this.notificationService = notificationService;
+        this.notificationPreferenceService = notificationPreferenceService;
+    }
 
     /** 鉴权降级开关（false=旧行为显式携带 userId；true=以网关注入的 X-User-Id 为准） */
     @Value("${app.auth.enabled:false}")
@@ -92,6 +111,36 @@ public class NotificationController {
         int updated = notificationService.markAllRead(resolved);
         return Result.success(updated);
     }
+
+    /**
+     * 通知偏好设置列表（TASK-187 add-notification-preference）：返回三类通知开关视图。
+     * 缺行默认开启；仅收件人本人可见；越权或缺失 X-User-Id 拒绝沿既有口径。
+     */
+    @GetMapping("/preferences")
+    public Result<List<NotificationPreferenceView>> getPreferences(
+            @RequestParam(value = "userId", required = false) Long userId,
+            HttpServletRequest request) {
+        Long resolved = resolveUserId(request, userId);
+        return Result.success(notificationPreferenceService != null
+                ? notificationPreferenceService.getPreferences(resolved)
+                : List.of());
+    }
+
+    /**
+     * 更新通知偏好设置（TASK-187 add-notification-preference）：行级原子 upsert。
+     * 保存成功返回更新后的偏好视图列表供前端刷新。
+     */
+    @PutMapping("/preferences")
+    public Result<List<NotificationPreferenceView>> updatePreferences(
+            @RequestParam(value = "userId", required = false) Long userId,
+            @RequestBody UpdateNotificationPreferenceRequest body,
+            HttpServletRequest request) {
+        Long resolved = resolveUserId(request, userId);
+        return Result.success(notificationPreferenceService != null
+                ? notificationPreferenceService.updatePreferences(resolved, body)
+                : List.of());
+    }
+
 
     /**
      * 身份认定（数据隔离核心，与 FriendController 逐字同源，见 ADR-0007）：true 时以网关
