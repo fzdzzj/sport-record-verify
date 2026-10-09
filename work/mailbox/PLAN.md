@@ -1990,3 +1990,16 @@ run `35802403723`（head `eba0108`，2026-09-23 00:31 UTC）——**web/build �
 | 指导侧终裁 | 独立复核五块全 pass 无阻断项，PASSED 维持；N1（C-02 tasks.json 占位符 `63→新值` 落地 `63→81`，台账终态化一部分）接受；N2（token 收口读数登记 1914 为 C-01 后时点读数，收口态实测 **1943**——TASK-184 N2 同型误差第二现，只增不减红线两期均无违）以实测为准落定本补记，并立固定纪律：**收口读数以收口态实测为准**；N3（在途契约门收口态 rc=1 为基线性自指伪影，非修缮漏网——复核独立证实改 `pom.xml` 触发零历史任务误伤，TASK-184 修缮经 TASK-185 实战受益验证）沿 D1 时点读数框架登记 |
 | 受保护 token | 29 项既有集合不动；第 27 次 run 号 `37880894795` 以文本登记（沿 181-184 期口径，不扩集合） |
 | 状态 | TASK-185 全链路闭环，**外部终验达成**；**通知实时推送课题封盘**（60s 轮询 → WS+STOMP 秒级推送 + 轮询兜底三层降级：内建重连 / 轮询 / 未登录零请求）；外部门槛计数更新为 **27 次**（26 绿 1 红）。下一课题候选：通知偏好设置 / 点赞通知（运营面二期）或已读回执（WS 双向管道已就绪）或其他方向，待用户定向 |
+
+## 验收记录：TASK-186 add-notification-read-receipt 通知已读回执·跨端已读同步（2026-10-09，执行 agent）
+
+| 项 | 实测 |
+| --- | --- |
+| 开工基线 | 派发笔 HEAD `38bbcad`（TASK-186 派发）；`origin/main...main` = `0 2`；工作树仅在途两件套；`--static=record-service` 811；受保护 token 29 项开工实测 SUM=1943；词面门/契约门开工清 |
+| 实施三笔 | ①派发笔入库四件套零改动 ②C-01 实施笔（NotificationReadReceipt record 新增 + NotificationPushRelay 增第二订阅 notification:read → /queue/notification-read + NotificationService 发布回执钩子与 javadoc + notificationWs.ts 增订第二队列与反应同构说明 + NotificationPushRelayTest 与 NotificationServicePushTest 增 14 条确定性单测）③C-02 台账收口（本笔） |
+| 收口基线 | web 三件套：type-check rc=0、build rc=0（TMP 工作区化）、typed-router.d.ts 零漂移、lockfile frozen 预演 rc=0；Java 抽验 offline 全量 `36/41/95/127/144/59/10` = **512** 逐位 rc=0（user-service 81→95，只增不减，+14）+ `--static=record-service` Checkstyle **811 持平** rc=1 预期；契约门在途 `--baseline=38bbcad --open TASK-186` rc=0；词面门改动文件集 + repo 全量（CI 权威 exclude 口径）四形态 ZERO_HIT + 探针三态 rc=0；token 29 项只增不减（开工 1943、收口态 1972）；`git status --porcelain` 收口后为空 |
+| 验收要点证据 | 回执三态（markRead 成功发 single 含 id/readAt、零行不发、markAllRead 成功发 all、零行不发、publish 异常不影响返回值）；风暴防护（markAllRead 无论流转多少条只发恰好一条 kind=all 回执，载荷级 O(1)）；前端第二队列订阅与既有订阅同构且复用同一 onMessage 回调；同端幂等双刷为说明项不劣化一致性 |
+| 三支裁决 | 后端 + 前端 + 单测矩阵全绿 + web 三件套 + Java 512/811 不回归 + 全门禁绿 → **PASSED**；无 FAILED 项；外部终验待推送后下一次外部门槛 CI 绿（第 28 次） |
+| 偏差 | D1：C-02 自指哈希按 TASK-182/183/185 台账终态化先例；D2：词面门 repo 全量按 CI 权威 exclude 口径（历史存档/ci.yml 为公开排除项）。详见 handoff §4 |
+| 未覆盖项 | 本机真实链路联调（网关 + user-service + Redis + 双浏览器标签）中间件不可达 → UNDETERMINED 沿 TASK-182/185 口径不判失败；同端幂等双刷为无害说明项；client→server STOMP SEND / 离线断流历史回执补发明确不做。详见 handoff §9 |
+| 提交表 | 派发笔 `38bbcad`、C-01 `d4ebd92`、C-02 台账收口（显式哈希以回传报告为准）；父锚定 `0 1 → 0 2 → 0 3 → 0 4`；push 由指导侧另行授权执行 |

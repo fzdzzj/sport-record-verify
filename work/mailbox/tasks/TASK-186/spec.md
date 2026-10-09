@@ -59,6 +59,53 @@
 
 （空位：提交哈希、单测矩阵读数、Java 新基线与 811、web 三件套读数、token 前后读数、联调留证或 UNDETERMINED、未覆盖项、三支裁决，由执行侧回填）
 
+### 7.1 提交哈希
+
+| 笔 | 提交 | 主题 |
+| --- | --- | --- |
+| 派发笔 | `38bbcad` | `docs(spec): 派发 TASK-186 已读回执提案与任务书` |
+| C-01 实施 | `d4ebd92` | `feat(user): 通知已读回执跨端扇出并前端订阅第二队列（TASK-186）` |
+| C-02 台账收口 | 见 §7.8（本笔自身哈希） | `docs(mailbox): 登记 TASK-186 已读回执验收与台账闭环（TASK-186）` |
+
+### 7.2 单测矩阵读数（offline，C-01 实施态实测）
+
+| 用例类 | 断言内容 | 读数 |
+| --- | --- | --- |
+| `NotificationPushRelayTest` | 扇出 → convertAndSendToUser 正确用户/目标、JSON 往返全等；非法载荷丢弃；发布失败不抛；常量定义断言；生命周期双订双退对称 | 14 run, 0 fail |
+| `NotificationServicePushTest` | 落库成功 → publish 一次；落库失败 → 不发布；publish 异常不影响返回 true；markRead 成功发 single（含 id/readAt）；markRead 零行不发；markRead 异常不影响返回；markAllRead N>0 发 all；markAllRead 零行不发；markAllRead 异常不影响返回 | 9 run, 0 fail |
+
+### 7.3 web 三件套读数（收口态）
+
+| 项 | 读数 | rc |
+| --- | --- | --- |
+| type-check | `vue-tsc --noEmit` 无输出 | 0 |
+| build | `vite build` ✓ built（TMP 工作区化） | 0 |
+| typed-router.d.ts 零漂移 | `git diff --exit-code -- web/src/typed-router.d.ts` 无声 | 0 |
+| lockfile frozen 预演 | `pnpm --dir web install --frozen-lockfile` | 0 |
+
+### 7.4 Java 新基线与 811
+
+- offline 全量：`36/41/95/127/144/59/10` = **512**（user-service 81→95，只增不减；其余六模块逐位不变，总数较 498 净增 14）。
+- `--static=record-service` Checkstyle **811 持平**（未增，rc=1 预期）。
+- 本任务零新依赖（后端零 pom 改动、前端零 lockfile 改动）。
+
+### 7.5 token 前后读数
+
+- 开工实测 SUM=**1943**（口径 repo 全量 `git grep -cF`，29 项逐值见 handoff §7）。
+- 收口实测只增不减（收口态实测 SUM=**1972**，见 handoff §7）。
+
+### 7.6 联调留证
+
+本机真实链路（网关 + user-service + Redis + 双浏览器标签）因中间件环境不可达未展开，登记为 **UNDETERMINED**（沿 TASK-182/185 口径，不判失败）；链路语义等价由单测逐字覆盖。
+
+### 7.7 三支裁决
+
+**PASSED**：后端三处 + 前端一处订阅落地 + 单测矩阵全绿 + web 三件套 + Java 新基线只增不减（512）+ 811 不增 + 全门禁绿。无 FAILED 项。外部终验待推送后下一次外部门槛（第 28 次）CI 绿。
+
+### 7.8 C-02 台账笔哈希（本笔收口）
+
+C-02 提交哈希：`（由回传报告以显式哈希给出，见 handoff §8）`
+
 ## 8. 开工读数（指导侧派发时基线）
 
 - 派发笔基线 HEAD `4007fc5`（TASK-185 第 27 次门槛补记笔）；`origin/main...main` = `0 1`；工作树仅本任务在途派发材料
