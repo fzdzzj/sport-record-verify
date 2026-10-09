@@ -9,6 +9,7 @@ import com.sportverify.record.entity.RecordLike;
 import com.sportverify.record.entity.SportRecord;
 import com.sportverify.record.mapper.RecordLikeMapper;
 import com.sportverify.record.mapper.SportRecordMapper;
+import com.sportverify.record.mq.LikeEventProducer;
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -62,6 +63,7 @@ class RecordLikeServiceTest {
     private RedissonClient redissonClient;
     private RLock lock;
     private PlatformTransactionManager transactionManager;
+    private LikeEventProducer likeEventProducer;
     private RecordLikeService service;
     private SimpleMeterRegistry meterRegistry;
 
@@ -76,6 +78,7 @@ class RecordLikeServiceTest {
         listOps = mock(ListOperations.class);
         redissonClient = mock(RedissonClient.class);
         lock = mock(RLock.class);
+        likeEventProducer = mock(LikeEventProducer.class);
 
         when(redis.opsForSet()).thenReturn(setOps);
         when(redis.opsForValue()).thenReturn(valueOps);
@@ -92,7 +95,7 @@ class RecordLikeServiceTest {
         // 真实 SimpleMeterRegistry（禁 mock MeterRegistry）：Gauge 读数用例直接取注册表实测
         meterRegistry = new SimpleMeterRegistry();
         service = new RecordLikeService(sportRecordMapper, recordLikeMapper, redis, redissonClient,
-                new ObjectMapper(), transactionManager, meterRegistry);
+                new ObjectMapper(), transactionManager, meterRegistry, likeEventProducer);
     }
 
     // ==================== 点赞（前置校验 + 幂等 T9） ====================
@@ -160,6 +163,56 @@ class RecordLikeServiceTest {
         when(sportRecordMapper.selectById(1L)).thenReturn(null);
         BizException e = assertThrows(BizException.class, () -> service.like(1L, 100L));
         assertEquals(ResultCode.RECORD_NOT_FOUND.getCode(), e.getCode());
+    }
+
+    // ==================== 点赞通知语义（TASK-188） ====================
+
+    /** 首次点赞且非自赞：发布点赞事件通知作者一次 */
+    @Test
+    void like_notification_firstLikeNotSelf_publishesOnce() {
+        when(sportRecordMapper.selectById(1L)).thenReturn(record(RecordStatus.PASSED));
+        when(setOps.add("like:record:1:users", "200")).thenReturn(1L);
+        when(valueOps.increment("like:count:1")).thenReturn(1L);
+
+        service.like(1L, 200L);
+
+        verify(likeEventProducer, times(1)).publishLiked(1L, 200L, 100L);
+    }
+
+    /** 自赞短路：点赞者为作者自己，零调用发布通知 */
+    @Test
+    void like_notification_selfLike_neverPublishes() {
+        when(sportRecordMapper.selectById(1L)).thenReturn(record(RecordStatus.PASSED));
+        when(setOps.add("like:record:1:users", "100")).thenReturn(1L);
+        when(valueOps.increment("like:count:1")).thenReturn(1L);
+
+        service.like(1L, 100L);
+
+        verify(likeEventProducer, never()).publishLiked(anyLong(), anyLong(), anyLong());
+    }
+
+    /** 幂等跳过：SADD=0 重复点赞，零调用发布通知 */
+    @Test
+    void like_notification_idempotentSkip_neverPublishes() {
+        when(sportRecordMapper.selectById(1L)).thenReturn(record(RecordStatus.PASSED));
+        when(setOps.add("like:record:1:users", "200")).thenReturn(0L);
+        when(valueOps.get("like:count:1")).thenReturn("1");
+
+        service.like(1L, 200L);
+
+        verify(likeEventProducer, never()).publishLiked(anyLong(), anyLong(), anyLong());
+    }
+
+    /** 取消点赞：unlike 零调用发布通知 */
+    @Test
+    void unlike_notification_neverPublishes() {
+        when(sportRecordMapper.selectById(1L)).thenReturn(record(RecordStatus.PASSED));
+        when(setOps.remove("like:record:1:users", "200")).thenReturn(1L);
+        when(valueOps.decrement("like:count:1")).thenReturn(0L);
+
+        service.unlike(1L, 200L);
+
+        verify(likeEventProducer, never()).publishLiked(anyLong(), anyLong(), anyLong());
     }
 
     // ==================== 取消点赞（幂等） ====================

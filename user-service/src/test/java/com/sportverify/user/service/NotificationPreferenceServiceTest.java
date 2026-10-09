@@ -55,7 +55,7 @@ class NotificationPreferenceServiceTest {
 
         List<NotificationPreferenceView> prefs = service.getPreferences(1001L);
 
-        assertEquals(3, prefs.size(), "应包含既有三类通知偏好");
+        assertEquals(4, prefs.size(), "应包含既有四类通知偏好");
         for (NotificationPreferenceView v : prefs) {
             assertTrue(v.getEnabled(), "缺行应默认开启");
             assertNull(v.getUpdatedAt(), "默认开启无更新时间");
@@ -63,6 +63,7 @@ class NotificationPreferenceServiceTest {
         assertEquals(NotificationType.RECORD_VERIFIED, prefs.get(0).getType());
         assertEquals(NotificationType.RECORD_REJECTED, prefs.get(1).getType());
         assertEquals(NotificationType.FRIEND_ACCEPTED, prefs.get(2).getType());
+        assertEquals(NotificationType.RECORD_LIKED, prefs.get(3).getType());
     }
 
     /** 已有行覆盖默认：DB 中某类关闭（enabled=0），视图体现关闭状态，其余缺省仍为开启 */
@@ -79,7 +80,7 @@ class NotificationPreferenceServiceTest {
 
         List<NotificationPreferenceView> prefs = service.getPreferences(1001L);
 
-        assertEquals(3, prefs.size());
+        assertEquals(4, prefs.size());
         assertEquals(NotificationType.RECORD_VERIFIED, prefs.get(0).getType());
         assertFalse(prefs.get(0).getEnabled(), "已有行 enabled=0 应覆盖默认开启");
         assertEquals(now, prefs.get(0).getUpdatedAt());
@@ -89,6 +90,9 @@ class NotificationPreferenceServiceTest {
 
         assertEquals(NotificationType.FRIEND_ACCEPTED, prefs.get(2).getType());
         assertTrue(prefs.get(2).getEnabled(), "缺行仍默认开启");
+        // 新增默认开启的 RECORD_LIKED
+        assertEquals(NotificationType.RECORD_LIKED, prefs.get(3).getType());
+        assertTrue(prefs.get(3).getEnabled(), "默认开启 RECORD_LIKED");
     }
 
     /** upsert 插入新行：校验调用 mapper.upsert 且更新时间与参数正确传递 */
@@ -133,7 +137,7 @@ class NotificationPreferenceServiceTest {
         List<NotificationPreferenceView> views = service.updatePreferences(1001L, req);
 
         verify(mapper, times(2)).upsert(any(NotificationPreference.class));
-        assertEquals(3, views.size());
+        assertEquals(4, views.size());
     }
 
     /** 偏好闸门判定：缺行时默认返回 true */
@@ -174,5 +178,20 @@ class NotificationPreferenceServiceTest {
         boolean enabled = service.isNotificationEnabled(1001L, NotificationType.FRIEND_ACCEPTED);
 
         assertTrue(enabled, "记录为 1 应判定为开启");
+    }
+
+    /** 偏好闸门判定：RECORD_LIKED 偏好关闭（enabled=0）时返回 false（闸门生效） */
+    @Test
+    void isNotificationEnabled_recordLikedDisabled_returnsFalse() {
+        NotificationPreference p = new NotificationPreference();
+        p.setUserId(1001L);
+        p.setType(NotificationType.RECORD_LIKED);
+        p.setEnabled(0);
+
+        when(mapper.selectOne(any(LambdaQueryWrapper.class))).thenReturn(p);
+
+        boolean enabled = service.isNotificationEnabled(1001L, NotificationType.RECORD_LIKED);
+
+        assertFalse(enabled, "RECORD_LIKED 记录为 0 应判定为关闭（闸门拦截）");
     }
 }

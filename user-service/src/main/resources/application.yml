@@ -39,6 +39,9 @@ rocketmq:
   notification:
     consumer:
       group: notification-consumer-group
+    # 点赞通知独立消费组，组间隔离独立位点（TASK-188）
+    like-consumer:
+      group: notification-like-consumer-group
 
 # ===== 认证鉴权（add-jwt-auth，见 ADR-0007）=====
 # 认证域是本服务的签发端：注册/登录/刷新签发 HS256 双 token；

@@ -71,6 +71,10 @@
             <span>好友通过</span>
             <a-switch v-model:checked="prefFriendAccepted" />
           </div>
+          <div class="flex items-center justify-between py-2 border-b">
+            <span>收到点赞</span>
+            <a-switch v-model:checked="prefRecordLiked" />
+          </div>
         </div>
         <div class="mt-4 flex items-center">
           <a-button type="primary" :loading="savingPrefs" @click="savePreferences">保存</a-button>
@@ -188,6 +192,7 @@ function onSizeChange(_current: number, s: number) {
 const prefRecordVerified = ref(true)
 const prefRecordRejected = ref(true)
 const prefFriendAccepted = ref(true)
+const prefRecordLiked = ref(true)
 const loadingPrefs = ref(false)
 const savingPrefs = ref(false)
 const prefErrorMessage = ref('')
@@ -201,6 +206,8 @@ function applyPreferences(list?: NotificationPreferenceView[]) {
       prefRecordRejected.value = item.enabled
     } else if (item.type === 'FRIEND_ACCEPTED') {
       prefFriendAccepted.value = item.enabled
+    } else if (item.type === 'RECORD_LIKED') {
+      prefRecordLiked.value = item.enabled
     }
   }
 }
@@ -228,6 +235,7 @@ async function savePreferences() {
       { type: 'RECORD_VERIFIED', enabled: prefRecordVerified.value },
       { type: 'RECORD_REJECTED', enabled: prefRecordRejected.value },
       { type: 'FRIEND_ACCEPTED', enabled: prefFriendAccepted.value },
+      { type: 'RECORD_LIKED', enabled: prefRecordLiked.value },
     ]
     const res = await updateNotificationPreferences(payload)
     message.success('通知偏好保存成功')

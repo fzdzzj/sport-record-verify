@@ -30,18 +30,19 @@ public class NotificationPreferenceService {
 
     private final NotificationPreferenceMapper preferenceMapper;
 
-    /** 既有通知类型全集（零扩） */
+    /** 支持的通知类型全集（四类，TASK-188 扩点赞） */
     public static final List<String> SUPPORTED_TYPES = List.of(
             NotificationType.RECORD_VERIFIED,
             NotificationType.RECORD_REJECTED,
-            NotificationType.FRIEND_ACCEPTED
+            NotificationType.FRIEND_ACCEPTED,
+            NotificationType.RECORD_LIKED
     );
 
     /**
-     * 获取用户通知偏好列表（三类全量视图，DB 缺行补 enabled=true）。
+     * 获取用户通知偏好列表（四类全量视图，DB 缺行补 enabled=true）。
      *
      * @param userId 用户 ID
-     * @return 三类通知偏好视图列表
+     * @return 四类通知偏好视图列表
      */
     public List<NotificationPreferenceView> getPreferences(Long userId) {
         if (userId == null) {

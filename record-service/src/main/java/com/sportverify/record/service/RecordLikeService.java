@@ -15,6 +15,8 @@ import io.micrometer.core.instrument.MeterRegistry;
 import lombok.extern.slf4j.Slf4j;
 import org.redisson.api.RLock;
 import org.redisson.api.RedissonClient;
+import com.sportverify.record.mq.LikeEventProducer;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.data.redis.connection.RedisConnection;
 import org.springframework.data.redis.core.RedisCallback;
@@ -30,6 +32,7 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.Consumer;
@@ -46,7 +49,8 @@ import java.util.function.Consumer;
  *   <li><b>落库路径</b>（{@code @Scheduled} 定时批量 flush）：
  *       Redisson 锁 {@code lock:like:flush}（30s 看门狗）保证多实例仅一个执行，
  *       LRANGE 取一批 → 按 (record_id,user_id) 去重取末次动作 → 批量 INSERT IGNORE / DELETE；
- *       <b>落库成功才 LTRIM</b>，失败保留待重试（flush 本身幂等：INSERT IGNORE 撞主键跳过、DELETE 无行可删）；</li>
+ *       <b>落库成功才 LTRIM</b>，失败保留待重试
+ *       （flush 本身幂等：INSERT IGNORE 撞主键跳过、DELETE 无行可删）；</li>
  *   <li><b>读路径</b>：计数优先读 Redis，键缺失时兜底 DB COUNT(*) 并回填（读热写冷）；</li>
  *   <li><b>对账</b>（{@code @Scheduled} 低频）：以 record_like 行为<b>权威源</b>，
  *       纠正 Redis 计数并重建成员集（进程重启丢 Redis 后的兜底收敛）。</li>
@@ -68,16 +72,20 @@ public class RecordLikeService {
     private final PlatformTransactionManager transactionManager;
     /** Micrometer 注册表：pending 队列两 Gauge 的注册载体 */
     private final MeterRegistry meterRegistry;
+    /** 点赞通知事件生产者（TASK-188）. */
+    private final LikeEventProducer likeEventProducer;
 
     /** pending 队列堆积量 Gauge 载体（like.pending.queue.size） */
     private final AtomicLong pendingQueueSize = new AtomicLong(-1);
     /** pending 队头消费延迟 Gauge 载体（like.pending.head.age.ms；-1 表示旧格式无时间戳） */
     private final AtomicLong pendingHeadAgeMs = new AtomicLong(-1);
 
+    @Autowired
     public RecordLikeService(SportRecordMapper sportRecordMapper, RecordLikeMapper recordLikeMapper,
                              StringRedisTemplate stringRedisTemplate, RedissonClient redissonClient,
                              ObjectMapper objectMapper, PlatformTransactionManager transactionManager,
-                             MeterRegistry meterRegistry) {
+                             MeterRegistry meterRegistry,
+                             final LikeEventProducer producer) {
         this.sportRecordMapper = sportRecordMapper;
         this.recordLikeMapper = recordLikeMapper;
         this.stringRedisTemplate = stringRedisTemplate;
@@ -85,12 +93,36 @@ public class RecordLikeService {
         this.objectMapper = objectMapper;
         this.transactionManager = transactionManager;
         this.meterRegistry = meterRegistry;
+        this.likeEventProducer = producer;
         Gauge.builder("like.pending.queue.size", pendingQueueSize, AtomicLong::get)
                 .description("like pending queue backlog size (LLEN like:pending:ops)")
                 .register(meterRegistry);
         Gauge.builder("like.pending.head.age.ms", pendingHeadAgeMs, AtomicLong::get)
                 .description("like pending head age in ms (-1 for legacy entries without timestamp)")
                 .register(meterRegistry);
+    }
+
+    /**
+     * 兼容历史测试用例构造.
+     *
+     * @param inRecordMapper 记录 Mapper。
+     * @param inLikeMapper 点赞 Mapper。
+     * @param inRedisTemplate Redis 模板。
+     * @param inRedissonClient Redisson 客户端。
+     * @param inObjectMapper JSON 映射器。
+     * @param inTxManager 事务管理器。
+     * @param inMeterRegistry 指标注册表。
+     */
+    public RecordLikeService(
+            final SportRecordMapper inRecordMapper,
+            final RecordLikeMapper inLikeMapper,
+            final StringRedisTemplate inRedisTemplate,
+            final RedissonClient inRedissonClient,
+            final ObjectMapper inObjectMapper,
+            final PlatformTransactionManager inTxManager,
+            final MeterRegistry inMeterRegistry) {
+        this(inRecordMapper, inLikeMapper, inRedisTemplate, inRedissonClient,
+                inObjectMapper, inTxManager, inMeterRegistry, null);
     }
 
     // ==================== Redis 键与常量 ====================
@@ -154,6 +186,8 @@ public class RecordLikeService {
      *       RE_PASSED 是申诉终判「改判通过」，语义同「通过校验」（状态机终态，见 RecordStatus）；</li>
      *   <li>成员集 {@code SADD}：返回 1 = 首次点赞 → 计数 INCR + push pending；
      *       返回 0 = 已赞 → <b>幂等</b>，计数不变、不重复产生 pending（T9：计数 +1 仅一次，落库仅一条）；</li>
+     *   <li>通知语义（TASK-188）：首次点赞且非自赞时异步发布点赞事件通知作者；
+     *       自赞短路、重复点赞幂等跳过、unlike 均不通知。</li>
      * </ol>
      *
      * <p>无本地事务（ADR-0009）：热路径只写 Redis 成员集/计数/pending 队列，刻意最终一致；
@@ -177,6 +211,11 @@ public class RecordLikeService {
         if (firstLike) {
             count = incrementCount(recordId);
             pushPending(recordId, userId, Action.LIKE);
+            if (likeEventProducer != null
+                    && !Objects.equals(userId, record.getUserId())) {
+                likeEventProducer.publishLiked(
+                        recordId, userId, record.getUserId());
+            }
             log.info("点赞成功：recordId={}, userId={}, count={}", recordId, userId, count);
         } else {
             count = readCount(recordId);
