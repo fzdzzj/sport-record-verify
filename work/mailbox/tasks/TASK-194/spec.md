@@ -105,19 +105,19 @@ C-01 全部落地后跑 `--static=record-service`（此时 checkstyle 已清零�
 
 ### 7.1 提交记录
 
-- 派发笔：`（回填显式哈希）` `docs(spec): 派发 TASK-194 record 静态门口径对齐提案与任务书`
-- C-01 实施笔：`（回填显式哈希）` `build(record): 派生静态检查规则集与 Checkstyle 存量清零（TASK-194）`
+- 派发笔：`f141d22768df57504f1b65a3fe0c94e807b66b09`（`f141d22`） `docs(spec): 派发 TASK-194 record 静态门口径对齐提案与任务书`
+- C-01 实施笔：`41bf76d64a516c11c63540399ee7e5e75b1f9fe6`（`41bf76d`） `build(record): 派生静态检查规则集与 Checkstyle 存量清零（TASK-194）`
 - C-02 台账笔：`（本笔自指：显式哈希以回传报告与 handoff §8 给出）` `docs(mailbox): 登记 TASK-194 静态门口径对齐验收与台账闭环（TASK-194）`
 
 ### 7.2 实施读数（C-01 实施态实测回填）
 
-- checkstyle 清零读数：`（回填：锁定 3.6.0 后基准计数 / 豁免面构成 / 残留修复数）`
-- spotbugs 首跑：`（回填：违规数与处置）`
-- pmd 首跑：`（回填：违规数与处置）`
-- package-info 清单：`（回填：实测新建的包清单）`
+- checkstyle 清零读数：锁定 3.6.0 后基准 811 项；豁免面构成 10 类共 659 项（JavadocStyle 195 / JavadocMethod 175 / FinalParameters 156 / JavadocVariable 39 / HiddenField 25 / DesignForExtension 22 / MissingJavadocMethod 18 / MagicNumber 16 / OperatorWrap 12 豁免③；HideUtilityClassConstructor 1 豁免①）；放宽 2 类共 139 项（LineLength max=140 全消 138 项、ParameterNumber max=8 覆盖 1 项）；源码修复 3 类共 13 项（JavadocPackage 8 项真建 package-info、RecordLikeService PendingOp @param×4、RecordEventProducer Javadoc 挪位）；规则集接入后实测 Checkstyle 0 违规，存量彻底清零
+- spotbugs 首跑：首跑共 18 项违规，全部为 Medium priority（17 项 MALICIOUS_CODE + 1 项 STYLE），0 High priority，0 CORRECTNESS；未触发红线 2。按 §2.1/§2.5 及 leaderboard pom 同口径在 record pom 配置 spotbugs-maven-plugin（failThreshold=High、includeTests=false），全量 Medium 原样保留并逐条透明记账
+- pmd 首跑：按 §2.1/§2.5 及 leaderboard pom 同口径在 record pom 配置 maven-pmd-plugin 3.28.0（rulesets 默认规则集、includeTests=false、failurePriority=3、printFailingErrors=true），实测 0 违规，target/pmd.xml 为空
+- package-info 清单：实测命中并新建 8 个包（com.sportverify.record 根包、record.config、record.config.shardingsphere、record.controller、record.entity、record.mapper、record.mq、record.service），各 3-5 行包级中文 Javadoc，零类定义零副作用
 
 ### 7.3 门禁读数（收口态实测回填）
 
-- `--static=record-service`：`（回填 rc 与三件套读数，预期 rc=0）`
-- offline 全量逐位：`（回填，预期 36/44/127/137/149/64/12 = 569 全 0）`
-- 契约门在途/无参、词面门四形态、token 29 项、只改清单全等、行尾核验：`（逐项回填）`
+- `--static=record-service`：rc=0；三件套读数：Checkstyle 0 违规、SpotBugs 18 Medium（failThreshold=High 门禁通过）、PMD 0 违规；静态门由长期 rc=1 升级为 rc=0 全绿新基线
+- offline 全量逐位：`36/44/127/137/149/64/12` = **569**（各模块逐位不变），Failures/Errors/Skipped 全 0，BUILD SUCCESS
+- 契约门在途/无参、词面门四形态、token 29 项、只改清单全等、行尾核验：契约门在途 `--open TASK-194 --baseline=f141d22` rc=0、无参 rc=0；词面门改动集与全量四形态（default / C / zh_CN.UTF-8 / C.UTF-8）全 ZERO_HIT rc=1 + 探针三态 HIT rc=0（PROBE_GONE=yes）；token 29 项开工 2030 / C-01 2030 / C-02 2030 只增不减；只改清单 C-01 恰 12 文件、C-02 恰 4 文件，白名单全等；新文件 pure LF + 末尾换行，修改文件保持既有行尾

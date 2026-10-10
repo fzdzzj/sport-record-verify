@@ -2187,3 +2187,18 @@ run `35802403723`（head `eba0108`，2026-09-23 00:31 UTC）——**web/build �
 | 推送与同步 | push `9363ea7..2d6d29e` rc=0（推送时 `origin/main...main` = `0 6`，推送后 `0 0`），未建 PR；本补记笔随下一课题批次统一推送（沿先例不单独推送） |
 | 终裁依据 | 指导侧亲核（C-01 六文件逐字 + C-02 台账四文件 + 门禁亲跑：offline 569 逐位 / static 811 / token 2030 / 契约门双态 rc=0 / 词面 ZERO_HIT）+ 独立复核子 agent 五块只读复跑全 PASS 零阻断（结束自证工作区干净）+ CI 外部终验绿；执行侧回传报告 5 处报告层笔误（锁定时长 30min 实为 15min / isLocked 返回 boolean / 字段名 caffeineCache / 单测用例名 / 被拒 403 而非 -1）登记为非阻断，台账与代码实态均正确 |
 | 状态 | TASK-193 全链路闭环，**外部终验达成**；**认证域 P2 尾巴打包课题封盘**（F11/F12/F13 全部收口关闭）；外部门槛计数更新为 **34 次**（33 绿 1 红）；findings P2 尾巴仅剩 F21（CI 增补）。下一课题候选待用户定向 |
+
+## 验收记录：TASK-194 align-record-static-gate record-service 静态门口径对齐与 Checkstyle 存量清零（2026-10-10，执行 agent）
+
+| 项 | 实测 |
+| --- | --- |
+| 开工基线 | 派发笔 HEAD `f141d22`（TASK-194 派发笔），父 `524b418`（TASK-193 补记笔）；`origin/main...main` = `0 2`；工作树零残留；离线全量 569（`36/44/127/137/149/64/12`）；`--static=record-service` 811 rc=1；受保护 token 29 项开工实测 SUM=2030；词面门/契约门开工清 |
+| 实施笔 | ①派发笔入库四件套零改动 ②C-01 实施笔（`41bf76d`：record pom 锁 maven-checkstyle-plugin 3.6.0 + spotbugs-maven-plugin 4.9.8.5 + maven-pmd-plugin 3.28.0 三件套插件段；新建 checkstyle.xml 派生自 leaderboard 版并就地注明 10 类豁免与 2 处放宽理由；新建 8 个 package-info.java 源码包级中文 Javadoc 清零 JavadocPackage；RecordLikeService PendingOp record 补充 4 行 @param 标签；RecordEventProducer Javadoc 注释块挪至声明正前方）③C-02 台账收口（本笔） |
+| 收口基线 | `--static=record-service` 从 811 rc=1 升级为 **rc=0 全绿新基线**（Checkstyle 0 违规，SpotBugs 18 Medium 在 failThreshold=High 下门禁通过，PMD 0 违规）；offline 全量 `--mode=offline test` `36/44/127/137/149/64/12` = **569** 逐位不变；typed-router.d.ts 零漂移；契约门在途/无参均 rc=0；词面门改动集 + repo 全量（CI 权威 exclude 口径）四形态全 ZERO_HIT rc=1 + 探针三态 HIT rc=0（PROBE_GONE=yes）；token 29 项只增不减（开工 2030、C-01 2030、收口 2030）；`git status --porcelain` 收口后为空 |
+| 验收要点证据 | Checkstyle 811 存量违规彻底清零（10 类 659 项豁免③/① + 2 类 139 项放宽③ + 3 类 13 项源码修复）；锁定 3.6.0 引擎前后基准计数均为 811 零漂移；SpotBugs 首跑 18 项全部为 Medium（17 MALICIOUS_CODE 注入误报 + 1 STYLE，0 High，0 CORRECTNESS，红线 2 未触发），按 leaderboard pom 同口径配置 failThreshold=High 透明豁免降级并逐条记账；PMD 首跑 0 违规；新建 8 个 package-info.java 为纯包级声明零类定义零副作用；RecordLikeService 与 RecordEventProducer 为零语义源码改动；offline 569 逐位不变硬门达成 |
+| 三支裁决 | record 规则集派生 + pom 插件锁定 + 8 个 package-info 新建 + 2 文件 Javadoc 零语义修复 + SpotBugs/PMD 首跑处置 + 静态门升级为 rc=0 全绿 + offline 569 逐位不变 + 契约门在途/无参 rc=0 + 全门禁绿 → **PASSED**；无 FAILED 项；外部终验待推送后下一次外部门槛 CI 绿（第 35 次） |
+| 偏差 | D1：C-02 自指哈希按台账终态化先例（回传报告与 handoff §8 显式给出）；D2：SpotBugs/PMD 插件段按任务书 §2.1 与 §2.5 在 C-01 中完成补齐（首跑 18 Medium 触发 leaderboard pom 同口径配置，非预置）。详见 handoff §4 |
+| 未覆盖项 | 本课题全离线可验证，无 UNDETERMINED 项；性能/质量/维护性收益数字零 claim。详见 handoff §9 |
+| 提交表 | 派发笔 `f141d22`、C-01 `41bf76d`、C-02 台账收口（显式哈希以回传报告为准）；父锚定 `0 2 → 0 3 → 0 4`；push 由指导侧另行授权执行，执行侧保持未推送 |
+| 受保护 token | 29 项既有集合不动；收口真值 2030 持平；新文档不枚举 token 字面量 |
+| 状态 | TASK-194 全链路闭环，**外部终验待推送后第 35 次外部门槛 CI 绿**；**record-service 静态门历史遗留违规彻底清零，全仓静态门口径完成对齐**；下一课题候选待指导侧定向 |
