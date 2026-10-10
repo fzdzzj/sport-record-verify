@@ -1,0 +1,26 @@
+[
+  {
+    "number": 1,
+    "category": "实施",
+    "task": "record checkstyle.xml 派生 + pom 插件锁定 + 13 处零语义源码修复 + spotbugs/pmd 首跑处置",
+    "steps": [
+      { "step": "record-service/pom.xml build/plugins 新增 maven-checkstyle-plugin 3.6.0（configLocation=src/main/resources/checkstyle.xml + inputEncoding UTF-8 + includeTestSourceDirectory false + consoleOutput/logViolationsToConsole/logViolationCountToConsole 三开，注释说明与 leaderboard 同版本同引擎口径）；若 spotbugs/pmd 首跑暴露违规则按 leaderboard pom 同口径补两插件配置段（spotbugs failThreshold=High / pmd failurePriority=3 + printFailingErrors，豁免逐条记账）", "completed": false },
+      { "step": "新建 record-service/src/main/resources/checkstyle.xml：从 leaderboard-service 同名文件派生（TreeWalker 结构与保留闸门规则逐条同源），头部注释改写为 record 口径：811 基准构成（15 类逐类计数）+ 豁免分类四类定义 + 逐条豁免理由（JavadocStyle 195/JavadocMethod 175/FinalParameters 156/JavadocVariable 39/HiddenField 25/DesignForExtension 22/MissingJavadocMethod 18/MagicNumber 16/OperatorWrap 12 均豁免③本仓风格冲突、HideUtilityClassConstructor 1 豁免①启动类误报）+ 两处有据放宽（LineLength max=140 理由实测最长 121 零超标全消、ParameterNumber max=8 理由构造器注入 8 依赖 Spring 惯用法）+ 硬边界声明（CORRECTNESS/MALICIOUS_CODE High 不得豁免）", "completed": false },
+      { "step": "新建 8 个 package-info.java（JavadocPackage 命中的 record 包：com.sportverify.record 根包 + config/controller/entity/mapper/mq/service 等子包，以锁定 3.6.0 引擎后实测命中清单为准）：每个 3-5 行包级中文 Javadoc（包职责一句话），零类定义零副作用", "completed": false },
+      { "step": "RecordLikeService.java:174 PendingOp record 的 Javadoc 补 @param recordId/@param userId/@param action/@param enqueuedAt 四标签（一行一句中文说明）；RecordEventProducer.java:33 InvalidJavadocPosition 的 Javadoc 注释块挪到声明正前方（注释文本零改动）；此两文件其余行零改动", "completed": false },
+      { "step": "锁 3.6.0 引擎后重跑 checkstyle 基准：先以 mvn-verify.sh --static=record-service 实测（此时三件套首跑，checkstyle 应清零至 0、spotbugs/pmd 首跑结果登记）；若 checkstyle 残留违规逐条修复（限零语义三类）或核对豁免清单遗漏；若 spotbugs/pmd 暴露 High/CORRECTNESS 类 → 停手汇报；Medium 以下 → 按 leaderboard 口径在 record pom 补透明豁免配置并逐条记账", "completed": false }
+    ],
+    "passes": false
+  },
+  {
+    "number": 2,
+    "category": "验收",
+    "task": "门禁与台账闭环",
+    "steps": [
+      { "step": "静态门新基线：bash scripts/verify/mvn-verify.sh --static=record-service **rc=0**（三件套 checkstyle 0 + spotbugs/pmd 首跑结果登记，从 rc=1 基线违规模块预期升级为全绿新基线）；offline 全量 569（36/44/127/137/149/64/12）逐位不变（零语义源码改动的硬门）；零越界核验（git diff --name-only <派发笔>..HEAD 仅白名单文件，测试源码零改动）", "completed": false },
+      { "step": "契约门在途 --open TASK-194 --baseline=<派发笔哈希> rc=0；词面门四形态 ZERO_HIT + 探针（正则字面量与受保护 token 字面量均不入新文档，checkstyle.xml 中文注释不含禁词）；token 29 项只增不减（开工实测为准，TASK-193 收口真值 2030 参照）；git diff --check 干净；新文件 LF + 末尾换行、修改文件保持既有行尾", "completed": false },
+      { "step": "台账闭环：tasks.json 全勾、PLAN.md 纯追加登记（含 static 门 rc 1→0 口径变更声明与后续任务书基线更新说明）、handoff 留证（开工核验、811 基准构成、豁免清单与理由逐条、13 处源码修复 diff 证据、spotbugs/pmd 首跑读数、引擎锁定前后计数对比）；推送后下一次外部门槛 CI 绿为外部终验（第 35 次）", "completed": false }
+    ],
+    "passes": false
+  }
+]
