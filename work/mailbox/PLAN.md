@@ -2163,3 +2163,18 @@ run `35802403723`（head `eba0108`，2026-09-23 00:31 UTC）——**web/build �
 | 结论影响 | 部分收口 5 项 → 4 项（F11/F12/F13/F21）；P2 尾巴不含 F23；TASK-192 其余判定不受影响 |
 | 门禁 | 同 LIGHT 三门：纯追加（numstat 删除列 0）、`git diff --check` 干净、词面门 ZERO_HIT；零代码零脚本 |
 | 提交 | 单笔订正笔（显式引用 TASK-192）；随下一课题批次推送 |
+
+## 验收记录：TASK-193 harden-auth-tail 登出吊销、锁定 IP 维度与缓存多实例文档化（2026-10-10，执行 agent）
+
+| 项 | 实测 |
+| --- | --- |
+| 开工基线 | 派发笔 HEAD `4d939d0`（TASK-193 派发），父 `3d8d636`（TASK-192 订正笔）；`origin/main...main` = `0 4`；工作树零残留；离线七模块 561（`36/44/119/137/149/64/12`）；`--static=record-service` 811；受保护 token 29 项开工实测 SUM=2030；词面门/契约门开工清 |
+| 实施笔 | ①派发笔入库四件套零改动 ②C-01 实施笔（`4dbf1f5`：api 新增 LogoutRequestDTO；AuthController 增加 logout 端点与 login 提取 XFF 尾段 clientIp；AuthService 实现 logout 幂等删键与 500 报错、实现 (phone,ip) 组合锁 5 次与 phone 兜底锁 20 次双维度锁定、登录成功清理四键；AuthServiceTest 8 例纯 JVM 单测全绿 + 既有 4 例 threshold 用例语义订正；VerifyService 补充 Caffeine 多实例缓存语义注释；README 鉴权小节补充登出吊销与双维度锁定文档）③C-02 台账收口（本笔） |
+| 收口基线 | offline 全量 `--mode=offline test` 新七模块 `36/44/127/137/149/64/12` = **569**（基线 561→569，+8：user-service 119→127，只增不减）rc=0 全绿零跳过；`--static=record-service` Checkstyle **811 持平**未增，rc=1 预期；typed-router.d.ts 零漂移；契约门在途/无参均 rc=0；词面门改动文件集 + repo 全量（CI 权威 exclude 口径）四形态全 ZERO_HIT rc=1 + 探针三态 HIT rc=0；token 29 项只增不减（开工 2030、收口态 2030）；`git status --porcelain` 收口后为空 |
+| 验收要点证据 | logout 幂等且 Redis 异常 500 口径不虚假成功；双维度锁定有效隔离单 IP 爆破（机主本人 IP 无感）与分布式爆破（总阈值 20 兜底）；clientIp 取 XFF 尾段且声明信任边界；AuthServiceTest 8 例单测纯 JVM 确定性落地（logout 3 例 + 锁定 5 例）；VerifyService 补充多实例语义注释零逻辑改动（测试数 149 不变）；网关零文件改动；findings F11/F12/F13 核实标注纯追加回填全部收口关闭 |
+| 三支裁决 | logout 吊销 refresh + 登录锁定双维度 + Caffeine 多实例语义注释 + 8 单测纯 JVM 全绿（user 127，全仓 569）+ 静态 811 持平 + findings F11/F12/F13 核实回填 + 契约门 rc=0 + 全门禁绿 → **PASSED**；无 FAILED 项；外部终验待推送后下一次外部门槛 CI 绿（第 34 次） |
+| 偏差 | D1：C-02 自指哈希按台账终态化先例；D2：threshold 默认值 5→20 行为变更（升级为全账号兜底阈值，新设 ip-threshold=5，符合防 DoS 预注册设计）；D3：ResultCode 500 语义码定稿为既有 SYSTEM_ERROR(9999)；D4：词面门 repo 全量按 CI 权威 exclude 口径。详见 handoff §4 |
+| 未覆盖项 | 本课题全离线可验证，无 UNDETERMINED 项；运行时真机验证沿口径可选登记；性能/安全收益数字零 claim。详见 handoff §9 |
+| 提交表 | 派发笔 `4d939d0`、C-01 `4dbf1f5`、C-02 台账收口（显式哈希以回传报告为准）；父锚定 `0 4 → 0 5 → 0 6`；push 由指导侧另行授权执行，执行侧不推送 |
+| 受保护 token | 29 项既有集合不动；收口真值 2030 持平；新文档不枚举 token 字面量 |
+| 状态 | TASK-193 全链路闭环，**外部终验待推送后第 34 次外部门槛**；**认证域 P2 尾巴打包课题封盘**；下一课题候选待用户定向 |

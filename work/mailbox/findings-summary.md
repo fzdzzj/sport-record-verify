@@ -85,8 +85,11 @@ P0=必修（安全/数据丢失）；P1=应修（可靠性/性能）；P2=建议
 ## P2 建议
 
 ### F11 登录锁定可被滥用做账号 DoS：auth:lock:{phone} 按手机号锁 15min，攻击者对任意手机号试错 5 次即锁定机主。改法：锁定叠加 IP 维度或改滑窗限流。（AuthService.java:264-288）
+- 核实（TASK-193，2026-10-10）：**全部收口并关闭**。① 引入 per-(phone,ip) 组合锁定（新键 app.auth.lock.ip-threshold 默认 5，达则写 auth:lock:{phone}:{ip} 仅锁该组合 15min，机主本人 IP 无感）；② 既有 threshold 默认值 5→20 升级为跨 IP 累计兜底阈值（写 auth:lock:{phone} 全账号锁防分布式爆破）；③ IP 提取由 AuthController 取 X-Forwarded-For 尾段（网关 append 真实客户端出口 IP，代码与 README 声明信任边界）；行号按 TASK-193 时点说明：AuthService.java:301-373（isLocked / countFailure / 键方法）、:68-75（配置字段）；F11 关闭。
 ### F12 无登出/吊销：access token 签发后至过期前不可吊销。改法：access jti 黑名单（TTL=剩余时效）或文档声明接受 15min 窗口。
+- 核实（TASK-193，2026-10-10）：**全部收口并关闭**。① AuthController 新增 POST /api/auth/logout 端点，AuthService.logout 吊销 refresh token 存活键（auth:refresh:{userId}:{jti} 即刻作废，此后轮换 401；无效/已过期 token 幂等返回成功，Redis 删除异常如实报错 500 不虚假成功）；② access token 15min 无状态短窗口在 README 鉴权章节作为声明接受的设计权衡明确文档化（RFC 6749 精神：access 短命无状态、refresh 有状态可吊销；紧急封禁 status=0 拒新登录/刷新但已发 access 等自然过期）；③ access jti 黑名单方向经提案裁定不采用（网关强依赖 Redis 引入新故障面，收益仅 15min 窗口）；行号按 TASK-193 时点说明：AuthController.java:56-69、AuthService.java:245-274；F12 关闭。
 ### F13 判定结果缓存多实例不一致窗口：Caffeine 单层 1min 无跨实例失效，多实例并发重判可能重复发事件（消费端幂等兜底，可接受；建议文档化或接入二级缓存失效广播）。（VerifyService.java:116）
+- 核实（TASK-193，2026-10-10）：**全部收口并关闭**。VerifyService.java（行号按 TASK-193 时点说明：:46 类 Javadoc「幂等」条目与 :60-65 RESULT_CACHE_PREFIX 常量注释）明确补充多实例语义文档化说明：Caffeine 单实例本地缓存无跨实例失效广播，窗口内他实例重判属声明接受行为，重复事件由消费端幂等（leaderboard 锚点行 + SETNX 去重）兜住；同时声明严格单次判定要求的重开条件；零代码逻辑与配置变动；F13 关闭。
 ### F14 规则链不短路：R1 已 HARD 命中仍执行 R5 远程调用。规范要求「收集全部命中」时维持现状；若只要判定结果可短路省一次 Feign。（VerifyEngine.java:78-83）
 ### F15 点赞对账全表扫 + 逐记录查询：reconcileLikeCounts 对每 record_id 一次 SELECT。改法：一条 GROUP BY 聚合 SQL 出全部计数，成员集只重建有漂移的。（RecordLikeService.java:263-291）【仍在（2026-09-23 核实 TASK-130）】
   → 核实：行号吻合（方法体 :264-291，:263 为 @Scheduled）；`:272 selectDistinctRecordIds()` + `:274` 循环内

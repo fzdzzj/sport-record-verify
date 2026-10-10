@@ -123,30 +123,34 @@ mock StringRedisTemplate 纯 JVM（沿既有测试构造模式）：
 
 ### 7.1 提交记录
 
-- 派发笔：`（回填显式哈希）` `docs(spec): 派发 TASK-193 认证域 P2 尾巴打包提案与任务书`
-- C-01 实施笔：`（回填显式哈希）` `feat(auth): 登出吊销 refresh 与登录锁定双维度及缓存语义文档化（TASK-193）`
+- 派发笔：`4d939d0e7a659c9ed80458e4881b5a76bf5f2d73`（`4d939d0`） `docs(spec): 派发 TASK-193 认证域 P2 尾巴打包提案与任务书`
+- C-01 实施笔：`4dbf1f557dc694d255402dc080c26001bea90e90`（`4dbf1f5`） `feat(auth): 登出吊销 refresh 与登录锁定双维度及缓存语义文档化（TASK-193）`
 - C-02 台账笔：`（本笔自指：显式哈希以回传报告与 handoff §8 给出）` `docs(mailbox): 登记 TASK-193 认证域尾巴打包验收与台账闭环（TASK-193）`
 
 ### 7.2 单测矩阵读数（offline，C-01 实施态实测回填）
 
-- user-service：`AuthServiceTest` Tests run: ?（+8 例与既有订正后全量数，Failures: 0, Errors: 0, Skipped: 0）
-  - `logoutRevokesRefreshLiveKey`：pass（…）
-  - `logoutInvalidTokenStillSucceeds`：pass（…）
-  - `logoutRedisFailureReportsError`：pass（…）
-  - `ipFailureLocksOnlyThatPhoneIpPair`：pass（…）
-  - `phoneTotalThresholdStillLocksAccount`：pass（…）
-  - `isLockedChecksBothDimensions`：pass（…）
-  - `loginSuccessClearsAllFourKeys`：pass（…）
-  - `nullIpSkipsIpDimension`：pass（…）
-  - 既有用例订正清单：（逐条回填）
+- user-service：`AuthServiceTest` Tests run: 12（既有 4 例订正 + 新增 8 例，Failures: 0, Errors: 0, Skipped: 0）
+  - `logoutRevokesRefreshLiveKey`：pass（有效 refresh 正常解析并成功调用 delete 删 Redis 存活键）
+  - `logoutInvalidTokenStillSucceeds`：pass（非法/过期 token 幂等返回成功，delete 零调用，不泄有效性）
+  - `logoutRedisFailureReportsError`：pass（delete 抛异常如实抛出 BizException SYSTEM_ERROR 500 口径，不虚假成功）
+  - `ipFailureLocksOnlyThatPhoneIpPair`：pass（单 IP 失败 5 次达 ipLockThreshold 写入 auth:lock:{phone}:{ip} 组合锁，auth:lock:{phone} 兜底锁未被写入）
+  - `phoneTotalThresholdStillLocksAccount`：pass（跨 IP 累计失败 20 次达 lockThreshold 兜底写入 auth:lock:{phone} 全账号锁）
+  - `isLockedChecksBothDimensions`：pass（组合锁与全账号锁任一存在即拒绝返回 403，两者皆无放行登录）
+  - `loginSuccessClearsAllFourKeys`：pass（登录成功各调用 delete 一次清除 fail:{phone} / lock:{phone} / fail:{phone}:{ip} / lock:{phone}:{ip} 四键）
+  - `nullIpSkipsIpDimension`：pass（ip=null 时仅计数 fail:{phone}，IP 维度键零触碰）
+  - 既有用例订正清单：
+    - `consecutiveFailures_lockAfterThresholdAndRejectSixth`：改传 IP 验证单 IP 5 次失败写组合锁定键，第 6 次该 IP 登录被拒 403
+    - `lockExpires_loginRecoversToPasswordCheck`：改传 IP 验证 5 次失败组合锁定后移除组合锁定键恢复登录，成功清除组合锁与计数
+    - `lockDisabled_noLockRejection`：改传 IP 验证 lockEnabled=false 时 5 次失败不写组合锁定键，第 6 次正常通过
+    - `setUp()`：显式设置 lockThreshold=20（全账号兜底）与 ipLockThreshold=5（单 IP 组合锁）
 - verify-service：测试数不变（149，F13 纯注释零新测试）
 
 ### 7.3 门禁读数（收口态实测回填）
 
-- offline 全量逐位：`36/44/12?/137/149/64/12` = **?**（基线 561 只增不减，+8 预计落 user-service，全量以实测为准），Failures/Errors/Skipped 全 0，BUILD SUCCESS
-- 静态门：`--static=record-service` Checkstyle **811 持平**未增
-- 契约门在途：`bash scripts/verify/mailbox-contract.sh --open TASK-193 --baseline=<派发笔哈希>` rc=0
-- 词面门四形态：改动文件集与 repo 全量（CI 权威 exclude 口径）四形态全 ZERO_HIT rc=1，探针三态 HIT rc=0，PROBE_GONE=yes
-- token 29 项：开工实测 SUM=?；C-01 后 SUM=?；收口态 SUM=? 只增不减
-- 只改清单全等核验：C-01 恰 6 文件（网关零文件）；C-02 恰 5 文件；typed-router.d.ts 零漂移
-- 行尾与末尾换行核验：新文件 LF、修改文件保持既有行尾
+- offline 全量逐位：`36/44/127/137/149/64/12` = **569**（基线 561 只增不减，+8 全落 user-service 119→127），Failures/Errors/Skipped 全 0，BUILD SUCCESS
+- 静态门：`--static=record-service` Checkstyle **811 持平**未增，rc=1 为基线违规模块预期
+- 契约门在途：`bash scripts/verify/mailbox-contract.sh --open TASK-193 --baseline=4d939d0` rc=0（判据 A 两件套齐 + 判据 B 清单一致）
+- 词面门四形态：改动文件集与 repo 全量（CI 权威 exclude 口径）四形态（default / C / zh_CN.UTF-8 / C.UTF-8）全 ZERO_HIT rc=1，探针三态 HIT rc=0，PROBE_GONE=yes
+- token 29 项：开工实测 SUM=2030；C-01 后 SUM=2030；收口态 SUM=2030 只增不减
+- 只改清单全等核验：C-01 恰 6 文件（网关零文件）；C-02 恰 5 文件；合共 11 文件；typed-router.d.ts 零漂移（git diff --exit-code -- web/src/typed-router.d.ts rc=0）
+- 行尾与末尾换行核验：新文件 LF、修改文件保持既有行尾（README CRLF、findings LF）

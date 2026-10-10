@@ -4,26 +4,26 @@
     "category": "实施",
     "task": "logout 端点吊销 refresh + 登录锁定双维度 + Caffeine 多实例语义注释",
     "steps": [
-      { "step": "api 模块新增 LogoutRequestDTO.java（com.sportverify.api.auth.dto，沿 RefreshRequestDTO 模式：refreshToken 必填校验注解 + Javadoc 说明登出幂等语义），LF 行尾", "completed": false },
-      { "step": "AuthService.java 新增 logout(String refreshToken)：parseRefresh 失败（签名/时效/type）→ log.info + 正常返回（幂等不泄有效性）；成功 → stringRedisTemplate.delete(refreshKey(userId,jti))，返回 false（键不存在=已轮换/已吊销）仍返回成功；delete 抛 Redis 异常 → log.error + 抛 BizException（ResultCode 既有 500 语义码，执行侧核枚举后定稿）不虚假成功", "completed": false },
-      { "step": "AuthController.java：新增 POST /api/auth/logout（@Valid @RequestBody LogoutRequestDTO → authService.logout；Javadoc 说明白名单下服务侧自行解析 + access 15min 窗口声明引用 README）；login 加 HttpServletRequest 参数提取 clientIp（X-Forwarded-For 尾段 trim，无 XFF 取 remoteAddr，尾段=网关注入的真实客户端出口 IP、前置段不可信）传入 authService.login(dto, ip)", "completed": false },
-      { "step": "AuthService.java 登录锁定双维度：threshold 默认值 5→20（@Value 注释语义升级为「跨 IP 累计兜底阈值：达此值锁全账号」）；新增 ip-threshold（app.auth.lock.ip-threshold 默认 5，单 (phone,ip) 组合阈值）；countFailure(phone,ip)：既有 auth:fail:{phone} INCR+TTL 保留，达 threshold → set auth:lock:{phone}（兜底）；ip 非空时 INCR auth:fail:{phone}:{ip}+TTL（首个失败设 TTL），达 ip-threshold → set auth:lock:{phone}:{ip}（组合锁）；isLocked(phone,ip)：组合锁或全账号锁任一存在即拒；login 成功清 4 键（fail:{phone}/lock:{phone}/fail:{phone}:{ip}/lock:{phone}:{ip}）；ip null/blank 跳过 IP 维度仅走 phone（降级不阻断）；类 Javadoc 双维度说明", "completed": false },
-      { "step": "AuthServiceTest.java：追加 8 例（logout 3：logoutRevokesRefreshLiveKey / logoutInvalidTokenStillSucceeds / logoutRedisFailureReportsError；双维度 5：ipFailureLocksOnlyThatPhoneIpPair / phoneTotalThresholdStillLocksAccount / isLockedChecksBothDimensions / loginSuccessClearsAllFourKeys / nullIpSkipsIpDimension，mock StringRedisTemplate 纯 JVM 确定性）；既有 threshold 语义相关用例按新语义订正（仅限「phone 维度 5 次锁全账号」断言的用例改为组合锁 5 次/全账号 20 次口径，其余既有用例零改动），中文 Javadoc", "completed": false },
-      { "step": "VerifyService.java 仅注释：RESULT_CACHE_PREFIX 常量注释 + 类 Javadoc「幂等」条目补多实例语义（Caffeine 单实例本地 1min、多实例独立无失效广播、窗口内他实例重判属声明接受行为、重复事件由消费端幂等〔leaderboard 锚点行 + SETNX 去重〕兜住、重开条件：要求严格单次判定时再立项失效广播或分布式锁）；零逻辑零配置改动", "completed": false },
-      { "step": "README.md：鉴权/token 小节补「登出与吊销语义」小块（logout 即刻作废 refresh；access 15min 无状态短窗口为声明接受的权衡〔RFC 6749 精神〕；紧急封禁边界：user.status=0 拒新登录/刷新但已签发 access 需等自然过期，完全收敛的黑名单机制属后续可选课题）+「登录锁定双维度」说明（组合锁防陌生 IP 锁机主、总阈值兜底防分布式、XFF 尾段信任边界）；其余段落零改动", "completed": false }
+      { "step": "api 模块新增 LogoutRequestDTO.java（com.sportverify.api.auth.dto，沿 RefreshRequestDTO 模式：refreshToken 必填校验注解 + Javadoc 说明登出幂等语义），LF 行尾", "completed": true },
+      { "step": "AuthService.java 新增 logout(String refreshToken)：parseRefresh 失败（签名/时效/type）→ log.info + 正常返回（幂等不泄有效性）；成功 → stringRedisTemplate.delete(refreshKey(userId,jti))，返回 false（键不存在=已轮换/已吊销）仍返回成功；delete 抛 Redis 异常 → log.error + 抛 BizException（ResultCode 既有 500 语义码，执行侧核枚举后定稿）不虚假成功", "completed": true },
+      { "step": "AuthController.java：新增 POST /api/auth/logout（@Valid @RequestBody LogoutRequestDTO → authService.logout；Javadoc 说明白名单下服务侧自行解析 + access 15min 窗口声明引用 README）；login 加 HttpServletRequest 参数提取 clientIp（X-Forwarded-For 尾段 trim，无 XFF 取 remoteAddr，尾段=网关注入的真实客户端出口 IP、前置段不可信）传入 authService.login(dto, ip)", "completed": true },
+      { "step": "AuthService.java 登录锁定双维度：threshold 默认值 5→20（@Value 注释语义升级为「跨 IP 累计兜底阈值：达此值锁全账号」）；新增 ip-threshold（app.auth.lock.ip-threshold 默认 5，单 (phone,ip) 组合阈值）；countFailure(phone,ip)：既有 auth:fail:{phone} INCR+TTL 保留，达 threshold → set auth:lock:{phone}（兜底）；ip 非空时 INCR auth:fail:{phone}:{ip}+TTL（首个失败设 TTL），达 ip-threshold → set auth:lock:{phone}:{ip}（组合锁）；isLocked(phone,ip)：组合锁或全账号锁任一存在即拒；login 成功清 4 键（fail:{phone}/lock:{phone}/fail:{phone}:{ip}/lock:{phone}:{ip}）；ip null/blank 跳过 IP 维度仅走 phone（降级不阻断）；类 Javadoc 双维度说明", "completed": true },
+      { "step": "AuthServiceTest.java：追加 8 例（logout 3：logoutRevokesRefreshLiveKey / logoutInvalidTokenStillSucceeds / logoutRedisFailureReportsError；双维度 5：ipFailureLocksOnlyThatPhoneIpPair / phoneTotalThresholdStillLocksAccount / isLockedChecksBothDimensions / loginSuccessClearsAllFourKeys / nullIpSkipsIpDimension，mock StringRedisTemplate 纯 JVM 确定性）；既有 threshold 语义相关用例按新语义订正（仅限「phone 维度 5 次锁全账号」断言的用例改为组合锁 5 次/全账号 20 次口径，其余既有用例零改动），中文 Javadoc", "completed": true },
+      { "step": "VerifyService.java 仅注释：RESULT_CACHE_PREFIX 常量注释 + 类 Javadoc「幂等」条目补多实例语义（Caffeine 单实例本地 1min、多实例独立无失效广播、窗口内他实例重判属声明接受行为、重复事件由消费端幂等〔leaderboard 锚点行 + SETNX 去重〕兜住、重开条件：要求严格单次判定时再立项失效广播或分布式锁）；零逻辑零配置改动", "completed": true },
+      { "step": "README.md：鉴权/token 小节补「登出与吊销语义」小块（logout 即刻作废 refresh；access 15min 无状态短窗口为声明接受的权衡〔RFC 6749 精神〕；紧急封禁边界：user.status=0 拒新登录/刷新但已签发 access 需等自然过期，完全收敛的黑名单机制属后续可选课题）+「登录锁定双维度」说明（组合锁防陌生 IP 锁机主、总阈值兜底防分布式、XFF 尾段信任边界）；其余段落零改动", "completed": true }
     ],
-    "passes": false
+    "passes": true
   },
   {
     "number": 2,
     "category": "验收",
     "task": "门禁与台账闭环",
     "steps": [
-      { "step": "离线门禁：bash scripts/verify/mvn-verify.sh --mode=offline test 全量新基线逐位登记（561 只增不减，+8 预计落 user-service 119→127，全量 569=36/44/127/137/149/64/12 以实测为准）+ --static=record-service 811 不增（record 零触碰天然满足）；零越界核验（git diff --name-only <派发笔>..HEAD 仅白名单 11 文件，网关零文件）；typed-router 零漂移", "completed": false },
-      { "step": "契约门在途 --open TASK-193 --baseline=<派发笔哈希> rc=0；词面门四形态 ZERO_HIT + 探针（正则字面量与受保护 token 字面量均不入新文档）；token 29 项只增不减（开工实测为准，TASK-191 收口真值 2030 参照）；git diff --check 干净；新文件 LF + 末尾换行、修改文件保持既有行尾（README CRLF、findings LF）", "completed": false },
-      { "step": "findings-summary.md 核实标注（C-02 内，纯追加）：F11 核实段（per-(phone,ip) 组合锁 + threshold 5→20 兜底 + XFF 尾段，TASK-193 收口关闭）；F12 核实段（logout 吊销 refresh + access 15min 窗口文档声明收口关闭，黑名单方向裁定不采用并记理由）；F13 核实段（多实例语义已文档化收口关闭，消费端幂等兜底结论重申）；沿 F01/F08 核实段格式，行号带 TASK-193 时点", "completed": false },
-      { "step": "台账闭环：tasks.json 全勾、PLAN.md 纯追加登记、handoff 留证（开工核验、logout/双维度 8 例读数、既有用例订正清单、README/注释 diff 证据、findings 核实标注、threshold 行为变更偏差登记、UNDETERMINED 无〔本课题全离线可验证〕、零触碰面核验含网关零文件）；推送后下一次外部门槛 CI 绿为外部终验（第 34 次）", "completed": false }
+      { "step": "离线门禁：bash scripts/verify/mvn-verify.sh --mode=offline test 全量新基线逐位登记（561 只增不减，+8 预计落 user-service 119→127，全量 569=36/44/127/137/149/64/12 以实测为准）+ --static=record-service 811 不增（record 零触碰天然满足）；零越界核验（git diff --name-only <派发笔>..HEAD 仅白名单 11 文件，网关零文件）；typed-router 零漂移", "completed": true },
+      { "step": "契约门在途 --open TASK-193 --baseline=<派发笔哈希> rc=0；词面门四形态 ZERO_HIT + 探针（正则字面量与受保护 token 字面量均不入新文档）；token 29 项只增不减（开工实测为准，TASK-191 收口真值 2030 参照）；git diff --check 干净；新文件 LF + 末尾换行、修改文件保持既有行尾（README CRLF、findings LF）", "completed": true },
+      { "step": "findings-summary.md 核实标注（C-02 内，纯追加）：F11 核实段（per-(phone,ip) 组合锁 + threshold 5→20 兜底 + XFF 尾段，TASK-193 收口关闭）；F12 核实段（logout 吊销 refresh + access 15min 窗口文档声明收口关闭，黑名单方向裁定不采用并记理由）；F13 核实段（多实例语义已文档化收口关闭，消费端幂等兜底结论重申）；沿 F01/F08 核实段格式，行号带 TASK-193 时点", "completed": true },
+      { "step": "台账闭环：tasks.json 全勾、PLAN.md 纯追加登记、handoff 留证（开工核验、logout/双维度 8 例读数、既有用例订正清单、README/注释 diff 证据、findings 核实标注、threshold 行为变更偏差登记、UNDETERMINED 无〔本课题全离线可验证〕、零触碰面核验含网关零文件）；推送后下一次外部门槛 CI 绿为外部终验（第 34 次）", "completed": true }
     ],
-    "passes": false
+    "passes": true
   }
 ]
