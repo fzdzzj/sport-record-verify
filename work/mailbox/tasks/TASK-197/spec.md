@@ -57,10 +57,23 @@
 
 ### §7.1 提交记录
 
-- 派发笔：`（回填显式哈希）`
-- C-01 实施笔：`（回填显式哈希）`
+- 派发笔：`720a7719fed2a6b8fcebd5c7408b1f953edbb6a8`（`720a771`）
+- C-01 实施笔：`22100d5a57a1d545161068882953a398925a217a`（`22100d5`）
 - C-02 台账笔：`（本笔自指：显式哈希以回传报告与 handoff §8 给出）`
 
 ### §7.2 实施读数（回填：行 131 修复前后对照 / 探针三态读数 / 契约门三态读数）
 
+- 行 131 对照：修复前 alternation 止于 `editorconfig`（`sed -n '131p'` 留证）；修复后逐字面追加 `|trivyignore`；`git diff` 恰 1 增 1 删，主名字符类与其余条目、脚本其余逻辑零改动（全量对照见 handoff §5.1）。
+- 探针三态（fixture 置 .trae/tmp/ 用后删，临时 git 仓全链路实跑）：态1 正向 rc=0 判据 B 通过（声明含 `/.trivyignore` 的 `<路径>/` 形态 + 临时基线含该 dotfile 改动）；态2 负向 rc=1 移除声明后「改动集未声明」签名复现（修复前后读数一致，探针有效）；态3 回归 14 项常规 token 修复前后逐 token 全等 + 整门输出逐字节一致（零回归）。旁证（handoff §4 F1）：纯前导斜杠 `/.trivyignore` 提取成功但与 git 改动集形态不归一、判据 B 双向不过；根目录 dotfile 可通过判据 B 的书写形态为 `<路径>/` 前缀（含 `./` 前缀，经既有 sed 归一）。
+- 契约门三态（读数时点显式登记，沿 TASK-196 实测时点教训）：
+  - 在途态 `--open TASK-197 --baseline=720a771`：rc=0，TASK-197 判据 B 通过（只改清单 5 文件与实际改动集全等；C-02 内容落盘后、提交前在途态实测；提交后收口态复跑见回传报告）。
+  - 回顾态 `--open TASK-196 --baseline=f701ece`：rc=1，TASK-196 判据 B 失败且「改动集未声明」含 `/.trivyignore`（N1 签名持续，裸书写形态所致，书写规范约束非脚本缺陷）；TASK-197 亦红属基线错配 artifact（其 5 项声明全在实际改动集、无清单多报）；仅登记不改判（红线 4）。
+  - 无参态：收口态（C-02 提交后）复跑预期 rc=0（已收口不重审路径），终值以回传报告为准；提交前工作树窗口实测 rc=1 属时点窗口 artifact（C-01 已提交而 C-02 在途，无参态以 HEAD 为基线报 C-01 项清单多报），非缺陷。
+
 ### §7.3 门禁读数（回填：offline / static 双模块 / token / 只改清单 / diff --check / 行尾）
+
+- offline：`--mode=offline test` 分模块 `36/44/127/137/149/64/12` = 569 逐位（TASK-196 收口真值一致），rc=0。
+- static 双模块：record-service rc=0（Checkstyle 0 / SpotBugs 18 Medium 基线持平 / PMD 0）；leaderboard-service rc=0（Checkstyle 0 / SpotBugs 9 Medium 属 failThreshold=High 不拦截、非本课题改动面所致，按实测登记见 handoff §4 F3 / PMD 0）。
+- token：29 项 SUM 开工 2030 / C-01 后 2030 / 收口 2030（收口径用 `--untracked` 含未跟踪台账），只增不减；词面门 ZERO_HIT（mailbox-contract.sh 新增行仅 trivyignore 单词）。
+- 只改清单：C-01 恰 1 文件、C-02 恰 4 文件，与 `git diff --name-only 720a771..HEAD` 全等，零越界。
+- `git diff --check` rc=0；脚本 blob i/lf、工作区 w/crlf 保持既有行尾（F2 重建后复验）。
