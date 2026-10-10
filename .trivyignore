@@ -7,37 +7,10 @@
 # 4. 纯追加治理：修复完成前不删除，后续若有新存量经评审追加。
 # ============================================================
 
-# io.netty:netty-handler:4.1.107.Final
-# 影响镜像：gateway-service, user-service, record-service, verify-service, leaderboard-service
-# 来源：Spring Boot 3.2.4 依赖树传递引入 Netty
-CVE-2026-75595
-
-# org.bouncycastle:bcprov-jdk18on:1.77
-# 影响镜像：全 6 服务（gateway, user, record, verify, leaderboard, mapmatch）
-# 来源：Spring Cloud 2023.0.1 / Spring Security 依赖传递引入
-CVE-2025-14813
-CVE-2026-8763
-
 # org.springframework:spring-webflux:6.1.5
 # 影响镜像：gateway-service
 # 来源：Spring Cloud Gateway 4.1.2 依赖传递引入 WebFlux
 CVE-2026-47892
-
-# com.alibaba:fastjson:1.2.83
-# 影响镜像：user-service, record-service, verify-service, leaderboard-service
-# 来源：common 模块引用，历史存量
-CVE-2026-16723
-
-# org.apache.tomcat.embed:tomcat-embed-core:10.1.19
-# 影响镜像：user-service, record-service, verify-service, leaderboard-service, mapmatch-service
-# 来源：Spring Boot Starter Web 3.2.4 依赖传递引入内嵌 Tomcat
-CVE-2025-24813
-CVE-2026-41293
-CVE-2026-43512
-CVE-2026-43515
-CVE-2026-65182
-CVE-2026-65905
-CVE-2026-68525
 
 # org.springframework:spring-webmvc:6.1.5
 # 影响镜像：user-service, record-service, verify-service, leaderboard-service, mapmatch-service

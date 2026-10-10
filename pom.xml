@@ -58,6 +58,11 @@
              升级 Boot 时需同步；见 dependencyManagement 中 micrometer-registry-prometheus 的说明 -->
         <micrometer.version>1.12.4</micrometer.version>
 
+        <!-- ===== 安全补丁 Pin 版本（TASK-196，ADR-0001 基线不变下精准 Pinning） ===== -->
+        <netty.version>4.1.137.Final</netty.version>
+        <tomcat.version>10.1.59</tomcat.version>
+        <bouncycastle.version>1.85</bouncycastle.version>
+
         <!-- ===== 插件版本 ===== -->
         <maven-compiler-plugin.version>3.12.1</maven-compiler-plugin.version>
         <maven-enforcer-plugin.version>3.4.1</maven-enforcer-plugin.version>
@@ -73,6 +78,30 @@
 
     <dependencyManagement>
         <dependencies>
+            <!-- ===== 存量安全补丁精准 Pin（TASK-196 / harden-dep-critical-pin） =====
+                 First-Declaration-Wins 覆盖 Spring Boot / Cloud BOM 传递引入的严重漏洞构件；
+                 三 BOM 本体保持 3.2.4 / 2023.0.1 / 2023.0.1.0 零改动（ADR-0001 基线锁定）。
+                 1. netty-bom 4.1.137.Final：BOM 统一锁定，根除 CVE-2026-75595 并避免版本分裂；
+                 2. tomcat-embed-core 10.1.59：根除 CVE-2025-24813 等 7 项 CRITICAL（10.1.58 官方未发布，10.1.59 实测修复）；
+                 3. bcprov-jdk18on 1.85：根除 CVE-2025-14813 与 CVE-2026-8763。 -->
+            <dependency>
+                <groupId>io.netty</groupId>
+                <artifactId>netty-bom</artifactId>
+                <version>${netty.version}</version>
+                <type>pom</type>
+                <scope>import</scope>
+            </dependency>
+            <dependency>
+                <groupId>org.apache.tomcat.embed</groupId>
+                <artifactId>tomcat-embed-core</artifactId>
+                <version>${tomcat.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>org.bouncycastle</groupId>
+                <artifactId>bcprov-jdk18on</artifactId>
+                <version>${bouncycastle.version}</version>
+            </dependency>
+
             <!-- Spring Boot / Cloud / Alibaba 三份 BOM 按官方兼容矩阵锁定：
                  Boot 3.2.x ↔ Cloud 2023.0.x ↔ SCA 2023.0.1.0（勿升 Boot 3.3，见 ADR-0001） -->
             <dependency>
