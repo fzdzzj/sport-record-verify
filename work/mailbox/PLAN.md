@@ -2128,3 +2128,15 @@ run `35802403723`（head `eba0108`，2026-09-23 00:31 UTC）——**web/build �
 | 提交表 | 派发笔 `94ae3c1`、C-01 `bade91b`、C-02 台账收口（显式哈希以回传报告为准）；父锚定 `0 2 → 0 3 → 0 4`；push 由指导侧另行授权执行 |
 | 受保护 token | 29 项既有集合不动；本课题推送后 CI 绿以文本登记，不扩集合；收口真值 2030 持平 |
 | 状态 | TASK-191 全链路闭环，**外部终验待推送后第 33 次外部门槛**；**网关鉴权生产姿态硬约束课题封盘**；下一课题候选待用户定向 |
+
+**TASK-191 补记（push 触发 CI 后实测，外部门槛第 33 次达成，2026-10-10）**
+
+| 项目 | 内容 |
+| --- | --- |
+| 外部门槛 | GitHub Actions run `38010206511`（HEAD `9363ea7ec95b2cc6a1c3dca8f8abf9e24fa24056`，trigger=push/branch=main，https://github.com/fzdzzj/sport-record-verify/actions/runs/38010206511），conclusion=`success`；`web` 全绿（frozen lockfile / type-check / build / typed-router match committed）、`build` 全绿；`Build and test`（`--mode=online verify`，离线新基线首次以 **561**（`36/44/119/137/149/64/12`）在 CI 复验）与词面门全 success；本批 4 笔：`9bdd46a`（TASK-190 第 32 次门槛补记笔）+ TASK-191 三笔——`94ae3c1`（派发笔）、`bade91b`（C-01 strict 联动硬校验与 health 明细收口及 3 例判别式单测）、`9363ea7`（C-02 台账收口，终态 HEAD）；平台注解（Node 20 deprecation / ubuntu-latest 迁移）非阻断，与本课题无关 |
+| 推送与同步 | push `6586b1c..9363ea7` rc=0（推送时 `origin/main...main` = `0 4`，推送后 `0 0`），未建 PR |
+| 首次外部评判 | TASK-191 全链路（网关生产姿态硬约束：AuthGlobalFilter.init 联动硬校验〔strict=true 且 auth.enabled=false 即拒启，置于治理凭证校验之前〕+ gateway show-details always→never〔F08 六服务收口〕+ README 上线前加固清单 + AuthGlobalFilterTest 3 例纯 JVM 单测〔strict+disabled 拒启 / strict+enabled 干净启动 / lax 零扰动守护〕+ findings F01/F08 核实标注，及台账闭环）首次经过外部验证；build 档 online 全量 verify **561 新基线**（gateway-service 41→44）+ 静态 811 同轮复验（ci.yml / mvn-verify.sh / docker-compose* / web / sql / 父 pom / 五业务服务零触碰） |
+| 指导侧终裁 | 独立复核五块全 pass 零阻断项，PASSED 维持。读数交叉：指导侧亲跑（offline 561 逐位 / 静态 811 / 契约门 rc=0 / token 2030 独立复算 / C-01 实文逐字〔联动校验位置与消息、yml 双处、README 清单、3 例单测构造〕）与复核子 agent 独立复跑逐项一致，与执行侧自报亦逐项一致（本课题无虚报）；token 收口真值 **2030** 持平零自增；偏差 D1（C-02 自指哈希 `9363ea7` 已落定）/ D2（报错次序前置——身份边界优先于密钥完整性，预注册设计）/ D3（词面门 CI 权威 exclude 口径）处置合规；非阻断四项 N1-N4（自指哈希 / 报错前置 / CI exclude / 静态基线持平）处置闭合，不开启订正笔；findings F01 行号双时点（任务书时点 :143-145/:195-204 与复核实测 :147-149/:199-208，C-01 插入 4 行所致）各自正确 |
+| 里程碑 | **findings P0 级清零达成**：F01（TASK-191）+ F02（TASK-190）双收口；F08 网关残留同步收口（六服务 show-details 齐 never） |
+| 受保护 token | 29 项既有集合不动；第 33 次 run 号 `38010206511` 以文本登记（沿 181-190 期口径，不扩集合）；收口真值 2030 持平 |
+| 状态 | TASK-191 全链路闭环，**外部终验达成**；**网关鉴权生产姿态硬约束课题封盘**；外部门槛计数更新为 **33 次**（32 绿 1 红）。下一课题候选待用户定向 |
