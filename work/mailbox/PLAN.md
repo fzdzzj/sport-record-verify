@@ -2250,3 +2250,13 @@ run `35802403723`（head `eba0108`，2026-09-23 00:31 UTC）——**web/build �
 | 提交表 | 派发笔 `f701ece`、C-01 `4ddd632`、C-02 台账收口（显式哈希以回传报告为准）；父锚定 `0 2 → 0 3 → 0 4`；push 由指导侧另行授权执行，执行侧保持未推送 |
 | 受保护 token | 29 项既有集合不动；收口真值 2030 持平；新文档不枚举 token 字面量 |
 | 状态 | TASK-196 全链路闭环，**外部终验待推送后第 37 次外部门槛 CI 绿**；**存量 11 项 CRITICAL 依赖漏洞治理完毕，.trivyignore 收缩落地**；外部门槛计数待更新为 **37 次**；后续任务书以收缩后 .trivyignore 与补丁依赖版本为新基线 |
+
+**TASK-196 补记（push 触发 CI 后实测，外部门槛第 37 次达成，2026-10-10）**
+
+| 项目 | 内容 |
+| --- | --- |
+| 外部终验 | GitHub Actions CI 第 37 次运行 `38061978517` 全绿（web 25s + build 5m27s：Build and test / compose parse / Build all service images (6/6) / **Trivy dependency vulnerability scan（`.trivyignore` 收缩态首跑：11 项已消项零检出、2 项 Spring 经豁免放行）** / static gate / docs wording self-check / JaCoCo 全步骤通过），rc=0；全部 annotation 为 GitHub 平台级 runner 通知（Node 20 弃用 / ubuntu-latest 迁移 / setup-java v4 弃用提示），与本仓无关 |
+| 推送与同步 | push `67002ee..e4869e7` rc=0（四笔：TASK-195 补记笔 `0190116` + TASK-196 派发笔 `f701ece` / C-01 `4ddd632` / C-02 `e4869e7`），推送后 `origin/main...main` = `0 0`，未建 PR；本补记笔随下一课题批次统一推送（沿先例不单独推送） |
+| 终裁依据 | 指导侧亲核（降本口径：紧凑 Git 摘要全符 + 父 pom Pin 段与 `.trivyignore` 终态定向抽查合规 + 回传一致性裁决零矛盾）+ 独立复核子 agent 五块全量复跑 PASS with notes 零阻断（offline 569 逐位、static 双模块 rc=0、6 镜像构建、Trivy 收缩态与门禁跑次亲跑全绿、dependency:tree 终态实证 fastjson 零节点 / netty 统一 4.1.137.Final / bcprov 全 1.85、token 2030、只改清单恰 11 文件、porcelain EMPTY）+ CI 外部终验绿 |
+| 非阻断项登记 | **N1** 契约门 `--open TASK-196 --baseline=f701ece` 态复现实测 rc=1（判据 B 报 `.trivyignore` 未声明），与 TASK-195 复核发现同根因：`mailbox-contract.sh` extract_claims 扩展名正则不认无扩展名 dotfile，属校验工具已知盲区（收口无参态 rc=0 不受影响；已在项目记忆 Lessons Learned 在案，建议后续基础工具治理小课题补认 dotfile token）；执行侧 handoff 自报 rc=0 与复核实测 rc=1 的差异归因于实测时点（改动前跑则判据 B 放行），登记在案。**N2（勘误）** handoff §5.1 阶段 3 将 fastjson 项 CVE 误写为 CVE-2022-25845，实际基线登记并删除的为 **CVE-2026-16723**（`git show f701ece:.trivyignore` 实证；消除动作属实，dependency:tree 零节点佐证），本补记勘误为准，不改已提交台账（沿 TASK-193 报告层笔误先例）。**N3（口径统一）** `.trivyignore` 行数以 awk 实测为准：开工 45 行 → 收口 18 行（16 非空行），handoff 自报 46→16 为非空行计数口径，机制事实（11 删 2 留）无误。**N4** 复核侧 Trivy 扫描因本机 Docker 为 Windows 命名管道且离线无 DB，改用 docker save + `trivy --input` + 预置 DB 等价复现，结果与执行侧一致 |
+| 状态 | TASK-196 全链路闭环，**外部终验达成，正式封盘**；存量 13 项 CRITICAL 中 **11 项实测消除**（Tomcat 10.1.59 ×7 / netty-bom 4.1.137.Final ×1 / bcprov-jdk18on 1.85 ×2 / fastjson exclusions ×1），**2 项 Spring（CVE-2026-47892 / CVE-2026-47884）经用户裁决保留豁免**（开源 6.1.x 线无修复版本，商业支持包 6.1.29 不可用；若未来升 Boot 3.3+/4.x 可移出豁免）；`.trivyignore` 终态 18 行（头注释 + 2 项 Spring 登记）；外部门槛计数更新为 **37 次**（36 绿 1 红）；后续任务书以 Pin 后依赖版本（tomcat 10.1.59 / netty 4.1.137.Final / bc 1.85 / fastjson 已根除）与收缩态 `.trivyignore` 为新基线。下一课题候选：契约门 dotfile 盲区补认小课题（N1 根因）、Spring 商业包遗留 2 项的长期治理观察或用户定向 |
