@@ -1,0 +1,25 @@
+[
+  {
+    "number": 1,
+    "category": "实施",
+    "task": "三阶段 pom-only 依赖 Pin 与 fastjson 传递排除 + 每阶段门禁实测 + .trivyignore 逐阶段收缩",
+    "steps": [
+      { "step": "阶段 1：父 pom dependencyManagement（import BOM 之前）Pin spring-framework-bom:6.1.29 + tomcat-embed-core:10.1.58 + netty-bom:4.1.137.Final（Pin 形态按 Maven 仲裁实测，First-Declaration-Wins）；门禁流水线实测：offline 569 逐位 + static 双模块 rc=0 + 6 镜像构建全绿 + Trivy 扫 6 镜像验证 10 项 CVE 未豁免检出为 0 + netty 构件版本一致性检查（dependency:tree 无 4.1.107 残留）；实测通过后 .trivyignore 删除对应 10 行登记与分组注释（文件保留头注释）", "completed": false },
+      { "step": "阶段 2：父 pom Pin bcprov-jdk18on:1.85；门禁流水线同上（重点：认证域用例 JWT/BCrypt 相关全绿）；Trivy 验证 BC 2 项检出为 0 后收缩 .trivyignore 对应 2 行", "completed": false },
+      { "step": "阶段 3：fastjson 传递排除——user/record/verify/leaderboard 四模块 pom 对 rocketmq-spring-boot-starter 加 com.alibaba:fastjson exclusions + gateway pom 对 sentinel starter 链加 exclusions；若 offline/MQ 用例出现 NoClassDefFound 类缺失 → 引入 fastjson2:fastjson-to-fastjson2:2.0.53 桥接（父 pom dependencyManagement Pin 版本）兜底；Trivy 验证 fastjson 检出为 0 后收缩 .trivyignore 最后 1 行（文件清至头注释空壳）", "completed": false },
+      { "step": "终态核验：.trivyignore 仅剩头部规则注释；全 6 镜像 Trivy 门禁跑次（--severity CRITICAL --exit-code 1 --ignore-unfixed --ignorefile .trivyignore）全绿即零豁免下零 CRITICAL；mvn dependency:tree 实证全仓无 fastjson:1.2.83、netty 无版本分裂；git diff --check 干净 + 行尾核验（修改 pom 保持既有行尾）", "completed": false }
+    ],
+    "passes": false
+  },
+  {
+    "number": 2,
+    "category": "验收",
+    "task": "门禁与台账闭环",
+    "steps": [
+      { "step": "收口门禁留证：offline 569 逐位 + static 双模块（--static=record-service 与 --static=leaderboard-service）rc=0（唯一验证入口 mvn-verify.sh）；契约门双态（--open TASK-196 --baseline=<派发笔哈希> 与无参）rc=0；token 29 项开工实测只增不减（TASK-195 收口真值 2030 参照）；只改清单全等（C-01 恰 7 文件：父 pom + 五模块 pom + .trivyignore；C-02 恰 4 台账文件）；零越界（业务/测试源码、ci.yml、compose、scripts、web、sql 零改动）", "completed": false },
+      { "step": "台账闭环：tasks.json 全勾；任务书 §7 回填（三阶段各门禁读数 / Pin 形态与版本 / fastjson 路径选型与理由 / .trivyignore 收缩前后对照）；handoff.md 新建留证（开工规程、三阶段实施证据、逐门实测表、提交表、偏差登记）；PLAN.md 纯追加（含 13 项存量清零声明与后续基线说明）", "completed": false },
+      { "step": "收口态：两笔本地提交（C-01 → C-02）均未推送不建 PR；推送后第 37 次 CI 全绿（Trivy 门零豁免首跑）为外部终验，红则按签名归因禁重试刷绿；零收益百分比 claim", "completed": false }
+    ],
+    "passes": false
+  }
+]
