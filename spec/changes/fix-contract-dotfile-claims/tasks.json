@@ -1,0 +1,24 @@
+[
+  {
+    "number": 1,
+    "category": "实施",
+    "task": "extract_claims 正则补认 trivyignore dotfile + 探针三态实测",
+    "steps": [
+      { "step": "scripts/verify/mailbox-contract.sh 行 131 扩展名 alternation 逐字面追加 |trivyignore（单点改动，主名 + 与其余 alternation 零改动，保持既有行尾）", "completed": false },
+      { "step": "探针三态实测（fixture 任务书与临时基线置于 .trae/tmp/ 用后删）：态1 声明含 /.trivyignore + 基线含 .trivyignore 改动 → --open 判据 B 通过；态2 声明移除 → 误报复现（负向对照证明探针有效）；态3 常规非 dotfile fixture → 提取行为与修复前逐 token 一致（零回归）", "completed": false },
+      { "step": "收口实测：无参契约门 rc=0；--open TASK-197 --baseline=<派发笔哈希> 在途态 rc=0（本课题任务书自身即含 /.trivyignore 书写规范示例，真实链路验证）；历史 --open TASK-196 --baseline=f701ece 回顾态复测登记（预期仍 rc=1，书写规范约束，非缺陷）", "completed": false }
+    ],
+    "passes": false
+  },
+  {
+    "number": 2,
+    "category": "验收",
+    "task": "门禁与台账闭环",
+    "steps": [
+      { "step": "收口门禁留证：offline 569 逐位 + static 双模块 rc=0（唯一验证入口 mvn-verify.sh，脚本改动虽不涉 Java 仍按 FULL 口径留证）；token 29 项只增不减（开工实测）；只改清单全等（C-01 恰 1 文件、C-02 恰 4 文件）；零越界；git diff --check 干净 + 行尾核验（修改脚本保持既有行尾）", "completed": false },
+      { "step": "台账闭环：tasks.json 全勾；任务书 §7 回填（正则前后对照 / 探针三态读数 / 历史回顾态说明）；handoff.md 新建留证；PLAN.md 纯追加（含 dotfile 书写规范登记：未来只改清单 dotfile 以 /. 前缀形态书写）", "completed": false },
+      { "step": "收口态：两笔本地提交均未推送不建 PR；推送后第 38 次 CI 全绿为外部终验；红则按签名归因禁重试刷绿；零收益百分比 claim", "completed": false }
+    ],
+    "passes": false
+  }
+]
