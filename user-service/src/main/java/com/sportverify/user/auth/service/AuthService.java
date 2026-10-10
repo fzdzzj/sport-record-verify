@@ -25,16 +25,17 @@ import java.util.List;
 import java.util.concurrent.TimeUnit;
 
 /**
- * 认证服务（注册 / 登录 / token 签发 / refresh 轮换）。
+ * 认证服务（注册 / 登录 / 登出 / token 签发 / refresh 轮换）。
  *
  * <p>核心设计：</p>
  * <ul>
  *   <li><b>注册</b>：BCrypt 哈希落库（不落明文），手机号唯一——前置查询 + 唯一键
  *       DuplicateKeyException 双保险（并发注册同一手机号 → 2001）；</li>
  *   <li><b>登录</b>：BCrypt matches 校验密码；失败统一 1001（不区分「用户不存在/密码错误」，
- *       防撞库探测）+ 按手机号计失败次数（Redis INCR + TTL 窗口）；窗口内连续失败达阈值
- *       （默认 5）写 `auth:lock:{phone}` 锁定键（TTL=锁定时长），后续登录在入口直接拒绝（403），
- *       到期自动解锁、登录成功即清零（见 ADR-0007）；</li>
+ *       防撞库探测）+ 计失败次数（Redis INCR + TTL 窗口）。支持双维度锁定：单 (phone,ip)
+ *       组合连续失败达 ip-threshold（默认 5）锁定该组合；跨 IP 累计失败达 threshold（默认 20）
+ *       锁定全账号兜底防分布式爆破。锁定期间直接拒绝（403），到期自动解锁、登录成功清除四键（见 ADR-0007）；</li>
+ *   <li><b>登出</b>：主动作废 refresh 存活键（幂等处理，Redis 异常如实报错不虚假成功）；</li>
  *   <li><b>refresh 轮换</b>：refresh token 以 {@code auth:refresh:{userId}:{jti}} 存活键存 Redis
  *       （active 集合，TTL 与 refresh 时效一致，到点自然失效）；刷新时 <b>原子消费</b>
  *       旧 jti（Lua 取走并删除，等效 GETDEL 语义且兼容 Redis <6.2；并发刷新同一 refresh
@@ -60,15 +61,18 @@ public class AuthService {
 
     /** refresh token 存活键前缀（key=auth:refresh:{userId}:{jti}，TTL 与 refresh 时效一致） */
     @Value("${app.auth.refresh.redis-prefix:auth:refresh:}")
-    private String refreshPrefix;
+    private String refreshPrefix = "auth:refresh:";
 
     // ===== 登录失败锁定配置（app.auth.lock.*，见 ADR-0007；field 默认值保证非 Spring 直造也可用） =====
     /** 锁定开关：false=仅计数告警不真正锁定（灰度兼容旧行为） */
     @Value("${app.auth.lock.enabled:true}")
     boolean lockEnabled = true;
-    /** 失败阈值：窗口内连续失败达此数触发锁定（对齐原 FAIL_THRESHOLD=5） */
-    @Value("${app.auth.lock.threshold:5}")
-    int lockThreshold = 5;
+    /** 全账号兜底失败阈值：跨 IP 累计连续失败达此数触发全账号锁定（默认 5→20） */
+    @Value("${app.auth.lock.threshold:20}")
+    int lockThreshold = 20;
+    /** 单 (phone,ip) 组合失败阈值：单 IP 连续失败达此数触发组合锁定（默认 5） */
+    @Value("${app.auth.lock.ip-threshold:5}")
+    int ipLockThreshold = 5;
     /** 失败计数窗口（分钟）：滑动窗口，窗口内持续 INCR */
     @Value("${app.auth.lock.window-minutes:15}")
     long lockWindowMinutes = 15;
@@ -125,13 +129,21 @@ public class AuthService {
     // ==================== 登录 ====================
 
     /**
-     * 登录（规范「用户登录」）：校验密码，成功签发双 token；失败 → 401（1001）并计失败次数。
+     * 登录（单参兼容重载）：默认 ip=null。
      */
     public TokenDTO login(LoginRequestDTO dto) {
+        return login(dto, null);
+    }
+
+    /**
+     * 登录（规范「用户登录」）：校验密码，成功签发双 token；失败 → 401（1001）并计失败次数。
+     * 支持 (phone, ip) 与 phone 双维度锁定。
+     */
+    public TokenDTO login(LoginRequestDTO dto, String ip) {
         // 字段必填/格式校验由控制器层 @Valid + DTO 注解承担，此处不再重复判空
-        // —— 锁定前置检查：账号已临时锁定 → 直接拒绝（不校验密码、不 countFailure；防撞库 + 省 BCrypt）
-        if (lockEnabled && isLocked(dto.getPhone())) {
-            log.warn("登录被拒：账号已临时锁定 phone={}", maskPhone(dto.getPhone()));
+        // —— 锁定前置检查：账号或 IP 组合已临时锁定 → 直接拒绝（不校验密码、不 countFailure；防撞库 + 省 BCrypt）
+        if (lockEnabled && isLocked(dto.getPhone(), ip)) {
+            log.warn("登录被拒：账号或IP组合已临时锁定 phone={}, ip={}", maskPhone(dto.getPhone()), ip);
             throw new BizException(ResultCode.FORBIDDEN, "账号已临时锁定，请稍后重试");
         }
         User user = userMapper.selectOne(new LambdaQueryWrapper<User>()
@@ -139,23 +151,28 @@ public class AuthService {
                 .last("LIMIT 1"));
         // 用户不存在与密码错误统一 1001（不区分，防撞库探测）；失败都计次数
         if (user == null) {
-            countFailure(dto.getPhone());
+            countFailure(dto.getPhone(), ip);
             throw new BizException(ResultCode.UNAUTHORIZED, "手机号或密码错误");
         }
         if (user.getStatus() != null && user.getStatus() == 0) {
             throw new BizException(ResultCode.FORBIDDEN, "账号已被禁用");
         }
         if (!passwordEncoder.matches(dto.getPassword(), user.getPasswordHash())) {
-            countFailure(dto.getPhone());
+            countFailure(dto.getPhone(), ip);
             throw new BizException(ResultCode.UNAUTHORIZED, "手机号或密码错误");
         }
-        // —— 登录成功：清失败计数 + 锁定（防「试错清零再爆破」的计数残留，锁定一并解除）
+        // —— 登录成功：清失败计数 + 锁定（防「试错清零再爆破」的计数残留，两维度锁定一并解除）
         try {
             stringRedisTemplate.delete(failKey(dto.getPhone()));
             stringRedisTemplate.delete(lockKey(dto.getPhone()));
+            if (ip != null && !ip.isBlank()) {
+                stringRedisTemplate.delete(ipFailKey(dto.getPhone(), ip));
+                stringRedisTemplate.delete(ipLockKey(dto.getPhone(), ip));
+            }
         } catch (Exception e) {
             // 清计数/锁定是防残留增强：Redis 不可用降级为不影响签发 token（登录不因 Redis 故障失败）
-            log.warn("登录成功清计数/锁定降级（Redis 不可用）：phone={}, err={}", maskPhone(dto.getPhone()), e.getMessage());
+            log.warn("登录成功清计数/锁定降级（Redis 不可用）：phone={}, ip={}, err={}",
+                    maskPhone(dto.getPhone()), ip, e.getMessage());
         }
         log.info("登录成功：userId={}", user.getId());
         return issueTokenPair(user.getId());
@@ -225,6 +242,37 @@ public class AuthService {
         return dto;
     }
 
+    // ==================== 登出（主动吊销 refresh） ====================
+
+    /**
+     * 登出（主动吊销 refresh token）：删 Redis 存活键（即刻作废，此后轮换 401）。
+     *
+     * <p>幂等处理：无效或已过期 token 同样返回成功，不泄漏 token 有效性。
+     * Redis 异常时不虚假成功，如实抛出 500 业务异常以便客户端重试。</p>
+     */
+    public void logout(String refreshToken) {
+        if (refreshToken == null || refreshToken.isBlank()) {
+            log.info("登出幂等处理（token 为空）");
+            return;
+        }
+        JwtUtil.ParsedRefresh parsed;
+        try {
+            parsed = jwtUtil.parseRefresh(refreshToken);
+        } catch (JwtException | IllegalArgumentException e) {
+            // 幂等：无效/过期 token 同样返回成功——登出不泄 token 有效性
+            log.info("登出幂等处理（token 无效或已过期）");
+            return;
+        }
+        try {
+            stringRedisTemplate.delete(refreshKey(parsed.userId(), parsed.jti()));
+        } catch (Exception e) {
+            // 不虚假成功：删键失败 refresh 仍可轮换，如实报错让客户端可重试
+            log.error("登出吊销失败（Redis 异常）：userId={}", parsed.userId(), e);
+            throw new BizException(ResultCode.SYSTEM_ERROR);
+        }
+        log.info("登出成功：refresh 即刻作废 userId={}", parsed.userId());
+    }
+
     // ==================== token 签发（登录/刷新共用） ====================
 
     /** 签发 access + refresh 双 token，并把 refresh 持久化到 Redis（存活校验 + 轮换作废的基础） */
@@ -249,41 +297,67 @@ public class AuthService {
 
     // ==================== 失败计数（防爆破设计口径） ====================
 
-    /** 锁定状态检查：auth:lock:{phone} 存在即为已锁定；Redis 不可用降级为「不锁定」（不阻塞登录） */
-    private boolean isLocked(String phone) {
+    /** 锁定状态检查：auth:lock:{phone} 或 auth:lock:{phone}:{ip} 存在即为已锁定；Redis 不可用降级为「不锁定」（不阻塞登录） */
+    private boolean isLocked(String phone, String ip) {
         try {
-            return Boolean.TRUE.equals(stringRedisTemplate.hasKey(lockKey(phone)));
+            boolean accountLocked = Boolean.TRUE.equals(stringRedisTemplate.hasKey(lockKey(phone)));
+            if (accountLocked) {
+                return true;
+            }
+            if (ip != null && !ip.isBlank()) {
+                return Boolean.TRUE.equals(stringRedisTemplate.hasKey(ipLockKey(phone, ip)));
+            }
+            return false;
         } catch (Exception e) {
             // 锁定是安全增强非强一致必须：Redis 抖动时宁可放行也不因锁定检查失败阻断登录
-            log.warn("锁定检查降级（Redis 不可用）：phone={}, err={}", maskPhone(phone), e.getMessage());
+            log.warn("锁定检查降级（Redis 不可用）：phone={}, ip={}, err={}", maskPhone(phone), ip, e.getMessage());
             return false;
         }
     }
 
     /** 登录失败计数：INCR + TTL 窗口；达到阈值写锁定键（此后登录入口直接拒绝），Redis 异常降级为仅告警 */
-    private void countFailure(String phone) {
+    private void countFailure(String phone, String ip) {
         try {
-            String key = failKey(phone);
-            Long count = stringRedisTemplate.opsForValue().increment(key);
-            if (count != null && count == 1L) {
+            // 1. 全账号维度累计（跨 IP 兜底）
+            String totalKey = failKey(phone);
+            Long totalCount = stringRedisTemplate.opsForValue().increment(totalKey);
+            if (totalCount != null && totalCount == 1L) {
                 // 首次失败才设 TTL：窗口滑动后自然重置（窗口内持续 INCR）
-                stringRedisTemplate.expire(key, lockWindowMinutes, TimeUnit.MINUTES);
+                stringRedisTemplate.expire(totalKey, lockWindowMinutes, TimeUnit.MINUTES);
             }
-            // —— 达到阈值：启用锁定时写 auth:lock:{phone}（TTL=锁定时长），登录入口据此拒绝后续请求
-            if (count != null && count >= lockThreshold) {
+            if (totalCount != null && totalCount >= lockThreshold) {
                 if (lockEnabled) {
                     stringRedisTemplate.opsForValue().set(lockKey(phone), "1", lockMinutes, TimeUnit.MINUTES);
-                    log.warn("账号已达失败阈值并临时锁定：phone={}, count={}, 锁定时长={}min",
-                            maskPhone(phone), count, lockMinutes);
+                    log.warn("账号已达总失败兜底阈值并临时锁定：phone={}, count={}, 锁定时长={}min",
+                            maskPhone(phone), totalCount, lockMinutes);
                 } else {
                     // 锁定开关关闭（灰度兼容）：仅告警不真正锁定
-                    log.warn("登录失败次数达阈值（锁定关闭）：phone={}, count={}", maskPhone(phone), count);
+                    log.warn("登录失败次数达总阈值（锁定关闭）：phone={}, count={}", maskPhone(phone), totalCount);
                 }
             }
-            log.info("登录失败计数：phone={}, count={}", maskPhone(phone), count);
+
+            // 2. 单 (phone,ip) 组合维度计数
+            if (ip != null && !ip.isBlank()) {
+                String ipKey = ipFailKey(phone, ip);
+                Long ipCount = stringRedisTemplate.opsForValue().increment(ipKey);
+                if (ipCount != null && ipCount == 1L) {
+                    stringRedisTemplate.expire(ipKey, lockWindowMinutes, TimeUnit.MINUTES);
+                }
+                if (ipCount != null && ipCount >= ipLockThreshold) {
+                    if (lockEnabled) {
+                        stringRedisTemplate.opsForValue().set(ipLockKey(phone, ip), "1", lockMinutes, TimeUnit.MINUTES);
+                        log.warn("单IP组合已达失败阈值并临时锁定：phone={}, ip={}, count={}, 锁定时长={}min",
+                                maskPhone(phone), ip, ipCount, lockMinutes);
+                    } else {
+                        log.warn("单IP登录失败次数达阈值（锁定关闭）：phone={}, ip={}, count={}",
+                                maskPhone(phone), ip, ipCount);
+                    }
+                }
+            }
+            log.info("登录失败计数：phone={}, ip={}, totalCount={}", maskPhone(phone), ip, totalCount);
         } catch (Exception e) {
             // 失败计数/锁定是防爆破增强：Redis 不可用降级为仅告警，不因 Redis 故障抛错阻断登录主流程
-            log.warn("登录失败计数/锁定降级（Redis 不可用）：phone={}, err={}", maskPhone(phone), e.getMessage());
+            log.warn("登录失败计数/锁定降级（Redis 不可用）：phone={}, ip={}, err={}", maskPhone(phone), ip, e.getMessage());
         }
     }
 
@@ -291,9 +365,18 @@ public class AuthService {
         return FAIL_KEY_PREFIX + phone;
     }
 
+    private String ipFailKey(String phone, String ip) {
+        return FAIL_KEY_PREFIX + phone + ":" + ip;
+    }
+
     /** 锁定键：auth:lock:{phone}（存在即表示账号处于临时锁定状态） */
     private String lockKey(String phone) {
         return LOCK_KEY_PREFIX + phone;
+    }
+
+    /** IP 组合锁定键：auth:lock:{phone}:{ip}（存在即表示该 IP 对该账号处于临时锁定状态） */
+    private String ipLockKey(String phone, String ip) {
+        return LOCK_KEY_PREFIX + phone + ":" + ip;
     }
 
     /** refresh 存活键：按 (userId, jti) 唯一（同一用户的多个 refresh 互不干扰） */

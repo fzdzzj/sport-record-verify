@@ -43,7 +43,8 @@ import java.util.List;
  * <ul>
  *   <li>判定主流程：预处理 + R1-R4 → 证据与事件待发行行同事务落库 → Feign 回调 record 迁移状态；</li>
  *   <li>灰度路由：规则集按 userId%100 采样——命中灰度走 rule_version 库内快照，未命中走基线；</li>
- *   <li>幂等：verification_result 主键 record_id + Caffeine 缓存，重复触发不重算；</li>
+ *   <li>幂等：verification_result 主键 record_id + Caffeine 缓存，重复触发不重算；
+ *       多实例部署各实例独立、窗口内他实例重判由消费端幂等兜住（要求严格单次判定时再立项失效广播或分布式锁）；</li>
  *   <li>申诉：建申诉单（record_id 唯一）/ 管理员终判（乐观锁 + 回调 + 事件待发行行）。</li>
  * </ul>
  *
@@ -57,7 +58,11 @@ import java.util.List;
 @RequiredArgsConstructor
 public class VerifyService {
 
-    /** 判定结果本地缓存前缀（Caffeine 1min TTL，压测 P95 达标关键：命中缓存不重算） */
+    /**
+     * 判定结果本地缓存前缀（Caffeine 1min TTL，压测 P95 达标关键：命中缓存不重算）。
+     * Caffeine 为单实例本地缓存，多实例部署各实例独立、无跨实例失效广播；窗口内他实例重判属声明接受行为，
+     * 重复事件由消费端幂等（leaderboard 锚点行 + SETNX 去重）兜住。
+     */
     private static final String RESULT_CACHE_PREFIX = "verify:result:";
 
     private final VerifyEngine verifyEngine;

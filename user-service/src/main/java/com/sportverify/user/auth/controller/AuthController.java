@@ -1,6 +1,7 @@
 package com.sportverify.user.auth.controller;
 
 import com.sportverify.api.auth.dto.LoginRequestDTO;
+import com.sportverify.api.auth.dto.LogoutRequestDTO;
 import com.sportverify.api.auth.dto.RefreshRequestDTO;
 import com.sportverify.api.auth.dto.RegisterRequestDTO;
 import com.sportverify.api.auth.dto.TokenDTO;
@@ -8,6 +9,7 @@ import com.sportverify.common.exception.BizException;
 import com.sportverify.common.result.Result;
 import com.sportverify.common.result.ResultCode;
 import com.sportverify.user.auth.service.AuthService;
+import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
@@ -22,8 +24,9 @@ import org.springframework.web.bind.annotation.RestController;
 /**
  * 认证域对外接口（网关白名单 {@code /api/auth/**} → user-service，对应 ADR-0007）。
  *
- * <p>三个端点均<b>不携带</b> token（注册/登录/刷新是发 token 的地方，属网关白名单）；
- * 业务接口的 token 校验统一由网关 GlobalFilter 承担，本服务不自行校验 token。</p>
+ * <p>四个端点（注册/登录/刷新/登出）均在网关白名单下免网关全局 token 校验。
+ * 登出端点由本服务自行解析 refresh token 并在 Redis 吊销；
+ * access 15min 短窗口为声明接受的设计权衡（见 README 鉴权章节）。</p>
  */
 @Slf4j
 @RestController
@@ -44,10 +47,12 @@ public class AuthController {
 
     /**
      * 登录（规范「用户登录」）：成功签发 access + refresh；失败 → 401 并计失败次数。
+     * 从请求中提取 clientIp（XFF 尾段）支持 (phone, ip) 登录锁定双维度。
      */
     @PostMapping("/login")
-    public Result<TokenDTO> login(@Valid @RequestBody LoginRequestDTO dto) {
-        return Result.success(authService.login(dto));
+    public Result<TokenDTO> login(@Valid @RequestBody LoginRequestDTO dto, HttpServletRequest request) {
+        String ip = clientIp(request);
+        return Result.success(authService.login(dto, ip));
     }
 
     /**
@@ -57,6 +62,42 @@ public class AuthController {
     @PostMapping("/refresh")
     public Result<TokenDTO> refresh(@Valid @RequestBody RefreshRequestDTO dto) {
         return Result.success(authService.refresh(dto.getRefreshToken()));
+    }
+
+    /**
+     * 登出（主动吊销 refresh token）：作废 refresh 存活键（此后轮换 401）。
+     *
+     * <p>在网关白名单 {@code /api/auth/**} 下免网关校验，服务侧自行解析 refresh token；
+     * 登出幂等处理（无效/已过期 token 同样返回成功，不泄漏有效性）。
+     * access 15min 短窗口为声明接受的设计权衡（见 README 鉴权章节）。</p>
+     */
+    @PostMapping("/logout")
+    public Result<Void> logout(@Valid @RequestBody LogoutRequestDTO dto) {
+        authService.logout(dto.getRefreshToken());
+        return Result.success();
+    }
+
+    /**
+     * 提取客户端出口 IP。
+     *
+     * <p>信任边界说明：单网关一跳拓扑下，Spring Cloud Gateway 会将真实客户端 IP append 到
+     * X-Forwarded-For 尾部；前置段可被客户端伪造不可信，因此仅取最后一个逗号后的尾段。
+     * 直连无网关时回退 remoteAddr；若解析不出或为空则返回 null（降级仅走 phone 维度）。</p>
+     */
+    private static String clientIp(HttpServletRequest request) {
+        if (request == null) {
+            return null;
+        }
+        String xff = request.getHeader("X-Forwarded-For");
+        if (xff != null && !xff.isBlank()) {
+            int lastComma = xff.lastIndexOf(',');
+            String ip = (lastComma >= 0) ? xff.substring(lastComma + 1).trim() : xff.trim();
+            if (!ip.isEmpty()) {
+                return ip;
+            }
+        }
+        String remoteAddr = request.getRemoteAddr();
+        return (remoteAddr != null && !remoteAddr.isBlank()) ? remoteAddr.trim() : null;
     }
 
     /**

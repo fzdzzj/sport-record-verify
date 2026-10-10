@@ -195,6 +195,8 @@ stderr 打出"按口径记为未覆盖"的提示，台账须照此记录，不�
   - `GOVERNANCE_TOKEN` 注入（治理面专用凭证，无演示默认）
   - `APP_SECURITY_STRICT=true`：密钥缺失或鉴权关闭即拒启（本课题联动后为双重硬约束）
   - actuator 收敛：见既有「生产 profile 应收敛 actuator」说明（:216 附近）
+- **登出与吊销语义**：POST /api/auth/logout 携 refreshToken 即刻作废（此后轮换 401；无效 token 幂等成功）；access 15min 无状态短窗口为声明接受的权衡（RFC 6749 精神：access 短命无状态、refresh 有状态可吊销）；紧急封禁（user.status=0）拒新登录/刷新，已签发 access 需等自然过期——完全收敛的黑名单机制属后续可选课题
+- **登录锁定双维度**：单 (phone,ip) 组合失败达阈值锁该组合（机主本人 IP 无感）；跨 IP 累计达兜底阈值锁全账号（防分布式爆破）；IP 取 X-Forwarded-For 尾段（网关注入，前置段不可信）
 - **登录失败锁定**（add-login-lockout）：窗口（15min）内连续登录失败达阈值（5）→ 写 `auth:lock:{phone}`
   （Redis，TTL=锁定时长），登录入口前置检查直接拒绝（403/1002「账号已临时锁定」，不校验密码、防撞库 + 省 BCrypt）；
   到期自动解锁、登录成功清零计数与锁定；`app.auth.lock.*` 可配，`enabled=false` 回退仅计数告警，Redis 故障降级仅告警不阻断登录（见 ADR-0007）。

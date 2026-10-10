@@ -7,6 +7,7 @@ import com.sportverify.common.result.ResultCode;
 import com.sportverify.user.auth.util.JwtUtil;
 import com.sportverify.user.entity.User;
 import com.sportverify.user.mapper.UserMapper;
+import io.jsonwebtoken.JwtException;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.data.redis.core.StringRedisTemplate;
@@ -17,6 +18,7 @@ import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.TimeUnit;
 
+import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
@@ -32,7 +34,7 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 /**
- * AuthService 单元测试——账号锁定（spec-delta：fail-lockout，见 ADR-0007）。
+ * AuthService 单元测试——账号锁定双维度与登出吊销（spec-delta：TASK-193，见 ADR-0007）。
  *
  * <p>用 Mockito 打桩 Mapper 与 StringRedisTemplate：用一个内存 Map 充当 Redis 假存储，
  * 把 {@code increment/hasKey/set/delete/expire} 映射到该 Map，从而让「计数→达阈值写锁定键→
@@ -88,23 +90,25 @@ class AuthServiceTest {
 
         // 构造参数顺序与 @RequiredArgsConstructor 字段声明一致（userMapper, jwtUtil, stringRedisTemplate）
         service = new AuthService(userMapper, jwtUtil, redis);
-        service.lockThreshold = 5; // 显式对齐默认阈值，避免与配置默认值漂移（直造不经 Spring，字段默认已为 5）
+        service.lockThreshold = 20; // 显式对齐全账号兜底阈值 20
+        service.ipLockThreshold = 5; // 显式对齐单 (phone,ip) 组合阈值 5
         store.clear();
     }
 
     // ==================== 达阈值触发锁定 → 第 6 次拒绝 ====================
 
-    /** spec-delta「达阈值触发锁定」+「锁定期间拒绝」：5 次失败写锁定键，第 6 次登录直接 403 且不校验密码 */
+    /** spec-delta「达阈值触发锁定」+「锁定期间拒绝」：单 IP 5 次失败写组合锁定键，第 6 次该 IP 登录直接 403 且不校验密码 */
     @Test
     void consecutiveFailures_lockAfterThresholdAndRejectSixth() {
         when(userMapper.selectOne(any())).thenReturn(user());
-        // 前 5 次错误密码：统一 401（用户不存在/密码错误同语义），并累计失败计数
+        String ip = "192.168.1.100";
+        // 前 5 次错误密码：统一 401（用户不存在/密码错误同语义），并累计单 IP 失败计数
         for (int i = 0; i < 5; i++) {
-            BizException e = assertThrows(BizException.class, () -> service.login(request(PHONE, "wrong-password")));
+            BizException e = assertThrows(BizException.class, () -> service.login(request(PHONE, "wrong-password"), ip));
             assertEquals(ResultCode.UNAUTHORIZED.getCode(), e.getCode(), "失败登录应返回 401");
         }
-        // 第 5 次失败已写 auth:lock: → 第 6 次登录被入口锁定检查拒绝（403，不校验密码不发 token）
-        BizException locked = assertThrows(BizException.class, () -> service.login(request(PHONE, GOOD_PASSWORD)));
+        // 第 5 次失败已写 auth:lock:{phone}:{ip} → 第 6 次登录被入口锁定检查拒绝（403，不校验密码不发 token）
+        BizException locked = assertThrows(BizException.class, () -> service.login(request(PHONE, GOOD_PASSWORD), ip));
         assertEquals(ResultCode.FORBIDDEN.getCode(), locked.getCode(), "锁定期内应返回 403");
         assertTrue(locked.getMessage().contains("临时锁定"));
         verify(jwtUtil, never()).issueAccessToken(anyLong(), anyString());
@@ -116,20 +120,21 @@ class AuthServiceTest {
     @Test
     void lockExpires_loginRecoversToPasswordCheck() {
         when(userMapper.selectOne(any())).thenReturn(user());
+        String ip = "192.168.1.100";
         // 制造锁定：5 次失败
         for (int i = 0; i < 5; i++) {
-            assertThrows(BizException.class, () -> service.login(request(PHONE, "wrong-password")));
+            assertThrows(BizException.class, () -> service.login(request(PHONE, "wrong-password"), ip));
         }
         // 锁定中：仍被拒
         assertEquals(ResultCode.FORBIDDEN.getCode(),
-                assertThrows(BizException.class, () -> service.login(request(PHONE, GOOD_PASSWORD))).getCode());
-        // 模拟 TTL 到期自动解锁：移除 auth:lock: 键
-        store.remove("auth:lock:" + PHONE);
+                assertThrows(BizException.class, () -> service.login(request(PHONE, GOOD_PASSWORD), ip)).getCode());
+        // 模拟 TTL 到期自动解锁：移除 auth:lock:{phone}:{ip} 键
+        store.remove("auth:lock:" + PHONE + ":" + ip);
         // 恢复校验密码：正确密码 → 登录成功
-        TokenDTO dto = service.login(request(PHONE, GOOD_PASSWORD));
+        TokenDTO dto = service.login(request(PHONE, GOOD_PASSWORD), ip);
         assertNotNull(dto, "锁定期满后应恢复登录");
-        assertFalse(store.containsKey("auth:lock:" + PHONE), "成功后锁定键应被清除");
-        assertFalse(store.containsKey("auth:fail:" + PHONE), "成功后失败计数应被清除");
+        assertFalse(store.containsKey("auth:lock:" + PHONE + ":" + ip), "成功后组合锁定键应被清除");
+        assertFalse(store.containsKey("auth:fail:" + PHONE + ":" + ip), "成功后组合失败计数应被清除");
     }
 
     // ==================== 登录成功清零 ====================
@@ -157,13 +162,118 @@ class AuthServiceTest {
     void lockDisabled_noLockRejection() {
         when(userMapper.selectOne(any())).thenReturn(user());
         service.lockEnabled = false;
+        String ip = "192.168.1.100";
         for (int i = 0; i < 5; i++) {
-            BizException e = assertThrows(BizException.class, () -> service.login(request(PHONE, "wrong-password")));
+            BizException e = assertThrows(BizException.class, () -> service.login(request(PHONE, "wrong-password"), ip));
             assertEquals(ResultCode.UNAUTHORIZED.getCode(), e.getCode());
         }
-        assertFalse(store.containsKey("auth:lock:" + PHONE), "锁定关闭时不应写锁定键");
+        assertFalse(store.containsKey("auth:lock:" + PHONE + ":" + ip), "锁定关闭时不应写组合锁定键");
         // 第 6 次仍走密码校验：正确密码可登录（未被锁定拒绝）
-        assertNotNull(service.login(request(PHONE, GOOD_PASSWORD)));
+        assertNotNull(service.login(request(PHONE, GOOD_PASSWORD), ip));
+    }
+
+    // ==================== TASK-193 登出 3 例 ====================
+
+    /** 登出吊销有效 refresh 存活键 */
+    @Test
+    void logoutRevokesRefreshLiveKey() {
+        String token = "valid-refresh-token";
+        when(jwtUtil.parseRefresh(token)).thenReturn(new JwtUtil.ParsedRefresh(123L, "jti-abc"));
+        service.logout(token);
+        verify(redis).delete("auth:refresh:123:jti-abc");
+    }
+
+    /** 登出无效/过期 token 仍幂等成功，delete 零调用 */
+    @Test
+    void logoutInvalidTokenStillSucceeds() {
+        String badToken = "bad-token";
+        when(jwtUtil.parseRefresh(badToken)).thenThrow(new JwtException("invalid token"));
+        assertDoesNotThrow(() -> service.logout(badToken));
+        verify(redis, never()).delete(anyString());
+    }
+
+    /** 登出 Redis 异常如实报错（500 语义，不虚假成功） */
+    @Test
+    void logoutRedisFailureReportsError() {
+        String token = "valid-refresh-token";
+        when(jwtUtil.parseRefresh(token)).thenReturn(new JwtUtil.ParsedRefresh(123L, "jti-abc"));
+        when(redis.delete("auth:refresh:123:jti-abc")).thenThrow(new RuntimeException("redis down"));
+        BizException e = assertThrows(BizException.class, () -> service.logout(token));
+        assertEquals(ResultCode.SYSTEM_ERROR.getCode(), e.getCode());
+    }
+
+    // ==================== TASK-193 登录双维度锁定 5 例 ====================
+
+    /** 单 (phone, ip) 失败达 ip-threshold(5) 仅锁该组合，未锁全账号（未达 20） */
+    @Test
+    void ipFailureLocksOnlyThatPhoneIpPair() {
+        when(userMapper.selectOne(any())).thenReturn(user());
+        String ipA = "10.0.0.1";
+        for (int i = 0; i < 5; i++) {
+            assertThrows(BizException.class, () -> service.login(request(PHONE, "wrong-pwd"), ipA));
+        }
+        assertTrue(store.containsKey("auth:lock:" + PHONE + ":" + ipA));
+        assertFalse(store.containsKey("auth:lock:" + PHONE));
+    }
+
+    /** 同 phone 跨不同 IP 累计达 threshold(20) 触发全账号兜底锁 */
+    @Test
+    void phoneTotalThresholdStillLocksAccount() {
+        when(userMapper.selectOne(any())).thenReturn(user());
+        for (int i = 1; i <= 20; i++) {
+            String ip = "10.0.0." + i;
+            assertThrows(BizException.class, () -> service.login(request(PHONE, "wrong-pwd"), ip));
+        }
+        assertTrue(store.containsKey("auth:lock:" + PHONE));
+    }
+
+    /** isLocked 检查双维度：组合锁或全账号锁任一存在即拒，两者皆无放行 */
+    @Test
+    void isLockedChecksBothDimensions() {
+        String ip = "10.0.0.1";
+        when(userMapper.selectOne(any())).thenReturn(user());
+
+        // 1. 组合锁存在 → 拒
+        store.put("auth:lock:" + PHONE + ":" + ip, "1");
+        BizException e1 = assertThrows(BizException.class, () -> service.login(request(PHONE, GOOD_PASSWORD), ip));
+        assertEquals(ResultCode.FORBIDDEN.getCode(), e1.getCode());
+        store.remove("auth:lock:" + PHONE + ":" + ip);
+
+        // 2. 组合锁不存在但全账号锁存在 → 拒
+        store.put("auth:lock:" + PHONE, "1");
+        BizException e2 = assertThrows(BizException.class, () -> service.login(request(PHONE, GOOD_PASSWORD), ip));
+        assertEquals(ResultCode.FORBIDDEN.getCode(), e2.getCode());
+        store.remove("auth:lock:" + PHONE);
+
+        // 3. 两者皆无 → 放行
+        TokenDTO dto = service.login(request(PHONE, GOOD_PASSWORD), ip);
+        assertNotNull(dto);
+    }
+
+    /** 登录成功清 4 键（fail:{phone}, lock:{phone}, fail:{phone}:{ip}, lock:{phone}:{ip}）各一次 */
+    @Test
+    void loginSuccessClearsAllFourKeys() {
+        when(userMapper.selectOne(any())).thenReturn(user());
+        String ip = "10.0.0.1";
+        TokenDTO dto = service.login(request(PHONE, GOOD_PASSWORD), ip);
+        assertNotNull(dto);
+        verify(redis).delete("auth:fail:" + PHONE);
+        verify(redis).delete("auth:lock:" + PHONE);
+        verify(redis).delete("auth:fail:" + PHONE + ":" + ip);
+        verify(redis).delete("auth:lock:" + PHONE + ":" + ip);
+    }
+
+    /** ip=null 跳过 IP 维度，仅计数 phone 维度，IP 维度键零触碰 */
+    @Test
+    void nullIpSkipsIpDimension() {
+        when(userMapper.selectOne(any())).thenReturn(user());
+        assertThrows(BizException.class, () -> service.login(request(PHONE, "wrong-pwd"), null));
+        assertTrue(store.containsKey("auth:fail:" + PHONE));
+        for (String key : store.keySet()) {
+            assertFalse(key.contains("null"), "不应生成含 null 的 IP 维度键");
+            assertFalse(key.startsWith("auth:fail:" + PHONE + ":"), "不应生成 IP fail 键");
+            assertFalse(key.startsWith("auth:lock:" + PHONE + ":"), "不应生成 IP lock 键");
+        }
     }
 
     // ==================== 工具 ====================
