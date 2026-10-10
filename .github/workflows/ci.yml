@@ -47,12 +47,33 @@ jobs:
       - name: Compose files parse check
         run: docker compose -f docker-compose.yml -f docker-compose.services.yml config -q
 
-      # 交付面判别式之二：复用 compose 自己的构建定义构一份代表服务镜像，覆盖容器交付路径。
-      # 不手写 docker build -f——docker-compose.services.yml 里 6 个服务各自声明 context: . 与 dockerfile:，
-      # 镜像定义与编排文件一旦漂移，这一步先红。其余 5 份同批模式由上一条的 config 覆盖，
-      # 逐份实跑结果记在台账（8e6eb0d 修的就是"父 pom 声明全部模块、build 阶段只 COPY 部分模块"）。
-      - name: Build representative service image
-        run: docker compose -f docker-compose.yml -f docker-compose.services.yml build leaderboard-service
+      # 交付面判别式之二：复用 compose 自己的构建定义构建全 6 服务镜像，覆盖容器交付路径。
+      # 与上一条 Compose config 检查分工：config 静态校验编排语法与环境变量插值，本步实测 Dockerfile 构建链。
+      # 显式声明全部 6 个服务名（gateway/user/record/verify/leaderboard/mapmatch），任一服务 Dockerfile
+      # 或模块结构漂移，这一步即红。
+      - name: Build all service images (6/6)
+        run: docker compose -f docker-compose.yml -f docker-compose.services.yml build gateway-service user-service record-service verify-service leaderboard-service mapmatch-service
+
+      # 依赖漏洞扫描门：使用 Trivy 固定版本（0.60.0）对全 6 服务镜像扫描，兼顾依赖漏洞可见性与基线阻断。
+      # 流程分为两跑次：
+      #   1. 输出跑次：--severity HIGH,CRITICAL 全量输出日志，登记当前依赖树 CVE 态势；
+      #   2. 门禁跑次：--severity CRITICAL --exit-code 1 --ignore-unfixed --ignorefile .trivyignore，
+      #      基于首跑基线决策树分支 B，历史存量 13 项 CRITICAL 已登记于 .trivyignore，
+      #      任何新增未豁免的 CRITICAL 级别漏洞将直接阻断 CI。
+      - name: Trivy dependency vulnerability scan
+        run: |
+          docker create --name trivy_bin aquasec/trivy:0.60.0
+          sudo docker cp trivy_bin:/usr/local/bin/trivy /usr/local/bin/trivy
+          docker rm trivy_bin
+          trivy --version
+          SERVICES="gateway-service user-service record-service verify-service leaderboard-service mapmatch-service"
+          for svc in $SERVICES; do
+            img="sport-verify-${svc}:latest"
+            echo "::group::Trivy scan ${img} (HIGH,CRITICAL)"
+            trivy image --severity HIGH,CRITICAL "${img}"
+            echo "::endgroup::"
+            trivy image --severity CRITICAL --exit-code 1 --ignore-unfixed --ignorefile .trivyignore "${img}"
+          done
 
       # 静态检查三件套（checkstyle / spotbugs / pmd）门槛，拼写唯一定义在 mvn-verify.sh 的
       # --static 子命令（与上方 Build and test 同一引用原则，本文件不手拼 mvn 命令）。
