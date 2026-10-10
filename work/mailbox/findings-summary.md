@@ -143,3 +143,69 @@ P0=必修（安全/数据丢失）；P1=应修（可靠性/性能）；P2=建议
   治理面路径（`/admin/**`、`/verify/rules/**`、榜单每日报表）在直连面零校验，方向待拍板。
 - 台账可信度：**TASK-102 与 TASK-103 两份 handoff 均声称完成而代码零落地**（TASK-128 / TASK-130 核实），
   引用旧台账结论前须先按本清单的「核实」批注重新取证；F04 属主 agent 已裁定不修，不在此列。
+
+## 全量盘点核实（TASK-192，2026-10-10，指导侧亲核）
+
+背景：本清单最后一次逐项核实停在 2026-09-23（TASK-128/130 时点），其后课题批次（TASK-131 至 TASK-191）
+大量收口未回写条目标注，用户定向 F19/F09/F03 三项连续撞已收口。本段为全量盘点结果，行号以
+HEAD `4269534`（TASK-191 补记笔）时点为准；**既有条目标题内的【仍在】为历史时点标注，以本段为最新实态**。
+
+### 已收口（12 项，关闭）
+
+- **F03（P1，事件可靠性）**：outbox 已全链接线并建表——VerifyService.java:133 判定落库与事件
+  落 outbox 同事务（verifyOutboxService.persistResultAndEvent）；VerifyEventProducer 改 newPendingRow
+  + syncSend；VerifyOutboxRelay（含并发分片重发）/ VerifyOutboxService / VerifyEventOutboxMapper /
+  VerifyEventOutbox 实体与测试三件套齐备；sql/03-verify-db.sql:39 有 verify_event_outbox DDL。
+  原「表不存在、relay 扫空表」差距消除。**关闭**。
+- **F05（P1，mapmatch 逐点往返）**：MapMatchService.java:132 起按轨迹块级 bbox 一次往返取候选边，
+  Java 内存逐点算垂距；:165-168 附超集等价性说明（best 初值 + 单调截断 → 超半径候选不改结果）。
+  **关闭**。
+- **F06（P1，好友榜全量拉）**：LeaderboardService.java:81 FRIEND_SCAN_BATCH=500 分批迭代，
+  reverseRangeWithScores(0,-1) 全量拉已消除；listFriends 单页截断随分批迭代一并收口。**关闭**。
+- **F07（P1，Feign 连接池）**：TASK-189 已落地 feign-hc5 连接池（坐标 io.github.openfeign:feign-hc5）
+  并定参。**关闭**。
+- **F09（P1，DLQ 双轨）**：VerifyEventConsumer 与 LeaderboardEventConsumer 均为原生范式
+  MAX_RECONSUME_TIMES=3 + broker %DLQ%，Javadoc 明示「不自建重试计数、不自建死信 topic」；
+  改法③「抽 common」经裁定不并（仓内范式为编程式独立消费者，订阅表达式/消费组各自独立）。
+  **关闭**。
+- **F10（P1，密钥硬编码兜底）**：JwtUtil.java:67 strict 模式 fail-fast + :72 密钥长度校验；
+  InternalApiAuthFilter.java:59 strict 联动 + :75 MessageDigest.isEqual 常量时间比较。**关闭**。
+- **F15（P2，点赞对账 N+1）**：RecordLikeService.java:377-425 selectRecordLikePairs 批量聚合 +
+  Redis pipeline 分批（PIPELINE_BATCH_SIZE=500），逐记录往返消除。**关闭**。
+- **F16（P2，flush 批次硬编码）**：RecordLikeService.java:144-145 批大小 @Value 可配置；
+  like.pending.queue.size / like.pending.head.age.ms 两 Gauge 已挂 + 堆积告警阈值常量。**关闭**。
+- **F17（P2，readCount 防击穿）**：RecordLikeService per-record 互斥回源（:159 COUNT_INIT_LOCK_PREFIX
+  重建锁 + 未获锁者缓存重读 + 空值哨兵短 TTL）。**关闭**。
+- **F18（P2，扫描缺索引）**：sql/02-record-db.sql:28 idx_status_created 复合索引 +
+  sql/migrations/add-idx-record-status.sql 幂等迁移。**关闭**。
+- **F19（P2，Sentinel 兜底路由）**：TASK-124 已收口——SentinelGatewayRuleConfig ROUTE_IDS 7 条全路由，
+  SentinelRouteCoverageTest 双向守卫（新增路由未注册即红）。**关闭**。
+- **F20（P2，服务未容器化）**：服务级编排与健康检查已由 docker-compose.services.yml /
+  docker-compose.perf.yml 落地；镜像构建路径未建属后续可选增强，缺口主体关闭。
+
+### 部分收口 / 仍在（5 项，均 P2）
+
+- **F11（登录锁定 DoS）**：仍在——AuthService.java:59 auth:lock: 仍纯手机号维度，未叠 IP。
+- **F12（无登出/吊销）**：部分——refresh token 已 jti 轮换（AuthService.java:38-40）；access token
+  至过期前仍不可吊销，「文档声明接受短窗口」或「jti 黑名单」待拍板。
+- **F13（缓存多实例不一致）**：部分——Caffeine 1min 本地缓存仍在（VerifyService.java:60），
+  多实例语义未文档化；消费端幂等兜底结论不变。
+- **F21（CI 缺口）**：部分——静态检查门已在（Checkstyle 基线持平门）；依赖漏洞扫描与镜像构建
+  步骤仍缺，按需增补。
+- **F23（治理面服务侧校验）**：部分——RuleVersionController.java:21-23 已有服务侧 token 角色校验；
+  VerifyController appeals 端点（:22/:33）仍无服务侧校验（直连面残余），方向②二道防线完整覆盖待拍板。
+
+### 语义维持重确认（3 项）
+
+- **F04**：ADR-0009 权衡维持（2026-09-23 指导侧裁定不变，守卫测试在位）。
+- **F14**：规范要求「收集全部命中」，不短路为既定语义，维持现状。
+- **F22**：TASK-129 文档化接受裁定不变（冲突拒绝式收敛 + 消费幂等兜住，重开条件未触发）。
+
+### P0 补记与盘点结论
+
+- **F02（P0）**：TASK-190 已收口（compose 口令必填插值 + 十端口回环绑定 + env.example 占位模式，
+  PLAN.md 验收记录在案）；F02 条目此前漏加核实标注，本段补记。**关闭**。
+- F01/F08 已由 TASK-191 收口并回写条目标注（见上文核实段）。
+- **盘点结论**：P0 两项全清（F01/F02）；P1 实质项全收口（F03/F05/F06/F07/F09/F10，F08 顺带收口）；
+  剩余均为 P2 尾巴（F11/F12/F13/F21/F23）与语义维持项（F04/F14/F22）。
+  **以本清单驱动的治理阶段收官**，后续课题转向 P2 尾巴打包或非 findings 方向。

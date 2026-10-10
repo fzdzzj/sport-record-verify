@@ -2140,3 +2140,15 @@ run `35802403723`（head `eba0108`，2026-09-23 00:31 UTC）——**web/build �
 | 里程碑 | **findings P0 级清零达成**：F01（TASK-191）+ F02（TASK-190）双收口；F08 网关残留同步收口（六服务 show-details 齐 never） |
 | 受保护 token | 29 项既有集合不动；第 33 次 run 号 `38010206511` 以文本登记（沿 181-190 期口径，不扩集合）；收口真值 2030 持平 |
 | 状态 | TASK-191 全链路闭环，**外部终验达成**；**网关鉴权生产姿态硬约束课题封盘**；外部门槛计数更新为 **33 次**（32 绿 1 红）。下一课题候选待用户定向 |
+
+## 验收记录：TASK-192 findings 全量盘点与档案对齐（2026-10-10，LIGHT，指导侧亲核）
+
+| 项 | 实测 |
+| --- | --- |
+| 课题性质 | LIGHT 台账对齐（零构建、零代码、零脚本）：findings-summary.md 末尾纯追加「全量盘点核实（TASK-192）」段 + PLAN.md 本登记段；不派执行侧、不出四件套、无独立复核周期（指导侧亲核即收口） |
+| 盘点动因 | 用户定向 F19/F09/F03 三项连续撞已收口——档案最后逐项核实停在 2026-09-23（TASK-128/130 时点），其后课题批次（TASK-131 至 TASK-191）大量收口未回写条目标注；用户裁决全量盘点后 LIGHT 单笔落账 |
+| 盘点结论 | P0 两项全清（F01/F02）；P1 实质项全收口（F03/F05/F06/F07/F09/F10，F08 顺带收口）。回写已收口 12 项（F03/F05/F06/F07/F09/F10/F15/F16/F17/F18/F19/F20，各带代码锚点与关闭结论）；部分收口 5 项（F11/F12/F13/F21/F23，均 P2）；语义维持重确认 3 项（F04/F14/F22 既有裁定不变）；F02 条目漏加核实标注补记；既有条目标题【仍在】为历史时点标注、以盘点段为最新实态 |
+| 收口证据锚点 | 详见 findings-summary.md「全量盘点核实（TASK-192）」段：VerifyService.java:133（outbox 同事务接线 + sql/03-verify-db.sql:39 建表）、MapMatchService.java:132/:165-168（块级 bbox + 超集等价）、LeaderboardService.java:81/:272-286（分批迭代）、VerifyEventConsumer 与 LeaderboardEventConsumer 原生 maxReconsumeTimes 范式、JwtUtil.java:67/:72 与 InternalApiAuthFilter.java:59/:75（strict fail-fast + 常量时间比较）、RecordLikeService.java:144-145/:377-425/:159（flush 可配 / 批量聚合 + pipeline / per-record 互斥回源）、sql/02-record-db.sql:28 与 sql/migrations/add-idx-record-status.sql（索引 + 幂等迁移）、SentinelGatewayRuleConfig ROUTE_IDS 7 条 + SentinelRouteCoverageTest 双向守卫、docker-compose.services.yml / docker-compose.perf.yml（服务级编排） |
+| 门禁 | 纯追加检查：`git diff --numstat` 两台账文件删除列均 0（findings-summary.md 实测 66/0）；`git diff --check` rc=0 干净；词面门新增文本扫描 ZERO_HIT；受保护 token 29 项收口复算 SUM=2030 持平（新增文本零 token 字面量）；零代码零脚本，构建基线（561/811）与契约门不涉 |
+| 提交 | 单笔 `docs(mailbox): 登记 findings 全量盘点与档案对齐（TASK-192）`（自指哈希沿 TASK-190/191 D1 先例以 git log 事后可查；随下一课题批次推送，不单独推送） |
+| 状态 | TASK-192 LIGHT 落账闭环；**findings 清单驱动治理阶段收官**（P0 清零 + P1 实质全收口里程碑达成）；下一课题候选待用户定向（P2 尾巴打包 vs 非 findings 方向） |
