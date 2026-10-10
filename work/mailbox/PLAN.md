@@ -2226,3 +2226,12 @@ run `35802403723`（head `eba0108`，2026-09-23 00:31 UTC）——**web/build �
 | 提交表 | 派发笔 `eefea97`、C-01 `282475b`、C-02 台账收口（显式哈希以回传报告为准）；父锚定 `0 2 → 0 3 → 0 4`；push 由指导侧另行授权执行，执行侧保持未推送 |
 | 受保护 token | 29 项既有集合不动；收口真值 2030 持平；新文档不枚举 token 字面量 |
 | 状态 | TASK-195 全链路闭环，**外部终验待推送后第 36 次外部门槛 CI 绿**；**F21 闭环关闭，findings 全清单正式清零**；外部门槛计数待更新为 **36 次**；后续任务包以全服务构建 + Trivy 门禁生效态为新基线 |
+
+**TASK-195 补记（push 触发 CI 后实测，外部门槛第 36 次达成，2026-10-10）**
+
+| 项目 | 内容 |
+| --- | --- |
+| 外部终验 | GitHub Actions CI 第 36 次运行 `38042329425` 全绿（web 21s + build 5m11s：Build and test / compose parse / **Build all service images (6/6)** / **Trivy dependency vulnerability scan**（新两步骤云端首跑全绿）/ static gate / docs wording self-check 全步骤通过），rc=0；两条 annotation 为 GitHub 平台级 runner 通知，与本仓无关 |
+| 推送与同步 | push `77ef5e7..67002ee` rc=0（推送时 `origin/main...main` = `0 4`，推送后 `0 0`），未建 PR；本补记笔随下一课题批次统一推送（沿先例不单独推送） |
+| 终裁依据 | 指导侧亲核（降本口径：紧凑 Git 摘要全符 + ci.yml 两步骤段与 .trivyignore 13 项指纹定向抽查合规 + 执行侧回传一致性裁决零矛盾）+ 独立复核子 agent 五块全量复跑 PASS with notes 零阻断（六镜像构建与六镜像 Trivy 门禁跑次实测全绿、offline 569 逐位、static rc=0、token 2030、只改清单恰 7 文件；非阻断 D3 契约门 extract_claims 扩展名白名单局限登记待后续基础工具治理课题处置；结束自证 EMPTY）+ CI 外部终验绿 |
+| 状态 | TASK-195 全链路闭环，**外部终验达成**；**F21 收口，findings 全清单正式清零**（P0/P1/P2 全关）；CI 步骤链新增全服务镜像构建门与 Trivy 依赖漏洞扫描门（分支 B：13 项存量 CRITICAL 指纹经 .trivyignore 豁免、任何新增未豁免 CRITICAL 阻断）；外部门槛计数更新为 **36 次**（35 绿 1 红）；后续任务书以全服务构建 + Trivy 门禁生效态为新基线。下一课题候选：13 项存量 CRITICAL 依赖升级治理专项、D3 契约门白名单扩充（基础工具治理）或用户定向 |
