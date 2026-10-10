@@ -2202,3 +2202,12 @@ run `35802403723`（head `eba0108`，2026-09-23 00:31 UTC）——**web/build �
 | 提交表 | 派发笔 `f141d22`、C-01 `41bf76d`、C-02 台账收口（显式哈希以回传报告为准）；父锚定 `0 2 → 0 3 → 0 4`；push 由指导侧另行授权执行，执行侧保持未推送 |
 | 受保护 token | 29 项既有集合不动；收口真值 2030 持平；新文档不枚举 token 字面量 |
 | 状态 | TASK-194 全链路闭环，**外部终验待推送后第 35 次外部门槛 CI 绿**；**record-service 静态门历史遗留违规彻底清零，全仓静态门口径完成对齐**；下一课题候选待指导侧定向 |
+
+**TASK-194 补记（push 触发 CI 后实测，外部门槛第 35 次达成，2026-10-10）**
+
+| 项目 | 内容 |
+| --- | --- |
+| 外部终验 | GitHub Actions CI 第 35 次运行 `38033808217` 全绿（web 19s + build 2m45s：Build and test / compose parse / 代表镜像构建 / static gate / docs wording self-check 全步骤通过），rc=0；两条 annotation 为 GitHub 平台级 runner 通知，与本仓无关 |
+| 推送与同步 | push `2d6d29e..77ef5e7` rc=0（推送时 `origin/main...main` = `0 4`，推送后 `0 0`），未建 PR；本补记笔随下一课题批次统一推送（沿先例不单独推送） |
+| 终裁依据 | 指导侧亲核（Git 层零越界 + C-01 十二文件逐 diff + C-02 台账四文件 + 门禁亲跑：static rc=0 三件套 / offline 569 逐位 / token 2030 / 契约门双态 rc=0 / 词面 ZERO_HIT / typed-router 零漂移）+ 独立复核子 agent 五块只读复跑全 PASS 零阻断、红线十条全核验（结束自证工作区干净）+ CI 外部终验绿；复核非阻断 N1（PendingOp Javadoc 单行转多行首句补句号，属任务书措辞微调授权范围）登记不整改 |
+| 状态 | TASK-194 全链路闭环，**外部终验达成**；**record-service 静态门口径对齐课题封盘**（Checkstyle 811 存量清零、静态门 rc=0 全绿新基线、spotbugs/pmd 首跑纳入口径）；外部门槛计数更新为 **35 次**（34 绿 1 红）；findings P2 仅剩 F21（CI 增补）。下一课题候选：F21 CI 增补（findings 最后一项，收口即清零）或其他方向待用户定向 |
