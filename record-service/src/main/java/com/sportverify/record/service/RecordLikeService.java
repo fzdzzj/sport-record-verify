@@ -170,7 +170,14 @@ public class RecordLikeService {
     /** pending 操作动作 */
     private enum Action { LIKE, UNLIKE }
 
-    /** pending 操作载体（Redis 队列元素，JSON 序列化；enqueuedAt 供队头年龄度量） */
+    /**
+     * pending 操作载体（Redis 队列元素，JSON 序列化；enqueuedAt 供队头年龄度量）。
+     *
+     * @param recordId 记录 id
+     * @param userId 用户 id
+     * @param action 点赞动作（LIKE/UNLIKE）
+     * @param enqueuedAt 入队时间戳（供队头年龄度量）
+     */
     private record PendingOp(Long recordId, Long userId, Action action, long enqueuedAt) {
         String key() {
             return recordId + ":" + userId;

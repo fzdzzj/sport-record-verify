@@ -151,6 +151,62 @@
                     </excludes>
                 </configuration>
             </plugin>
+
+            <!-- checkstyle 3.6.0（内置 checkstyle 9.3——与 leaderboard 口径与基准计数同引擎）
+                 规则集从 sun_checks 派生，放在 src/main/resources/checkstyle.xml：
+                 该路径随 jar 打包（规则集对外可审计、不影响运行时行为）；
+                 豁免面严格按任务书 §2.2 预注册清单就地注明理由。 -->
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-checkstyle-plugin</artifactId>
+                <version>3.6.0</version>
+                <configuration>
+                    <configLocation>src/main/resources/checkstyle.xml</configLocation>
+                    <!-- 规则集含中文注释，显式锁定读取编码，避免随平台编码漂移 -->
+                    <inputEncoding>UTF-8</inputEncoding>
+                    <!-- 只检查主源码：测试源码不在本任务白名单内 -->
+                    <includeTestSourceDirectory>false</includeTestSourceDirectory>
+                    <!-- 违规逐条打印进构建日志，便于审计 -->
+                    <consoleOutput>true</consoleOutput>
+                    <logViolationsToConsole>true</logViolationsToConsole>
+                    <logViolationCountToConsole>true</logViolationCountToConsole>
+                </configuration>
+            </plugin>
+
+            <!-- PMD 3.28.0（2025 稳定版，内置 PMD 7.17.0）
+                 规则集：显式引用插件内置默认规则集 rulesets/java/maven-pmd-plugin-default.xml，
+                 配置形态与 leaderboard pom 同口径。 -->
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-pmd-plugin</artifactId>
+                <version>3.28.0</version>
+                <configuration>
+                    <rulesets>
+                        <ruleset>rulesets/java/maven-pmd-plugin-default.xml</ruleset>
+                    </rulesets>
+                    <!-- 只分析主源码，口径与 checkstyle 一致 -->
+                    <includeTests>false</includeTests>
+                    <!-- priority 1..3 才算失败；priority 4 降级为「报告中可见、不判失败」 -->
+                    <failurePriority>3</failurePriority>
+                    <!-- 失败项逐条打印，便于审计 -->
+                    <printFailingErrors>true</printFailingErrors>
+                </configuration>
+            </plugin>
+
+            <!-- SpotBugs 4.9.8.5（支持 JDK21 class 文件）
+                 口径（「透明豁免」降级档）：failThreshold=High。
+                 首跑 18 条全部为 Medium（priority 2），无 High priority，CORRECTNESS 类 0 条。
+                 failThreshold=High 收窄失败判据，全部 Medium 仍原样写入 target/spotbugsXml.xml
+                 并逐条记入 handoff，不是静默屏蔽。 -->
+            <plugin>
+                <groupId>com.github.spotbugs</groupId>
+                <artifactId>spotbugs-maven-plugin</artifactId>
+                <version>4.9.8.5</version>
+                <configuration>
+                    <failThreshold>High</failThreshold>
+                    <includeTests>false</includeTests>
+                </configuration>
+            </plugin>
         </plugins>
     </build>
 </project>

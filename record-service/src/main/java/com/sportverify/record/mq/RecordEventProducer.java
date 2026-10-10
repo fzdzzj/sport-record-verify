@@ -31,13 +31,6 @@ public class RecordEventProducer {
     private final ObjectMapper objectMapper;
 
     /**
-     * 异步发布 SUBMITTED 事件。调用线程立即返回，不阻塞等待 Broker ACK。
-     *
-     * @param recordId  记录ID
-     * @param userId    所属用户（冗余分片键）
-     * @param onFailure 发送失败回调（在 RocketMQ 回调线程执行，已恢复 traceId）；成功不调用
-     */
-    /**
      * 兼容补偿扫描等调用方：异步提交发送。
      * @return 是否成功向 Producer 提交发送（非 Broker ACK）；提交阶段失败返回 false
      */
@@ -48,6 +41,13 @@ public class RecordEventProducer {
         return accepted[0];
     }
 
+    /**
+     * 异步发布 SUBMITTED 事件。调用线程立即返回，不阻塞等待 Broker ACK。
+     *
+     * @param recordId  记录ID
+     * @param userId    所属用户（冗余分片键）
+     * @param onFailure 发送失败回调（在 RocketMQ 回调线程执行，已恢复 traceId）；成功不调用
+     */
     public void publishSubmitted(Long recordId, Long userId, Runnable onFailure) {
         // eventId 全局唯一：消费者 SETNX 去重，保证重复投递只消费一次
         VerifyEventDTO event = new VerifyEventDTO(

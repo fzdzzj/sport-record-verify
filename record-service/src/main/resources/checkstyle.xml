@@ -1,0 +1,247 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE module PUBLIC
+          "-//Checkstyle//DTD Checkstyle Configuration 1.3//EN"
+          "https://checkstyle.org/dtds/configuration_1_3.dtd">
+
+<!--
+  record-service 静态检查规则集（TASK-194）
+
+  一、来源与口径
+  本文件由 checkstyle 9.3 内置 sun_checks.xml 派生，结构与保留闸门逐条对标
+  leaderboard-service TASK-018 规则集。派生方式为「有据裁剪」与「透明豁免」：
+  基准为未配置 configLocation 时 maven-checkstyle-plugin 3.6.0 的默认规则集实测
+  811 项存量违规（分布于 26 个源文件）。
+  保留的规则即本模块静态检查硬闸门，实测 0 违规。
+
+  二、811 基准构成（checkstyle 9.3 / sun_checks 实测）
+    JavadocStyle               195      ③ 豁免（本仓中文 Javadoc 首句不以句号收尾）
+    JavadocMethod              175      ③ 豁免（public 方法未全覆盖 @param/@return）
+    FinalParameters            156      ③ 豁免（本仓惯用法不强制声明 final 形参）
+    LineLength                 138      ③ 保留但放宽阈值 80 -> 140（最长 121 全消）
+    JavadocVariable             39      ③ 豁免（字段级 Javadoc 不强制覆盖私有/内部类）
+    HiddenField                 25      ③ 豁免（构造器与 setter 惯用 this.x = x 赋值）
+    DesignForExtension          22      ③ 豁免（MyBatis 实体与数据载体无扩展语义）
+    MissingJavadocMethod        18      ③ 豁免（与 JavadocMethod 同源）
+    MagicNumber                 16      ③ 豁免（业务常量字面量）
+    OperatorWrap                12      ③ 豁免（Mapper SQL 拼接换行符在行尾）
+    JavadocPackage               8      源码修复（新建 8 个 package-info.java，不豁免）
+    JavadocType                  4      源码修复（RecordLikeService PendingOp 补 @param）
+    HideUtilityClassConstructor  1      ① 豁免（RecordApplication 启动类误报）
+    ParameterNumber              1      ③ 保留但放宽阈值 7 -> 8（RecordLikeService 构造器 8 依赖注入）
+    InvalidJavadocPosition       1      源码修复（RecordEventProducer Javadoc 挪位）
+    ============================================================
+    合计                       811
+
+  三、豁免分类定义（四类，与全仓统一口径）
+    ① 误报
+    ② Lombok / 框架生成代码所致
+    ③ 风格项与既有代码库冲突
+    ④ 工具间重复规则
+
+  四、硬边界
+    1. 禁用 suppressions 文件级静默屏蔽，每条豁免在规则集内就地注明分类、理由与计数。
+    2. spotbugs CORRECTNESS / MALICIOUS_CODE 类 High priority 问题一律不得豁免。
+    3. 相比 leaderboard TASK-018 版差异点：
+       - JavadocPackage 8 项：leaderboard 因无源码修改权走豁免，本模块有源码权限，
+         选择真建 8 个 package-info.java 彻底清零，保留该规则为闸门。
+       - ParameterNumber 1 项：放宽 max=8 覆盖 RecordLikeService 构造器 8 依赖注入，第 9 参仍拦截。
+       - UnusedImports：record 实测 0 违规，保留为闸门。
+-->
+<module name="Checker">
+  <property name="severity" value="error"/>
+
+  <property name="fileExtensions" value="java, properties, xml"/>
+
+  <!-- 排除 module-info.java（sun 基线同款） -->
+  <module name="BeforeExecutionExclusionFileFilter">
+    <property name="fileNamePattern" value="module\-info\.java$"/>
+  </module>
+
+  <!--
+    文件级屏蔽入口（sun 基线同款）：声明的是 checkstyle-suppressions.xml，
+    该文件当前不存在且 optional=true，故恒为空操作。
+    口径：如需新增文件级豁免，须走评审并在 handoff 记账，不得用本入口静默掩盖。
+  -->
+  <module name="SuppressionFilter">
+    <property name="file" value="${org.checkstyle.sun.suppressionfilter.config}"
+              default="checkstyle-suppressions.xml" />
+    <property name="optional" value="true"/>
+  </module>
+
+  <!-- 包级文档存在性闸门（record-service 新建 8 个 package-info.java 源码修复清零，不豁免） -->
+  <module name="JavadocPackage"/>
+
+  <!-- 文件以换行符结尾 -->
+  <module name="NewlineAtEndOfFile"/>
+
+  <!-- properties 文件的键集合一致（保留以备后续） -->
+  <module name="Translation"/>
+
+  <!-- 单文件行数上限（sun 默认 2000） -->
+  <module name="FileLength"/>
+
+  <!--
+    [放宽-③] LineLength（811 基准命中 138 处）
+    理由：sun 默认 max=80，而 record 实测最长行仅 121 字符，0 处超过 140。
+    放宽为 max=140 与 leaderboard 口径完全对齐，既有 138 处全消，同时能有效拦截失控超长行。
+  -->
+  <module name="LineLength">
+    <property name="fileExtensions" value="java"/>
+    <property name="max" value="140"/>
+  </module>
+
+  <!-- 禁止用制表符缩进 -->
+  <module name="FileTabCharacter"/>
+
+  <!-- 禁止行尾空白 -->
+  <module name="RegexpSingleline">
+    <property name="format" value="\s+$"/>
+    <property name="minimum" value="0"/>
+    <property name="maximum" value="0"/>
+    <property name="message" value="Line has trailing spaces."/>
+  </module>
+
+  <module name="TreeWalker">
+
+    <!-- ==================== Javadoc ==================== -->
+    <!-- Javadoc 注释必须写在声明正前方（RecordEventProducer:33 挪位修复后 0 违规） -->
+    <module name="InvalidJavadocPosition"/>
+    <!--
+      [豁免-③] JavadocMethod（811 基准命中 175 处）
+      理由：要求 public 方法补齐 @param/@return；既有代码未全覆盖，补齐非关键文档改动面大，
+      与本仓既有约定冲突。
+    -->
+    <!-- <module name="JavadocMethod"/> -->
+    <!-- 类/接口/record 的 Javadoc 存在性（RecordLikeService PendingOp record 补 @param 后 0 违规，保留为闸门） -->
+    <module name="JavadocType"/>
+    <!--
+      [豁免-③] JavadocVariable（811 基准命中 39 处）
+      理由：要求字段级 Javadoc；命中集中在内部类私有字段与常数字段，本仓既有风格不为所有私有字段写 Javadoc。
+    -->
+    <!-- <module name="JavadocVariable"/> -->
+    <!--
+      [豁免-③] JavadocStyle（811 基准命中 195 处）
+      理由：要求 Javadoc 首句以英文句号结尾；本仓 Javadoc 为中文多段落风格，
+      首句普遍不以「。」收尾，与 sun 英文约定冲突。
+    -->
+    <!-- <module name="JavadocStyle"/> -->
+    <!--
+      [豁免-③] MissingJavadocMethod（811 基准命中 18 处）
+      理由：与 JavadocMethod 同源；命中集中在内部方法与 getter/setter。
+    -->
+    <!-- <module name="MissingJavadocMethod"/> -->
+
+    <!-- ==================== 命名约定 ==================== -->
+    <module name="ConstantName"/>
+    <module name="LocalFinalVariableName"/>
+    <module name="LocalVariableName"/>
+    <module name="MemberName"/>
+    <module name="MethodName"/>
+    <module name="PackageName"/>
+    <module name="ParameterName"/>
+    <module name="StaticVariableName"/>
+    <module name="TypeName"/>
+
+    <!-- ==================== import 卫生 ==================== -->
+    <module name="AvoidStarImport"/>
+    <module name="IllegalImport"/>
+    <module name="RedundantImport"/>
+    <!-- 未使用 import 闸门（record 实测 0 违规，保留为闸门） -->
+    <module name="UnusedImports">
+      <property name="processJavadoc" value="false"/>
+    </module>
+
+    <!-- ==================== 规模 ==================== -->
+    <module name="MethodLength"/>
+    <!--
+      [放宽-③] ParameterNumber（811 基准命中 1 处）
+      理由：RecordLikeService 构造器注入 8 个依赖（Spring 框架惯用法）。
+      放宽 max=8 比豁免保守，第 9 参仍将被拦截。
+    -->
+    <module name="ParameterNumber">
+      <property name="max" value="8"/>
+    </module>
+
+    <!-- ==================== 空白 ==================== -->
+    <module name="EmptyForIteratorPad"/>
+    <module name="GenericWhitespace"/>
+    <module name="MethodParamPad"/>
+    <module name="NoWhitespaceAfter"/>
+    <module name="NoWhitespaceBefore"/>
+    <!--
+      [豁免-③] OperatorWrap（811 基准命中 12 处）
+      理由：要求换行时运算符另起一行；12 处均为 Mapper SQL 拼接行尾「+」，改动会打乱排版。
+    -->
+    <!-- <module name="OperatorWrap"/> -->
+    <module name="ParenPad"/>
+    <module name="TypecastParenPad"/>
+    <module name="WhitespaceAfter"/>
+    <module name="WhitespaceAround"/>
+
+    <!-- ==================== 修饰符 ==================== -->
+    <module name="ModifierOrder"/>
+    <module name="RedundantModifier"/>
+
+    <!-- ==================== 块 ==================== -->
+    <module name="AvoidNestedBlocks"/>
+    <module name="EmptyBlock"/>
+    <module name="LeftCurly"/>
+    <module name="NeedBraces"/>
+    <module name="RightCurly"/>
+
+    <!-- ==================== 常见编码问题 ==================== -->
+    <module name="EmptyStatement"/>
+    <module name="EqualsHashCode"/>
+    <!--
+      [豁免-③] HiddenField（811 基准命中 25 处）
+      理由：要求构造器/setter 参数不得与字段同名；25 处均为 this.x = x 赋值，属本仓既有写法。
+    -->
+    <!-- <module name="HiddenField"/> -->
+    <module name="IllegalInstantiation"/>
+    <module name="InnerAssignment"/>
+    <!--
+      [豁免-③] MagicNumber（811 基准命中 16 处）
+      理由：16 处均为业务常量字面量（毫秒数、默认容量、重试间隔等），与 sun 严格字面量定义冲突。
+    -->
+    <!-- <module name="MagicNumber"/> -->
+    <module name="MissingSwitchDefault"/>
+    <module name="MultipleVariableDeclarations"/>
+    <module name="SimplifyBooleanExpression"/>
+    <module name="SimplifyBooleanReturn"/>
+
+    <!-- ==================== 类设计 ==================== -->
+    <!--
+      [豁免-③] DesignForExtension（811 基准命中 22 处）
+      理由：要求可被子类扩展的方法加 Javadoc 或声明 final/abstract/empty；
+      命中均在实体类与数据载体类，为扩展而加 Javadoc/final 无实际语义收益。
+    -->
+    <!-- <module name="DesignForExtension"/> -->
+    <module name="FinalClass"/>
+    <!--
+      [豁免-①] HideUtilityClassConstructor（811 基准命中 1 处）
+      理由：误报。命中 RecordApplication.java:19——该类为 Spring Boot 启动类
+      （含 public static void main），非全静态工具类，sun 规则未识别启动类语义。
+    -->
+    <!-- <module name="HideUtilityClassConstructor"/> -->
+    <module name="InterfaceIsType"/>
+    <module name="VisibilityModifier"/>
+
+    <!-- ==================== 其他 ==================== -->
+    <module name="ArrayTypeStyle"/>
+    <!--
+      [豁免-③] FinalParameters（811 基准命中 156 处）
+      理由：要求方法/构造器参数声明为 final；本仓既有约定不强制写 final 参数，遍及全模块。
+    -->
+    <!-- <module name="FinalParameters"/> -->
+    <module name="TodoComment"/>
+    <module name="UpperEll"/>
+
+    <!-- 文件级屏蔽入口（sun 基线同款，当前文件不存在，恒为空操作） -->
+    <module name="SuppressionXpathFilter">
+      <property name="file" value="${org.checkstyle.sun.suppressionxpathfilter.config}"
+                default="checkstyle-xpath-suppressions.xml" />
+      <property name="optional" value="true"/>
+    </module>
+
+  </module>
+</module>
