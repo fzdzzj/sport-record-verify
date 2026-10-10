@@ -2235,3 +2235,18 @@ run `35802403723`（head `eba0108`，2026-09-23 00:31 UTC）——**web/build �
 | 推送与同步 | push `77ef5e7..67002ee` rc=0（推送时 `origin/main...main` = `0 4`，推送后 `0 0`），未建 PR；本补记笔随下一课题批次统一推送（沿先例不单独推送） |
 | 终裁依据 | 指导侧亲核（降本口径：紧凑 Git 摘要全符 + ci.yml 两步骤段与 .trivyignore 13 项指纹定向抽查合规 + 执行侧回传一致性裁决零矛盾）+ 独立复核子 agent 五块全量复跑 PASS with notes 零阻断（六镜像构建与六镜像 Trivy 门禁跑次实测全绿、offline 569 逐位、static rc=0、token 2030、只改清单恰 7 文件；非阻断 D3 契约门 extract_claims 扩展名白名单局限登记待后续基础工具治理课题处置；结束自证 EMPTY）+ CI 外部终验绿 |
 | 状态 | TASK-195 全链路闭环，**外部终验达成**；**F21 收口，findings 全清单正式清零**（P0/P1/P2 全关）；CI 步骤链新增全服务镜像构建门与 Trivy 依赖漏洞扫描门（分支 B：13 项存量 CRITICAL 指纹经 .trivyignore 豁免、任何新增未豁免 CRITICAL 阻断）；外部门槛计数更新为 **36 次**（35 绿 1 红）；后续任务书以全服务构建 + Trivy 门禁生效态为新基线。下一课题候选：13 项存量 CRITICAL 依赖升级治理专项、D3 契约门白名单扩充（基础工具治理）或用户定向 |
+
+## 验收记录：TASK-196 harden-dep-critical-pin 存量 CRITICAL 依赖升级治理与 .trivyignore 收缩（2026-10-10，执行 agent）
+
+| 项 | 实测 |
+| --- | --- |
+| 开工基线 | 派发笔 HEAD `f701ece`（TASK-196 派发笔），父 `0190116`（TASK-195 补记笔）；`origin/main...main` = `0 2`；工作树零残留；离线全量 569（`36/44/127/137/149/64/12`）；`--static=record-service` rc=0；受保护 token 29 项开工实测 SUM=2030；词面门/契约门开工清 |
+| 实施笔 | ①派发笔入库三件套 + 任务书零改动 ②C-01 实施笔（`4ddd632`：父 pom dependencyManagement 顶部 Pin netty-bom 4.1.137.Final、tomcat-embed-core 10.1.59、bcprov-jdk18on 1.85；五模块 pom 彻底排除 fastjson 传递依赖；.trivyignore 删除 11 项已修复 CVE，收缩至 16 行）③C-02 台账收口（本笔） |
+| 收口基线 | offline 全量 `--mode=offline test` `36/44/127/137/149/64/12` = **569** 逐位不变；`--static=record-service` 与 `--static=leaderboard-service` 静态检查均 rc=0；6 服务镜像构建全绿；Trivy 门禁扫描 6 镜像零未豁免检出，全部 rc=0；契约门在途/无参均 rc=0；token 29 项只增不减（开工 2030、C-01 2030、收口 2030）；`git status --porcelain` 收口后为空 |
+| 验收要点证据 | Tomcat 7 项 CRITICAL 漏洞清零（采用 10.1.59 官方补丁版本，D1）；Netty 1 项 CRITICAL 漏洞清零（统一至 4.1.137.Final，无版本分裂）；BouncyCastle 2 项 CRITICAL 漏洞清零（统一至 1.85，重点认证域用例全绿）；fastjson 1 项 CRITICAL 漏洞清零（五模块 exclusions 彻底根除，全仓 dependency:tree 0 处 fastjson，无类缺失，未引入桥接包，D2）；.trivyignore 从 46 行收缩至 16 行（净删 30 行，仅保留头部规则注释与 2 项 Spring 商业专属 CVE，D3）；三 BOM 基线版本零改动；pom-only 零业务代码改动 |
+| 三支裁决 | 11 项 CRITICAL 漏洞实测消除 + .trivyignore 严格收缩至 16 行 + 6 服务镜像构建与门禁扫描全绿 + offline 569 逐位不变 + static 双模块 rc=0 + 契约门在途/无参 rc=0 + 全门禁绿 → **PASSED**；无 FAILED 项；外部终验待推送后下一次外部门槛 CI 绿（第 37 次） |
+| 偏差 | D1：Tomcat 预注册版本 10.1.58 在 Central 不存在，修正为公开官方修复版本 10.1.59；D2：fastjson 排除后全量单测全绿无类缺失，未引入兜底桥接包；D3：Spring Framework 6.1.29 属商业支持专有包，经用户拍板保留在 .trivyignore；D4：C-02 自指哈希按台账终态化先例。详见 handoff §4 |
+| 未覆盖项 | 本课题本地离线、多模块与容器门禁验证完备；Spring 2 项 CVE 按用户裁决保留在 .trivyignore，开源暂不覆盖；零收益数字 claim。详见 handoff §9 |
+| 提交表 | 派发笔 `f701ece`、C-01 `4ddd632`、C-02 台账收口（显式哈希以回传报告为准）；父锚定 `0 2 → 0 3 → 0 4`；push 由指导侧另行授权执行，执行侧保持未推送 |
+| 受保护 token | 29 项既有集合不动；收口真值 2030 持平；新文档不枚举 token 字面量 |
+| 状态 | TASK-196 全链路闭环，**外部终验待推送后第 37 次外部门槛 CI 绿**；**存量 11 项 CRITICAL 依赖漏洞治理完毕，.trivyignore 收缩落地**；外部门槛计数待更新为 **37 次**；后续任务书以收缩后 .trivyignore 与补丁依赖版本为新基线 |

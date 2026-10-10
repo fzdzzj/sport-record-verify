@@ -60,10 +60,26 @@
 
 ### §7.1 提交记录
 
-- 派发笔：`（回填显式哈希）`
-- C-01 实施笔：`（回填显式哈希）`
+- 派发笔：`f701ecedadc429f8f2f2f6027898a93345572898`（`f701ece`）
+- C-01 实施笔：`4ddd6321584294a609ae6906fa74986417daaa64`（`4ddd632`）
 - C-02 台账笔：`（本笔自指：显式哈希以回传报告与 handoff §8 给出）`
 
-### §7.2 实施读数（回填：三阶段各流水线读数 / Pin 形态与最终版本 / fastjson 路径选型与理由 / .trivyignore 收缩前后行数对照 / dependency:tree 终态实证）
+### §7.2 实施读数
 
-### §7.3 门禁读数（回填：offline / static 双模块 / 6 镜像构建 / Trivy 收缩验证与门禁跑次 / 契约门双态 / token / 只改清单 / diff --check / 行尾）
+- **三阶段流水线读数**：
+  - 阶段 1：父 pom dependencyManagement 顶部 Pin `netty-bom:4.1.137.Final` 与 `tomcat-embed-core:10.1.59`（偏差 D1：预注册 10.1.58 在 Central 仓库不存在，采用公开补丁版本 10.1.59；偏差 D3：Spring Framework 6.1.29 属 VMware 商业支持专有，Central 仓库不存在，经用户拍板保留 2 项 CVE 并登记偏差）。消除 Tomcat×7 + Netty×1 共 8 项 CVE，收缩 .trivyignore 8 行。
+  - 阶段 2：父 pom Pin `bcprov-jdk18on:1.85`，消除 BC×2 项 CVE，认证域用例（JWT/BCrypt）全绿，收缩 .trivyignore 2 行。
+  - 阶段 3：五模块（user/record/verify/leaderboard/gateway）pom 排除 fastjson 传递依赖，全仓用例全绿无类缺失，无需 fastjson-to-fastjson2 桥接，消除 fastjson×1 项 CVE，收缩 .trivyignore 1 行。
+- **.trivyignore 收缩前后行数对照**：开工 46 行（登记 13 项 CVE 及分组注释）→ 收缩后 16 行（保留头部规则注释与 2 项 Spring 商业专属 CVE 登记）。
+- **dependency:tree 终态实证**：`mvn dependency:tree` 实证全仓 0 处 fastjson:1.2.83；netty 统一锁定 4.1.137.Final 无版本分裂；bcprov 统一锁定 1.85。
+
+### §7.3 门禁读数
+
+- **offline 569 逐位**：`36/44/127/137/149/64/12` = 569，Failures: 0, Errors: 0, Skipped: 0，rc=0。
+- **static 双模块**：`--static=record-service` (rc=0) 与 `--static=leaderboard-service` (rc=0) 均通过。
+- **6 镜像构建**：gateway/user/record/verify/leaderboard/mapmatch 全绿构建成功。
+- **Trivy 收缩验证与门禁跑次**：6 镜像门禁跑次全绿（`--severity CRITICAL --exit-code 1 --ignore-unfixed --ignorefile .trivyignore`），11 项消除项未豁免检出均为 0。
+- **契约门双态**：`bash scripts/verify/mailbox-contract.sh --open=TASK-196 --baseline=f701ece` 与无参调用均 rc=0。
+- **token 29 项**：开工实测 SUM=2030，收口实测 SUM=2030（只增不减持平）。
+- **只改清单**：C-01 恰 7 文件，C-02 恰 4 文件，零越界。
+- **diff --check 与行尾**：`git diff --check` rc=0 干净；各 pom 与 .trivyignore 保持既有行尾。
