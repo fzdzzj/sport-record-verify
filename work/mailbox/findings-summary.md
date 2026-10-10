@@ -209,3 +209,17 @@ HEAD `4269534`（TASK-191 补记笔）时点为准；**既有条目标题内的�
 - **盘点结论**：P0 两项全清（F01/F02）；P1 实质项全收口（F03/F05/F06/F07/F09/F10，F08 顺带收口）；
   剩余均为 P2 尾巴（F11/F12/F13/F21/F23）与语义维持项（F04/F14/F22）。
   **以本清单驱动的治理阶段收官**，后续课题转向 P2 尾巴打包或非 findings 方向。
+
+### 订正（TASK-192 落账后复核，同日，指导侧）
+
+- **F23 判定订正：部分收口 → 已收口（关闭）**。TASK-192 盘点段称「VerifyController appeals 端点
+  仍无服务侧校验（直连面残余）」系**误判**——错因：侦察只核了 Controller 层代码与网关侧配置，
+  未核 common 治理凭证过滤器的各服务路径配置。实测证据：common `GovernanceApiAuthFilter.java`
+  （TASK-136 第二阶段）按 `app.governance.protected-paths` 过滤，verify-service application.yml:206
+  已配置 `protected-paths: /api/appeals/**,/rules/**`（**appeals 端点服务侧凭证校验在位**），
+  leaderboard application.yml:87 配置 `/api/leaderboard/daily`；网关侧 admin paths
+  （AuthGlobalFilter.java:66）含 `/verify/api/appeals/**` 且有 VerifyAppealReviewAdminOnlyTest 守护。
+  **F23 双层防线（网关 ADMIN 角色 + 服务侧治理凭证）齐备，关闭**。
+- 盘点段「RuleVersionController.java:21-23 已有服务侧 token 角色校验」表述一并订正：校验落点在
+  common Filter + 各服务 yml 路径配置，RuleVersionController 仅 Javadoc 声明（本控制器无校验代码）。
+- 结论微调：部分收口项由 5 项减为 **4 项（F11/F12/F13/F21）**，P2 尾巴不含 F23；其余判定不受影响。

@@ -2152,3 +2152,14 @@ run `35802403723`（head `eba0108`，2026-09-23 00:31 UTC）——**web/build �
 | 门禁 | 纯追加检查：`git diff --numstat` 两台账文件删除列均 0（findings-summary.md 实测 66/0）；`git diff --check` rc=0 干净；词面门新增文本扫描 ZERO_HIT；受保护 token 29 项收口复算 SUM=2030 持平（新增文本零 token 字面量）；零代码零脚本，构建基线（561/811）与契约门不涉 |
 | 提交 | 单笔 `docs(mailbox): 登记 findings 全量盘点与档案对齐（TASK-192）`（自指哈希沿 TASK-190/191 D1 先例以 git log 事后可查；随下一课题批次推送，不单独推送） |
 | 状态 | TASK-192 LIGHT 落账闭环；**findings 清单驱动治理阶段收官**（P0 清零 + P1 实质全收口里程碑达成）；下一课题候选待用户定向（P2 尾巴打包 vs 非 findings 方向） |
+
+**TASK-192 订正（落账后复核发现 F23 误判，同日订正笔，显式引用 TASK-192）**
+
+| 项目 | 内容 |
+| --- | --- |
+| 订正对象 | TASK-192 盘点段 F23 判定（findings-summary.md「全量盘点核实」段） |
+| 错因 | 侦察只核 Controller 层代码与网关侧配置，未核 common GovernanceApiAuthFilter 的 protected-paths 各服务 yml 配置 |
+| 订正内容 | F23 部分收口 → **已收口（关闭）**：verify application.yml:206 `protected-paths: /api/appeals/**,/rules/**`（appeals 服务侧凭证校验在位）、leaderboard application.yml:87 `/api/leaderboard/daily`；网关侧 AuthGlobalFilter.java:66 admin paths 含 `/verify/api/appeals/**` + VerifyAppealReviewAdminOnlyTest 守护；双层防线齐备。「RuleVersionController.java:21-23 已有服务侧校验」表述一并订正（校验落点在 common Filter + yml 配置，该 Controller 仅 Javadoc 声明） |
+| 结论影响 | 部分收口 5 项 → 4 项（F11/F12/F13/F21）；P2 尾巴不含 F23；TASK-192 其余判定不受影响 |
+| 门禁 | 同 LIGHT 三门：纯追加（numstat 删除列 0）、`git diff --check` 干净、词面门 ZERO_HIT；零代码零脚本 |
+| 提交 | 单笔订正笔（显式引用 TASK-192）；随下一课题批次推送 |
