@@ -1,0 +1,26 @@
+[
+  {
+    "number": 1,
+    "category": "实施",
+    "task": "ci.yml 全服务镜像构建步骤扩展 + Trivy 依赖漏洞扫描步骤 + 首跑基线实测",
+    "steps": [
+      { "step": "本地首跑基线实测：docker compose -f docker-compose.yml -f docker-compose.services.yml build 六服务（gateway/user/record/verify/leaderboard/mapmatch）实测全绿；任一失败 → 停手回报（Dockerfile 修复超白名单，属真发现不擅修）；实测登记 compose build 产物镜像名口径（预期 sports-<service> 形态，docker images 实测为准）", "completed": false },
+      { "step": "本地安装 Trivy 固定版本（禁浮动 tag），扫描 6 镜像实测首跑基线：按任务书 §2.3 决策树定阻断策略（A：0 CRITICAL → CRITICAL exit 1 门槛；B：存量 >0 → .trivyignore 登记存量指纹纯追加 + 同门槛；C：DB/工具不可用 → 停手回报禁静默跳过）；ignore-unfixed 口径实测后定并登记理由；本地不可安装/不可跑 → 停手回报", "completed": false },
+      { "step": "ci.yml 就地扩展镜像构建步骤：原「Build representative service image」步骤改命令为 6 服务显式构建（同一 docker compose build 命令列全 6 服务名），步骤名与注释更新（6/6 全覆盖口径、与 compose config 静态解析的分工：config 验结构、build 实测构建链）；既有其余步骤（Build and test / compose parse / Provision env / static gate / 词面门 / web 档 / JaCoCo upload）零语义改动", "completed": false },
+      { "step": "ci.yml 新增 Trivy 扫描步骤（置于镜像构建步骤之后）：固定版本（action 固定 tag 或 CLI pin 安装二选一，选型与理由登记），6 镜像全覆盖（循环或分步），severity 口径 HIGH,CRITICAL 输出登记 + CRITICAL 阻断（按 §2.3 实测定的分支落地）；分支 B 时 .trivyignore 新文件落盘（纯追加治理：逐条 CVE 指纹 + 来源注释）；禁 continue-on-error", "completed": false },
+      { "step": "yaml 语法校验（python yaml.safe_load 解析 ci.yml rc=0）+ 词面门改动文件集口径自检（ci.yml 仅扫新增行零禁词，整文件沿 CI exclude 豁免口径；其余改动文件 ZERO_HIT）+ git diff --check 干净 + 行尾核验（ci.yml 保持既有行尾、.trivyignore 新文件 LF + 末尾换行）", "completed": false }
+    ],
+    "passes": false
+  },
+  {
+    "number": 2,
+    "category": "验收",
+    "task": "门禁与台账闭环",
+    "steps": [
+      { "step": "本地门禁复跑留证：offline 全量 569（36/44/127/137/149/64/12）逐位不变 + static --static=record-service rc=0 不变（零业务代码改动硬门，唯一验证入口 mvn-verify.sh）；契约门双态（--open TASK-195 --baseline=<派发笔哈希> 与无参）rc=0；token 29 项开工实测只增不减（TASK-194 收口真值 2030 参照）；只改清单全等（git diff --name-only <派发笔>..HEAD 恰白名单文件）；零越界（pom/compose/scripts/业务源码零改动）", "completed": false },
+      { "step": "台账闭环：tasks.json 全勾；任务书 §7 回填（基线读数/决策树分支/选型理由/版本号）；handoff.md 新建留证（开工规程、镜像构建六服务实测、扫描首跑读数与基线、.trivyignore 登记清单（若有）、逐门实测表、提交表、未覆盖项）；PLAN.md 纯追加（含 F21 收口与 findings 清零声明、CI 步骤清单变更声明）；findings-summary.md F21 条目核实标注纯追加（标注时点与依据）", "completed": false },
+      { "step": "收口态：两笔本地提交（C-01 实施笔 ci.yml（+.trivyignore 若分支 B）→ C-02 台账笔五文件）均未推送不建 PR；推送后第 36 次 CI 全绿（含新两步骤）为外部终验，红则按签名归因禁重试刷绿；零收益数字 claim（扫描命中数/安全改善百分比不入 claim，仅机制性事实）", "completed": false }
+    ],
+    "passes": false
+  }
+]
