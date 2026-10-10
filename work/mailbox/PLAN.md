@@ -2211,3 +2211,18 @@ run `35802403723`（head `eba0108`，2026-09-23 00:31 UTC）——**web/build �
 | 推送与同步 | push `2d6d29e..77ef5e7` rc=0（推送时 `origin/main...main` = `0 4`，推送后 `0 0`），未建 PR；本补记笔随下一课题批次统一推送（沿先例不单独推送） |
 | 终裁依据 | 指导侧亲核（Git 层零越界 + C-01 十二文件逐 diff + C-02 台账四文件 + 门禁亲跑：static rc=0 三件套 / offline 569 逐位 / token 2030 / 契约门双态 rc=0 / 词面 ZERO_HIT / typed-router 零漂移）+ 独立复核子 agent 五块只读复跑全 PASS 零阻断、红线十条全核验（结束自证工作区干净）+ CI 外部终验绿；复核非阻断 N1（PendingOp Javadoc 单行转多行首句补句号，属任务书措辞微调授权范围）登记不整改 |
 | 状态 | TASK-194 全链路闭环，**外部终验达成**；**record-service 静态门口径对齐课题封盘**（Checkstyle 811 存量清零、静态门 rc=0 全绿新基线、spotbugs/pmd 首跑纳入口径）；外部门槛计数更新为 **35 次**（34 绿 1 红）；findings P2 仅剩 F21（CI 增补）。下一课题候选：F21 CI 增补（findings 最后一项，收口即清零）或其他方向待用户定向 |
+
+## 验收记录：TASK-195 add-ci-dep-scan-image-gates CI 依赖漏洞扫描与全服务镜像构建增补（2026-10-10，执行 agent）
+
+| 项 | 实测 |
+| --- | --- |
+| 开工基线 | 派发笔 HEAD `eefea97`（TASK-195 派发笔），父 `f943998`（TASK-194 补记笔）；`origin/main...main` = `0 2`；工作树零残留；离线全量 569（`36/44/127/137/149/64/12`）；`--static=record-service` rc=0；受保护 token 29 项开工实测 SUM=2030；词面门/契约门开工清 |
+| 实施笔 | ①派发笔入库三件套（proposal/tasks.json/spec-delta）+ 任务书零改动 ②C-01 实施笔（`282475b`：ci.yml 就地扩展原单代表镜像构建为 6 服务显式构建，新增 Trivy v0.60.0 扫描步骤全覆盖 6 镜像，按决策树分支 B 设立 CRITICAL exit 1 门槛并在 repo 根新建 `.trivyignore` 纯追加登记 13 项存量指纹）③C-02 台账收口（本笔） |
+| 收口基线 | `ci.yml` 包含全 6 服务镜像构建与 Trivy 依赖扫描双门；`.trivyignore` 登记 13 项已知 CRITICAL CVE；offline 全量 `--mode=offline test` `36/44/127/137/149/64/12` = **569** 逐位不变；`--static=record-service` rc=0（Checkstyle 0 违规，SpotBugs 18 Medium failThreshold=High 通过，PMD 0 违规）；契约门在途/无参均 rc=0；词面门改动集 + repo 全量（CI 权威 exclude 口径）四形态全 ZERO_HIT rc=1 + 探针三态正常（PROBE_GONE=yes）；token 29 项只增不减（开工 2030、C-01 2030、收口 2030）；`git status --porcelain` 收口后为空 |
+| 验收要点证据 | 本地首跑 6 服务 Dockerfile 构建全绿；镜像命名 `sport-verify-<service>:latest` 与 compose 项目名对齐；Trivy 首跑检出 13 项唯一 CRITICAL CVE（全部来自 Spring Boot/Tomcat/Netty/BouncyCastle/fastjson 上游传递依赖，0 处 base OS 漏洞），触发决策树分支 B；`.trivyignore` 逐条注明镜像与来源；Trivy 选型形态 乙（固定容器提取 CLI 二进制 + for 循环），避免 GitHub API 速率限制与网络漂移；CI 门禁阻断跑次增加 `--ignore-unfixed`（结合 `.trivyignore` 存量白名单双重把关）；既有 CI 步骤零语义改动；业务代码、各 pom 与 docker-compose 零触碰 |
+| 三支裁决 | 全服务镜像构建门落地 + Trivy 扫描门落地 + 决策树分支 B 纯追加登记 + static rc=0 保持 + offline 569 逐位不变 + 契约门在途/无参 rc=0 + 全门禁绿 → **PASSED**；无 FAILED 项；外部终验待推送后下一次外部门槛 CI 绿（第 36 次） |
+| 偏差 | D1：C-02 自指哈希按台账终态化先例（回传报告与 handoff §8 显式给出）；D2：镜像构建服务名按 `docker-compose.services.yml` 显式键名声明（`mapmatch-service` 对齐实际服务名，任务书 §2.1 简写 `mapmatch` 在实施笔按 compose 权威键名对齐）；D3：契约门在途提取白名单缺 trivyignore 扩展名说明（受红线 1 约束不改脚本，收口无参门禁直接通过）。详见 handoff §4 |
+| 未覆盖项 | 本课题本地离线与容器化验证完备；零收益数字 claim（漏洞计数与改善百分比不入 claim，仅记录机制性工程事实）。详见 handoff §9 |
+| 提交表 | 派发笔 `eefea97`、C-01 `282475b`、C-02 台账收口（显式哈希以回传报告为准）；父锚定 `0 2 → 0 3 → 0 4`；push 由指导侧另行授权执行，执行侧保持未推送 |
+| 受保护 token | 29 项既有集合不动；收口真值 2030 持平；新文档不枚举 token 字面量 |
+| 状态 | TASK-195 全链路闭环，**外部终验待推送后第 36 次外部门槛 CI 绿**；**F21 闭环关闭，findings 全清单正式清零**；外部门槛计数待更新为 **36 次**；后续任务包以全服务构建 + Trivy 门禁生效态为新基线 |

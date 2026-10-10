@@ -85,10 +85,34 @@ findings-summary.md F21 条目下纯追加核实段（标注时点 + 依据：�
 
 ### §7.1 提交记录
 
-- 派发笔：`（回填显式哈希）`
-- C-01 实施笔：`（回填显式哈希）`
+- 派发笔：`eefea9756a1678079623aac79dde7cf91cff2134`（`eefea97`）
+- C-01 实施笔：`282475b92061588b99ae30da8d96abeb62465711`（`282475b`）
 - C-02 台账笔：`（本笔自指：显式哈希以回传报告与 handoff §8 给出）`
 
-### §7.2 实施读数（回填：决策树分支判定 / CRITICAL 与 HIGH 计数 / .trivyignore 条目数（若有）/ trivy 版本与选型 / ignore-unfixed 决策 / 镜像名口径）
+### §7.2 实施读数
 
-### §7.3 门禁读数（回填：yaml 校验 / 词面门 / offline / static / 契约门双态 / token / 只改清单 / diff --check / 行尾）
+- **决策树分支判定**：分支 B（CRITICAL > 0，首跑实测命中 13 项存量 CRITICAL 级别已知 CVE）。
+- **CRITICAL 与 HIGH 计数**（首跑实测）：
+  - `sport-verify-gateway-service:latest`：CRITICAL=4，HIGH=44
+  - `sport-verify-user-service:latest`：CRITICAL=12，HIGH=89
+  - `sport-verify-record-service:latest`：CRITICAL=12，HIGH=89
+  - `sport-verify-verify-service:latest`：CRITICAL=12，HIGH=89
+  - `sport-verify-leaderboard-service:latest`：CRITICAL=12，HIGH=89
+  - `sport-verify-mapmatch-service:latest`：CRITICAL=10，HIGH=45
+  - 全仓 6 服务合计：CRITICAL 累计 62 次（去重 13 项唯一 CVE），HIGH 累计 445 次。
+- **.trivyignore 条目数**：13 项（纯追加登记于 repo 根 `.trivyignore`，逐条注明影响镜像、来源及登记时点）。
+- **Trivy 版本与选型**：选型形态 乙（bash 安装 Trivy CLI 固定版本 v0.60.0，从官方镜像 `aquasec/trivy:0.60.0` 提取 `/usr/local/bin/trivy` 二进制）+ for 循环扫 6 镜像单步骤；理由见 handoff §5.4。
+- **ignore-unfixed 决策**：CI 门禁阻断跑次增加 `--ignore-unfixed`（结合 `.trivyignore` 存量白名单双重把关，确保门禁仅拦截具备上游可修复版本且未豁免的真实风险漏洞，避免上游不可修复 0-day 抖动破坏构建流水线）；输出跑次不加（全量呈现 CVE 态势）。
+- **镜像名口径**：本地与 CI 完全对齐，均为 `sport-verify-<service>:latest`（基于 `docker-compose.yml` 显式 `name: sport-verify` 项目名）。
+
+### §7.3 门禁读数
+
+- **yaml 校验**：`python yaml.safe_load` 解析 ci.yml rc=0。
+- **词面门**：ci.yml 新增 27 行逐行自检零禁词；其余改动文件全量 ZERO_HIT rc=1；探针三态正常通过。
+- **offline 全量**：`mvn-verify.sh --mode=offline test` 结果 `36/44/127/137/149/64/12` = 569 逐位不变，rc=0，BUILD SUCCESS。
+- **static 静态门**：`mvn-verify.sh --static=record-service` Checkstyle 0 违规，SpotBugs 18 Medium（0 High，failThreshold=High），PMD 0 违规，rc=0 全绿。
+- **契约门双态**：在途 `--open TASK-195 --baseline=eefea97` rc=0（判据 A 两件套齐 + 1 待办放行 + 判据 B 清单一致）；收口无参预期 rc=0。
+- **token 29 项**：开工 SUM=2030；C-01 后 SUM=2030；收口复测持平，只增不减。
+- **只改清单全等**：C-01 恰 2 文件（ci.yml、.trivyignore）；C-02 恰 5 文件（tasks.json、spec.md、handoff.md、PLAN.md、findings-summary.md）；零越界。
+- **diff --check**：`git diff --check` 干净。
+- **行尾**：ci.yml 保持原行尾；新文件 pure LF + 末尾换行。

@@ -116,6 +116,7 @@ P0=必修（安全/数据丢失）；P1=应修（可靠性/性能）；P2=建议
 ### F19 Sentinel 兜底路由不全：ROUTE_IDS 只有 record/user/verify，漏 auth/leaderboard/mapmatch/admin 四个路由的代码兜底。（SentinelGatewayRuleConfig.java:46-48）
 ### F20 服务未容器化：compose 只编排中间件，6 个服务靠宿主机 java -jar；缺 Dockerfile、缺服务级编排与健康检查。改法：multi-stage Dockerfile + compose 服务层（可选 profile）。
 ### F21 CI 缺口：无静态检查（spotless/checkstyle）、无依赖漏洞扫描（OWASP dependency-check）、无镜像构建。改法：按需增补 CI 步骤。
+- 核实（TASK-195，2026-10-10）：**全部收口并关闭**。① 静态检查门已就位（leaderboard-service TASK-018 接入；record-service TASK-194 完成规则集派生与 Checkstyle 存量清零，全仓 static 门 rc=0）；② 全服务镜像构建门就位（TASK-195 就地扩展 ci.yml 原单代表步骤为 6 服务显式构建，覆盖 gateway-service/user-service/record-service/verify-service/leaderboard-service/mapmatch-service 构建链）；③ 依赖漏洞扫描门就位（TASK-195 引入 Trivy v0.60.0 对全 6 服务镜像执行漏洞扫描，首跑基线命中 13 项存量 CRITICAL 级别已知 CVE 已登记于 repo 根 .trivyignore，CI 设 CRITICAL exit 1 阻断门）；三项缺口全消，待第 36 次 CI 外部终验。F21 关闭，findings 清单最后一项收口。
 ### F22 VerifyService.verify 同一 recordId 并发重入无互斥：双判定重复回调依赖 3003 冲突重试收敛。改法：可配 Redisson 锁或文档化接受。（VerifyService.java:79-118）
   → **已裁定文档化接受（2026-09-23，TASK-129）**：后果链四环节逐条核实——① 双判定落库为 record_id 主键幂等写入（INSERT IGNORE 占位 + upsert 只覆盖不新增，VerificationResultMapper.java:17-28）；② record 回调状态已等目标态幂等跳过、乐观锁冲突返回 3003（SportRecordService.java:171/175-179，ResultCode.java:44），消费端删去重键重投、重入 verify 读终判走补偿回调收敛（VerifyEventConsumer.java:190-197、VerifyService.java:131-142）；③ 榜单侧 per-record 互斥锁 + 锚点行 INSERT IGNORE/乐观 UPDATE，双 VERIFIED 事件只加分一次（LeaderboardService.java:128-154）。**无双份加分可复现路径**，属冲突拒绝式收敛 + 消费幂等兜住。权衡说明已补入 VerifyService.verify javadoc（对齐 ADR-0009 表述风格）。**重开条件**：锚点行幂等或回调收敛链路被移除/实证失效，或出现可复现错态（重复加分/扣分），再立项可配 Redisson 锁。
 
@@ -226,3 +227,11 @@ HEAD `4269534`（TASK-191 补记笔）时点为准；**既有条目标题内的�
 - 盘点段「RuleVersionController.java:21-23 已有服务侧 token 角色校验」表述一并订正：校验落点在
   common Filter + 各服务 yml 路径配置，RuleVersionController 仅 Javadoc 声明（本控制器无校验代码）。
 - 结论微调：部分收口项由 5 项减为 **4 项（F11/F12/F13/F21）**，P2 尾巴不含 F23；其余判定不受影响。
+
+### F21 收口与 findings 全清单清零（TASK-195，2026-10-10，执行侧）
+
+- **F21 判定订正：部分收口 → 全部收口（关闭）**。F21 原三项缺口（静态检查、镜像构建、依赖漏洞扫描）已全部闭环：
+  1. 静态检查门：已由 TASK-018（leaderboard-service）与 TASK-194（record-service）完成治理，`mvn-verify.sh --static` 达成全仓 rc=0；
+  2. 全服务镜像构建门：已由 TASK-195 扩展 ci.yml 构建全部 6 个服务镜像（gateway/user/record/verify/leaderboard/mapmatch），Dockerfile 构建链路全面纳管；
+  3. 依赖漏洞扫描门：已由 TASK-195 引入 Trivy v0.60.0 固定版本扫描 6 个服务镜像，按决策树分支 B 于 `.trivyignore` 登记 13 项存量 CRITICAL 指纹并设立 `--severity CRITICAL --exit-code 1` 阻断门。
+- **全表清零声明**：随着 F21 关闭，findings 全清单（P0 2 项、P1 8 项、P2 5 项、发现 5 项）中需治理的缺口已全部收口闭环（除经审定文档化接受维持的语义项 F04/F14/F22 外），findings 正式全清零。外部终验待 push 后第 36 次 CI 全绿。
