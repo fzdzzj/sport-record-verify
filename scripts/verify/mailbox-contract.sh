@@ -128,7 +128,7 @@ extract_claims() {
   ' "$hf")"
   printf '%s\n' "$block" \
     | grep -vE '零触碰|未碰|未触碰|不改|禁触' \
-    | grep -oE '[A-Za-z0-9_./-]+\.(sh|md|java|kt|scala|groovy|js|jsx|ts|tsx|vue|json|ya?ml|xml|sql|patch|csv|txt|properties|css|html|d\.ts|example|editorconfig)' \
+    | grep -oE '[A-Za-z0-9_./-]+\.(sh|md|java|kt|scala|groovy|js|jsx|ts|tsx|vue|json|ya?ml|xml|sql|patch|csv|txt|properties|css|html|d\.ts|example|editorconfig|trivyignore)' \
     | sed -E 's#^\./##' \
     | sort -u
 }
