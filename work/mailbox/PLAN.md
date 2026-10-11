@@ -2342,3 +2342,16 @@ run `35802403723`（head `eba0108`，2026-09-23 00:31 UTC）——**web/build �
 | 终裁依据 | 四环节全过：指导侧亲核（紧凑 Git 摘要 + 缺陷C/D 修复 diff 定向抽查恰各 +1 行 + 提交信息/边界核验）→ 独立复核子 agent 五块全量复跑 PASS 零阻断（Git 链/红线/双端门禁含冒烟四服务复跑全 UP/证据链/只改清单全等）→ 两报告一致性裁决零矛盾 → 第 41 次 CI success 外部终验 |
 | 推送记录 | 授权后 6 笔推送 `bed6dca..ee891ab`（13e9ece 派发笔 / 5c45511 v2 改派笔 / e9d8898 v3 改派笔 / fd1e53b C-01 / ee891ab C-02 + TASK-199 补记笔 1b20923 随批次），推送后 origin/main...main = 0 0；本补记笔为唯一本地保留笔，随下一课题批次统一推送 |
 | 状态 | **TASK-200 封盘**：round-1/round-2 两轮停止（缺陷C/D 被 D3 掩蔽逐个暴露）→ v3 普查根治全链路闭环；治理成果：D3 四缺陷根除（拦截器 @Component / fastjson 2.0.65 受控回补 / NotificationService+NotificationController 双构造器同构清零）、四服务生产 jar 实起 liveness 全 UP、Trivy 收缩态零豁免全绿；治理沉淀：探针懒加载范式掩蔽生产 boot 缺陷仅生产实起可暴露、双构造器无构造器级注入标注同构模式教训（均入项目记忆） |
+
+## 验收记录：TASK-201（治理面签名凭证升级，round-2 执行侧，已提交）
+
+| 项 | 内容 |
+| --- | --- |
+| 开工基线 | 对照基线 `0174269`（v2 改派笔）；工作树干净；token 29 项开工实测 SUM=2030（tracked `git grep -cF` 权威口径） |
+| 实施两笔 | C-01 `af022fc`（fix(governance): 治理凭证升级HMAC签名与服务侧角色断言（TASK-201），15 文件，+469 −63）；C-02 本台账笔（docs(mailbox): 登记TASK-201治理面二道防线验收与台账闭环（TASK-201），4 文件，C-02 自指哈希同型偏差 D1 沿先例）。均未 push、未建 PR。 |
+| 目标与范围 | common 新增 GovernanceCredentialCodec（HMAC 签名凭证）+ GovernanceApiAuthFilter 静态比对升级为验签+role=ADMIN 断言 + GovernanceApiHeaders 加 ROLE_ADMIN；gateway AuthGlobalFilter 按 v2 内联 package-private sign（零 common 依赖、pom 零改动）；三 yml/env.example/compose.services.yml/README 部署链收口。 |
+| 红绿判别式 | R1 旧静态正确值 403 / R2 role=USER 403 / R3 过期 403 / R4 篡改 403 / R5 伪造 X-Role+坏凭证 403 / G1 合法 ADMIN 签名三条 protected path 放行 / G2 网关内联 sign 产出向量一 sig / G3 双端向量 verify 返回 ADMIN 与 USER —— 全绿。golden vector 两 sig 与独立 HMAC 复算逐位一致。 |
+| 本地门槛来源 | offline 全量 `--mode=offline test` rc=0 逐位 52/50/130/151/159/70/15 = 627（common/gateway 净增 +18，其余五模块逐位不变）；static 双模块 rc=0；契约门双态 rc=0（在途 `--open TASK-201 --baseline=0174269` + 收口无参）；compose config CI 等效 rc=0；token 29 项 2030 只增不减；词面门与白名单/行尾/diff-check 全过。 |
+| 是否到达外部门槛 | **未达到**：本地两笔提交，未 push、未建 PR，无 CI run；CI 外部终验待推送后补记。 |
+| 未覆盖/跳过 | 真实跨进程联调（网关→verify/leaderboard 签名注入→服务侧验签）未跑；`--mode=online` 未跑；只做纯 JVM 单测断言。 |
+| 偏差 | D1 C-02 自指哈希；D2 C-01 白名单 13→15（两既有 gateway 测试夹具升档 ≥32 字节，经用户裁决纳入）；D3 向量断言时钟参数勘误（now 取窗上界 1700000300，向量 sig 值零改动）；D4 本机 .env 既有畸形不影响 CI 等效 compose 门；offline 两轮并发假败（串行复跑 627 稳定）。详见 handoff.md。 |

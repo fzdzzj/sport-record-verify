@@ -145,3 +145,14 @@
 ## §7 收口记录（执行侧回填，保持纯追加）
 
 （空——执行子agent完成后按 handoff 规范回填：两笔提交哈希、门禁逐项留证、token 时点读数、CI 运行号待推送后补记）
+
+### 回填（round-2 执行侧，C-02 台账笔，纯追加）
+
+- C-01 实施笔 `af022fc`（fix(governance): 治理凭证升级HMAC签名与服务侧角色断言（TASK-201），15 文件——
+  含偏差 D2 两文件）；
+- C-02 台账笔本提交（docs(mailbox): 登记TASK-201治理面二道防线验收与台账闭环（TASK-201），4 文件）。
+- 门禁：offline 627 全绿 rc=0（common 52 / gateway 50 / user 130 / record 151 / verify 159 / leaderboard 70 /
+  mapmatch 15；五不变模块逐位不变，common/gateway 净增）；static 双模块 rc=0；契约门双态 rc=0；
+  compose config CI 等效 rc=0；token 29 项 2030 只增不减；词面门 ZERO_HIT。
+- 详细留证与偏差见 handoff.md。
+- CI 运行号待推送后补记。
