@@ -2311,3 +2311,12 @@ run `35802403723`（head `eba0108`，2026-09-23 00:31 UTC）——**web/build �
 | 偏差/发现 | D1 javadoc 首段「db/redis 探针 DOWN 容忍」最小修正为「db 探针」（redis 侧由偏差登记段承接，文档勘误非断言改动）；D2 tasks.json「词面门」按 v2 任务书 §6 归并为 token 29 项字面量口径（冲突以任务书为准）；D3 等效验证 scratch（work/tmp199/ 测量脚本 4 件）读数提取后整目录删除，保证判据 B 真实比对无未跟踪残留；D4 masked-errata 沿用（逐字原文仅存改派笔提交正文，台账零复活） |
 | 提交表 | 派发笔 `bf62f84`、改派笔 `007427f`、C-01 `2ebba23`、C-02 台账收口（显式哈希以回传报告为准）；父锚定 `0 2 → 0 3 → 0 4`；未推送不建 PR |
 | 状态 | TASK-199 round-2 单点修复全链路本地闭环；**外部终验待推送后第 40 次外部门槛 CI 绿**（user 档探针必须实跑全绿；record/verify/leaderboard/mapmatch 四档若仍 SKIPPED 以本地等效读数登记不阻断；红则按签名归因禁重试刷绿）；后续项不变：StompConnectAuthInterceptor bean 注册、rocketmq-spring fastjson 兼容（均另立课题）；下一课题候选：D3 缺陷修复（优先）或用户定向 |
+
+**TASK-199 外部终验达成与封盘补记（2026-10-11，run 38123421409，补记笔本地未推送）**
+
+| 项目 | 内容 |
+| --- | --- |
+| 外部终验 | 第 40 次外部门槛 CI（run 38123421409，head=bed6dca，2026-10-11T08:02:34Z 触发）conclusion=success；六探针全部实跑零 SKIPPED 全绿：user UserProbeTest 3/0/0/0 且上下文真实 Started 7.47s（run 38113472212 三例红根除实证）、gateway GatewayProbeTest 4/0/0/0、record/verify/leaderboard/mapmatch 四档探针 CI 首跑各 3/0/0/0（run 39 因 user 档先行红中断未跑到，本轮实跑达成首验；本地等效读数仅作备用证据未启用） |
+| 终裁依据 | 四环节全过：指导侧亲核（紧凑 Git 摘要 + C-01 全量 diff 定向抽查 + C-02 形状抽查）→ 独立复核子 agent 五块全量复跑 PASS 零阻断项（offline 609 逐位 / static 双模块 / 契约门双态 / token 2030 / 六探针等效验证 user+record 复跑）→ 两报告一致性裁决零矛盾 → 第 40 次 CI success 外部终验 |
+| 推送记录 | 授权后 4 笔推送 `d6784ac..bed6dca`（bf62f84 派发笔 / 007427f 改派笔 / 2ebba23 C-01 / bed6dca C-02），推送后 `origin/main...main` = `0 0`；本补记笔为唯一本地保留笔，随下一课题批次统一推送 |
+| 状态 | **TASK-199 封盘**：round-1 归因勘误停工（零提交）→ 指导侧改派 → round-2 单点修复全链路闭环（本地双门禁全绿 + 外部 CI 全绿）；治理成果：CI 探针环境依赖泄漏根除、TASK-198 批3 漏配 user Redisson mock 补课完成、六探针 CI 实跑全绿入门槛基线；后续项不变：StompConnectAuthInterceptor bean 注册、rocketmq-spring fastjson 兼容（均另立课题）；下一课题候选：D3 缺陷修复（优先）或用户定向 |
