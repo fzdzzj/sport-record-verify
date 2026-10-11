@@ -2274,3 +2274,13 @@ run `35802403723`（head `eba0108`，2026-09-23 00:31 UTC）——**web/build �
 | 偏差/发现 | F1 根目录 dotfile 纯前导斜杠形态提取成功但判据 B 双向不过（既有 sed 仅归一 ./ 前缀；沿单点红线不外扩改动）；F2 MSYS sed -i 对 CRLF 文件不安全（已从 blob 重建）；F3 leaderboard SpotBugs 9 Medium 与 TASK-196 登记口径存在差异（非本课题改动面，按实测登记，历史不改判） |
 | 提交表 | 派发笔 `720a771`、C-01 `22100d5`、C-02 台账收口（显式哈希以回传报告为准）；父锚定 `0 2 → 0 3 → 0 4`；未推送不建 PR |
 | 状态 | TASK-197 全链路闭环，**外部终验待推送后第 38 次外部门槛 CI 绿**（红则按签名归因禁重试刷绿）；N1 根因治理完毕，dotfile 书写规范随本笔登记；下一课题候选：Spring 商业包遗留 2 项长期治理观察或用户定向 |
+
+**TASK-197 补记（push 触发 CI 后实测，外部门槛第 38 次达成，2026-10-11）**
+
+| 项目 | 内容 |
+| --- | --- |
+| 外部终验 | GitHub Actions CI 第 38 次运行 `38098455377` 全绿（web 25s + build 5m9s：Build and test / compose parse / Build all service images (6/6) / Trivy dependency vulnerability scan / static gate / docs wording self-check / JaCoCo 全步骤通过），rc=0 |
+| 推送与同步 | push `e4869e7..6a8ba90` rc=0（四笔：TASK-196 补记笔 `f8882ab` + TASK-197 派发笔 `720a771` / C-01 `22100d5` / C-02 `6a8ba90`），推送后 `origin/main...main` = `0 0`，未建 PR；本补记笔随下一课题批次统一推送 |
+| 终裁依据 | 指导侧亲核（降本口径：紧凑 Git 摘要 + C-01 单点 diff 抽查恰 1 增 1 删机械核验 + 一致性裁决零矛盾）+ 独立复核五块全量复跑 PASS with notes 零阻断（探针三态全链路复现、契约门三态、offline 569 逐位、static 双模块 rc=0 含 leaderboard 9 Medium 亲证、token 2030 三笔树独立复算、只改清单恰 5 文件、porcelain EMPTY）+ CI 外部终验绿 |
+| 复核 notes 吸收 | ① `--untracked` 口径差异定性：git 2.20 对 .gitignore 登记目录（docs/perf/data/raw/ 下 7 个 force-added CSV）整目录剪枝致 `--untracked` 读数 1960，主口径 tracked `git grep -cF` 在 720a771/22100d5/6a8ba90 三笔树独立复算均 2030，token 实质无损；**token 权威口径自此定为 tracked `git grep -cF`，后续任务书禁用 --untracked 口径标注**。② F1 书写规范落地：dotfile 只改清单声明用 `./.trivyignore` 或 `<路径>/.trivyignore` 前缀形态（纯前导斜杠可提取但判据 B 双向不过，sed 归一仅处理 `./` 前缀）。③ F2 教训（MSYS sed -i CRLF 事故、blob 重建复原）与 F3 口径（leaderboard SpotBugs 9 Medium 实测登记、历史不改判）连同上述两条已更新项目记忆 |
+| 状态 | TASK-197 全链路闭环，**外部终验达成，正式封盘**；契约门 dotfile 盲区（TASK-195 D3 / TASK-196 N1 根因）治理完毕；外部门槛计数更新为 **38 次**（37 绿 1 红）；后续任务书以补认后 extract_claims 与 dotfile 书写规范为新基线。下一课题候选：F1 纯前导斜杠归一微课题（可选）、Spring 商业包遗留 2 项长期治理观察（待 Boot 3.3+/4.x 升级窗口）或用户定向 |
