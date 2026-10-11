@@ -49,6 +49,14 @@
         <postgresql.version>42.7.3</postgresql.version>
         <redisson.version>3.27.2</redisson.version>
         <rocketmq-spring.version>2.3.1</rocketmq-spring.version>
+        <!-- fastjson2 v1 兼容包（TASK-200 缺陷B / TASK-198 §9-D3）：rocketmq-remoting/client/common
+             5.1.4 运行期硬引用 com.alibaba.fastjson.TypeReference 等类，TASK-196 exclusions
+             根除传递存量后四服务生产 boot 即 NoClassDefFoundError。显式回补受控版本桥接，
+             与各模块 rocketmq 依赖上的 TASK-196 exclusions 并存（传递面仍排除，仅经本 dm
+             受控供给）。选 2.0.65 依据：高于 2.0.63 安全修复线（rocketmq-client 5.4.0 才以
+             fastjson2 全量替换 fastjson，升级路线爆炸半径大列备选），fastjson2 官方当前 stable；
+             scope 一律 runtime，业务代码 0 引用维持，编译期不可见 -->
+        <fastjson2-compat.version>2.0.65</fastjson2-compat.version>
         <caffeine.version>3.1.8</caffeine.version>
         <lombok.version>1.18.30</lombok.version>
         <!-- JWT：jjwt 0.12.x（HS256 签发/校验，见 ADR-0007；api/impl/jackson 三段式，
@@ -168,6 +176,13 @@
                 <groupId>org.apache.rocketmq</groupId>
                 <artifactId>rocketmq-spring-boot-starter</artifactId>
                 <version>${rocketmq-spring.version}</version>
+            </dependency>
+            <!-- fastjson2 v1 兼容包（TASK-200 缺陷B）：版本依据与 TASK-196 exclusions 并存关系
+                 见 ${fastjson2-compat.version} 属性注释；四消息服务以 runtime scope 引用 -->
+            <dependency>
+                <groupId>com.alibaba</groupId>
+                <artifactId>fastjson</artifactId>
+                <version>${fastjson2-compat.version}</version>
             </dependency>
             <dependency>
                 <groupId>com.github.ben-manes.caffeine</groupId>

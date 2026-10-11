@@ -6,7 +6,6 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.context.TestConfiguration;
 import org.springframework.boot.test.web.client.TestRestTemplate;
 import org.springframework.context.annotation.Bean;
-import org.springframework.context.annotation.Import;
 import org.springframework.context.annotation.Primary;
 import org.springframework.http.ResponseEntity;
 
@@ -27,11 +26,11 @@ import static org.mockito.Mockito.mock;
  * <p>现网懒初始化范式：真实拉起服务上下文与 Web 端口（{@code spring.main.lazy-initialization=true}
  * 延迟业务 bean；Nacos 注册失败经 fail-fast=false 降级为日志；db 探针在无中间件环境下
  * 由 HealthIndicator 捕获连接异常返回 DOWN，不阻断启动（redis 侧不成立，见 TASK-199 偏差登记）。
- * <b>偏差登记</b>：{@code StompConnectAuthInterceptor} 在主源无任何 bean 注册（缺 {@code @Component}，
- * 也无 {@code @Bean} 工厂），WebSocket 基础设施急切创建 {@code webSocketNotificationConfig}
- * 时因依赖缺失使整上下文启动失败——此为既有生产 boot 缺陷（TASK-198 之前已存在，主源不在本任务
- * 白名单内不可修），本测试以 {@code @Import} 供给该 bean 使探针端点可真实验证；缺陷修复已列
- * PLAN 后续项。断言口径（任务书 §0-5）：只断言 liveness UP 与 readiness 组端点/结构存在，
+ * 拦截器 bean 缺失偏差（{@code StompConnectAuthInterceptor} 主源无注册致 WebSocket 基础设施
+ * 急切装配失败，TASK-198 批3 曾以 {@code @Import} 临时供给 bean）已由 TASK-200 缺陷A 修复：
+ * 主源 {@code @Component} 扫描注册，本测试相应移除 {@code @Import} accommodation——扫描注册
+ * 与 {@code @Import} 并存会形成同类型双 bean 定义，WebSocketNotificationConfig 按类型注入
+ * 即歧义失败。断言口径（任务书 §0-5）：只断言 liveness UP 与 readiness 组端点/结构存在，
  * <strong>禁断言 db/redis UP</strong>（CI 无中间件，本地有中间件时 readiness 为 UP——两种实况
  * 都必须绿，故 readiness 状态值不做硬断言）；readiness 组成员结构以资源文件断言
  * （show-details=never 下 HTTP 层不暴露组件明细）。</p>
@@ -48,7 +47,6 @@ import static org.mockito.Mockito.mock;
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT, properties = {
         "spring.main.lazy-initialization=true",
         "spring.cloud.nacos.discovery.fail-fast=false"})
-@Import(com.sportverify.user.config.StompConnectAuthInterceptor.class)
 class UserProbeTest {
 
     @TestConfiguration

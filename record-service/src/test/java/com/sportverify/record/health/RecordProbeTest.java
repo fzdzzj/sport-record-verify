@@ -1,6 +1,5 @@
 package com.sportverify.record.health;
 
-import org.apache.rocketmq.spring.core.RocketMQTemplate;
 import org.junit.jupiter.api.Test;
 import org.mybatis.spring.annotation.MapperScan;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -52,11 +51,13 @@ import static org.mockito.Mockito.mock;
  * {@code Map<String, DataSource>} 注入，会实例化<strong>全部</strong> DataSource bean，
  * 不能用 @Primary 二选一。故本测试以 ProbeApp 定制上下文（组件扫描排除
  * ShardingDataSourceConfig，数据源由 ProbeStubConfig 唯一提供——懒连接
- * connectTimeout=300ms 保证 db 探针无中间件时快速落 DOWN）；CI 无 Redis、TASK-196 根除
- * fastjson 后 rocketMQTemplate bean 创建期即 NoClassDefFoundError，故 Redisson /
- * RocketMQTemplate 同以 mock 顶替（两处自动配置均 {@code @ConditionalOnMissingBean}
- * 让位）。主源与既有夹具零改动（均不在本任务白名单内）；fastjson 模板创建缺陷与
- * sharding.yaml 测试夹具覆盖问题已列 PLAN 后续项。</p>
+ * connectTimeout=300ms 保证 db 探针无中间件时快速落 DOWN）；CI 无 Redis，Redisson 以
+ * mock 顶替（自动配置 {@code @ConditionalOnMissingBean} 让位）；模板 mock 偏差（TASK-196
+ * 根除 fastjson 后 rocketMQTemplate bean 创建期即 NoClassDefFoundError，曾同以 mock 顶替）
+ * 已由 TASK-200 缺陷B 修复根除——fastjson2 v1 兼容包受控回补后模板 bean 创建期类缺失消除，
+ * 本测试相应移除模板 mock，恢复探针对模板 bean 创建期的真实覆盖（D3 漏网防线）。
+ * 主源与既有夹具零改动（均不在本任务白名单内）；sharding.yaml 测试夹具覆盖问题已列
+ * PLAN 后续项。</p>
  */
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT,
         classes = {RecordProbeTest.ProbeApp.class, RecordProbeTest.ProbeStubConfig.class},
@@ -115,12 +116,6 @@ class RecordProbeTest {
         org.springframework.transaction.PlatformTransactionManager probeTransactionManager(
                 DataSource probeDataSource) {
             return new org.springframework.jdbc.support.JdbcTransactionManager(probeDataSource);
-        }
-
-        /** TASK-196 根除 fastjson 后 rocketMQTemplate bean 创建期即 NoClassDefFoundError，mock 顶替。 */
-        @Bean
-        RocketMQTemplate probeRocketMQTemplate() {
-            return mock(RocketMQTemplate.class);
         }
     }
 

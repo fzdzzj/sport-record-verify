@@ -1,7 +1,6 @@
 package com.sportverify.verify.health;
 
 import org.junit.jupiter.api.Test;
-import org.apache.rocketmq.spring.core.RocketMQTemplate;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.context.TestConfiguration;
@@ -27,13 +26,13 @@ import static org.mockito.Mockito.mock;
  *
  * <p>现网懒初始化范式：真实拉起服务上下文与 Web 端口（{@code spring.main.lazy-initialization=true}
  * 延迟业务 bean；Nacos 注册失败经 fail-fast=false 降级为日志；db/redis 探针在无中间件环境下
- * 由 HealthIndicator 捕获连接异常返回 DOWN，不阻断启动）。
- * <b>偏差登记</b>：TASK-196 精准Pin根除 fastjson 传递存量后，rocketmq-spring 2.3.1 的
- * rocketMQTemplate bean 创建期加载 com.alibaba.fastjson.TypeReference 即 NoClassDefFoundError
- * ——verify 的 @Scheduled relay → VerifyEventProducer → 模板为急切链，HEAD 无法启动
- * （CI 不拉上下文故未暴露）。本测试以 @Primary mock 模板顶替（自动配置
- * {@code @ConditionalOnMissingBean} 让位），探针端点得以真实验证；缺陷修复不在本任务
- * 白名单内，已列 PLAN 后续项。断言口径（任务书 §0-5）：只断言 liveness UP 与 readiness
+ * 由 HealthIndicator 捕获连接异常返回 DOWN，不阻断启动）。模板 mock 偏差（TASK-196 精准Pin
+ * 根除 fastjson 传递存量后，rocketmq-spring 2.3.1 的 rocketMQTemplate bean 创建期加载
+ * com.alibaba.fastjson.TypeReference 即 NoClassDefFoundError——verify 的 @Scheduled relay →
+ * VerifyEventProducer → 模板为急切链，本测试曾以 @Primary mock 模板顶替使探针端点可真实验证）
+ * 已由 TASK-200 缺陷B 修复：fastjson2 v1 兼容包经父 pom dependencyManagement 受控回补，模板
+ * bean 创建期类缺失根除，本测试相应移除模板 mock，恢复探针对 rocketMQTemplate bean 创建期的
+ * 真实覆盖（D3 漏网防线）。断言口径（任务书 §0-5）：只断言 liveness UP 与 readiness
  * 组端点/结构存在，<strong>禁断言 db/redis UP</strong>（CI 无中间件，本地有中间件时
  * readiness 为 UP——两种实况都必须绿，故 readiness 状态值不做硬断言）；readiness 组成员
  * 结构以资源文件断言（show-details=never 下 HTTP 层不暴露组件明细）。</p>
@@ -45,12 +44,6 @@ class VerifyProbeTest {
 
     @TestConfiguration
     static class ProbeTemplateConfig {
-
-        @Bean
-        @Primary
-        RocketMQTemplate probeRocketMQTemplate() {
-            return mock(RocketMQTemplate.class);
-        }
 
         /**
          * CI 无 Redis：@Scheduled relay 急切链注入 RedissonClient，真实 Redisson 创建期

@@ -11,6 +11,7 @@ import org.springframework.messaging.simp.stomp.StompCommand;
 import org.springframework.messaging.simp.stomp.StompHeaderAccessor;
 import org.springframework.messaging.support.ChannelInterceptor;
 import org.springframework.messaging.support.MessageBuilder;
+import org.springframework.stereotype.Component;
 
 import java.security.Principal;
 
@@ -25,8 +26,13 @@ import java.security.Principal;
  *
  * <p>仅拦截 CONNECT 命令（会话建立前唯一携带凭证的帧）；此后同连接内的订阅/发送帧走
  * 已建立的会话身份，直通不重复校验。不向 query string 传 token（见任务书红线 §0.3）。</p>
+ *
+ * <p>bean 注册：经 {@code @Component} 声明，落在 UserApplication 组件扫描面内自动注册
+ * （TASK-200 缺陷A 修复——此前无任何 bean 注册，WebSocketNotificationConfig 按类型
+ * 构造注入时上下文启动即 NoSuchBeanDefinitionException）。</p>
  */
 @Slf4j
+@Component
 @RequiredArgsConstructor
 public class StompConnectAuthInterceptor implements ChannelInterceptor {
 

@@ -100,6 +100,15 @@
                 </exclusion>
             </exclusions>
         </dependency>
+        <!-- fastjson2 v1 兼容包（TASK-200 缺陷B）：rocketmq 5.1.4 运行期硬引用
+             com.alibaba.fastjson.TypeReference 等类，TASK-196 exclusions 根除传递存量后
+             生产 boot 即 NoClassDefFoundError；经父 pom dependencyManagement 受控回补
+             （2.0.65，高于 2.0.63 安全修复线）；scope=runtime 维持业务代码 0 引用 -->
+        <dependency>
+            <groupId>com.alibaba</groupId>
+            <artifactId>fastjson</artifactId>
+            <scope>runtime</scope>
+        </dependency>
 
         <!-- 本地缓存：Caffeine（阈值读取缓存，配合 Nacos 灰度） -->
         <dependency>

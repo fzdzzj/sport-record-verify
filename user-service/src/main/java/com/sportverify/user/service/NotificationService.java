@@ -48,6 +48,7 @@ public class NotificationService {
     @Autowired(required = false)
     NotificationPushRelay notificationPushRelay;
 
+    @Autowired
     public NotificationService(NotificationMapper notificationMapper, NotificationPreferenceService notificationPreferenceService) {
         this.notificationMapper = notificationMapper;
         this.notificationPreferenceService = notificationPreferenceService;

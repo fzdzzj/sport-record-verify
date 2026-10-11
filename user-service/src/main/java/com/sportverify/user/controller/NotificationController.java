@@ -50,6 +50,7 @@ public class NotificationController {
     @Autowired(required = false)
     NotificationPreferenceService notificationPreferenceService;
 
+    @Autowired
     public NotificationController(NotificationService notificationService,
                                   NotificationPreferenceService notificationPreferenceService) {
         this.notificationService = notificationService;
