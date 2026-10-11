@@ -1,0 +1,35 @@
+[
+  {
+    "number": 1,
+    "category": "实施",
+    "task": "治理凭证升级 HMAC 签名：codec 新增 + 网关注签 + 服务侧验签角色断言 + 部署链收口",
+    "steps": [
+      { "step": "新增 common GovernanceCredentialCodec（sign/verify/isUsableKey，凭证格式 v1.<ts>.<role>.<sigHex>，HMAC-SHA256 内容域 governance-v1|<ts>|<role>，常量时间比对，时间窗参数化）+ GovernanceApiHeaders 加 ROLE_ADMIN 常量并更新 javadoc", "completed": false },
+      { "step": "改造 common GovernanceApiAuthFilter：expectedToken 语义升级为 HMAC key，校验段改 codec.verify + role==ADMIN 断言，新增 app.governance.max-skew-seconds（默认 300），strict fail-fast/失败关闭/哨兵拒绝语义等价保持", "completed": false },
+      { "step": "改造 gateway AuthGlobalFilter：治理面注入段改每请求 codec.sign(governanceToken, now, identity.role())，init strict 校验与 isValidGovernanceToken 改用 isUsableKey，注入前提四条件不变", "completed": false },
+      { "step": "配置与部署链：网关/verify/leaderboard 三 yml 注释与 max-skew 显式化；env.example 补 GOVERNANCE_TOKEN 占位（SvLocal 模式 >=32 字节）；docker-compose.services.yml 三服务 environment 加 ${GOVERNANCE_TOKEN:?required} 插值；README 鉴权章节补签名凭证语义与同批重启/NTP 前提", "completed": false }
+    ],
+    "passes": false
+  },
+  {
+    "number": 2,
+    "category": "验证",
+    "task": "红绿判别式 + 全量门禁",
+    "steps": [
+      { "step": "新增 GovernanceCredentialCodecTest（往返/篡改/过期/超窗/角色不符/弱密钥/格式垃圾/域分隔）+ 改造 GovernanceApiAuthFilterTest（R1 旧静态正确值 403、R2 role=USER 403、R3 过期 403、R4 篡改 403、G1 合法 ADMIN 签名三条 protected path 放行、G3 伪造 X-Role+坏凭证 403；strict 三态与路径解析用例等价迁移）+ 改造 AuthGlobalFilterTest（G2 注入值经 codec.verify 通过且 role=ADMIN；strict/失败关闭/剥离用例等价迁移）", "completed": false },
+      { "step": "compose config 双栈验证（本机 .env 已补 GOVERNANCE_TOKEN 前提下 config -q 通过；env.example 复制成临时 .env 同样验证 CI 等效）；无中间件服务装配回归探针口径确认（GovernanceApiAuthFilter 改动不新增依赖，JDK Mac 即可）", "completed": false },
+      { "step": "全量门禁：offline 609 逐位基线只增不减（五不变模块逐位）+ static 双模块（leaderboard 缺省 + record）rc=0 + 契约门双态（--open TASK-201 --baseline=<派发笔哈希>）+ token 2030 只增不减 + 词面门 + git diff --check + 行尾（新文件 LF 末尾换行、改文件保持 CRLF）", "completed": false }
+    ],
+    "passes": false
+  },
+  {
+    "number": 3,
+    "category": "验收",
+    "task": "台账闭环与外部终验",
+    "steps": [
+      { "step": "C-01 实施笔（fix(governance): 治理凭证升级HMAC签名与服务侧角色断言（TASK-201），恰 13 文件）+ C-02 台账笔（docs(mailbox): 登记TASK-201治理面二道防线验收与台账闭环（TASK-201），恰 4 文件：tasks.json 勾选 / 任务书 §7 回填 / handoff.md 新建含只改清单 / PLAN.md 纯追加），均不推送不建 PR", "completed": false },
+      { "step": "推送后 CI 全绿为外部终验（6 镜像构建 + Trivy 收缩态扫描 + compose config placeholder .env 含新变量）；CI 红禁重试刷绿，按签名归因回报", "completed": false }
+    ],
+    "passes": false
+  }
+]
