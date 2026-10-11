@@ -6,6 +6,7 @@ import com.sportverify.api.record.RecordStatus;
 import com.sportverify.api.record.dto.LikeDTO;
 import com.sportverify.common.exception.BizException;
 import com.sportverify.common.result.ResultCode;
+import com.sportverify.common.trace.TraceIds;
 import com.sportverify.record.entity.RecordLike;
 import com.sportverify.record.entity.SportRecord;
 import com.sportverify.record.mapper.RecordLikeMapper;
@@ -296,51 +297,56 @@ public class RecordLikeService {
      */
     @Scheduled(fixedDelay = FLUSH_FIXED_DELAY_MS, initialDelay = FLUSH_INITIAL_DELAY_MS)
     void flushPendingLikes() {
-        RLock lock = redissonClient.getLock(FLUSH_LOCK_KEY);
-        boolean locked = tryLock(lock);
-        if (!locked) {
-            log.debug("flush 锁被其他实例持有，本轮跳过");
-            return;
-        }
+        TraceIds.put(TraceIds.newId());
         try {
-            observePendingQueue();
-            List<String> raw = stringRedisTemplate.opsForList().range(PENDING_QUEUE_KEY, 0, flushBatch - 1);
-            if (raw == null || raw.isEmpty()) {
+            RLock lock = redissonClient.getLock(FLUSH_LOCK_KEY);
+            boolean locked = tryLock(lock);
+            if (!locked) {
+                log.debug("flush 锁被其他实例持有，本轮跳过");
                 return;
             }
-            // 同键取末次动作：LinkedHashMap 保序覆盖 → 净结果（点赞集合 / 取消集合）
-            Map<String, PendingOp> lastWins = new LinkedHashMap<>();
-            for (String json : raw) {
-                PendingOp op = parseOp(json);
-                if (op != null) {
-                    lastWins.put(op.key(), op);
+            try {
+                observePendingQueue();
+                List<String> raw = stringRedisTemplate.opsForList().range(PENDING_QUEUE_KEY, 0, flushBatch - 1);
+                if (raw == null || raw.isEmpty()) {
+                    return;
                 }
+                // 同键取末次动作：LinkedHashMap 保序覆盖 → 净结果（点赞集合 / 取消集合）
+                Map<String, PendingOp> lastWins = new LinkedHashMap<>();
+                for (String json : raw) {
+                    PendingOp op = parseOp(json);
+                    if (op != null) {
+                        lastWins.put(op.key(), op);
+                    }
+                }
+                LocalDateTime now = LocalDateTime.now();
+                List<RecordLike> likes = new ArrayList<>();
+                List<RecordLike> unlikes = new ArrayList<>();
+                for (PendingOp op : lastWins.values()) {
+                    RecordLike l = new RecordLike();
+                    l.setRecordId(op.recordId());
+                    l.setUserId(op.userId());
+                    l.setCreatedAt(now);
+                    (op.action() == Action.LIKE ? likes : unlikes).add(l);
+                }
+                // —— 两 DB 写同一本地事务；trim 必须在事务成功返回之后（ADR-0009）
+                TransactionTemplate tx = new TransactionTemplate(transactionManager);
+                tx.executeWithoutResult(status -> {
+                    if (!likes.isEmpty()) {
+                        recordLikeMapper.batchInsertIgnore(likes);   // 联合主键冲突自动跳过（幂等）
+                    }
+                    if (!unlikes.isEmpty()) {
+                        recordLikeMapper.batchDelete(unlikes);       // 无行可删天然幂等
+                    }
+                });
+                // 事务已成功提交，才裁剪 pending；失败抛异常 → 不 trim、整批保留重试
+                trimConsumed(raw.size());
+                log.info("flush 落库完成：点赞 {} 条、取消 {} 条", likes.size(), unlikes.size());
+            } finally {
+                unlock(lock, locked);
             }
-            LocalDateTime now = LocalDateTime.now();
-            List<RecordLike> likes = new ArrayList<>();
-            List<RecordLike> unlikes = new ArrayList<>();
-            for (PendingOp op : lastWins.values()) {
-                RecordLike l = new RecordLike();
-                l.setRecordId(op.recordId());
-                l.setUserId(op.userId());
-                l.setCreatedAt(now);
-                (op.action() == Action.LIKE ? likes : unlikes).add(l);
-            }
-            // —— 两 DB 写同一本地事务；trim 必须在事务成功返回之后（ADR-0009）
-            TransactionTemplate tx = new TransactionTemplate(transactionManager);
-            tx.executeWithoutResult(status -> {
-                if (!likes.isEmpty()) {
-                    recordLikeMapper.batchInsertIgnore(likes);   // 联合主键冲突自动跳过（幂等）
-                }
-                if (!unlikes.isEmpty()) {
-                    recordLikeMapper.batchDelete(unlikes);       // 无行可删天然幂等
-                }
-            });
-            // 事务已成功提交，才裁剪 pending；失败抛异常 → 不 trim、整批保留重试
-            trimConsumed(raw.size());
-            log.info("flush 落库完成：点赞 {} 条、取消 {} 条", likes.size(), unlikes.size());
         } finally {
-            unlock(lock, locked);
+            TraceIds.clear();
         }
     }
 
@@ -382,50 +388,65 @@ public class RecordLikeService {
     @Scheduled(fixedDelay = RECONCILE_FIXED_DELAY_MS,
             initialDelay = RECONCILE_INITIAL_DELAY_MS)
     void reconcileLikeCounts() {
-        RLock lock = redissonClient.getLock(RECONCILE_LOCK_KEY);
-        boolean locked = tryLock(lock);
-        if (!locked) {
-            log.debug("对账锁被其他实例持有，本轮跳过");
-            return;
-        }
+        TraceIds.put(TraceIds.newId());
         try {
-            // 一次批量取全表 (record_id, user_id)，内存按 record 分组
-            List<RecordLike> pairs = recordLikeMapper.selectRecordLikePairs();
-            Map<Long, List<Long>> usersByRecord = new LinkedHashMap<>();
-            for (RecordLike pair : pairs) {
-                usersByRecord.computeIfAbsent(pair.getRecordId(),
-                        k -> new ArrayList<>()).add(pair.getUserId());
+            RLock lock = redissonClient.getLock(RECONCILE_LOCK_KEY);
+            boolean locked = tryLock(lock);
+            if (!locked) {
+                log.debug("对账锁被其他实例持有，本轮跳过");
+                return;
             }
-            int corrected = 0;
-            List<Consumer<RedisConnection>> chunk = new ArrayList<>();
-            for (Map.Entry<Long, List<Long>> entry : usersByRecord.entrySet()) {
-                Long recordId = entry.getKey();
-                List<Long> userIds = entry.getValue();
-                // 1) 构造段：逐 record 生成命令三元组（含空成员只 DEL）
-                byte[] countKeyBytes =
-                        countKey(recordId).getBytes(StandardCharsets.UTF_8);
-                byte[] countValBytes = String.valueOf(userIds.size())
-                        .getBytes(StandardCharsets.UTF_8);
-                chunk.add(conn -> conn.stringCommands().set(
-                        countKeyBytes, countValBytes));
-
-                String usersKey = usersKey(recordId);
-                byte[] usersKeyBytes =
-                        usersKey.getBytes(StandardCharsets.UTF_8);
-                chunk.add(conn -> conn.keyCommands().del(usersKeyBytes));
-
-                if (!userIds.isEmpty()) {
-                    byte[][] memberBytes = userIds.stream()
-                            .map(id -> String.valueOf(id)
-                                    .getBytes(StandardCharsets.UTF_8))
-                            .toArray(byte[][]::new);
-                    chunk.add(conn -> conn.setCommands().sAdd(
-                            usersKeyBytes, memberBytes));
+            try {
+                // 一次批量取全表 (record_id, user_id)，内存按 record 分组
+                List<RecordLike> pairs = recordLikeMapper.selectRecordLikePairs();
+                Map<Long, List<Long>> usersByRecord = new LinkedHashMap<>();
+                for (RecordLike pair : pairs) {
+                    usersByRecord.computeIfAbsent(pair.getRecordId(),
+                            k -> new ArrayList<>()).add(pair.getUserId());
                 }
-                corrected++;
+                int corrected = 0;
+                List<Consumer<RedisConnection>> chunk = new ArrayList<>();
+                for (Map.Entry<Long, List<Long>> entry : usersByRecord.entrySet()) {
+                    Long recordId = entry.getKey();
+                    List<Long> userIds = entry.getValue();
+                    // 1) 构造段：逐 record 生成命令三元组（含空成员只 DEL）
+                    byte[] countKeyBytes =
+                            countKey(recordId).getBytes(StandardCharsets.UTF_8);
+                    byte[] countValBytes = String.valueOf(userIds.size())
+                            .getBytes(StandardCharsets.UTF_8);
+                    chunk.add(conn -> conn.stringCommands().set(
+                            countKeyBytes, countValBytes));
 
-                // 2) 提交段：累积至 PIPELINE_BATCH_SIZE 即 executePipelined
-                if (chunk.size() >= PIPELINE_BATCH_SIZE) {
+                    String usersKey = usersKey(recordId);
+                    byte[] usersKeyBytes =
+                            usersKey.getBytes(StandardCharsets.UTF_8);
+                    chunk.add(conn -> conn.keyCommands().del(usersKeyBytes));
+
+                    if (!userIds.isEmpty()) {
+                        byte[][] memberBytes = userIds.stream()
+                                .map(id -> String.valueOf(id)
+                                        .getBytes(StandardCharsets.UTF_8))
+                                .toArray(byte[][]::new);
+                        chunk.add(conn -> conn.setCommands().sAdd(
+                                usersKeyBytes, memberBytes));
+                    }
+                    corrected++;
+
+                    // 2) 提交段：累积至 PIPELINE_BATCH_SIZE 即 executePipelined
+                    if (chunk.size() >= PIPELINE_BATCH_SIZE) {
+                        List<Consumer<RedisConnection>> batch = chunk;
+                        stringRedisTemplate.executePipelined(
+                                (RedisCallback<Object>) connection -> {
+                                    for (Consumer<RedisConnection> cmd : batch) {
+                                        cmd.accept(connection);
+                                    }
+                                    return null;
+                                });
+                        chunk = new ArrayList<>();
+                    }
+                }
+                // 循环尾提交余量
+                if (!chunk.isEmpty()) {
                     List<Consumer<RedisConnection>> batch = chunk;
                     stringRedisTemplate.executePipelined(
                             (RedisCallback<Object>) connection -> {
@@ -434,23 +455,13 @@ public class RecordLikeService {
                                 }
                                 return null;
                             });
-                    chunk = new ArrayList<>();
                 }
+                log.info("点赞对账完成：纠正 {} 条记录的 Redis 计数与成员集", corrected);
+            } finally {
+                unlock(lock, locked);
             }
-            // 循环尾提交余量
-            if (!chunk.isEmpty()) {
-                List<Consumer<RedisConnection>> batch = chunk;
-                stringRedisTemplate.executePipelined(
-                        (RedisCallback<Object>) connection -> {
-                            for (Consumer<RedisConnection> cmd : batch) {
-                                cmd.accept(connection);
-                            }
-                            return null;
-                        });
-            }
-            log.info("点赞对账完成：纠正 {} 条记录的 Redis 计数与成员集", corrected);
         } finally {
-            unlock(lock, locked);
+            TraceIds.clear();
         }
     }
 

@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  record-service logback-spring.xml（TASK-198 批2 结构化日志基线）。
+
+  console appender：人读 pattern 逐字保留本服务 application.yml logging.pattern.console 原值
+  （logback-spring.xml 接管后 Boot 默认 pattern 属性不再生效，此处字面量必须与 yml 保持
+  逐字一致，人读口径零变化）。
+
+  file appender：RollingFileAppender + LogstashEncoder（JSON），MDC traceId 自动并入字段；
+  文件路径 ${LOG_FILE} 由 Spring Boot 依 logging.file.name（application.yml）注入；
+  应用名经 springProperty 取 spring.application.name 并入每行 JSON customFields。
+-->
+<configuration>
+    <springProperty scope="context" name="APP_NAME" source="spring.application.name"/>
+    <appender name="CONSOLE" class="ch.qos.logback.core.ConsoleAppender">
+        <encoder>
+            <pattern>%d{yyyy-MM-dd HH:mm:ss.SSS} [%thread] [%X{traceId}] %-5level %logger{36} - %msg%n</pattern>
+        </encoder>
+    </appender>
+    <appender name="JSON_FILE" class="ch.qos.logback.core.rolling.RollingFileAppender">
+        <file>${LOG_FILE}</file>
+        <rollingPolicy class="ch.qos.logback.core.rolling.SizeAndTimeBasedRollingPolicy">
+            <fileNamePattern>${LOG_FILE}.%d{yyyy-MM-dd}.%i.gz</fileNamePattern>
+            <maxFileSize>20MB</maxFileSize>
+            <maxHistory>14</maxHistory>
+            <totalSizeCap>1GB</totalSizeCap>
+        </rollingPolicy>
+        <encoder class="net.logstash.logback.encoder.LogstashEncoder">
+            <customFields>{"app":"${APP_NAME}"}</customFields>
+        </encoder>
+    </appender>
+    <root level="INFO">
+        <appender-ref ref="CONSOLE"/>
+        <appender-ref ref="JSON_FILE"/>
+    </root>
+</configuration>

@@ -57,6 +57,10 @@
         <!-- Micrometer：对齐 spring-boot-dependencies 3.2.4 内置的 micrometer.version（1.12.4），
              升级 Boot 时需同步；见 dependencyManagement 中 micrometer-registry-prometheus 的说明 -->
         <micrometer.version>1.12.4</micrometer.version>
+        <!-- logstash-logback-encoder：logback-spring.xml JSON file appender（LogstashEncoder）依赖
+             （TASK-198 批2 结构化日志）。7.4 是 logback 1.4.x 兼容线（Boot 3.2.4 = logback 1.4.14），
+             8.x 要求 logback 1.5.x，禁升级；jackson-databind 由 Boot BOM 提供，不在此重复声明 -->
+        <logstash-logback-encoder.version>7.4</logstash-logback-encoder.version>
 
         <!-- ===== 安全补丁 Pin 版本（TASK-196，ADR-0001 基线不变下精准 Pinning） ===== -->
         <netty.version>4.1.137.Final</netty.version>
@@ -208,8 +212,29 @@
                 <artifactId>micrometer-registry-prometheus</artifactId>
                 <version>${micrometer.version}</version>
             </dependency>
+
+            <!-- logstash-logback-encoder：版本在此 dm 锁定（7.4，logback 1.4.x 兼容线，禁 8.x）；
+                 依赖本体见下方根级 <dependencies> 的 runtime 继承声明（TASK-198 批2） -->
+            <dependency>
+                <groupId>net.logstash.logback</groupId>
+                <artifactId>logstash-logback-encoder</artifactId>
+                <version>${logstash-logback-encoder.version}</version>
+            </dependency>
         </dependencies>
     </dependencyManagement>
+
+    <!-- ===== 全模块继承依赖（TASK-198 批2 结构化日志基线） =====
+         logstash-logback-encoder：六服务 logback-spring.xml 的 file appender 均引用
+         LogstashEncoder，依赖必须在每个服务运行时类路径上。各服务 pom 不在本任务改动白名单内，
+         故以父 pom 根级 <dependencies> 一处声明、全模块继承（runtime：主源/测试不直接编码它，
+         仅 logback 运行时加载）；common/api 虽不使用但多一个 runtime jar 无行为影响。 -->
+    <dependencies>
+        <dependency>
+            <groupId>net.logstash.logback</groupId>
+            <artifactId>logstash-logback-encoder</artifactId>
+            <scope>runtime</scope>
+        </dependency>
+    </dependencies>
 
     <build>
         <pluginManagement>

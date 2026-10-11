@@ -3,6 +3,7 @@ package com.sportverify.record.service;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.sportverify.api.record.RecordStatus;
 import com.sportverify.api.verify.VerifyApi;
+import com.sportverify.common.trace.TraceIds;
 import com.sportverify.record.entity.SportRecord;
 import com.sportverify.record.mapper.SportRecordMapper;
 import com.sportverify.record.mq.RecordEventProducer;
@@ -95,59 +96,64 @@ public class VerifyDegradeService {
      */
     @Scheduled(fixedDelay = 60_000, initialDelay = 90_000)
     public void compensateStuckVerifying() {
-        if (!compensateEnabled) {
-            return;
-        }
-        int republished = 0;
-        int degraded = 0;
-
-        // 1) VERIFYING 滞留补偿
-        LocalDateTime threshold = LocalDateTime.now().minusSeconds(stuckSeconds);
-        List<SportRecord> stuck = sportRecordMapper.selectList(new LambdaQueryWrapper<SportRecord>()
-                .eq(SportRecord::getStatus, RecordStatus.VERIFYING.getCode())
-                .lt(SportRecord::getCreatedAt, threshold)
-                .orderByAsc(SportRecord::getId)
-                .last("LIMIT " + SCAN_LIMIT));
-        if (!stuck.isEmpty()) {
-            log.warn("发现滞留 VERIFYING 记录 {} 条（超 {}s），开始补偿", stuck.size(), stuckSeconds);
-            for (SportRecord record : stuck) {
-                try {
-                    verifyApi.health().getData(); // 探活：verify 不可用时经 Fallback 抛 4001
-                    if (recordEventProducer.publishSubmitted(record.getId(), record.getUserId())) {
-                        republished++;
-                        log.info("滞留记录已重发校验事件：recordId={}", record.getId());
-                    } else {
-                        degradeToManualReview(record.getId(), null);
-                        degraded++;
-                    }
-                } catch (Exception e) {
-                    degradeToManualReview(record.getId(), e);
-                    degraded++;
-                }
-            }
-        }
-
-        // 2) 转人工记录自愈（verify 恢复后按终判对账收敛；每轮限量，避免恢复瞬间重放风暴）
-        List<SportRecord> manual = sportRecordMapper.selectList(new LambdaQueryWrapper<SportRecord>()
-                .eq(SportRecord::getStatus, RecordStatus.MANUAL_REVIEW.getCode())
-                .orderByAsc(SportRecord::getId)
-                .last("LIMIT " + SCAN_LIMIT));
-        if (!manual.isEmpty()) {
-            try {
-                verifyApi.health().getData();
-            } catch (Exception e) {
-                log.info("verify 仍不可用，{} 条转人工记录继续等待人工/后续自愈", manual.size());
+        TraceIds.put(TraceIds.newId());
+        try {
+            if (!compensateEnabled) {
                 return;
             }
-            for (SportRecord record : manual) {
-                if (recordEventProducer.publishSubmitted(record.getId(), record.getUserId())) {
-                    republished++;
-                    log.info("转人工记录已重放（等待 verify 终判对账收敛）：recordId={}", record.getId());
+            int republished = 0;
+            int degraded = 0;
+
+            // 1) VERIFYING 滞留补偿
+            LocalDateTime threshold = LocalDateTime.now().minusSeconds(stuckSeconds);
+            List<SportRecord> stuck = sportRecordMapper.selectList(new LambdaQueryWrapper<SportRecord>()
+                    .eq(SportRecord::getStatus, RecordStatus.VERIFYING.getCode())
+                    .lt(SportRecord::getCreatedAt, threshold)
+                    .orderByAsc(SportRecord::getId)
+                    .last("LIMIT " + SCAN_LIMIT));
+            if (!stuck.isEmpty()) {
+                log.warn("发现滞留 VERIFYING 记录 {} 条（超 {}s），开始补偿", stuck.size(), stuckSeconds);
+                for (SportRecord record : stuck) {
+                    try {
+                        verifyApi.health().getData(); // 探活：verify 不可用时经 Fallback 抛 4001
+                        if (recordEventProducer.publishSubmitted(record.getId(), record.getUserId())) {
+                            republished++;
+                            log.info("滞留记录已重发校验事件：recordId={}", record.getId());
+                        } else {
+                            degradeToManualReview(record.getId(), null);
+                            degraded++;
+                        }
+                    } catch (Exception e) {
+                        degradeToManualReview(record.getId(), e);
+                        degraded++;
+                    }
                 }
             }
-        }
-        if (republished > 0 || degraded > 0) {
-            log.info("降级补偿完成：重发 {} 条，转人工 {} 条", republished, degraded);
+
+            // 2) 转人工记录自愈（verify 恢复后按终判对账收敛；每轮限量，避免恢复瞬间重放风暴）
+            List<SportRecord> manual = sportRecordMapper.selectList(new LambdaQueryWrapper<SportRecord>()
+                    .eq(SportRecord::getStatus, RecordStatus.MANUAL_REVIEW.getCode())
+                    .orderByAsc(SportRecord::getId)
+                    .last("LIMIT " + SCAN_LIMIT));
+            if (!manual.isEmpty()) {
+                try {
+                    verifyApi.health().getData();
+                } catch (Exception e) {
+                    log.info("verify 仍不可用，{} 条转人工记录继续等待人工/后续自愈", manual.size());
+                    return;
+                }
+                for (SportRecord record : manual) {
+                    if (recordEventProducer.publishSubmitted(record.getId(), record.getUserId())) {
+                        republished++;
+                        log.info("转人工记录已重放（等待 verify 终判对账收敛）：recordId={}", record.getId());
+                    }
+                }
+            }
+            if (republished > 0 || degraded > 0) {
+                log.info("降级补偿完成：重发 {} 条，转人工 {} 条", republished, degraded);
+            }
+        } finally {
+            TraceIds.clear();
         }
     }
 }

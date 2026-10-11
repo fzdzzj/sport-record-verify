@@ -123,7 +123,10 @@ app:
     # 白名单：/api/auth/**（注册/登录/刷新）、健康探针 /actuator/health（精确匹配，narrow-actuator-exposure）
     # 与 /user/ws-notifications（通知实时推送 STOMP 端点，TASK-185——握手经网关豁免 Bearer 头，
     # 鉴权下沉到 STOMP CONNECT 帧级由 user-service 的 StompConnectAuthInterceptor 校验）。
-    whitelist: /api/auth/**,/actuator/health,/user/ws-notifications
+    # TASK-198 批3：K8s 探针路径精确追加 /actuator/health/liveness 与 /actuator/health/readiness
+    # （无 /** 后缀仍走精确匹配语义）；/actuator/health 聚合端点原样保留，
+    # 其余 actuator 端点（metrics/env/prometheus 等）仍不经网关放行（监控按 ADR-0007 内网直连）。
+    whitelist: /api/auth/**,/actuator/health,/actuator/health/liveness,/actuator/health/readiness,/user/ws-notifications
     admin:
       # 治理面角色校验开关：true=管理端/规则版本接口要求 role=ADMIN（普通用户 403/1002、未登录 401/1001）
       # 默认 true 关门；false=治理目标失败关闭（不再裸放行）
@@ -163,8 +166,19 @@ management:
     health:
       # 对齐其余五服务（TASK-125 口径收尾）；health 状态聚合仍可用，仅组件明细不再匿名暴露（health 在网关白名单内免 token）
       show-details: never
+      # K8s 探针基线（TASK-198 批3）：显式开启存活/就绪探针端点（liveness 组不挂外部依赖，Boot 自动生成）
+      probes:
+        enabled: true
+      # readiness 组按真实依赖裁剪：gateway 无 db/redis，仅就绪状态本身。
+      # validate-group-membership 默认 true——include 与真实依赖不一致会启动失败（跨服务复制即红是预期防线）
+      group:
+        readiness:
+          include: readinessState
 
 # 请求贯穿：MDC traceId（add-request-tracing）
 logging:
+  # JSON file appender 路径（TASK-198 批2）：logback-spring.xml 的 ${LOG_FILE} 取本值
+  file:
+    name: logs/gateway-service.log
   pattern:
     console: "%d{yyyy-MM-dd HH:mm:ss.SSS} [%thread] [%X{traceId}] %-5level %logger{36} - %msg%n"

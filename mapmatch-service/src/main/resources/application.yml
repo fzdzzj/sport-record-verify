@@ -76,6 +76,14 @@ management:
     health:
       # narrow-actuator-exposure：never——health 仍返回 UP/status，不泄组件明细
       show-details: never
+      # K8s 探针基线（TASK-198 批3）：显式开启存活/就绪探针端点（liveness 组不挂外部依赖，Boot 自动生成）
+      probes:
+        enabled: true
+      # readiness 组按真实依赖裁剪：本服务仅依赖 MySQL（无 Redis）。
+      # validate-group-membership 默认 true——include 与真实依赖不一致会启动失败（跨服务复制即红是预期防线）
+      group:
+        readiness:
+          include: readinessState,db
 
 app:
   internal:
@@ -84,5 +92,8 @@ app:
 
 # 请求贯穿：MDC traceId（add-request-tracing）
 logging:
+  # JSON file appender 路径（TASK-198 批2）：logback-spring.xml 的 ${LOG_FILE} 取本值
+  file:
+    name: logs/mapmatch-service.log
   pattern:
     console: "%d{yyyy-MM-dd HH:mm:ss.SSS} [%thread] [%X{traceId}] %-5level %logger{36} - %msg%n"

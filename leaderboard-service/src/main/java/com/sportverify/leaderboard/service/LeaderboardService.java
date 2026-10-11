@@ -6,6 +6,7 @@ import com.sportverify.api.common.PageResult;
 import com.sportverify.api.user.UserApi;
 import com.sportverify.api.user.dto.FriendDTO;
 import com.sportverify.api.user.dto.UserDTO;
+import com.sportverify.common.trace.TraceIds;
 import com.sportverify.leaderboard.entity.LeaderboardContribution;
 import com.sportverify.leaderboard.entity.LeaderboardDailySummary;
 import com.sportverify.leaderboard.entity.SportRecordSnapshot;
@@ -372,48 +373,53 @@ public class LeaderboardService {
      */
     @Scheduled(fixedDelay = SETTLE_FIXED_DELAY_MS, initialDelay = SETTLE_INITIAL_DELAY_MS)
     void settleAndReconcile() {
-        RLock lock = redissonClient.getLock(SCHEDULER_LOCK_KEY);
-        boolean locked = tryLock(lock);
-        if (!locked) {
-            log.debug("结算锁被其他实例持有，本轮跳过");
-            return;
-        }
+        TraceIds.put(TraceIds.newId());
         try {
-            List<UserMileage> summaries =
-                    contributionMapper.selectActiveSummaries(ContributionStatus.ACTIVE.getCode());
-            Map<Long, Double> target = summaries.stream().collect(Collectors.toMap(
-                    UserMileage::getUserId,
-                    m -> m.getTotalDistance() == null ? 0d : m.getTotalDistance().doubleValue()));
+            RLock lock = redissonClient.getLock(SCHEDULER_LOCK_KEY);
+            boolean locked = tryLock(lock);
+            if (!locked) {
+                log.debug("结算锁被其他实例持有，本轮跳过");
+                return;
+            }
+            try {
+                List<UserMileage> summaries =
+                        contributionMapper.selectActiveSummaries(ContributionStatus.ACTIVE.getCode());
+                Map<Long, Double> target = summaries.stream().collect(Collectors.toMap(
+                        UserMileage::getUserId,
+                        m -> m.getTotalDistance() == null ? 0d : m.getTotalDistance().doubleValue()));
 
-            // 1) 以汇总覆盖 ZSet（批量 ZADD 幂等纠偏）
-            if (!target.isEmpty()) {
-                Set<TypedTuple<String>> tuples = target.entrySet().stream()
-                        .map(e -> TypedTuple.of(String.valueOf(e.getKey()), e.getValue()))
-                        .collect(Collectors.toSet());
-                stringRedisTemplate.opsForZSet().add(OVERALL_ZSET_KEY, tuples);
+                // 1) 以汇总覆盖 ZSet（批量 ZADD 幂等纠偏）
+                if (!target.isEmpty()) {
+                    Set<TypedTuple<String>> tuples = target.entrySet().stream()
+                            .map(e -> TypedTuple.of(String.valueOf(e.getKey()), e.getValue()))
+                            .collect(Collectors.toSet());
+                    stringRedisTemplate.opsForZSet().add(OVERALL_ZSET_KEY, tuples);
+                }
+                // 2) 清除无 ACTIVE 贡献的残留成员
+                Set<String> members = stringRedisTemplate.opsForZSet().range(OVERALL_ZSET_KEY, 0, -1);
+                List<String> stale = members == null ? List.of() : members.stream()
+                        .filter(m -> !target.containsKey(Long.valueOf(m)))
+                        .toList();
+                if (!stale.isEmpty()) {
+                    stringRedisTemplate.opsForZSet().remove(OVERALL_ZSET_KEY, stale.toArray(new String[0]));
+                }
+                // 3) 标记 settled_at（快照口径：本行已随最近一次结算对账）
+                if (!summaries.isEmpty()) {
+                    contributionMapper.markSettled(ContributionStatus.ACTIVE.getCode(), LocalDateTime.now());
+                }
+                // 4) 写当日报表快照（TASK-108）：单条 INSERT...SELECT...ON DUPLICATE KEY UPDATE 自证原子，
+                //    不引本地事务（ADR-0009）；再清掉"今日已无 ACTIVE 贡献"的残留行，
+                //    否则全量回滚过的用户会带着旧里程留在报表里。
+                int upserted = dailySummaryMapper.upsertFromActiveContributions(
+                        ContributionStatus.ACTIVE.getCode());
+                int purged = dailySummaryMapper.deleteStaleToday(ContributionStatus.ACTIVE.getCode());
+                log.info("榜单结算完成：ACTIVE 汇总 {} 名，纠偏 {} 名，清理残留 {} 名，报表写入 {} / 清理 {} 行",
+                        target.size(), target.size(), stale.size(), upserted, purged);
+            } finally {
+                unlock(lock, locked);
             }
-            // 2) 清除无 ACTIVE 贡献的残留成员
-            Set<String> members = stringRedisTemplate.opsForZSet().range(OVERALL_ZSET_KEY, 0, -1);
-            List<String> stale = members == null ? List.of() : members.stream()
-                    .filter(m -> !target.containsKey(Long.valueOf(m)))
-                    .toList();
-            if (!stale.isEmpty()) {
-                stringRedisTemplate.opsForZSet().remove(OVERALL_ZSET_KEY, stale.toArray(new String[0]));
-            }
-            // 3) 标记 settled_at（快照口径：本行已随最近一次结算对账）
-            if (!summaries.isEmpty()) {
-                contributionMapper.markSettled(ContributionStatus.ACTIVE.getCode(), LocalDateTime.now());
-            }
-            // 4) 写当日报表快照（TASK-108）：单条 INSERT...SELECT...ON DUPLICATE KEY UPDATE 自证原子，
-            //    不引本地事务（ADR-0009）；再清掉"今日已无 ACTIVE 贡献"的残留行，
-            //    否则全量回滚过的用户会带着旧里程留在报表里。
-            int upserted = dailySummaryMapper.upsertFromActiveContributions(
-                    ContributionStatus.ACTIVE.getCode());
-            int purged = dailySummaryMapper.deleteStaleToday(ContributionStatus.ACTIVE.getCode());
-            log.info("榜单结算完成：ACTIVE 汇总 {} 名，纠偏 {} 名，清理残留 {} 名，报表写入 {} / 清理 {} 行",
-                    target.size(), target.size(), stale.size(), upserted, purged);
         } finally {
-            unlock(lock, locked);
+            TraceIds.clear();
         }
     }
 

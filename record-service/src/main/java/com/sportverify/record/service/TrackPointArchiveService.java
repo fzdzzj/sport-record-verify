@@ -3,6 +3,7 @@ package com.sportverify.record.service;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
 import com.sportverify.api.record.RecordStatus;
+import com.sportverify.common.trace.TraceIds;
 import com.sportverify.record.entity.SportRecord;
 import com.sportverify.record.entity.TrackPoint;
 import com.sportverify.record.entity.TrackPointArchive;
@@ -79,20 +80,25 @@ public class TrackPointArchiveService {
      */
     @Scheduled(fixedDelayString = "${track.archive.interval-ms:3600000}")
     public void archiveSweep() {
-        RLock lock = null;
+        TraceIds.put(TraceIds.newId());
         try {
-            lock = redissonClient.getLock(ARCHIVE_LOCK_KEY);
-        } catch (RuntimeException ex) {
-            log.warn("track archive lock service error, skip round", ex);
-            return;
-        }
-        if (!tryLockQuietly(lock)) {
-            return;
-        }
-        try {
-            sweepOnce();
+            RLock lock = null;
+            try {
+                lock = redissonClient.getLock(ARCHIVE_LOCK_KEY);
+            } catch (RuntimeException ex) {
+                log.warn("track archive lock service error, skip round", ex);
+                return;
+            }
+            if (!tryLockQuietly(lock)) {
+                return;
+            }
+            try {
+                sweepOnce();
+            } finally {
+                unlockQuietly(lock);
+            }
         } finally {
-            unlockQuietly(lock);
+            TraceIds.clear();
         }
     }
 

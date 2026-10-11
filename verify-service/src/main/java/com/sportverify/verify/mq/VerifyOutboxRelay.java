@@ -1,5 +1,6 @@
 package com.sportverify.verify.mq;
 
+import com.sportverify.common.trace.TraceIds;
 import com.sportverify.verify.entity.VerifyEventOutbox;
 import com.sportverify.verify.mapper.VerifyEventOutboxMapper;
 import jakarta.annotation.PreDestroy;
@@ -150,119 +151,124 @@ public class VerifyOutboxRelay {
     @Scheduled(fixedDelayString = "${verify.outbox.relay-interval-ms:5000}",
             initialDelayString = "${verify.outbox.relay-initial-delay-ms:10000}")
     public void relay() {
-        RelayDiagnostics diag = diagnostics();
-        boolean diagEnabled = diag.enabled();
-        int sendConcurrency = effectiveSendConcurrency();
-        RLock lock = redissonClient.getLock(LOCK_KEY);
-        boolean locked = false;
-        long lockWaitStart = diagEnabled ? System.nanoTime() : 0L;
+        TraceIds.put(TraceIds.newId());
         try {
-            locked = lock.tryLock(0, TimeUnit.SECONDS);
-        } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
-            log.warn("outbox relay 锁获取被中断，跳过本轮");
-            return;
-        }
-        long lockWaitMs = diagEnabled ? TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - lockWaitStart) : 0L;
-        if (!locked) {
-            diag.lockSkipped().ifPresent(s -> log.info(
-                    "outbox relay 诊断（空轮/竞争汇总）：emptyRounds={}, lockSkips={}",
-                    s.emptyRounds(), s.lockSkips()));
-            return; // 另一实例正在跑，周期短直接跳过
-        }
-        long holdStart = diagEnabled ? System.nanoTime() : 0L;
-        List<VerifyEventOutbox> batch = null;
-        long selectNanos = 0L;
-        RelayTotals totals = new RelayTotals();
-        long processingNanos = 0L;
-        boolean completed = false;
-        try {
-            long selectStart = diagEnabled ? System.nanoTime() : 0L;
-            batch = outboxMapper.selectPendingBatch(batchSize, maxRetry);
-            if (diagEnabled) {
-                selectNanos = System.nanoTime() - selectStart;
-            }
-            if (!relayBatchMarkEnabled) {
-                // 串行路径：与引入前逐字等价（sendConcurrency==1 时不创建任何线程池对象）
-                if (batch.isEmpty() || sendConcurrency == 1) {
-                    for (VerifyEventOutbox row : batch) {
-                        sendRow(row, diagEnabled, totals);
-                    }
-                } else {
-                    deliverConcurrently(batch, sendConcurrency,
-                            diagEnabled, totals);
-                }
-            } else {
-                int chunkSize = effectiveBatchMarkChunkSize();
-                if (batch.isEmpty() || sendConcurrency == 1) {
-                    deliverBatchMarkSerial(batch, chunkSize,
-                            diagEnabled, totals);
-                } else {
-                    deliverBatchMarkConcurrently(batch, sendConcurrency,
-                            chunkSize, diagEnabled, totals);
-                }
-            }
-            if (diagEnabled) {
-                // 锁内处理段终点：批次处理结束，尚未输出摘要、尚未解锁
-                processingNanos = System.nanoTime() - holdStart;
-            }
-            completed = true;
-        } finally {
+            RelayDiagnostics diag = diagnostics();
+            boolean diagEnabled = diag.enabled();
+            int sendConcurrency = effectiveSendConcurrency();
+            RLock lock = redissonClient.getLock(LOCK_KEY);
+            boolean locked = false;
+            long lockWaitStart = diagEnabled ? System.nanoTime() : 0L;
             try {
-                lock.unlock();
-            } catch (Exception e) {
-                log.warn("outbox relay 锁释放异常（租期兜底释放）");
+                locked = lock.tryLock(0, TimeUnit.SECONDS);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                log.warn("outbox relay 锁获取被中断，跳过本轮");
+                return;
             }
-            if (completed && diagEnabled) {
-                // lockHoldMs 终点：解锁调用返回（或抛错被捕获）之后、摘要输出之前取；含解锁调用、不含其后的摘要输出；
-                // 解锁抛错不代表已释放，不得混称「完整占锁」或当作锁已释放的确证
-                long lockHoldNanos = System.nanoTime() - holdStart;
-                if (batch.isEmpty()) {
-                    diag.emptyRound().ifPresent(s -> log.info(
-                            "outbox relay 诊断（空轮/竞争汇总）：emptyRounds={}, lockSkips={}",
-                            s.emptyRounds(), s.lockSkips()));
+            long lockWaitMs = diagEnabled ? TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - lockWaitStart) : 0L;
+            if (!locked) {
+                diag.lockSkipped().ifPresent(s -> log.info(
+                        "outbox relay 诊断（空轮/竞争汇总）：emptyRounds={}, lockSkips={}",
+                        s.emptyRounds(), s.lockSkips()));
+                return; // 另一实例正在跑，周期短直接跳过
+            }
+            long holdStart = diagEnabled ? System.nanoTime() : 0L;
+            List<VerifyEventOutbox> batch = null;
+            long selectNanos = 0L;
+            RelayTotals totals = new RelayTotals();
+            long processingNanos = 0L;
+            boolean completed = false;
+            try {
+                long selectStart = diagEnabled ? System.nanoTime() : 0L;
+                batch = outboxMapper.selectPendingBatch(batchSize, maxRetry);
+                if (diagEnabled) {
+                    selectNanos = System.nanoTime() - selectStart;
+                }
+                if (!relayBatchMarkEnabled) {
+                    // 串行路径：与引入前逐字等价（sendConcurrency==1 时不创建任何线程池对象）
+                    if (batch.isEmpty() || sendConcurrency == 1) {
+                        for (VerifyEventOutbox row : batch) {
+                            sendRow(row, diagEnabled, totals);
+                        }
+                    } else {
+                        deliverConcurrently(batch, sendConcurrency,
+                                diagEnabled, totals);
+                    }
                 } else {
-                    String concurrencyNote = "";
-                    if (sendConcurrency > 1) {
-                        concurrencyNote = "；并发下 sendMs/markMs/incrRetryMs"
-                                + " 为各线程墙钟的聚合和（线程时间），"
-                                + "residualMs 可能为负，不得读作未归因墙钟";
+                    int chunkSize = effectiveBatchMarkChunkSize();
+                    if (batch.isEmpty() || sendConcurrency == 1) {
+                        deliverBatchMarkSerial(batch, chunkSize,
+                                diagEnabled, totals);
+                    } else {
+                        deliverBatchMarkConcurrently(batch, sendConcurrency,
+                                chunkSize, diagEnabled, totals);
                     }
-                    String batchMarkNote = "";
-                    if (relayBatchMarkEnabled) {
-                        batchMarkNote = String.format(
-                                ", markBatchCalls=%d, markBatchRows=%d",
-                                totals.markBatchCalls, totals.markBatchRows);
+                }
+                if (diagEnabled) {
+                    // 锁内处理段终点：批次处理结束，尚未输出摘要、尚未解锁
+                    processingNanos = System.nanoTime() - holdStart;
+                }
+                completed = true;
+            } finally {
+                try {
+                    lock.unlock();
+                } catch (Exception e) {
+                    log.warn("outbox relay 锁释放异常（租期兜底释放）");
+                }
+                if (completed && diagEnabled) {
+                    // lockHoldMs 终点：解锁调用返回（或抛错被捕获）之后、摘要输出之前取；含解锁调用、不含其后的摘要输出；
+                    // 解锁抛错不代表已释放，不得混称「完整占锁」或当作锁已释放的确证
+                    long lockHoldNanos = System.nanoTime() - holdStart;
+                    if (batch.isEmpty()) {
+                        diag.emptyRound().ifPresent(s -> log.info(
+                                "outbox relay 诊断（空轮/竞争汇总）：emptyRounds={}, lockSkips={}",
+                                s.emptyRounds(), s.lockSkips()));
+                    } else {
+                        String concurrencyNote = "";
+                        if (sendConcurrency > 1) {
+                            concurrencyNote = "；并发下 sendMs/markMs/incrRetryMs"
+                                    + " 为各线程墙钟的聚合和（线程时间），"
+                                    + "residualMs 可能为负，不得读作未归因墙钟";
+                        }
+                        String batchMarkNote = "";
+                        if (relayBatchMarkEnabled) {
+                            batchMarkNote = String.format(
+                                    ", markBatchCalls=%d, markBatchRows=%d",
+                                    totals.markBatchCalls, totals.markBatchRows);
+                        }
+                        String summaryFormat = "outbox relay 诊断（批次）：rows={}, "
+                                + "success={}, failed={}, exhausted={}, "
+                                + "lockWaitMs={}, selectMs={}, sendMs={}, "
+                                + "markMs={}, incrRetryMs={}, "
+                                + "lockProcessingMs={}, lockHoldMs={}, "
+                                + "residualMs={}, "
+                                + "emptyRounds={}, lockSkips={}, sendConcurrency={}"
+                                + concurrencyNote
+                                + batchMarkNote;
+                        diag.batch(batch.size(), totals.success, totals.failed,
+                                totals.exhausted, lockWaitMs,
+                                TimeUnit.NANOSECONDS.toMillis(selectNanos),
+                                TimeUnit.NANOSECONDS.toMillis(totals.sendNanos),
+                                TimeUnit.NANOSECONDS.toMillis(totals.markNanos),
+                                TimeUnit.NANOSECONDS.toMillis(
+                                        totals.incrRetryNanos),
+                                TimeUnit.NANOSECONDS.toMillis(processingNanos),
+                                TimeUnit.NANOSECONDS.toMillis(lockHoldNanos),
+                                sendConcurrency)
+                                .ifPresent(s -> log.info(summaryFormat,
+                                        s.rows(), s.success(), s.failed(),
+                                        s.exhausted(), s.lockWaitMs(), s.selectMs(),
+                                        s.sendMs(), s.markMs(), s.incrRetryMs(),
+                                        s.lockProcessingMs(), s.lockHoldMs(),
+                                        s.residualMs(), s.emptyRounds(),
+                                        s.lockSkips(),
+                                        s.sendConcurrency()));
                     }
-                    String summaryFormat = "outbox relay 诊断（批次）：rows={}, "
-                            + "success={}, failed={}, exhausted={}, "
-                            + "lockWaitMs={}, selectMs={}, sendMs={}, "
-                            + "markMs={}, incrRetryMs={}, "
-                            + "lockProcessingMs={}, lockHoldMs={}, "
-                            + "residualMs={}, "
-                            + "emptyRounds={}, lockSkips={}, sendConcurrency={}"
-                            + concurrencyNote
-                            + batchMarkNote;
-                    diag.batch(batch.size(), totals.success, totals.failed,
-                            totals.exhausted, lockWaitMs,
-                            TimeUnit.NANOSECONDS.toMillis(selectNanos),
-                            TimeUnit.NANOSECONDS.toMillis(totals.sendNanos),
-                            TimeUnit.NANOSECONDS.toMillis(totals.markNanos),
-                            TimeUnit.NANOSECONDS.toMillis(
-                                     totals.incrRetryNanos),
-                            TimeUnit.NANOSECONDS.toMillis(processingNanos),
-                            TimeUnit.NANOSECONDS.toMillis(lockHoldNanos),
-                            sendConcurrency)
-                            .ifPresent(s -> log.info(summaryFormat,
-                                    s.rows(), s.success(), s.failed(),
-                                    s.exhausted(), s.lockWaitMs(), s.selectMs(),
-                                    s.sendMs(), s.markMs(), s.incrRetryMs(),
-                                    s.lockProcessingMs(), s.lockHoldMs(),
-                                    s.residualMs(), s.emptyRounds(),
-                                    s.lockSkips(),
-                                    s.sendConcurrency()));
                 }
             }
+        } finally {
+            TraceIds.clear();
         }
     }
 
@@ -331,55 +337,29 @@ public class VerifyOutboxRelay {
     private void sendRow(final VerifyEventOutbox row, final int chunkSize,
                          final List<Long> pendingIds, final boolean diagEnabled,
                          final RelayTotals totals) {
-        // 防御性兜底：取批 SQL 已按当前上限过滤耗尽行；仅当运行中上限被下调等极端情况下
-        // 本批仍可能含新耗尽行，此时保留行、不投递不计数。
-        if (row.getRetryCount() != null && row.getRetryCount() >= maxRetry) {
-            totals.exhausted++;
-            log.error("outbox 事件超过最大重试次数，保留行供人工处理："
-                    + "id={}, eventId={}, topic={}, tag={}, retryCount={}",
-                    row.getId(), row.getEventId(), row.getTopic(),
-                    row.getTag(), row.getRetryCount());
-            return;
-        }
-        // 发送段：本行实际经过的发送墙钟只累计一次（成功失败都只记这一段，不在失败分支重算）
-        long sendStart = diagEnabled ? System.nanoTime() : 0L;
+        // 行级 traceId 续链：以 outbox 行内 traceId 接续原请求链（行内为空则沿用本轮入口值），
+        // 结束后恢复入口值——串行路径恢复本轮 UUID，worker 线程无入口值时清理，绝不跨行串号
+        String previousTraceId = TraceIds.current();
+        TraceIds.put(row.getTraceId());
         try {
-            // 唯一投递出口：行内 topic/tag/payload/eventId 原样交给生产者（重发不换 eventId）
-            verifyEventProducer.syncSend(row);
-        } catch (Exception e) {
-            if (diagEnabled) {
-                totals.sendNanos += System.nanoTime() - sendStart;
+            // 防御性兜底：取批 SQL 已按当前上限过滤耗尽行；仅当运行中上限被下调等极端情况下
+            // 本批仍可能含新耗尽行，此时保留行、不投递不计数。
+            if (row.getRetryCount() != null && row.getRetryCount() >= maxRetry) {
+                totals.exhausted++;
+                log.error("outbox 事件超过最大重试次数，保留行供人工处理："
+                        + "id={}, eventId={}, topic={}, tag={}, retryCount={}",
+                        row.getId(), row.getEventId(), row.getTopic(),
+                        row.getTag(), row.getRetryCount());
+                return;
             }
-            long incrStart = diagEnabled ? System.nanoTime() : 0L;
-            outboxMapper.incrRetry(row.getId());
-            if (diagEnabled) {
-                totals.incrRetryNanos += System.nanoTime() - incrStart;
-            }
-            totals.failed++;
-            log.warn("outbox 事件投递失败，下轮重试：id={}, eventId={}, retryCount={}",
-                    row.getId(), row.getEventId(),
-                    row.getRetryCount() == null ? 1
-                            : row.getRetryCount() + 1, e);
-            return;
-        }
-        if (diagEnabled) {
-            totals.sendNanos += System.nanoTime() - sendStart;
-        }
-        // 标记段：逐行标记模式各自累计本段墙钟一次且与发送段互不重复归集；
-        // 分块标记模式仅收集成功 id，满 chunk 才 flush。
-        if (pendingIds == null) {
-            long markStart = diagEnabled ? System.nanoTime() : 0L;
+            // 发送段：本行实际经过的发送墙钟只累计一次（成功失败都只记这一段，不在失败分支重算）
+            long sendStart = diagEnabled ? System.nanoTime() : 0L;
             try {
-                outboxMapper.markSent(row.getId());
-                if (diagEnabled) {
-                    totals.markNanos += System.nanoTime() - markStart;
-                }
-                totals.success++;
-                log.info("outbox 事件投递成功：id={}, eventId={}, tag={}",
-                        row.getId(), row.getEventId(), row.getTag());
+                // 唯一投递出口：行内 topic/tag/payload/eventId 原样交给生产者（重发不换 eventId）
+                verifyEventProducer.syncSend(row);
             } catch (Exception e) {
                 if (diagEnabled) {
-                    totals.markNanos += System.nanoTime() - markStart;
+                    totals.sendNanos += System.nanoTime() - sendStart;
                 }
                 long incrStart = diagEnabled ? System.nanoTime() : 0L;
                 outboxMapper.incrRetry(row.getId());
@@ -391,12 +371,50 @@ public class VerifyOutboxRelay {
                         row.getId(), row.getEventId(),
                         row.getRetryCount() == null ? 1
                                 : row.getRetryCount() + 1, e);
+                return;
             }
-            return;
-        }
-        pendingIds.add(row.getId());
-        if (pendingIds.size() >= chunkSize) {
-            flushBatchMark(pendingIds, diagEnabled, totals);
+            if (diagEnabled) {
+                totals.sendNanos += System.nanoTime() - sendStart;
+            }
+            // 标记段：逐行标记模式各自累计本段墙钟一次且与发送段互不重复归集；
+            // 分块标记模式仅收集成功 id，满 chunk 才 flush。
+            if (pendingIds == null) {
+                long markStart = diagEnabled ? System.nanoTime() : 0L;
+                try {
+                    outboxMapper.markSent(row.getId());
+                    if (diagEnabled) {
+                        totals.markNanos += System.nanoTime() - markStart;
+                    }
+                    totals.success++;
+                    log.info("outbox 事件投递成功：id={}, eventId={}, tag={}",
+                            row.getId(), row.getEventId(), row.getTag());
+                } catch (Exception e) {
+                    if (diagEnabled) {
+                        totals.markNanos += System.nanoTime() - markStart;
+                    }
+                    long incrStart = diagEnabled ? System.nanoTime() : 0L;
+                    outboxMapper.incrRetry(row.getId());
+                    if (diagEnabled) {
+                        totals.incrRetryNanos += System.nanoTime() - incrStart;
+                    }
+                    totals.failed++;
+                    log.warn("outbox 事件投递失败，下轮重试：id={}, eventId={}, retryCount={}",
+                            row.getId(), row.getEventId(),
+                            row.getRetryCount() == null ? 1
+                                    : row.getRetryCount() + 1, e);
+                }
+                return;
+            }
+            pendingIds.add(row.getId());
+            if (pendingIds.size() >= chunkSize) {
+                flushBatchMark(pendingIds, diagEnabled, totals);
+            }
+        } finally {
+            if (previousTraceId == null) {
+                TraceIds.clear();
+            } else {
+                TraceIds.put(previousTraceId);
+            }
         }
     }
 
@@ -474,14 +492,19 @@ public class VerifyOutboxRelay {
      */
     private void runShard(final List<VerifyEventOutbox> shard, final boolean diagEnabled,
                           final RelayTotals totals) {
-        for (VerifyEventOutbox row : shard) {
-            try {
-                sendRow(row, diagEnabled, totals);
-            } catch (Exception e) {
-                log.warn("outbox relay 并发投递单行异常，已隔离，继续同子列表其余行："
-                                + "id={}, eventId={}",
-                        row.getId(), row.getEventId(), e);
+        TraceIds.put(TraceIds.newId());
+        try {
+            for (VerifyEventOutbox row : shard) {
+                try {
+                    sendRow(row, diagEnabled, totals);
+                } catch (Exception e) {
+                    log.warn("outbox relay 并发投递单行异常，已隔离，继续同子列表其余行："
+                                    + "id={}, eventId={}",
+                            row.getId(), row.getEventId(), e);
+                }
             }
+        } finally {
+            TraceIds.clear();
         }
     }
 
@@ -626,23 +649,28 @@ public class VerifyOutboxRelay {
                                    final int chunkSize,
                                    final boolean diagEnabled,
                                    final RelayTotals totals) {
-        List<Long> pendingIds = new ArrayList<>(chunkSize);
-        for (VerifyEventOutbox row : shard) {
-            try {
-                sendRow(row, chunkSize, pendingIds, diagEnabled, totals);
-            } catch (Exception e) {
-                log.warn("outbox relay 并发批量标记投递单行异常，已隔离，继续同子列表其余行："
-                                + "id={}, eventId={}",
-                        row.getId(), row.getEventId(), e);
+        TraceIds.put(TraceIds.newId());
+        try {
+            List<Long> pendingIds = new ArrayList<>(chunkSize);
+            for (VerifyEventOutbox row : shard) {
+                try {
+                    sendRow(row, chunkSize, pendingIds, diagEnabled, totals);
+                } catch (Exception e) {
+                    log.warn("outbox relay 并发批量标记投递单行异常，已隔离，继续同子列表其余行："
+                                    + "id={}, eventId={}",
+                            row.getId(), row.getEventId(), e);
+                }
             }
-        }
-        if (!pendingIds.isEmpty()) {
-            try {
-                flushBatchMark(pendingIds, diagEnabled, totals);
-            } catch (Exception e) {
-                log.warn("outbox relay 并发批量标记尾块 flush 异常：chunkSize={}",
-                        pendingIds.size(), e);
+            if (!pendingIds.isEmpty()) {
+                try {
+                    flushBatchMark(pendingIds, diagEnabled, totals);
+                } catch (Exception e) {
+                    log.warn("outbox relay 并发批量标记尾块 flush 异常：chunkSize={}",
+                            pendingIds.size(), e);
+                }
             }
+        } finally {
+            TraceIds.clear();
         }
     }
 
