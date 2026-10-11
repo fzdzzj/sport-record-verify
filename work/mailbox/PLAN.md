@@ -2333,3 +2333,12 @@ run `35802403723`（head `eba0108`，2026-09-23 00:31 UTC）——**web/build �
 | 收口门禁 | offline `--mode=offline test` rc=0 逐位 36/48/130/151/159/70/15 = 609（NotificationControllerTest 在 130 内零回归）；static record/leaderboard 双模块 rc=0；六探针 CI 等效全绿（offline 内实证）；契约门双态 rc=0；token 29 项 SUM=2030 只增不减；词面门全绿；diff --check 干净 |
 | 提交表 | v3 改派笔 `e9d8898`、C-01 `fd1e53b`（11 文件 +78 -33）、C-02 台账收口（显式哈希以回传报告为准）；未推送不建 PR；外部终验待第 41 次 CI（6 镜像构建 + Trivy 收缩态 fastjson 2.0.65 不得报 CRITICAL + 六探针实跑） |
 | 状态 | **TASK-200 round-3 本地闭环**：D3 四缺陷（A/B/C/D）全链路修复、四服务生产实起全绿达成使命；同构缺陷类清零；外部终验待推送后第 41 次 CI；后续项不变：rocketmq-spring fastjson 兼容（已 v1 兼容包 2.0.65 回补受控发布）|
+
+**TASK-200 外部终验达成与封盘补记（2026-10-11，run 38138765615，补记笔本地未推送）**
+
+| 项目 | 内容 |
+| --- | --- |
+| 外部终验 | 第 41 次外部门槛 CI（run 38138765615，head=ee891ab，2026-10-11T12:18:31Z 触发）conclusion=success 全步骤绿：Build and test（offline 609 + 六探针实跑全绿）、Build all service images (6/6)、Trivy 收缩态扫描 success（com.alibaba:fastjson:2.0.65 未触发 CRITICAL，零豁免下全绿）、static gate（checkstyle/spotbugs/pmd）、词面门、web job |
+| 终裁依据 | 四环节全过：指导侧亲核（紧凑 Git 摘要 + 缺陷C/D 修复 diff 定向抽查恰各 +1 行 + 提交信息/边界核验）→ 独立复核子 agent 五块全量复跑 PASS 零阻断（Git 链/红线/双端门禁含冒烟四服务复跑全 UP/证据链/只改清单全等）→ 两报告一致性裁决零矛盾 → 第 41 次 CI success 外部终验 |
+| 推送记录 | 授权后 6 笔推送 `bed6dca..ee891ab`（13e9ece 派发笔 / 5c45511 v2 改派笔 / e9d8898 v3 改派笔 / fd1e53b C-01 / ee891ab C-02 + TASK-199 补记笔 1b20923 随批次），推送后 origin/main...main = 0 0；本补记笔为唯一本地保留笔，随下一课题批次统一推送 |
+| 状态 | **TASK-200 封盘**：round-1/round-2 两轮停止（缺陷C/D 被 D3 掩蔽逐个暴露）→ v3 普查根治全链路闭环；治理成果：D3 四缺陷根除（拦截器 @Component / fastjson 2.0.65 受控回补 / NotificationService+NotificationController 双构造器同构清零）、四服务生产 jar 实起 liveness 全 UP、Trivy 收缩态零豁免全绿；治理沉淀：探针懒加载范式掩蔽生产 boot 缺陷仅生产实起可暴露、双构造器无构造器级注入标注同构模式教训（均入项目记忆） |

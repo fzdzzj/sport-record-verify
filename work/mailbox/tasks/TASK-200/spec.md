@@ -133,6 +133,7 @@ round-1/round-2 中间读数为过程证据，不替代收口读数；收口全�
 - **四服务最终态冒烟（11 文件态）**：user `HTTP 200 {"status":"UP"}`（Started 实起成功）；record `HTTP 200 UP`（38s）；verify `HTTP 200 UP`（28s）；leaderboard `HTTP 200 UP`（29s）。本机中间件容器（sport-verify-mysql/nacos/namesrv/broker）曾代理退出，round-3 起始时恢复并留证，未停共享中间件容器。
 - **全量门禁（最终 11 文件态）**：offline 609 逐位 `36/48/130/151/159/70/15` 全绿 rc=0（NotificationControllerTest 在 user 130 内零回归）；static record-service rc=0 + leaderboard-service rc=0（首次并行因 .m2-repo 父 pom install 竞争 rc=1，串行复跑 clean rc=0）；六探针 CI 等效全绿（三探针各 3/0/0/0 + GatewayProbeTest 4/0/0/0，offline 内实证）；契约门双态；token 29 项 SUM=2030 只增不减；词面门 ZERO_HIT；`git diff --check` 干净。
 - **提交**：C-01 `fd1e53b3eadaf4ecfa189d9cccb356fe6ab7d6d7`（恰 11 文件，+78 −33）；C-02 本笔（恰 4 文件）。v3 改派笔 `e9d8898`、v2 改派笔 `5c45511`。
+- **外部终验（补记笔，2026-10-11）**：第 41 次外部门槛 CI（run `38138765615`，head=ee891ab，2026-10-11T12:18:31Z 触发）conclusion=success 全步骤绿——Build and test（offline 609 + 六探针实跑全绿）、Build all service images (6/6)、**Trivy 收缩态扫描 success（com.alibaba:fastjson:2.0.65 未触发 CRITICAL，零豁免下全绿）**、static gate（checkstyle/spotbugs/pmd）、词面门、web job；授权后 6 笔推送 `bed6dca..ee891ab`（TASK-200 五笔 + TASK-199 补记笔 1b20923 随批次），推送后 origin/main...main = 0 0；终裁依据：指导侧亲核（缺陷C/D diff 定向抽查恰各 +1 行）+ 独立复核五块全量复跑 PASS 零阻断 + 两报告一致性零矛盾 + 本轮 CI success。**TASK-200 封盘**。
 
 ## §8 改派记录（round-1/round-2 停止归档）
 

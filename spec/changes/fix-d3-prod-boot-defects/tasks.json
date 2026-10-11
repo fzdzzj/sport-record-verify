@@ -27,8 +27,8 @@
     "task": "台账闭环与外部终验",
     "steps": [
       { "step": "C-01 实施笔（恰 11 文件：round-1 九文件 + NotificationService.java + NotificationController.java 各构造器标注一处）+ C-02 台账笔（恰 4 文件：tasks.json 勾选翻转 / 任务书 §7 回填含 round-1/round-2 停止与 round-3 修复全留证 / handoff.md 新建含只改清单 / PLAN.md 纯追加），均不推送不建 PR", "completed": true },
-      { "step": "推送后第 41 次 CI 全绿为外部终验（6 镜像构建 + Trivy 收缩态扫描 + 六探针实跑；com.alibaba:fastjson:2.0.65 若触发 CRITICAL 即停止条件，按决策树回报裁决，禁自行登记 .trivyignore、禁重试刷绿）", "completed": false }
+      { "step": "推送后第 41 次 CI 全绿为外部终验（6 镜像构建 + Trivy 收缩态扫描 + 六探针实跑；com.alibaba:fastjson:2.0.65 若触发 CRITICAL 即停止条件，按决策树回报裁决，禁自行登记 .trivyignore、禁重试刷绿）", "completed": true },
     ],
-    "passes": false
+    "passes": true
   }
 ]
