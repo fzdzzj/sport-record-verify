@@ -127,10 +127,15 @@ round-1/round-2 中间读数为过程证据，不替代收口读数；收口全�
 
 ## §7 收口记录（执行侧 C-02 纯追加回填）
 
-（开工前为空；回填须含：round-1/round-2 停止留证沿用、round-3 缺陷D 修复与 user 实起反转、四服务最终态冒烟读数、全量门禁读数、提交哈希）
+**round-3 收口（C-01 `fd1e53b` / C-02 本笔）**：
+
+- **缺陷D 修复与反转实证**：NotificationController 显式 2 参构造（:53-57 后）加构造器级 `@Autowired`（恰 +1 行，import 既有零新增）；`@RequiredArgsConstructor`/字段级 `@Autowired(required=false)`/方法体/javadoc 业务语义零改动，未删显式构造器（NotificationControllerTest:55 唯一 2 参手工 new 调用方零破坏）。user 生产 jar 实起越过 notificationController 创建点（无 `Error creating bean 'notificationController'`、无 `NoSuchMethodException`），`Started UserApplication` 后 liveness 200 + `{"status":"UP"}`——同构缺陷类全仓清零。
+- **四服务最终态冒烟（11 文件态）**：user `HTTP 200 {"status":"UP"}`（Started 实起成功）；record `HTTP 200 UP`（38s）；verify `HTTP 200 UP`（28s）；leaderboard `HTTP 200 UP`（29s）。本机中间件容器（sport-verify-mysql/nacos/namesrv/broker）曾代理退出，round-3 起始时恢复并留证，未停共享中间件容器。
+- **全量门禁（最终 11 文件态）**：offline 609 逐位 `36/48/130/151/159/70/15` 全绿 rc=0（NotificationControllerTest 在 user 130 内零回归）；static record-service rc=0 + leaderboard-service rc=0（首次并行因 .m2-repo 父 pom install 竞争 rc=1，串行复跑 clean rc=0）；六探针 CI 等效全绿（三探针各 3/0/0/0 + GatewayProbeTest 4/0/0/0，offline 内实证）；契约门双态；token 29 项 SUM=2030 只增不减；词面门 ZERO_HIT；`git diff --check` 干净。
+- **提交**：C-01 `fd1e53b3eadaf4ecfa189d9cccb356fe6ab7d6d7`（恰 11 文件，+78 −33）；C-02 本笔（恰 4 文件）。v3 改派笔 `e9d8898`、v2 改派笔 `5c45511`。
 
 ## §8 改派记录（round-1/round-2 停止归档）
 
 - **round-1**（派发笔 `13e9ece`）：完成缺陷A/B 全部修复与门禁验证（补仓、offline 609 逐位、六探针 CI 等效六档全绿且模板 mock 删除保持、静态双模块、三服务生产实起 liveness UP、user 越过 WS 装配期、token 开工 2030、恰 9 文件自洽）；user 冒烟暴露缺陷C（NotificationService 双构造器），触发 v1 停止条件 §3.1/§3.5 零提交停工。v2 改派笔 `5c45511`：裁决选项 a 变体（不回退、不另立课题），扩权白名单 9→10 文件。
 - **round-2**：完成缺陷C 修复（NotificationService.java 恰 +1 行构造器标注）；user 实起实证 notificationService bean 创建成功（失败点前移）；NotificationServiceTest/NotificationServicePushTest 零回归；token 开工复测 2030 持平；`--mode=online package` rc=0 四 jar 重建；恰 10 文件自洽零提交。user 实起随即暴露缺陷D（NotificationController 同构双构造器，`BeanCreationException: notificationController → No default constructor found`），触发 v2 停止条件 §3.1 零提交停手。临时件（r2-smoke-user.log / r2-online-package.log / smoke-body.json）已用后即删。
-- **本 v3 由指导侧裁定改派（普查式根治）**：不回退、不另立课题，扩权白名单 10→11 文件。依据：同构模式全仓普查恰 2 文件（双窗口一致，指导侧亲核），NotificationService 已修、NotificationController 待修，本轮清零同构缺陷类；D3 使命「四服务生产实起全绿」未竟，拆课题致交叉依赖与提交序混乱；round-1/round-2 十文件改动集自洽（缺陷C 修复已实证生效），回退浪费已验工作。缺陷D 归因、修复参数可解析性、2 参手工调用方（NotificationControllerTest:55）、普查边界均经指导侧亲核。round-1/round-2 全部读数作为 v3 开工依据沿用；v3 改派笔提交主题 `docs(spec): 改派TASK-200纳入NotificationController同构构造修复（TASK-200）`（哈希由 C-02 回填）。
+- **本 v3 由指导侧裁定改派（普查式根治）**：不回退、不另立课题，扩权白名单 10→11 文件。依据：同构模式全仓普查恰 2 文件（双窗口一致，指导侧亲核），NotificationService 已修、NotificationController 待修，本轮清零同构缺陷类；D3 使命「四服务生产实起全绿」未竟，拆课题致交叉依赖与提交序混乱；round-1/round-2 十文件改动集自洽（缺陷C 修复已实证生效），回退浪费已验工作。缺陷D 归因、修复参数可解析性、2 参手工调用方（NotificationControllerTest:55）、普查边界均经指导侧亲核。round-1/round-2 全部读数作为 v3 开工依据沿用；v3 改派笔提交主题 `docs(spec): 改派TASK-200纳入NotificationController同构构造修复（TASK-200）`，哈希 `e9d8898`（round-3 C-02 回填）。

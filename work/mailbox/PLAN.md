@@ -2320,3 +2320,16 @@ run `35802403723`（head `eba0108`，2026-09-23 00:31 UTC）——**web/build �
 | 终裁依据 | 四环节全过：指导侧亲核（紧凑 Git 摘要 + C-01 全量 diff 定向抽查 + C-02 形状抽查）→ 独立复核子 agent 五块全量复跑 PASS 零阻断项（offline 609 逐位 / static 双模块 / 契约门双态 / token 2030 / 六探针等效验证 user+record 复跑）→ 两报告一致性裁决零矛盾 → 第 40 次 CI success 外部终验 |
 | 推送记录 | 授权后 4 笔推送 `d6784ac..bed6dca`（bf62f84 派发笔 / 007427f 改派笔 / 2ebba23 C-01 / bed6dca C-02），推送后 `origin/main...main` = `0 0`；本补记笔为唯一本地保留笔，随下一课题批次统一推送 |
 | 状态 | **TASK-199 封盘**：round-1 归因勘误停工（零提交）→ 指导侧改派 → round-2 单点修复全链路闭环（本地双门禁全绿 + 外部 CI 全绿）；治理成果：CI 探针环境依赖泄漏根除、TASK-198 批3 漏配 user Redisson mock 补课完成、六探针 CI 实跑全绿入门槛基线；后续项不变：StompConnectAuthInterceptor bean 注册、rocketmq-spring fastjson 兼容（均另立课题）；下一课题候选：D3 缺陷修复（优先）或用户定向 |
+
+**TASK-200 fix-d3-prod-boot-defects 四服务生产启动缺陷修复（2026-10-11，round-3 改派轮，三笔本地未推送）**
+
+| 项目 | 内容 |
+| --- | --- |
+| 开工基线 | v3 改派笔 HEAD `e9d8898`（父 `5c45511`）；round-1 派发 `13e9ece`、v2 改派 `5c45511`；工作区恰 10 文件 M（round-1 九文件 + round-2 NotificationService +1 行）；受保护 token 开工实测 SUM=2030（29 项 tracked `git grep -cF` 权威口径，round-1/round-2 基线持平） |
+| round-1 停止归档 | 完成缺陷A/B 全部修复与门禁验证（补仓、offline 609 逐位、六探针 CI 等效六档全绿、静态双模块、三服务生产实起 liveness UP、user 越过 WS 装配期、token 2030、恰 9 文件）；user 冒烟暴露缺陷C（NotificationService 双构造器），触发 v1 §3.1/§3.5 零提交停工 |
+| round-2 停止归档 | 完成缺陷C 修复（NotificationService +1 行构造器标注）；user 实起实证 notificationService bean 创建成功（失败点前移）；token 复测 2030 持平；恰 10 文件自洽零提交；user 实起随即暴露缺陷D（NotificationController 同构双构造器），触发 v2 §3.1 零提交停手 |
+| round-3 实施 | 唯一新增改动 = NotificationController 显式 2 参构造前加构造器级 `@Autowired`（恰 +1 行，import 既有零新增）；未删显式构造器（NotificationControllerTest:55 唯一 2 参手工 new 调用方零破坏）；round-1/round-2 十文件改动集原样沿用不回退；同构缺陷类全仓清零 |
+| 冒烟实起 | 四服务生产 jar 实起 liveness 全 UP（最终 11 文件态全量重跑）：user Started（越过 notificationController 创建点）、record/verify/leaderboard 复跑 UP；共享中间件容器起始无代理恢复留证 |
+| 收口门禁 | offline `--mode=offline test` rc=0 逐位 36/48/130/151/159/70/15 = 609（NotificationControllerTest 在 130 内零回归）；static record/leaderboard 双模块 rc=0；六探针 CI 等效全绿（offline 内实证）；契约门双态 rc=0；token 29 项 SUM=2030 只增不减；词面门全绿；diff --check 干净 |
+| 提交表 | v3 改派笔 `e9d8898`、C-01 `fd1e53b`（11 文件 +78 -33）、C-02 台账收口（显式哈希以回传报告为准）；未推送不建 PR；外部终验待第 41 次 CI（6 镜像构建 + Trivy 收缩态 fastjson 2.0.65 不得报 CRITICAL + 六探针实跑） |
+| 状态 | **TASK-200 round-3 本地闭环**：D3 四缺陷（A/B/C/D）全链路修复、四服务生产实起全绿达成使命；同构缺陷类清零；外部终验待推送后第 41 次 CI；后续项不变：rocketmq-spring fastjson 兼容（已 v1 兼容包 2.0.65 回补受控发布）|
