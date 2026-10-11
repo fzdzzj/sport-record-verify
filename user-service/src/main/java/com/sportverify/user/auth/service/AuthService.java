@@ -185,7 +185,8 @@ public class AuthService {
      *
      * <p>治理面准入：/admin/** 与规则版本接口要求 role=ADMIN，普通用户被拒（403/1002）。
      * 用户不存在 → 2002；幂等：已是 ADMIN 直接成功返回（角色本为集合语义，无重复问题）。
-     * 生效口径：<b>需重新登录</b>——角色在签发 token 时写入 role claim，重登拿新 token 才生效。</p>
+     * 生效口径：<b>重新登录或 refresh 续签后生效，最长延迟=当前 access 剩余时效，主动续签即时</b>——
+     * 角色在签发 token 时写入 role claim，issueTokenPair 续签实时读库取 role。</p>
      */
     public void grantAdmin(Long userId) {
         if (userId == null) {
@@ -205,6 +206,34 @@ public class AuthService {
         update.setRole(User.ROLE_ADMIN);
         userMapper.updateById(update);
         log.info("admin 授予成功：userId={}", userId);
+    }
+
+    /**
+     * 撤销指定用户的 ADMIN 角色（最小模型二态之一，TASK-202）：仅经内部接口（网内信任）调用，
+     * 与 {@link #grantAdmin(Long)} 同构。
+     *
+     * <p>用户不存在 → 2002；幂等：已是 USER 直接成功返回；否则改库 role=USER。
+     * 生效口径同授予：<b>重新登录或 refresh 续签后生效，最长延迟=当前 access 剩余时效，主动续签即时</b>
+     * （撤销后旧 access 最长在剩余时效内自然过期，续签实时读库取 role 即时降权）。</p>
+     */
+    public void revokeAdmin(Long userId) {
+        if (userId == null) {
+            throw new IllegalArgumentException("目标用户ID不能为空");
+        }
+        // —— 校验目标用户存在（不存在不落库，权限撤销不应对不存在的账号静默成功）
+        User user = userMapper.selectById(userId);
+        if (user == null) {
+            throw new BizException(ResultCode.USER_NOT_FOUND);
+        }
+        if (User.ROLE_USER.equals(user.getRole())) {
+            log.info("admin 撤销跳过（已是 USER）：userId={}", userId);
+            return;
+        }
+        User update = new User();
+        update.setId(userId);
+        update.setRole(User.ROLE_USER);
+        userMapper.updateById(update);
+        log.info("admin 撤销成功：userId={}", userId);
     }
 
     // ==================== refresh 轮换 ====================
@@ -236,6 +265,13 @@ public class AuthService {
         if (alive == null) {
             log.warn("refresh 已作废：userId={}, jti={}", parsed.userId(), parsed.jti());
             throw new BizException(ResultCode.UNAUTHORIZED, "refresh token 已作废，请重新登录");
+        }
+        // —— 存续与封禁校验（TASK-202）：封禁（status=0）或删号即拒续签，与 login 口径统一 401 不区分
+        //    旧 jti 已在上一行被原子消费——封禁用户重放同一 refresh 亦 401（强制下线闭环）
+        User user = userMapper.selectById(parsed.userId());
+        if (user == null || (user.getStatus() != null && user.getStatus() == 0)) {
+            log.warn("refresh 被拒：账号不存在或已禁用 userId={}", parsed.userId());
+            throw new BizException(ResultCode.UNAUTHORIZED, "账号已被禁用");
         }
         TokenDTO dto = issueTokenPair(parsed.userId());
         log.info("refresh 轮换成功：userId={}, oldJti={}", parsed.userId(), parsed.jti());

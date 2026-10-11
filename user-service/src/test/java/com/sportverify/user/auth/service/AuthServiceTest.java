@@ -14,6 +14,7 @@ import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.data.redis.core.ValueOperations;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 
+import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.TimeUnit;
@@ -25,6 +26,7 @@ import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyList;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.doAnswer;
@@ -80,6 +82,13 @@ class AuthServiceTest {
             return Boolean.TRUE;
         }).when(redis).delete(anyString());
         when(redis.expire(anyString(), anyLong(), any(TimeUnit.class))).thenReturn(Boolean.TRUE);
+        // —— 原子消费旧 jti（GETDEL_LUA）接线：按 key 从假存储「取走并删除」，等效真实 GETDEL 语义
+        //    值为空 → 返回 null（已轮换/过期），据此可验证「旧 jti 已消费 → 重放 401」闭环
+        when(redis.execute(any(), anyList())).thenAnswer(inv -> {
+            List<?> keys = inv.getArgument(1);
+            Object v = store.remove(keys.get(0));
+            return v == null ? null : v;
+        });
 
         // JWT 签发打桩（登录成功/refresh 落键用；key 具体值不影响断言；role 参数为 add-admin-rbac 后签名）
         when(jwtUtil.issueAccessToken(anyLong(), anyString())).thenReturn("access-token");
@@ -274,6 +283,114 @@ class AuthServiceTest {
             assertFalse(key.startsWith("auth:fail:" + PHONE + ":"), "不应生成 IP fail 键");
             assertFalse(key.startsWith("auth:lock:" + PHONE + ":"), "不应生成 IP lock 键");
         }
+    }
+
+    // ==================== TASK-202 角色时效缺口 R/G 判别式 ====================
+
+    /** R1 红：status=0 用户合法 refresh → 401；旧 jti 已消费，重放同 refresh 亦 401（封禁强制下线闭环） */
+    @Test
+    void R1_bannedUserRefreshRejectedAndReplayRejected() {
+        when(jwtUtil.parseRefresh("banned-refresh")).thenReturn(new JwtUtil.ParsedRefresh(1L, "jti-banned"));
+        User banned = user();
+        banned.setStatus(0);
+        when(userMapper.selectById(1L)).thenReturn(banned);
+        store.put("auth:refresh:1:jti-banned", "1");
+
+        BizException first = assertThrows(BizException.class, () -> service.refresh("banned-refresh"));
+        assertEquals(ResultCode.UNAUTHORIZED.getCode(), first.getCode(), "封禁用户续签应 401");
+        assertFalse(store.containsKey("auth:refresh:1:jti-banned"), "旧 jti 应已被原子消费");
+        verify(jwtUtil, never()).issueAccessToken(anyLong(), anyString());
+
+        // 重放同一 refresh：jti 已消费（假存储中不存在）→ alive=null → 401
+        BizException replay = assertThrows(BizException.class, () -> service.refresh("banned-refresh"));
+        assertEquals(ResultCode.UNAUTHORIZED.getCode(), replay.getCode(), "重放同 refresh 应 401");
+    }
+
+    /** R2 红：库中用户已删（selectById 返回 null）→ 401 */
+    @Test
+    void R2_deletedUserRefreshRejected() {
+        when(jwtUtil.parseRefresh("deleted-refresh")).thenReturn(new JwtUtil.ParsedRefresh(1L, "jti-deleted"));
+        when(userMapper.selectById(1L)).thenReturn(null);
+        store.put("auth:refresh:1:jti-deleted", "1");
+
+        BizException e = assertThrows(BizException.class, () -> service.refresh("deleted-refresh"));
+        assertEquals(ResultCode.UNAUTHORIZED.getCode(), e.getCode(), "删号用户续签应 401");
+        assertFalse(store.containsKey("auth:refresh:1:jti-deleted"), "旧 jti 应已被原子消费");
+    }
+
+    /** R3 红：revokeAdmin 目标用户不存在 → USER_NOT_FOUND */
+    @Test
+    void R3_revokeAdminMissingUserThrowsNotFound() {
+        when(userMapper.selectById(9L)).thenReturn(null);
+        BizException e = assertThrows(BizException.class, () -> service.revokeAdmin(9L));
+        assertEquals(ResultCode.USER_NOT_FOUND.getCode(), e.getCode(), "不存在用户撤销应 2002");
+    }
+
+    /** G1 绿：status=1 用户正常轮换语义不回归（新对签发 + 旧 jti 作废 + 新 refresh 存活键落库） */
+    @Test
+    void G1_validRotationNotRegressed() {
+        when(jwtUtil.parseRefresh("incoming-refresh")).thenReturn(new JwtUtil.ParsedRefresh(1L, "old-jti"));
+        when(jwtUtil.parseRefresh("refresh-token")).thenReturn(new JwtUtil.ParsedRefresh(1L, "new-jti"));
+        when(userMapper.selectById(1L)).thenReturn(user());
+        store.put("auth:refresh:1:old-jti", "1");
+
+        TokenDTO dto = service.refresh("incoming-refresh");
+        assertNotNull(dto, "正常用户应轮换成功");
+        assertEquals("access-token", dto.getAccessToken());
+        assertEquals("refresh-token", dto.getRefreshToken());
+        assertFalse(store.containsKey("auth:refresh:1:old-jti"), "旧 jti 应已作废");
+        assertTrue(store.containsKey("auth:refresh:1:new-jti"), "新 refresh 存活键应落库");
+    }
+
+    /** G2 绿：revokeAdmin 已是 USER 幂等跳过；ADMIN 化改库 USER；撤销后续签返回 USER（降权即时性） */
+    @Test
+    void G2_revokeAdminIdempotentAndDowngradeOnRefresh() {
+        // A. 已是 USER：幂等跳过，不改库
+        when(userMapper.selectById(1L)).thenReturn(user());
+        assertDoesNotThrow(() -> service.revokeAdmin(1L));
+        verify(userMapper, never()).updateById(any(User.class));
+
+        // B. ADMIN → 撤销改库 role=USER
+        User admin = user();
+        admin.setId(2L);
+        admin.setRole(User.ROLE_ADMIN);
+        when(userMapper.selectById(2L)).thenReturn(admin);
+        service.revokeAdmin(2L);
+        verify(userMapper).updateById(any(User.class));
+
+        // C. 撤销后续签返回 USER（issueTokenPair 实时读库取 role）
+        when(jwtUtil.parseRefresh("incoming-refresh")).thenReturn(new JwtUtil.ParsedRefresh(3L, "old-jti"));
+        when(jwtUtil.parseRefresh("refresh-token")).thenReturn(new JwtUtil.ParsedRefresh(3L, "new-jti"));
+        User downgraded = user();
+        downgraded.setId(3L);
+        downgraded.setRole(User.ROLE_USER);
+        when(userMapper.selectById(3L)).thenReturn(downgraded);
+        store.put("auth:refresh:3:old-jti", "1");
+
+        TokenDTO dto = service.refresh("incoming-refresh");
+        assertEquals(User.ROLE_USER, dto.getRole(), "撤销后续签应返回 USER");
+        verify(jwtUtil).issueAccessToken(3L, User.ROLE_USER);
+    }
+
+    /** G3 绿：grantAdmin 后立即续签返回 ADMIN（提权即时性，实证 β 修正后的语义） */
+    @Test
+    void G3_grantAdminThenRefreshReturnsAdmin() {
+        when(userMapper.selectById(5L)).thenReturn(user());
+        service.grantAdmin(5L);
+        verify(userMapper).updateById(any(User.class));
+
+        // 授予后续签返回 ADMIN（issueTokenPair 实时读库取 role）
+        when(jwtUtil.parseRefresh("incoming-refresh")).thenReturn(new JwtUtil.ParsedRefresh(5L, "old-jti"));
+        when(jwtUtil.parseRefresh("refresh-token")).thenReturn(new JwtUtil.ParsedRefresh(5L, "new-jti"));
+        User elevated = user();
+        elevated.setId(5L);
+        elevated.setRole(User.ROLE_ADMIN);
+        when(userMapper.selectById(5L)).thenReturn(elevated);
+        store.put("auth:refresh:5:old-jti", "1");
+
+        TokenDTO dto = service.refresh("incoming-refresh");
+        assertEquals(User.ROLE_ADMIN, dto.getRole(), "授予后续签应返回 ADMIN");
+        verify(jwtUtil).issueAccessToken(5L, User.ROLE_ADMIN);
     }
 
     // ==================== 工具 ====================

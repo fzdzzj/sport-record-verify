@@ -51,11 +51,24 @@ public class InternalAuthController {
      *
      * <p>硬化（add-resilience-hardening / ADR-0007）：路径仍属服务本地 /internal/**
      * （网关无对应路由），并须携带 {@code X-Internal-Token} 共享密钥；不再仅靠网内拓扑。
-     * 角色由签发端落库并写入后续登录签发的 role claim。生效需目标用户重新登录。</p>
+     * 角色由签发端落库并写入后续登录签发的 role claim；重新登录或 refresh 续签后生效，
+     * 最长延迟=access 剩余时效，主动续签即时（TASK-202 时效口径订正）。</p>
      */
     @PostMapping("/grant-admin")
     public Result<Void> grantAdmin(@Valid @RequestBody AdminGrantRequestDTO dto) {
         authService.grantAdmin(dto.getUserId());
+        return Result.success();
+    }
+
+    /**
+     * 撤销指定用户 ADMIN 角色（TASK-202，与 grant-admin 同构，见 ADR-0007）。
+     *
+     * <p>路径同属服务本地 /internal/**（网关无对应路由），须携带 {@code X-Internal-Token} 共享密钥。
+     * 时效语义：撤销后旧 access 最长在剩余时效内自然过期（≤15min），重新登录或 refresh 续签即时降权。</p>
+     */
+    @PostMapping("/revoke-admin")
+    public Result<Void> revokeAdmin(@Valid @RequestBody AdminGrantRequestDTO dto) {
+        authService.revokeAdmin(dto.getUserId());
         return Result.success();
     }
 }
