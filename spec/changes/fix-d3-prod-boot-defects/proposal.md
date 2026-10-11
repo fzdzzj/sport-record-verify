@@ -1,19 +1,19 @@
-# 提案：四服务生产启动缺陷修复（fix-d3-prod-boot-defects / TASK-200）
+# 提案：四服务生产启动缺陷修复 v2（fix-d3-prod-boot-defects / TASK-200 改派）
 
-## 背景与问题（TASK-198 D3 登记，本课题研究阶段已完整归因）
+本版为 round-2 改派修订版。round-1 执行侧完成 D3 缺陷A/缺陷B 全部修复与门禁验证（record/verify/leaderboard 三服务生产实起 liveness UP、offline 609 逐位、六探针 CI 等效、静态双模块全绿），user 冒烟暴露被缺陷A 掩蔽的第三个既有隐藏 bean 缺陷（缺陷C：NotificationService 双构造器无构造器级注入标注），触发停止条件 §3.1/§3.5 零提交停工（工作区恰 9 文件未提交自洽）。指导侧裁决：不回退、不另立课题，改派 v2 扩权（白名单 9→10 文件）——D3 使命「四服务生产实起全绿」未竟，拆课题致两任务交叉依赖与提交序混乱；round-1 九文件改动集自洽且全门禁绿，回退浪费已验工作。
 
-四个服务生产 jar 实起在 HEAD 即坏（CI 不拉上下文故历次外部 CI 不可见）：
+## 背景与问题（round-1 后新增缺陷C 归因）
 
-- **缺陷A（user）**：`StompConnectAuthInterceptor` 全仓无任何 bean 注册（TASK-185 引入，缺 @Component/@Bean），`WebSocketNotificationConfig` 构造注入即 NoSuchBeanDefinition，WebSocket 急切装配使整上下文启动失败。
-- **缺陷B（user/record/verify/leaderboard 四服务）**：TASK-196 排除 fastjson 后，rocketmq-remoting 5.1.4 `NettyRemotingClient$1`（匿名 `new TypeReference` 子类）在 `NettyRemotingClient` 构造期即触发超类解析失败——任何 MQ 客户端构造（模板 producer 或编程式 consumer）必抛 `NoClassDefFoundError: com/alibaba/fastjson/TypeReference`。已以 leaderboard 生产 jar 实起取得完整失败栈（`MQClientAPIImpl.<init>(253) ← MQClientInstance ← DefaultMQPushConsumer.start ← LeaderboardEventConsumer.init`）。rocketmq-spring 2.3.1 本体 `RocketMQMessageConverter` 有 FASTJSON_PRESENT 守卫，不致错；源头全在 rocketmq-client/remoting/common 5.1.4 核心。user 无 producer.group（模板无 producer），失败点为其编程式消费者 @PostConstruct。
+- **缺陷A（user，round-1 已修复）**：`StompConnectAuthInterceptor` 无 bean 注册致 WS 急切装配失败——已加 @Component；user boot 越过 WS 装配期（旧 NoSuchBeanDefinition 签名消失）即反转实证。
+- **缺陷B（四服务，round-1 已修复）**：rocketmq 5.1.4 链 fastjson 类缺失——已回补 fastjson 2.0.65 runtime；record/verify/leaderboard 生产实起 liveness UP 即反转实证（leaderboard 正是完整 D3-B 失败栈实证档）。
+- **缺陷C（user，round-1 冒烟新暴露）**：`NotificationService`（TASK-182/187）字节码双构造器——@RequiredArgsConstructor 生成 1 参构造 + TASK-187 兼容期显式 2 参构造，@Autowired 仅字段级（required=false），无任何构造器级标注。Spring 多构造器无标注回退无参构造，该类无无参构造 → `NoSuchMethodException <init>()` 启动失败，失败链 friendController → friendService → notificationService。潜伏机理：单测手工 new 不经 Spring、探针 lazy-initialization 懒加载业务 bean 永不创建、生产 boot 此前死在更早 WS 装配期（被缺陷A 掩蔽）——此类缺陷只有生产实起能暴露。
 
-## 修复方案（预注册）
+## 修复方案（v2 增量）
 
-- **缺陷A**：`StompConnectAuthInterceptor` 加 `@Component`（JwtUtil 已 @Component，构造注入链自洽）；`UserProbeTest` 移除 `@Import` 临时供 bean（@Component+@Import 双注册致注入歧义，必移除）并更新偏差登记段。
-- **缺陷B（主路径：fastjson2 v1 兼容包受控回补）**：父 pom property + dependencyManagement 锁 `com.alibaba:fastjson:2.0.65`（runtime），user/record/verify/leaderboard 四模块 pom 各加 runtime 依赖（与 TASK-196 exclusions 并存：排除断 1.2.83 传递边、显式声明受控 2.0.x 运行时）；gateway/mapmatch 零改动（无 rocketmq，镜像保持无 fastjson 字节）。版本依据：TASK-196 预注册兜底 2.0.53 之上取安全修复线——RocketMQ 5.5.1 发行注记实证 fastjson2 2.0.63 含安全修复，2.0.65 为当前 stable release；偏差登记。兼容性：Jackson 转换器在模板复合转换器列表中先于 fastjson（首匹配命中），业务 JSON 行为零漂移；业务代码 0 处 fastjson 引用维持。
-- **备选路线（决策树，非主路径）**：升级 rocketmq-client ≥5.4.0（fastjson→fastjson2 全量重写线）需覆盖 SCA BOM 管理的 5.1.4 且跨三大版本、rocketmq-spring 2.3.1 二进制兼容未验证，爆炸半径大，仅当主路径触发停止条件时交用户裁决；恢复 fastjson 1.2.83 违反 TASK-196 终态治理（Trivy 豁免回归），否决。
-- **探针掩蔽清理**：record/verify 探针 `RocketMQTemplate` mock 按「断言零改动、accommodation 最小」评估移除（先移除跑 CI 等效验证，绿则保持——恢复探针对模板创建期的真实覆盖即 D3 漏网防线；红则恢复 mock 登记偏差，不停工）；Redisson mock（TASK-199 环境隔离）一律保留；LeaderboardProbeTest 零改动。
+- **缺陷C（最小修复）**：显式 2 参构造（mapper + preferenceService）加构造器级 @Autowired（+1 行，import 既有）——Spring 唯一标注构造器择定，两参数均可解析（NotificationMapper 为 MyBatis mapper bean、NotificationPreferenceService 为 @Service）；三个测试类手工 new 单参仍走 Lombok 1 参构造零破坏；字段级可选注入在构造后发生，语义不变。@RequiredArgsConstructor、字段注解、方法体、javadoc 业务语义零改动。
+- round-1 九文件改动原样保留为 C-01 改动面（白名单 9→10 文件）；探针模板 mock 删除已定案保持（六探针全绿）。
+- 不可知性预注册：user boot 越过 NotificationService 后是否暴露第四个隐藏缺陷不可预判（探针懒加载永远探不到业务 bean）——第四个新失败签名即停止条件，停手归因回报。
 
 ## 验收核心
 
-四服务生产 jar 实起全绿（D3 复现路径反转，liveness UP）；六探针 CI 等效全绿；offline 609 逐位不变；静态双模块 rc=0；契约门双态；token 2030 只增不减；CI 6 镜像构建 + Trivy 收缩态扫描全绿（fastjson 2.0.65 不得触发 CRITICAL，否则停止条件）。
+四服务生产 jar 实起全绿（D3 复现路径反转，liveness UP，基于最终 10 文件态全量重跑）；六探针 CI 等效全绿；offline 609 逐位不变；静态双模块 rc=0；契约门双态；token 2030 只增不减；CI 6 镜像构建 + Trivy 收缩态扫描全绿（fastjson 2.0.65 不得触发 CRITICAL，否则停止条件）。

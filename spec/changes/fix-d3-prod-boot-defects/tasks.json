@@ -2,22 +2,21 @@
   {
     "number": 1,
     "category": "实施",
-    "task": "缺陷A 拦截器注册 + 缺陷B fastjson2 兼容包回补",
+    "task": "缺陷A 拦截器注册 + 缺陷B fastjson2 兼容包回补 + 缺陷C NotificationService 构造注入修复",
     "steps": [
-      { "step": "缺陷A：StompConnectAuthInterceptor 加 @Component（含 import，最小 diff）；UserProbeTest 移除 @Import 临时供 bean（@Component+@Import 双注册必致注入歧义）并修订 javadoc 偏差登记段（缺陷A 已修复叙事）；Redisson mock 保留", "completed": false },
-      { "step": "缺陷B：mvn dependency:get 在线补仓 com.alibaba:fastjson:2.0.65（含传递 fastjson2 core，-s .mvn-settings.xml，TASK-198 批2 先例）；父 pom 加 property fastjson2-compat.version=2.0.65 + dependencyManagement 锁版本（rocketmq-spring-boot-starter 条目邻位，注释说明 D3/TASK-196 exclusions 并存关系）；user/record/verify/leaderboard 四模块 pom 各加 runtime 依赖；gateway/mapmatch 零改动", "completed": false },
-      { "step": "探针掩蔽清理：VerifyProbeTest 移除 ProbeTemplateConfig 的 RocketMQTemplate mock（Redisson mock 保留）并修订 javadoc 偏差段；RecordProbeTest 移除 ProbeStubConfig 的模板 mock（Redisson/DataSource stub 保留）并修订 javadoc；断言语义零改动；LeaderboardProbeTest 零改动", "completed": false }
+      { "step": "缺陷A/B 与探针掩蔽清理（round-1 已完成，工作区 9 文件未提交改动原样沿用为 C-01 改动面，禁回退禁重做）：StompConnectAuthInterceptor 加 @Component；UserProbeTest 移除 @Import 并修订 javadoc；父 pom 锁 fastjson 2.0.65 + user/record/verify/leaderboard 四模块 pom runtime 依赖；Verify/Record 探针模板 mock 删除（六探针全绿已定案保持）；补仓已就位无需重跑", "completed": false },
+      { "step": "缺陷C（round-2 唯一新增改动）：NotificationService 显式 2 参构造加构造器级 @Autowired（+1 行，import 既有零新增）；@RequiredArgsConstructor/字段注解/方法体/javadoc 业务语义零改动；NotificationServiceTest/NotificationServicePushTest/NotificationConsumerRoundTripIT 手工 new 单参零破坏验证", "completed": false }
     ],
     "passes": false
   },
   {
     "number": 2,
     "category": "验证",
-    "task": "D3 复现路径反转 + 六探针等效 + 全量门禁",
+    "task": "D3 复现路径反转 + 六探针等效 + 全量门禁（round-2 基于最终 10 文件态全量复跑）",
     "steps": [
-      { "step": "六探针 CI 等效无中间件验证（属性覆盖模拟，禁停共享中间件容器）：全绿；若 record/verify 探针因模板 mock 移除而红——恢复 mock 并登记偏差（不停工）；若恢复 mock 后仍红或暴露其它隐藏 bean 缺失——停止条件", "completed": false },
-      { "step": "四服务生产 jar 实起冒烟（D3 复现路径反转）：mvn-verify.sh --mode=online package 构建，JDK21 java -jar 逐服务实起（本机中间件在线实况），liveness 必须 200+UP；user 启动即证 WS 装配链自洽；出现 D3 之外新失败签名即停止归因", "completed": false },
-      { "step": "全量回归：offline 609（36/48/130/151/159/70/15）逐位不变 + static record/leaderboard rc=0 + 契约门双态 + token 2030 只增不减 + 词面门 + diff --check + 行尾（新文件 blob 纯 LF、修改文件保持既有行尾）", "completed": false }
+      { "step": "user 生产 jar 实起冒烟（缺陷C 修复验证）：JDK21 java -jar 实起（本机中间件在线实况），liveness 200+UP，须越过 notificationService 创建点；暴露第四个新失败签名即停止条件（探针懒加载探不到业务 bean，不可预判）", "completed": false },
+      { "step": "四服务生产 jar 实起冒烟全量重跑（最终 10 文件态留证，round-1 三服务读数为过程证据不作终态）：record/verify/leaderboard 复跑 liveness UP；user 见上；临时日志存 .trae/tmp/ 用后即删", "completed": false },
+      { "step": "全量回归（最终 10 文件态）：六探针 CI 等效无中间件全绿（round-1 配方逐档复跑）+ offline 609（36/48/130/151/159/70/15）逐位不变 + static record/leaderboard rc=0 + 契约门双态（--open TASK-200 --baseline=<改派笔哈希>）+ token 2030 只增不减 + 词面门 + diff --check + 行尾（新文件 blob 纯 LF、修改文件保持既有行尾）", "completed": false }
     ],
     "passes": false
   },
@@ -26,7 +25,7 @@
     "category": "验收",
     "task": "台账闭环与外部终验",
     "steps": [
-      { "step": "C-01 实施笔（恰 9 文件：StompConnectAuthInterceptor + 父 pom + user/record/verify/leaderboard 四 pom + User/Verify/Record 三探针；模板 mock 回退时内容回摆文件数不变）+ C-02 台账笔（恰 4 文件：tasks.json 勾选翻转 / 任务书 §7 回填 / handoff.md 新建含只改清单 / PLAN.md 纯追加），均不推送不建 PR", "completed": false },
+      { "step": "C-01 实施笔（恰 10 文件：round-1 九文件 + NotificationService.java 构造器标注一处）+ C-02 台账笔（恰 4 文件：tasks.json 勾选翻转 / 任务书 §7 回填含 round-1 停止与 round-2 修复全留证 / handoff.md 新建含只改清单 / PLAN.md 纯追加），均不推送不建 PR", "completed": false },
       { "step": "推送后第 41 次 CI 全绿为外部终验（6 镜像构建 + Trivy 收缩态扫描 + 六探针实跑；com.alibaba:fastjson:2.0.65 若触发 CRITICAL 即停止条件，按决策树回报裁决，禁自行登记 .trivyignore、禁重试刷绿）", "completed": false }
     ],
     "passes": false
