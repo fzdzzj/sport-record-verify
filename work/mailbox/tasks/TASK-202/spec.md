@@ -101,3 +101,7 @@ C-02 台账笔恰 4 文件：spec/changes/fix-role-freshness/tasks.json、work/m
   行尾改文件保持基线（README/AuthService/InternalAuthController/AuthServiceTest 保持 CRLF、N1 文件保持 LF）。
 - N1 顺带完成：common GovernanceApiAuthFilterTest 末尾换行恢复（仅末字节，common 52 用例数不变）。
 - CI 运行号待推送后补记。
+- 补记（指导侧封盘笔，2026-10-12）：推送 73b237e..12a844b（4 笔）后第 43 次 CI（run 38158064943，
+  head=12a844b）conclusion=success 全 job 绿（build：offline 633 + 6 镜像构建 + Trivy 收缩态 + 词面门 +
+  compose config；web：build/type-check）。外部终验达成，TASK-202 封盘。独立复核非阻断项 N4
+  （web/README 角色时效旧表述）登记为后续轻量课题候选；N5 方法论（git grep 须 -E）已沉淀项目记忆。

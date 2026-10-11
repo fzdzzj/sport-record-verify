@@ -2377,3 +2377,12 @@ run `35802403723`（head `eba0108`，2026-09-23 00:31 UTC）——**web/build �
 | 是否到达外部门槛 | **未达到**：本地两笔提交，未 push、未建 PR，无 CI run；CI 外部终验待推送后补记。 |
 | 未覆盖/跳过 | 真实跨进程联调（封禁用户 refresh 实拒、内部撤销端点实调）未跑；`--mode=online` 与 CI 未跑；只做纯 JVM 单测断言；user 不在静态门且本课题未改静态门涉及模块，故未跑 static。 |
 | 偏差 | D1 C-02 自指哈希；D2 AuthServiceTest 首轮工作树 mixed→按基线 CRLF 归一（diff 纯 +117）；D3 Mockito `updateById` 重载歧义改用 `any(User.class)` 定型；N1 为 TASK-201 指导侧复核登记的非阻断项顺带落账。详见 handoff.md。 |
+
+**TASK-202 外部终验达成与封盘补记（2026-10-12，run 38158064943，封盘笔本地未推送）**
+
+| 项目 | 内容 |
+| --- | --- |
+| 外部终验 | 第 43 次外部门槛 CI（run 38158064943，head=12a844b，推送 73b237e..12a844b 共 4 笔：TASK-201 封盘笔 62e6421 + TASK-202 派发/实施/台账三笔）conclusion=success 全 job 绿：build（offline 633 + 6 镜像构建 + Trivy 收缩态 + 词面门 + compose config）与 web |
+| 终裁依据 | 四环节全过：指导侧亲核（Git 链 + A1 插入点 GETDEL 后 issueTokenPair 前 + A3 revokeAdmin 同构 grantAdmin 抽查）→ 独立复核子 agent 五块全量复跑 PASS 零阻断（offline 633 逐位串行复跑/token 三时点 2030/契约门双态/词面门 -E 阳性对照坐实/只改清单 5+4 双向全等/N1 仅末字节）→ 两报告一致性零矛盾 → 第 43 次 CI success 外部终验 |
+| 非阻断项 | N4 web/README:154 角色时效旧表述（web/ 属零触碰面）登记后续轻量课题候选；N5 方法论（本机 git grep 须 -E 否则假阴性）已沉淀项目记忆；N2 PLAN 既有 mixed 行尾非本笔引入；N3 spec-delta 字面张力以任务书授权为准 |
+| 课题终态 | 缺口α收口——README「封禁拒新登录/刷新」承诺在续签路径落地（user==null 或 status=0 → 401，旧 jti 已消费、重放亦 401，封禁即强制下线）；缺口γ收口——revokeAdmin 端点补全（撤销后续签即时降权、旧 access ≤15min 自然过期）；缺口β收口——角色时效口径文档订正（重新登录或续签均生效）；TASK-201 遗留 N1 末尾换行顺带清偿；offline 基线 627→633（user 130→136 净增，其余逐位不变） |
