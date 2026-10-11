@@ -22,11 +22,13 @@
 
 **方向③网络策略（不覆盖）**：compose 网络隔离只管容器面，宿主机 `java -jar` 直跑（F20 当前主路径，`server.address` 全仓 0 命中默认绑 0.0.0.0）不受网络策略约束；应用侧凭证是纵深防御必需层。
 
-## 方案A设计（预注册要点，细目见任务书 §2）
+## 方案A设计（预注册要点，细目见任务书 §2；v2 改派：网关端内联 sign，见下）
 
 - **凭证格式** `v1.<epochSeconds>.<role>.<sigHex>`，`sig = HMAC-SHA256(key, "governance-v1|<ts>|<role>")` 小写 hex；`v1` 前缀留演进空间（未来 v2 可加 nonce/路径绑定）。
-- **新增 common 静态工具 `GovernanceCredentialCodec`**：`sign(key, epochSeconds, role)` / `verify(key, headerValue, maxSkewSeconds, nowEpochSeconds)` → role 或 null（格式/常量时间签名/时间窗三重校验）/ `isUsableKey(key)`（非空、非哨兵、UTF-8 ≥32 字节，对齐 `JwtTokenParser` 密钥强度先例）。网关与服务共用同一实现，防两端格式漂移。
-- **网关 `AuthGlobalFilter`**：治理面注入段由静态值改为每请求 `codec.sign(governanceToken, now, identity.role())`（HMAC 微秒级，event loop 内 jjwt 验签已有阻塞先例）；`init()` strict 校验改用 `isUsableKey`。
+- **服务侧（common）新增静态工具 `GovernanceCredentialCodec`**：`sign(key, epochSeconds, role)` / `verify(key, headerValue, maxSkewSeconds, nowEpochSeconds)` → role 或 null（格式/常量时间签名/时间窗三重校验）/ `isUsableKey(key)`（非空、非哨兵、UTF-8 ≥32 字节，对齐 `JwtTokenParser` 密钥强度先例）。
+- **网关端内联最小 sign（v2 改派裁决，round-1 停止归因）**：gateway-service **不依赖** sport-verify-common（pom 依赖清单实证零命中；纯 WebFlux 栈），且 common/pom.xml L21 传递 `spring-boot-starter-web`——gateway 引 common 会使 servlet 与 webflux 双栈并存，Spring Boot 3 默认起 SERVLET 类型致 WebFlux 路由失效（需 yml 补 reactive 声明 + 镜像实起验证，风险与验证面双扩，超预注册爆炸半径）。故网关端以 `AuthGlobalFilter` package-private 静态方法内联 HmacSHA256 sign（零新增文件、零 pom 改动），**对齐 ADR-0007 L88 既有范式**：「网关/服务各维护一份 token 解析（JwtUtil 与 JwtTokenParser 独立维护，密钥/声明两端对齐，注释互为印证）」——治理凭证同构沿用双端独立维护。
+- **双端格式兼容由预注册 golden vector 锚定**（弥补「共用类」防线）：固定四元组（key=44 字节 ASCII、ts、role、sig）由 HMAC 确定性离线算出，common codec 测试与网关测试**各自断言同一向量**——任一端格式/内容域/编码漂移即红。向量登记于任务书 §2.1（含 USER 角色对照向量，实证 role 参与签名域）。
+- **网关 `AuthGlobalFilter`**：治理面注入段由静态值改为每请求内联 `sign(governanceToken, now, identity.role())`（HMAC 微秒级，event loop 内 jjwt 验签已有阻塞先例）；`init()` strict 校验改用密钥可用性判断（内联 `isUsableKey` 同义实现，向量之外按字面语义对齐）。
 - **服务侧 `GovernanceApiAuthFilter`**：校验段改为 `codec.verify` + 断言 `role == ADMIN`（常量入 `GovernanceApiHeaders.ROLE_ADMIN`）；时间窗 `app.governance.max-skew-seconds`（默认 300）；strict fail-fast / 失败关闭 / 哨兵拒绝语义全部等价保持。
 - **配置键不变**：`app.governance.token` / `GOVERNANCE_TOKEN` 环境变量沿用，值语义升级为 HMAC 密钥（≥32 字节）；**无双轨期**，旧静态格式在新验签下天然 403，部署前提=网关与 verify/leaderboard 同批重启。
 - **部署链收口**：env.example 补 `GOVERNANCE_TOKEN` 占位（SvLocal 模式，38 字节）；compose services 三服务（gateway/verify/leaderboard）environment 显式插值（TASK-190 `${VAR:?required}` 口径）——容器栈治理面从「必然 403」变为「可用且签名态」，CI compose config 门经 placeholder .env 自动覆盖。
@@ -35,4 +37,4 @@
 
 ## 验收核心
 
-红绿判别式：旧静态正确值 → 403；签名凭证 role=USER → 403；过期时间戳 → 403；篡改签名 → 403；伪造 X-Role + 坏凭证 → 403；合法 ADMIN 签名凭证三条 protected path 全放行；网关注入值经 codec 验签往返通过。offline 609 逐位基线上只增不减（common/gateway 净增、其余五模块逐位不变）；static 双模块 rc=0；契约门双态；token 2030 持平；compose config 双栈通过；CI 6 镜像构建 + Trivy 收缩态全绿。
+红绿判别式：旧静态正确值 → 403；签名凭证 role=USER → 403；过期时间戳 → 403；篡改签名 → 403；伪造 X-Role + 坏凭证 → 403；合法 ADMIN 签名凭证三条 protected path 全放行；网关内联 sign 输出与 common codec 经预注册 golden vector 双端锚定（含 USER 对照向量）。offline 609 逐位基线上只增不减（common/gateway 净增、其余五模块逐位不变）；static 双模块 rc=0；契约门双态；token 2030 持平；compose config 双栈通过（插值含空格须加引号形态）；CI 6 镜像构建 + Trivy 收缩态全绿。

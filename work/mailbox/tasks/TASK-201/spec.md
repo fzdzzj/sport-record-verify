@@ -1,8 +1,9 @@
-# TASK-201 任务书：治理面服务侧二道防线——签名凭证升级（harden-governance-credential）
+# TASK-201 任务书 v2：治理面服务侧二道防线——签名凭证升级（harden-governance-credential，round-1 改派）
 
-> 开工基线：本地提交 `<派发笔哈希>`（proposal/spec-delta/tasks.json + 本任务书，恰 4 新文件）。
+> 开工基线：本地提交 `<v2 改派笔哈希>`（proposal/spec-delta/tasks.json/本任务书 v2 修订）。
+> **v2 改派（round-1 停止归因裁决）**：round-1 执行发现 spec 内部冲突——「网关共用 common codec」要求 gateway-service/pom.xml 增加 sport-verify-common 依赖（第 14 文件，触发白名单判红）。指导侧亲核补证：common/pom.xml L21 传递 `spring-boot-starter-web`，gateway 引 common 致 servlet/webflux 双栈并存、Spring Boot 3 默认起 SERVLET 类型（需 yml 补 reactive 声明 + 镜像实起验证，风险与验证面双扩）。**裁决：网关端内联最小 sign 实现（零新增文件、pom 零改动），双端格式由预注册 golden vector 锚定**——对齐 ADR-0007 L88「JwtUtil 与 JwtTokenParser 独立维护、两端对齐」既有范式。round-1 已实证结论保留沿用：codec 专项 9 用例全绿、common 51 用例全绿、compose config 双栈 RC=0（插值须加引号）、token 2030 持平、词面门 ZERO_HIT。
 > 角色：执行子agent全流程实施（含自跑门禁留证、两笔本地提交）；指导侧出提案派工；复核子agent由用户另行派发。
-> 对应提案：spec/changes/harden-governance-credential/（proposal.md / specs/sport-record-verify/spec-delta.md / tasks.json）。
+> 对应提案：spec/changes/harden-governance-credential/（proposal.md / specs/sport-record-verify/spec-delta.md / tasks.json，均已 v2 修订）。
 
 ## §0 红线（违者立即停手回报）
 
@@ -35,26 +36,33 @@
 5. **部署缺口**：docker-compose.services.yml environment 段零 GOVERNANCE_TOKEN 命中（容器栈治理面必然 403）；scripts/verify/env.example 无应用级密钥占位（L12-23 仅中间件口令）。CI compose config 门用 `cp scripts/verify/env.example .env` placeholder（ci.yml L42-48）——env.example 补占位后 CI 自动覆盖。
 6. **测试面基线**：common GovernanceApiAuthFilterTest 16 用例（静态 token 语义，含 strict 三态）；gateway AuthGlobalFilterTest 21 用例（含治理凭证注入/剥离/失败关闭约 8 例）。offline 逐位 609 = 36(common)/48(gateway)/130(user)/151(record)/159(verify)/70(leaderboard)/15(mapmatch)。
 7. **static 门口径**：`--static` 缺省 leaderboard-service，双模块=leaderboard+record；common/gateway 不在静态门内（登记不改）。
+8. **模块依赖边界（round-1 停止归因，v2 裁决依据）**：gateway-service/pom.xml 依赖清单零命中 sport-verify-common（纯 WebFlux 栈：spring-cloud-starter-gateway + nacos-discovery + sentinel + jjwt，无任何 servlet 依赖）；common/pom.xml L21 依赖 `spring-boot-starter-web`——gateway 若加 common 依赖将传递引入 servlet/Tomcat，Spring Boot 3 双 web 栈并存时默认起 SERVLET 类型致 WebFlux 路由失效。**故 v2 起网关端禁引 common、禁改 gateway-service/pom.xml，sign 以内联实现落地。** round-1 执行侧已实证：codec 专项 9 用例全绿（往返/时间窗/过期/篡改/垃圾/旧静态明文/域分隔/弱密钥）、common 51 用例全绿、compose config 双栈 RC=0（本机 .env 与 env.example 占位两态；插值不加引号因含空格/冒号致 go-yaml 解析 RC=1，须加引号）、token SUM 2030 持平、词面门 ZERO_HIT、git diff --check 干净。
 
 ## §2 预注册设计
 
-### 2.1 凭证格式与 codec（common 新增 GovernanceCredentialCodec）
+### 2.1 凭证格式、codec 与预注册 golden vector（common 新增 GovernanceCredentialCodec，v2）
 
 - 格式：`v1.<epochSeconds>.<role>.<sigHex>`，`sig = HMAC-SHA256(keyUTF8Bytes, "governance-v1|" + ts + "|" + role)` 小写 hex
 - API（纯静态，JDK Mac/MessageDigest，零新依赖）：
   - `static String sign(String key, long epochSeconds, String role)` → 凭证串
   - `static String verify(String key, String headerValue, long maxSkewSeconds, long nowEpochSeconds)` → 合法返回 role，任一不符返回 null（格式四段 / ts 数字 / 常量时间签名比对 / `|now-ts|<=maxSkew`）
   - `static boolean isUsableKey(String key)` → 非空、非哨兵 `__GOVERNANCE_TOKEN_UNSET__`、UTF-8 字节数 >= 32
-- now 参数化注入（可测性）；filter/网关内取 `System.currentTimeMillis()/1000`
+- now 参数化注入（可测性）；filter 内取 `System.currentTimeMillis()/1000`
+- **定位（v2）**：服务侧（verify/leaderboard 经 common 加载）唯一 verify 实现；网关端不 import 本类（模块依赖边界见 §1.8），双端格式兼容由下述预注册向量锚定
 - `GovernanceApiHeaders`：加 `public static final String ROLE_ADMIN = "ADMIN"`；javadoc 剩余风险改记「时间窗内可重放、不绑路径（网关外部路径与 StripPrefix 后服务路径不一致），v1 声明接受」
+- **预注册 golden vector**（指导侧 HMAC-SHA256 离线算定，确定性四元组；common 与 gateway 两端测试各自硬编码断言，任一端格式/内容域/编码漂移即红）：
+  - 向量 key：`task201-governance-hmac-key-0123456789abcdef`（44 字节 ASCII）
+  - 向量一（正向）：ts=1700000000、role=ADMIN → sig=`67d715c97093426d344f34f8621b31849cae5d76ef9ef94cbe04f3600cd7e6b9`；网关断言内联 sign(向量key, 1700000000, ADMIN) 产出该 sig；common 断言 codec.verify(向量key, `v1.1700000000.ADMIN.<该sig>`, 300, 1700000500) 返回 ADMIN（时间窗内）
+  - 向量二（role 参与签名域对照）：同 key 同 ts、role=USER → sig=`012ada0fd8c2cb393bcff183a4c1192cc16894628d0595edfbff2fd14260a035`——与向量一 sig 不同即实证 role 入签名域；common 断言 codec.verify 返回 USER（服务侧 filter 层按 ADMIN 断言拒 403 属 R2）
 
-### 2.2 网关改造（AuthGlobalFilter）
+### 2.2 网关改造（AuthGlobalFilter，v2 内联实现，pom 零改动）
 
-- L176-184 注入段：`headers.set(HEADER_GOVERNANCE_TOKEN, GovernanceCredentialCodec.sign(governanceToken, System.currentTimeMillis()/1000, identity.role()))`——注入前提四条件（auth.enabled/JWT 有效+ADMIN/admin.enabled/凭证可用）与「仅治理面 ADMIN 注入」不变
-- `isValidGovernanceToken` 改用 `isUsableKey`（每请求 sign 前校验，弱/哨兵/空值 → 治理面失败关闭 403，非 strict 不炸启动）
-- `init()` strict 分支改用 `isUsableKey`（strict + 密钥不可用拒启，消息含 `app.governance.token`）
+- L176-184 注入段：`headers.set(HEADER_GOVERNANCE_TOKEN, sign(governanceToken, System.currentTimeMillis()/1000, identity.role()))`——注入前提四条件（auth.enabled/JWT 有效+ADMIN/admin.enabled/凭证可用）与「仅治理面 ADMIN 注入」不变
+- **内联 sign**：本类 package-private 静态方法 `static String sign(String key, long epochSeconds, String role)`——JDK Mac HmacSHA256、内容域 `"governance-v1|" + ts + "|" + role`、小写 hex、输出格式 `v1.<ts>.<role>.<sig>`，与 common codec 字面语义一致；**输出经 §2.1 向量一锚定**（网关测试硬编码断言）
+- `isValidGovernanceToken` 改内联密钥可用性判断（非空、非哨兵 `__GOVERNANCE_TOKEN_UNSET__`、UTF-8 >= 32 字节；弱/哨兵/空值 → 治理面失败关闭 403，非 strict 不炸启动）
+- `init()` strict 分支改用同判断（strict + 密钥不可用拒启，消息含 `app.governance.token`）
 - HMAC 计算微秒级，event loop 内阻塞可接受（jjwt 验签先例同在请求路径）
-- application.yml L103 段注释更新（值语义 = HMAC 密钥，>=32 字节）
+- **禁引 com.sportverify.common、禁改 gateway-service/pom.xml**（§1.8 归因）；application.yml L103 段注释更新（值语义 = HMAC 密钥，>=32 字节）
 
 ### 2.3 服务侧改造（GovernanceApiAuthFilter）
 
@@ -67,7 +75,7 @@
 ### 2.4 部署链收口
 
 - `scripts/verify/env.example` 补：`GOVERNANCE_TOKEN=SvLocal-Governance-<8位hex>-ChangeMe`（占位 38 字节 >=32；禁复用本机 .env 实值、禁明文口令进跟踪文件）
-- `docker-compose.services.yml`：gateway-service / verify-service / leaderboard-service 三服务 environment 段各加 `GOVERNANCE_TOKEN: ${GOVERNANCE_TOKEN:?required: cp scripts/verify/env.example .env}`（user/record/mapmatch 不消费零改动；env_file: [.env] 既有机制不变）
+- `docker-compose.services.yml`：gateway-service / verify-service / leaderboard-service 三服务 environment 段各加**引号形态插值** `GOVERNANCE_TOKEN: "${GOVERNANCE_TOKEN:?required: cp scripts/verify/env.example .env}"`（round-1 实测：不加引号因值含空格/冒号致 go-yaml 解析 RC=1；user/record/mapmatch 不消费零改动；env_file: [.env] 既有机制不变）
 - README 鉴权/密钥章节：签名凭证语义一小段（同批重启前提：网关与 verify/leaderboard；跨机部署需 NTP；时间窗 300s 声明接受的权衡）
 
 ### 2.5 红绿判别式（预注册，全部纯 JVM 单测落地）
@@ -78,9 +86,10 @@
 - R4 红：合法签名串篡改 sig 一字符 → 403
 - R5 红：伪造 `X-Role: ADMIN` + 坏/无凭证 → 403（服务侧不信任 X-Role 语义保持）
 - G1 绿：`codec.sign(key, now, "ADMIN")` 三条 protected path（/api/appeals/1/review、/rules/versions、/api/leaderboard/daily）全放行
-- G2 绿：网关 AuthGlobalFilterTest 断言注入 header 值经 `codec.verify(同 key, value, 300, now)` 通过且 role=ADMIN
+- G2 绿（v2 向量断言）：网关内联 `sign(向量key, 1700000000, "ADMIN")` 输出恰为 `v1.1700000000.ADMIN.67d715c9...7e6b9`（§2.1 向量一 sig）；网关测试另硬编码断言注入 header 值经内联 sign 往返、role=ADMIN、格式四段
+- G3 绿（双端锚定）：common codec 测试断言向量一 verify 返回 ADMIN、向量二 verify 返回 USER——与网关 G2 同源向量，任一端漂移即红
 - 语义保持：authEnabled=false 放行非保护路径、哨兵/空白密钥失败关闭、strict 三态（fail-fast/无路径不误伤/显式密钥启动）等价迁移
-- codec 专项：往返/域分隔（同 key 其它内容域签名不得通过）/弱密钥（<32 字节）拒绝/格式垃圾拒绝
+- codec 专项：往返/域分隔（同 key 其它内容域签名不得通过）/弱密钥（<32 字节）拒绝/格式垃圾拒绝/golden vector 两条断言
 
 ### 2.6 交付笔结构
 
@@ -96,8 +105,9 @@
 4. 完成凭证升级必须触碰业务 Controller / 服务业务逻辑 / 网关路由定义 / §0 零触碰面
 5. HMAC 实现需要新依赖（JDK Mac 不足）或 compose config 在 env.example 补占位后仍解析失败（CI 门炸）
 6. 网关测试迁移中发现注入前提四条件与签名计算存在语义冲突（如 ADMIN 判定与 role 签名值不一致路径）
+7. golden vector 断言失败：网关内联 sign 或 common codec 任一端与 §2.1 预注册 sig 不符——即双端实现与预注册设计漂移，禁自行改向量值迁就实现，停手回报
 
-## §4 白名单（恰 13 文件，C-01 只改清单全等判据）
+## §4 白名单（恰 13 文件，C-01 只改清单全等判据；v2 维持不变——网关内联 sign 落在 AuthGlobalFilter.java 本体内，零新增文件、gateway-service/pom.xml 零改动）
 
 | # | 文件 | 动作 |
 | --- | --- | --- |

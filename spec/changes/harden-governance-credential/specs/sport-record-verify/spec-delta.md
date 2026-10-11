@@ -1,12 +1,19 @@
-# spec-delta：治理面签名凭证升级（TASK-201 harden-governance-credential）
+# spec-delta：治理面签名凭证升级（TASK-201 harden-governance-credential，v2 改派：网关端内联 sign）
 
-## ADDED 需求：治理面签名凭证编解码（common GovernanceCredentialCodec）
+## ADDED 需求：治理面签名凭证编解码（common GovernanceCredentialCodec，服务侧实现）
 
-common 模块 SHALL 新增静态工具 `GovernanceCredentialCodec`：`sign(key, epochSeconds, role)` 产出 `v1.<epochSeconds>.<role>.<sigHex>`（HMAC-SHA256，内容域 `governance-v1|<ts>|<role>`，sig 小写 hex）；`verify(key, headerValue, maxSkewSeconds, nowEpochSeconds)` 依次校验四段格式 / 常量时间签名比对（MessageDigest.isEqual）/ `|now-ts| <= maxSkewSeconds` 时间窗，全过返回 role，任一不符返回 null（拒绝原因不外泄）；`isUsableKey(key)` 判非空、非哨兵 `__GOVERNANCE_TOKEN_UNSET__`、UTF-8 字节数 >= 32。网关与服务侧 SHALL 共用本实现（防两端格式漂移）。验收：纯 JVM 单测覆盖签名往返、篡改拒绝、过期/超窗拒绝、角色不符拒绝、弱密钥拒绝、格式垃圾拒绝、域分隔（同密钥下其它内容域签名不得通过）。
+common 模块 SHALL 新增静态工具 `GovernanceCredentialCodec`：`sign(key, epochSeconds, role)` 产出 `v1.<epochSeconds>.<role>.<sigHex>`（HMAC-SHA256，内容域 `governance-v1|<ts>|<role>`，sig 小写 hex）；`verify(key, headerValue, maxSkewSeconds, nowEpochSeconds)` 依次校验四段格式 / 常量时间签名比对（MessageDigest.isEqual）/ `|now-ts| <= maxSkewSeconds` 时间窗，全过返回 role，任一不符返回 null（拒绝原因不外泄）；`isUsableKey(key)` 判非空、非哨兵 `__GOVERNANCE_TOKEN_UNSET__`、UTF-8 字节数 >= 32。**定位为服务侧（verify/leaderboard 经 common 加载）唯一 verify 实现**；网关端因模块依赖边界不共用本类（gateway 零 common 依赖，引 common 会传递 spring-boot-starter-web 致 WebFlux 网关 servlet 双栈污染，round-1 停止归因），双端格式兼容由下述预注册向量锚定。验收：纯 JVM 单测覆盖签名往返、篡改拒绝、过期/超窗拒绝、角色不符拒绝、弱密钥拒绝、格式垃圾拒绝、域分隔（同密钥下其它内容域签名不得通过）、golden vector 断言。
 
-## MODIFIED 需求：网关治理凭证注入（gateway AuthGlobalFilter）
+## ADDED 需求：双端格式 golden vector 锚定（防 sign/verify 两实现漂移）
 
-网关 `AuthGlobalFilter` 治理面注入段（原 `headers.set(HEADER_GOVERNANCE_TOKEN, governanceToken)` 静态值）SHALL 改为每请求 `GovernanceCredentialCodec.sign(governanceToken, System.currentTimeMillis()/1000, identity.role())`；注入前提不变（auth.enabled + JWT 有效 + role=ADMIN + admin.enabled + 凭证有效，任一不成立失败关闭）。`init()` strict 校验与请求期 `isValidGovernanceToken` SHALL 改用 `GovernanceCredentialCodec.isUsableKey`；strict fail-fast（strict + 密钥不可用拒启）语义等价保持。配置键 `app.governance.token`（环境变量 `GOVERNANCE_TOKEN`）沿用，值语义升级为 HMAC 密钥。验收：网关测试断言注入的 header 值经 `codec.verify` 通过且 role=ADMIN；既有 strict/失败关闭/伪造剥离用例等价迁移全绿。
+预注册确定性向量（HMAC-SHA256 离线算定，两端测试各自断言，任一端格式/内容域/编码漂移即红）：
+- 向量 key（44 字节 ASCII，`task201-governance-hmac-key-0123456789abcdef`）：common `GovernanceCredentialCodecTest` 与 gateway `AuthGlobalFilterTest` SHALL 各自硬编码断言。
+- 向量一（正向）：ts=1700000000、role=ADMIN → sig=`67d715c97093426d344f34f8621b31849cae5d76ef9ef94cbe04f3600cd7e6b9`；网关断言内联 sign 产出该 sig，common 断言 codec.verify 接受 `v1.1700000000.ADMIN.<sig>` 且返回 ADMIN。
+- 向量二（角色参与签名域对照）：同 key 同 ts、role=USER → sig=`012ada0fd8c2cb393bcff183a4c1192cc16894628d0595edfbff2fd14260a035`——与向量一 sig 不同即实证 role 参与签名内容域；common 断言 codec.verify 返回 USER（服务侧 filter 层再按 ADMIN 断言拒 403，属 R2 判别式）。
+
+## MODIFIED 需求：网关治理凭证注入（gateway AuthGlobalFilter，内联实现）
+
+网关 `AuthGlobalFilter` 治理面注入段（原 `headers.set(HEADER_GOVERNANCE_TOKEN, governanceToken)` 静态值）SHALL 改为每请求调用**本类 package-private 静态方法内联 sign**（HMAC-SHA256 + JDK Mac，凭证格式/内容域/小写 hex 与 common codec 字面语义一致，输出经向量一锚定）；注入前提不变（auth.enabled + JWT 有效 + role=ADMIN + admin.enabled + 凭证有效，任一不成立失败关闭）。`init()` strict 校验与请求期密钥可用性判断 SHALL 内联同义实现（非空、非哨兵、UTF-8 >= 32 字节）；strict fail-fast（strict + 密钥不可用拒启）语义等价保持；gateway-service/pom.xml 零改动。配置键 `app.governance.token`（环境变量 `GOVERNANCE_TOKEN`）沿用，值语义升级为 HMAC 密钥。验收：网关测试断言注入的 header 值恰为向量一 sig（或经内联 sign 往返）且 role=ADMIN；既有 strict/失败关闭/伪造剥离用例等价迁移全绿。
 
 ## MODIFIED 需求：服务侧治理面角色断言（common GovernanceApiAuthFilter）
 
