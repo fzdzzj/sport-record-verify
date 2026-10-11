@@ -73,7 +73,9 @@ class LeaderboardDailyAdminOnlyTest {
         ReflectionTestUtils.setField(filter, "whitelist", white);
         ReflectionTestUtils.setField(filter, "adminPaths", admin);
         ReflectionTestUtils.setField(filter, "adminRoleCheckEnabled", true);
-        ReflectionTestUtils.setField(filter, "governanceToken", "test-governance-token");
+        // TASK-201：治理密钥≥32字节（弱 key 治理面失败关闭）
+        ReflectionTestUtils.setField(filter, "governanceToken",
+                "task201-governance-hmac-key-0123456789abcdef");
         return filter;
     }
 

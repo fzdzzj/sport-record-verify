@@ -30,6 +30,8 @@ services:
       # Sentinel 动态规则源（app.sentinel.nacos.server-addr）同样指向 compose 内 Nacos
       APP_SENTINEL_NACOS_SERVER_ADDR: nacos:8848
       SPRING_DATA_REDIS_HOST: redis
+      # 治理面签名凭证 HMAC 密钥（TASK-201）：必填，缺失/弱 key 治理面失败关闭
+      GOVERNANCE_TOKEN: "${GOVERNANCE_TOKEN:?required: cp scripts/verify/env.example .env}"
     ports:
       - "8080:8080"
     depends_on:
@@ -125,6 +127,8 @@ services:
       SPRING_DATA_REDIS_HOST: redis
       ROCKETMQ_NAME_SERVER: rocketmq-namesrv:9876
       SPRING_DATASOURCE_URL: jdbc:mysql://mysql:3306/verify_db?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai&useSSL=false&allowPublicKeyRetrieval=true
+      # 治理面签名凭证 HMAC 密钥（TASK-201）：必填，与网关同键同批重启，缺失/弱 key 治理面失败关闭
+      GOVERNANCE_TOKEN: "${GOVERNANCE_TOKEN:?required: cp scripts/verify/env.example .env}"
     ports:
       - "127.0.0.1:8083:8083"
     depends_on:
@@ -157,6 +161,8 @@ services:
       SPRING_DATA_REDIS_HOST: redis
       ROCKETMQ_NAME_SERVER: rocketmq-namesrv:9876
       SPRING_DATASOURCE_URL: jdbc:mysql://mysql:3306/record_db?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai&useSSL=false&allowPublicKeyRetrieval=true
+      # 治理面签名凭证 HMAC 密钥（TASK-201）：必填，与网关同键同批重启，缺失/弱 key 治理面失败关闭
+      GOVERNANCE_TOKEN: "${GOVERNANCE_TOKEN:?required: cp scripts/verify/env.example .env}"
     ports:
       - "127.0.0.1:8084:8084"
     depends_on:

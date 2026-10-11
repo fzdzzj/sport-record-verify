@@ -36,6 +36,9 @@ class AuthGlobalFilterTest {
 
     private static final String SECRET = "sport-verify-hs256-secret-key-0123456789abcdef";
 
+    /** 预注册 golden vector 第 2.1 密钥（44 字节 ASCII，>=32） */
+    private static final String VECTOR_KEY = "task201-governance-hmac-key-0123456789abcdef";
+
     private JwtTokenParser parser = new JwtTokenParser(SECRET);
     private AuthGlobalFilter filter;
 
@@ -47,7 +50,7 @@ class AuthGlobalFilterTest {
                 List.of("/api/auth/**", "/actuator/**"));
         ReflectionTestUtils.setField(filter, "adminPaths", List.of("/admin/**", "/verify/rules/**", "/verify/api/appeals/**", "/leaderboard/api/leaderboard/daily"));
         ReflectionTestUtils.setField(filter, "adminRoleCheckEnabled", true);
-        ReflectionTestUtils.setField(filter, "governanceToken", "test-governance-token");
+        ReflectionTestUtils.setField(filter, "governanceToken", VECTOR_KEY);
     }
 
     /** 签发带指定 role 的 access token（JDK 默认密钥，与配置一致） */
@@ -150,7 +153,15 @@ class AuthGlobalFilterTest {
     }
 
     @Test
-    void adminJwtInjectsGovernanceTokenAndStripsClientForgery() {
+    void G2_vectorOneSignProducesGoldenSignature() {
+        // v2 golden vector 第 2.1 锚定：内联 sign(向量key, 1700000000, "ADMIN") 恰产出向量一 sig
+        String credential = AuthGlobalFilter.sign(VECTOR_KEY, 1700000000L, "ADMIN");
+        assertEquals("v1.1700000000.ADMIN.67d715c97093426d344f34f8621b31849cae5d76ef9ef94cbe04f3600cd7e6b9",
+                credential);
+    }
+
+    @Test
+    void adminJwtInjectsSignedGovernanceCredentialAndStripsClientForgery() {
         AtomicReference<ServerWebExchange> captured = new AtomicReference<>();
         MockServerWebExchange exchange = runCapturedWithIdentity(
                 "/admin/api/appeals/1/review",
@@ -162,8 +173,15 @@ class AuthGlobalFilterTest {
         assertEquals(null, exchange.getResponse().getStatusCode());
         assertEquals("9", captured.get().getRequest().getHeaders().getFirst(AuthGlobalFilter.HEADER_USER_ID));
         assertEquals("ADMIN", captured.get().getRequest().getHeaders().getFirst(AuthGlobalFilter.HEADER_ROLE));
-        assertEquals("test-governance-token",
-                captured.get().getRequest().getHeaders().getFirst(AuthGlobalFilter.HEADER_GOVERNANCE_TOKEN));
+        // 注入值 = 内联 sign 往返（role=ADMIN，格式四段）而非静态密钥原文
+        String injected = captured.get().getRequest().getHeaders().getFirst(AuthGlobalFilter.HEADER_GOVERNANCE_TOKEN);
+        String expected = AuthGlobalFilter.sign(VECTOR_KEY, System.currentTimeMillis() / 1000, "ADMIN");
+        assertEquals(expected, injected);
+        String[] parts = injected.split("\\.");
+        assertEquals(4, parts.length);
+        assertEquals("v1", parts[0]);
+        assertEquals("ADMIN", parts[2]);
+        assertEquals(64, parts[3].length());
     }
 
     @Test
@@ -307,8 +325,17 @@ class AuthGlobalFilterTest {
         AuthGlobalFilter fresh = new AuthGlobalFilter(parser);
         ReflectionTestUtils.setField(fresh, "strictMode", true);
         ReflectionTestUtils.setField(fresh, "authEnabled", true);
-        ReflectionTestUtils.setField(fresh, "governanceToken", "test-governance-token");
+        ReflectionTestUtils.setField(fresh, "governanceToken", VECTOR_KEY);
         assertDoesNotThrow(fresh::init);
+    }
+
+    @Test
+    void strictModeWithWeakKeyFailsStartup() {
+        AuthGlobalFilter fresh = new AuthGlobalFilter(parser);
+        ReflectionTestUtils.setField(fresh, "strictMode", true);
+        ReflectionTestUtils.setField(fresh, "authEnabled", true);
+        ReflectionTestUtils.setField(fresh, "governanceToken", "short-key");
+        assertThrows(IllegalStateException.class, fresh::init);
     }
 
     /**

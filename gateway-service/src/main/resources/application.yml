@@ -101,7 +101,8 @@ spring:
 # 若将来误加 /internal 路由，死白名单会让安全边界瞬间塌陷。
 app:
   governance:
-    # TASK-136 第二阶段：网关治理面专用凭证。生产必须注入 GOVERNANCE_TOKEN，无演示默认。
+    # TASK-136 第二阶段 + TASK-201：网关治理面 HMAC 签名密钥（值语义 = HMAC 密钥，>=32 字节）。
+    # 生产必须注入 GOVERNANCE_TOKEN，无演示默认；弱/空/哨兵 key 治理面失败关闭（strict 下拒启）。
     token: ${GOVERNANCE_TOKEN:}
   # 密钥治理开关（add-strict-secret-fail-fast / TASK-126）：true=任一密钥项缺失
   # （JWT 密钥、内部接口 token 回落到演示默认值）即启动失败；默认 false 本地演示零扰动，

@@ -192,7 +192,11 @@ stderr 打出"按口径记为未覆盖"的提示，台账须照此记录，不�
 - **上线前加固清单**（TASK-191 生产姿态硬约束）：
   - 开启鉴权：`APP_AUTH_ENABLED=true`（环境变量）或 yml 覆盖（网关唯一身份边界，关闭时业务面裸透传）
   - `JWT_SECRET` 强随机注入（≥32 字节，与 user-service 一致）
-  - `GOVERNANCE_TOKEN` 注入（治理面专用凭证，无演示默认）
+  - `GOVERNANCE_TOKEN` 注入（治理面签名凭证 HMAC 密钥，≥32 字节；TASK-201 升级：网关按
+    `HmacSHA256("governance-v1|<ts>|<role>")` 每请求签发签名凭证，verify/leaderboard 服务侧验签并断言
+    role=ADMIN——容器栈治理面从静态共享密钥升级为 HMAC 签名凭证，前置**同批重启**网关与
+    verify/leaderboard（旧静态格式在新验签下天然 403），**跨机部署需 NTP 对时**，
+    **时间窗 300s 内可重放、不绑路径**为声明接受的权衡）
   - `APP_SECURITY_STRICT=true`：密钥缺失或鉴权关闭即拒启（本课题联动后为双重硬约束）
   - actuator 收敛：见既有「生产 profile 应收敛 actuator」说明（:216 附近）
 - **登出与吊销语义**：POST /api/auth/logout 携 refreshToken 即刻作废（此后轮换 401；无效 token 幂等成功）；access 15min 无状态短窗口为声明接受的权衡（RFC 6749 精神：access 短命无状态、refresh 有状态可吊销）；紧急封禁（user.status=0）拒新登录/刷新，已签发 access 需等自然过期——完全收敛的黑名单机制属后续可选课题

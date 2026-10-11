@@ -30,10 +30,12 @@ import java.util.List;
  *   <li><b>透传</b>：注入并覆盖 X-User-Id / X-Role；</li>
  *   <li><b>白名单</b>：/api/auth/**、/actuator/health 放行；无 /internal 路由；</li>
  *   <li><b>治理面角色</b>：/admin/**、/verify/rules/**、/verify/api/appeals/**、日报路径要求 ADMIN；</li>
- *   <li><b>治理面专用凭证</b>（TASK-136 第二阶段）：所有入站分支先清除客户端自带的
+ *   <li><b>治理面专用凭证</b>（TASK-136 第二阶段；TASK-201 升级 HMAC 签名）：所有入站分支先清除客户端自带的
  *       X-Gateway-Governance-Token；仅当 auth.enabled、JWT 有效、role=ADMIN、admin.enabled、
- *       专用凭证均有效时向治理目标注入。任一前提不成立时治理目标失败关闭。普通路径不注入。
- *       独立于 X-Internal-Token；专用令牌非签名，持有者可复用是剩余风险。</li>
+ *       专用密钥均有效时向治理目标注入 {@link #sign} 签发的签名凭证（v1.&lt;ts&gt;.&lt;role&gt;.&lt;sigHex&gt;，
+ *       HMAC-SHA256 内容域 "governance-v1|&lt;ts&gt;|&lt;role&gt;"，与 common GovernanceCredentialCodec 字面一致，
+ *       输出经任务书 §2.1 预注册向量一锚定）。任一前提不成立时治理目标失败关闭。普通路径不注入。
+ *       双端格式兼容由预注册 golden vector 锚定（模块依赖边界见任务书 §1.8：网关零 common 依赖）。</li>
  *   <li><b>降级</b>：auth.enabled=false 时非治理路径透传；治理路径仍失败关闭。strict=true 时鉴权关闭即启动失败（身份边界与密钥齐同列生产硬约束）。</li>
  * </ul>
  *
@@ -103,9 +105,9 @@ public class AuthGlobalFilter implements GlobalFilter, Ordered {
             throw new IllegalStateException(
                     "app.security.strict=true 但 app.auth.enabled=false：生产姿态必须开启鉴权，网关拒绝启动");
         }
-        if (strictMode && !isValidGovernanceToken(governanceToken)) {
+        if (strictMode && !isUsableGovernanceKey(governanceToken)) {
             throw new IllegalStateException(
-                    "app.security.strict=true 但 app.governance.token 未显式注入，网关拒绝启动");
+                    "app.security.strict=true 但 app.governance.token 未显式注入（弱/空/哨兵），网关拒绝启动");
         }
     }
 
@@ -164,36 +166,64 @@ public class AuthGlobalFilter implements GlobalFilter, Ordered {
             return reject(exchange, HttpStatus.FORBIDDEN, "{\"code\":1002,\"message\":\"无权限访问\"}");
         }
 
-        // 治理面路径：检查网关自身治理凭证是否有效（专用密钥有效）
+        // 治理面路径：检查网关自身治理密钥是否有效（HMAC 密钥非空/非哨兵/>=32 字节）
         if (isAdminPath(path)) {
-            if (!isValidGovernanceToken(governanceToken)) {
-                log.warn("网关治理凭证未配置或无效，治理目标失败关闭：path={}", path);
+            if (!isUsableGovernanceKey(governanceToken)) {
+                log.warn("网关治理密钥未配置或过弱，治理目标失败关闭：path={}", path);
                 return reject(exchange, HttpStatus.FORBIDDEN, "{\"code\":1002,\"message\":\"治理配置缺失\"}");
             }
         }
 
-        // —— 注入 X-User-Id / X-Role + 仅对治理面 ADMIN 注入治理专用凭证
+        // —— 注入 X-User-Id / X-Role + 仅对治理面 ADMIN 注入签名治理凭证（v1.<ts>.<role>.<sigHex>）
         ServerHttpRequest mutated = exchange.getRequest().mutate()
                 .headers(headers -> {
                     headers.set(HEADER_USER_ID, String.valueOf(identity.userId()));
                     headers.set(HEADER_ROLE, identity.role());
                     if (isAdminPath(path) && ROLE_ADMIN.equals(identity.role())) {
-                        headers.set(HEADER_GOVERNANCE_TOKEN, governanceToken);
+                        headers.set(HEADER_GOVERNANCE_TOKEN,
+                                sign(governanceToken, System.currentTimeMillis() / 1000, identity.role()));
                     }
                 })
                 .build();
         return chain.filter(exchange.mutate().request(mutated).build());
     }
 
-    private boolean isValidGovernanceToken(String token) {
-        if (token == null || token.isBlank()) {
+    /** 治理密钥可用性内联判断：非空、非哨兵、UTF-8 字节数 >= 32（与 common codec isUsableKey 语义一致）。 */
+    static boolean isUsableGovernanceKey(String key) {
+        if (key == null || key.isBlank() || UNSET_GOV_TOKEN.equals(key)) {
             return false;
         }
-        if (UNSET_GOV_TOKEN.equals(token)) {
-            return false;
+        return key.getBytes(StandardCharsets.UTF_8).length >= 32;
+    }
+
+    /**
+     * 内联签发治理签名凭证（TASK-201 v2，网关零 common 依赖）。
+     *
+     * <p>格式 {@code v1.<epochSeconds>.<role>.<sigHex>}，{@code sig = HMAC-SHA256(key,
+     * "governance-v1|<ts>|<role>")} 小写 hex，与 common GovernanceCredentialCodec 字面语义一致；
+     * 输出经任务书 §2.1 预注册向量一锚定（key=task201-governance-hmac-key-0123456789abcdef、
+     * ts=1700000000、role=ADMIN → 67d715c9...7e6b9）。</p>
+     *
+     * @param key          HMAC 密钥
+     * @param epochSeconds 签名时间戳（epoch 秒）
+     * @param role         角色（参与签名内容域）
+     * @return 签名凭证串
+     */
+    static String sign(String key, long epochSeconds, String role) {
+        String content = "governance-v1|" + epochSeconds + "|" + role;
+        try {
+            javax.crypto.Mac mac = javax.crypto.Mac.getInstance("HmacSHA256");
+            mac.init(new javax.crypto.spec.SecretKeySpec(key.getBytes(StandardCharsets.UTF_8), "HmacSHA256"));
+            byte[] sig = mac.doFinal(content.getBytes(StandardCharsets.UTF_8));
+            StringBuilder hex = new StringBuilder(sig.length * 2);
+            for (byte b : sig) {
+                hex.append(Character.forDigit((b >> 4) & 0xF, 16));
+                hex.append(Character.forDigit(b & 0xF, 16));
+            }
+            return "v1." + epochSeconds + "." + role + "." + hex;
+        } catch (Exception e) {
+            throw new IllegalStateException("HmacSHA256 不可用（JDK 必含此算法）", e);
         }
-        // 允许任何非空非哨兵值；生产应使用强随机
-        return true;
     }
 
     private ServerWebExchange stripIdentityHeaders(ServerWebExchange exchange) {

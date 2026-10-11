@@ -82,8 +82,11 @@ mybatis-plus:
 app:
   governance:
     auth-enabled: true
-    # 生产必须注入 GOVERNANCE_TOKEN，无演示默认
+    # TASK-136 第二阶段 + TASK-201：服务侧 HMAC 签名密钥（值语义升级，>=32 字节）。
+    # 生产必须注入 GOVERNANCE_TOKEN，无演示默认。
     token: ${GOVERNANCE_TOKEN:__GOVERNANCE_TOKEN_UNSET__}
+    # 凭证时间窗（秒）：验签通过且 |now-ts| <= 该值的凭证方放行（默认 300，声明接受的权衡）
+    max-skew-seconds: 300
     protected-paths: /api/leaderboard/daily
   auth:
     # 鉴权降级开关：false=旧行为（好友榜查询人 userId 显式携带），true=以网关注入的 X-User-Id 认定身份
