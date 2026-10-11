@@ -3,8 +3,11 @@ package com.sportverify.user.health;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.boot.test.context.TestConfiguration;
 import org.springframework.boot.test.web.client.TestRestTemplate;
+import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Import;
+import org.springframework.context.annotation.Primary;
 import org.springframework.http.ResponseEntity;
 
 import java.io.IOException;
@@ -16,13 +19,14 @@ import java.util.Locale;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.mockito.Mockito.mock;
 
 /**
  * user-service 健康探针测试（TASK-198 批3）。
  *
  * <p>现网懒初始化范式：真实拉起服务上下文与 Web 端口（{@code spring.main.lazy-initialization=true}
- * 延迟业务 bean；Nacos 注册失败经 fail-fast=false 降级为日志；db/redis 探针在无中间件环境下
- * 由 HealthIndicator 捕获连接异常返回 DOWN，不阻断启动）。
+ * 延迟业务 bean；Nacos 注册失败经 fail-fast=false 降级为日志；db 探针在无中间件环境下
+ * 由 HealthIndicator 捕获连接异常返回 DOWN，不阻断启动（redis 侧不成立，见 TASK-199 偏差登记）。
  * <b>偏差登记</b>：{@code StompConnectAuthInterceptor} 在主源无任何 bean 注册（缺 {@code @Component}，
  * 也无 {@code @Bean} 工厂），WebSocket 基础设施急切创建 {@code webSocketNotificationConfig}
  * 时因依赖缺失使整上下文启动失败——此为既有生产 boot 缺陷（TASK-198 之前已存在，主源不在本任务
@@ -31,12 +35,36 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  * <strong>禁断言 db/redis UP</strong>（CI 无中间件，本地有中间件时 readiness 为 UP——两种实况
  * 都必须绿，故 readiness 状态值不做硬断言）；readiness 组成员结构以资源文件断言
  * （show-details=never 下 HTTP 层不暴露组件明细）。</p>
+ *
+ * <p><b>偏差登记（TASK-199）</b>：CI（run 38113472212）与本仓 CI 等效复现双证 redis 健康贡献者
+ * 并非「无中间件仅 DOWN」——健康注册链急切创建真实 Redisson 即建连，失败即抛
+ * （healthEndpointGroupMembershipValidator → healthContributorRegistry →
+ * RedisReactiveHealthContributorAutoConfiguration → redissonConnectionFactory → redisson；
+ * {@code lazy-initialization} 不覆盖 actuator 健康注册链），{@code RedisConnectionException}
+ * 使整上下文启动失败。本测试以 {@code @TestConfiguration} 提供 {@code @Primary RedissonClient}
+ * mock（自动配置 {@code @ConditionalOnMissingBean} 让位，照 VerifyProbeTest.ProbeTemplateConfig
+ * 范式）；既有断言与 {@code @Import} 供给 bean 零改动。</p>
  */
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT, properties = {
         "spring.main.lazy-initialization=true",
         "spring.cloud.nacos.discovery.fail-fast=false"})
 @Import(com.sportverify.user.config.StompConnectAuthInterceptor.class)
 class UserProbeTest {
+
+    @TestConfiguration
+    static class ProbeRedisConfig {
+
+        /**
+         * CI 无 Redis：健康注册链急切创建真实 Redisson 即建连，失败即抛
+         * （lazy-initialization 不覆盖 actuator 健康注册链），以 @Primary mock 顶替
+         * （自动配置 {@code @ConditionalOnMissingBean} 让位），保证本地/CI 两种中间件实况都绿。
+         */
+        @Bean
+        @Primary
+        org.redisson.api.RedissonClient probeRedissonClient() {
+            return mock(org.redisson.api.RedissonClient.class);
+        }
+    }
 
     @Autowired
     private TestRestTemplate rest;
