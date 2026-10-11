@@ -4,43 +4,43 @@
     "category": "实施",
     "task": "批1 traceId 链路收口：@Scheduled 入口 MDC 补口 + 纯 JVM 单测",
     "steps": [
-      { "step": "五个主源 @Scheduled 入口补 MDC 包裹（try/finally + TraceIds.put/clear，零签名零逻辑改动）：verify/VerifyOutboxRelay（relay 主线程与批内 worker 两路径）、record/VerifyDegradeService、record/RecordLikeService（flush 与对账两处）、record/TrackPointArchiveService、leaderboard/LeaderboardService；relay 用 row.traceId 续链，其余入口生成新 UUID", "completed": false },
-      { "step": "每处补口对应纯 JVM 单测（Mockito 打桩 Mapper/下游，断言 MDC 恢复与 finally 清理；范式参照 TraceIdFilterTest/LikeEventProducerTest）", "completed": false },
-      { "step": "批1 门禁：offline 全量（基线 569 + 新增，只增不减）+ static record/leaderboard rc=0（checkstyle 9.3 口径：80 列/FinalParameters/Javadoc 全参）", "completed": false }
+      { "step": "五个主源 @Scheduled 入口补 MDC 包裹（try/finally + TraceIds.put/clear，零签名零逻辑改动）：verify/VerifyOutboxRelay（relay 主线程与批内 worker 两路径）、record/VerifyDegradeService、record/RecordLikeService（flush 与对账两处）、record/TrackPointArchiveService、leaderboard/LeaderboardService；relay 用 row.traceId 续链，其余入口生成新 UUID", "completed": true },
+      { "step": "每处补口对应纯 JVM 单测（Mockito 打桩 Mapper/下游，断言 MDC 恢复与 finally 清理；范式参照 TraceIdFilterTest/LikeEventProducerTest）", "completed": true },
+      { "step": "批1 门禁：offline 全量（基线 569 + 新增，只增不减）+ static record/leaderboard rc=0（checkstyle 9.3 口径：80 列/FinalParameters/Javadoc 全参）", "completed": true }
     ],
-    "passes": false
+    "passes": true
   },
   {
     "number": 2,
     "category": "实施",
     "task": "批2 结构化日志：logstash-encoder 7.4 + 六服务 logback-spring.xml 双 appender",
     "steps": [
-      { "step": "开工一次性在线补仓 logstash-logback-encoder:7.4 至本地仓（.m2-repo），此后门禁照常 offline；父 pom dependencyManagement 锁版本（勿用 8.x，logback 1.4.14 兼容线）", "completed": false },
-      { "step": "六服务各新建 logback-spring.xml：console appender 保留现人读 pattern 逐字不变，file appender 走 LogstashEncoder（springProperty 注入应用名，MDC traceId 自动并入字段）；六服务 application 配置加 logging.file 路径（record 落 application.properties，禁建 yml）", "completed": false },
-      { "step": "批2 门禁：offline 全量绿（证明 logback 配置可解析、上下文可启动）+ common 加 ListAppender 单测断言 JSON 字段含 traceId + static 双模块 rc=0（零 Java 触静态门模块）", "completed": false }
+      { "step": "开工一次性在线补仓 logstash-logback-encoder:7.4 至本地仓（.m2-repo），此后门禁照常 offline；父 pom dependencyManagement 锁版本（勿用 8.x，logback 1.4.14 兼容线）", "completed": true },
+      { "step": "六服务各新建 logback-spring.xml：console appender 保留现人读 pattern 逐字不变，file appender 走 LogstashEncoder（springProperty 注入应用名，MDC traceId 自动并入字段）；六服务 application 配置加 logging.file 路径（record 落 application.properties，禁建 yml）", "completed": true },
+      { "step": "批2 门禁：offline 全量绿（证明 logback 配置可解析、上下文可启动）+ common 加 ListAppender 单测断言 JSON 字段含 traceId + static 双模块 rc=0（零 Java 触静态门模块）", "completed": true }
     ],
-    "passes": false
+    "passes": true
   },
   {
     "number": 3,
     "category": "实施",
     "task": "批3 健康探针深化：probes + readiness 组裁剪 + gateway 白名单 + 探针测试",
     "steps": [
-      { "step": "六服务 management 配置：probes.enabled=true + readiness 组 include 按真实依赖裁剪（gateway=readinessState；user/verify/leaderboard=readinessState,db,redis；record=readinessState,db；mapmatch=readinessState,db）；liveness 组不挂外部依赖；show-details=never 维持；gateway yml 白名单精确追加 /actuator/health/liveness,/actuator/health/readiness", "completed": false },
-      { "step": "每服务探针测试（@SpringBootTest 现网懒初始化范式）：断言 /actuator/health/liveness 为 UP 与 readiness 组结构存在，禁断言 db/redis 为 UP（CI 无中间件）；record 测试用 properties 上下文口径", "completed": false },
-      { "step": "批3 门禁：offline 全量绿 + local 冒烟（本地中间件在跑则实测 readiness 全 UP 留证；不可用则登记口径）+ static 双模块 rc=0", "completed": false }
+      { "step": "六服务 management 配置：probes.enabled=true + readiness 组 include 按真实依赖裁剪（gateway=readinessState；user/verify/leaderboard=readinessState,db,redis；record=readinessState,db；mapmatch=readinessState,db）；liveness 组不挂外部依赖；show-details=never 维持；gateway yml 白名单精确追加 /actuator/health/liveness,/actuator/health/readiness", "completed": true },
+      { "step": "每服务探针测试（@SpringBootTest 现网懒初始化范式）：断言 /actuator/health/liveness 为 UP 与 readiness 组结构存在，禁断言 db/redis 为 UP（CI 无中间件）；record 测试用 properties 上下文口径", "completed": true },
+      { "step": "批3 门禁：offline 全量绿 + local 冒烟（本地中间件在跑则实测 readiness 全 UP 留证；不可用则登记口径）+ static 双模块 rc=0", "completed": true }
     ],
-    "passes": false
+    "passes": true
   },
   {
     "number": 4,
     "category": "验收",
     "task": "门禁与台账闭环",
     "steps": [
-      { "step": "收口门禁留证：offline 全量（569+新增逐模块登记）+ static record/leaderboard rc=0 + 契约门双态 + token 29 项（tracked git grep -cF 权威口径，2030 只增不减）+ 只改清单全等（C-01 ≤29 文件按类别清单、C-02 恰 4）+ 零越界 + diff --check + 行尾（新文件 pure LF、修改文件保持既有行尾）", "completed": false },
-      { "step": "台账闭环：tasks.json 全勾；任务书 §7 回填（三批读数/冒烟口径/新增用例计数）；handoff.md 新建留证；PLAN.md 纯追加（含 MQ 自研 indicator 列后续项）", "completed": false },
-      { "step": "收口态：两笔本地提交均未推送不建 PR；推送后第 39 次 CI 全绿为外部终验；红则按签名归因禁重试刷绿；零性能数字 claim", "completed": false }
+      { "step": "收口门禁留证：offline 全量（569+新增逐模块登记）+ static record/leaderboard rc=0 + 契约门双态 + token 29 项（tracked git grep -cF 权威口径，2030 只增不减）+ 只改清单全等（C-01 ≤29 文件按类别清单、C-02 恰 4）+ 零越界 + diff --check + 行尾（新文件 pure LF、修改文件保持既有行尾）", "completed": true },
+      { "step": "台账闭环：tasks.json 全勾；任务书 §7 回填（三批读数/冒烟口径/新增用例计数）；handoff.md 新建留证；PLAN.md 纯追加（含 MQ 自研 indicator 列后续项）", "completed": true },
+      { "step": "收口态：两笔本地提交均未推送不建 PR；推送后第 39 次 CI 全绿为外部终验；红则按签名归因禁重试刷绿；零性能数字 claim", "completed": true }
     ],
-    "passes": false
+    "passes": true
   }
 ]
