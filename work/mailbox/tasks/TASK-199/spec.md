@@ -56,13 +56,42 @@
 ### §7.1 提交记录
 
 - 派发笔（round-1）：`bf62f84`
-- 改派笔（round-2）：`（C-02 回填显式哈希）`
-- C-01 实施笔：`（回填显式哈希）`
-- C-02 台账笔：`（本笔自指：显式哈希以回传报告与 handoff 给出）`
+- 改派笔（round-2）：`007427fd255fa3cabd7dc70686631670e87cecbe`（`007427f`）
+- C-01 实施笔：`2ebba23b01a5068e33d630d48a85fd09ad5a0d64`（`2ebba23`，恰 1 文件 UserProbeTest.java，+30/-2：+4 import、javadoc 偏差登记、ProbeRedisConfig @Primary RedissonClient mock；既有断言与 @Import 逐字零改动）
+- C-02 台账笔：`（本笔自指：显式哈希以回传报告与 handoff §9 给出）`
 
 ### §7.2 实施读数（回填：user 探针改动口径与次生断点处置 / 六探针 CI 等效验证方法与逐个读数 / 例外通道使用情况或未使用声明 / 备选第二手段启用情况）
 
+**round-1 停止留证（v2 §8 沿用）**：round-1 于开工基线核验（HEAD=bf62f84、工作区净、token SUM=2030）后，CI 日志（run 38113472212，4699 行）全量复核证伪「仅补 Nacos 隔离属性」归因——全部 `9848 Connection refused` 属 gateway 段噪音且 gateway 随后 `Started GatewayProbeTest` 正常（fail-fast=false 降级 CI 实跑存活）；user 档 3 例真首因链为健康注册链急切创建真实 Redisson 即建连（`RedisConnectionException: 127.0.0.1:6379`，lazy-initialization 不覆盖 actuator 健康注册链）。本地等效复现（Nacos 双禁 + 中间件全指不可达）user 档 130 例 3 错与 CI 逐位一致、首因链同构，触发停止条件 §3.1，零提交停工。
+
+**round-2 修复全留证**：C-01 照 VerifyProbeTest.ProbeTemplateConfig 范式新增 @TestConfiguration 提供 @Primary RedissonClient mock（自动配置 @ConditionalOnMissingBean 让位）；**次生断点处置**——Redis mock 后上下文完整加载，未暴露任何次生急切断点（user 主源四 bean 注入 RedissonClient 均由 mock 供豆；主源无 RocketMQTemplate 生产端，无 fastjson 类加载断点；MQ 监听容器对不可达 nameserver 后台重试不致命，等效复现与等效验证双证），停止条件 §3.1/§3.5 未触发。
+
+**六探针 CI 等效验证方法**（红线 §0-3）：`MYSQL_PORT=1`、`POSTGRES_PORT=1`、`SPRING_APPLICATION_JSON`（nacos discovery/config 双禁 + `spring.data.redis.port=1` + `rocketmq.name-server=127.0.0.1:1`）经唯一验证入口 `bash scripts/verify/mvn-verify.sh --pl <模块> test` 逐档实跑；共享中间件容器全程未停未触，配方全指不可达地址故本机中间件实况不构成任何 PASS 依据。**逐个读数**（模块总数/探针专项/上下文真实启动）：user rc=0 130/0/0/0、UserProbeTest 3/0/0/0、`Started UserProbeTest in 16.187 seconds`；gateway rc=0 48/0/0/0、GatewayProbeTest 4/0/0/0、`Started GatewayProbeTest in 7.216 seconds`；record rc=0 151/0/0/0、RecordProbeTest 3/0/0/0、`Started RecordProbeTest in 19.419 seconds`；verify rc=0 159/0/0/0、VerifyProbeTest 3/0/0/0、`Started VerifyProbeTest in 30.863 seconds`；leaderboard rc=0 70/0/0/0、LeaderboardProbeTest 3/0/0/0、`Started LeaderboardProbeTest in 18.842 seconds`；mapmatch rc=0 15/0/0/0、MapMatchProbeTest 3/0/0/0、`Started MapMatchProbeTest in 12.043 seconds`。模块总数与 offline 收口真值逐位一致。
+
+**例外通道未使用声明**：五档其余探针等效验证零隐藏依赖暴露，其余五探针文件零触碰（C-01 实际改动面 = 主 1 文件，未动用至多 6 文件上限）。**备选第二手段未启用声明**：Nacos 双禁用属性仅作等效验证环境模拟配方（SPRING_APPLICATION_JSON，非测试文件属性），mock 后无 Nacos 致命依赖暴露，探针测试侧属性零改动（既有 `spring.cloud.nacos.discovery.fail-fast=false` 保留）。
+
 ### §7.3 门禁读数（回填：offline 逐位 / static 双模块 / 契约门双态 / token / 只改清单 / diff --check / 行尾）
+
+- **offline 逐位**：C-01 后 `--mode=offline test` rc=0，逐位 36/48/130/151/159/70/15 = 609（与 TASK-198 收口真值逐位持平，不减不增；mock 补配零新增用例）。
+- **static 双模块**：`--static=record-service` rc=0 与 `--static=leaderboard-service` rc=0（基线确认，本课题不触该两模块）。
+- **契约门双态**：在途态 `--open TASK-199 --baseline=007427f` rc=0（判据 A 两件套齐 + 判据 B 真实比对：handoff「只改清单」节提取 5 token 与实际改动集全等）；无参态 C-02 提交后复跑 rc=0（读数时点显式登记，沿 TASK-196 教训）。
+- **token**：29 项 tracked `git grep -cF` 权威口径，开工 SUM=2030 / C-01 后 SUM=2030 / 收口复测只增不减；台账未引入受保护 token 字面量。
+- **只改清单**：C-01 恰 1 文件（UserProbeTest.java）；C-02 恰 4 台账文件（tasks.json / 本任务书 §7 / handoff.md 新建 / PLAN.md 纯追加）；§3 白名单逐条全等；porcelain 收口 EMPTY。
+- **diff --check**：C-01 前/后均干净（无行尾空白/冲突标记）。
+- **行尾**：修改文件 UserProbeTest.java blob 级既有 LF 保持（`git ls-files --eol` i/lf w/lf）；新文件 handoff.md 提交 blob 级 pure LF + 末尾换行（`git show HEAD:<file>` 复验 0 CR）。
+
+### §7.4 偏差登记（执行侧如实登记）
+
+1. **D1 javadoc 首段最小修正**：「db/redis 探针 DOWN 容忍」表述对 redis 侧不成立（round-1 D2 勘误），修正为「db 探针」并以括注指向新增偏差登记段——javadoc 文档勘误，断言语义/注解/结构零改动。
+2. **D2 tasks.json「词面门」口径归并**：v2 任务书 §6 无独立词面门（冲突以任务书为准），按 token 29 项 tracked `git grep -cF` 字面量口径执行并三次实测持平；tasks.json 照常勾选。
+3. **D3 等效验证 scratch 清理**：测量脚本 4 件临时落于 work/tmp199/（*.log 为 gitignore 载体），读数提取入 handoff 后整目录删除，保证契约门判据 B 真实比对时 ACTUAL 无未跟踪残留。
+4. **D4 masked-errata 沿用**：round-1 被移除的误归因表述在台账按既有掩码规范书写（「误归因（D1）」），逐字原文仅存于改派笔 `007427f` 提交正文；本笔台账零复活（token 收口复测佐证）。
+
+### §7.5 后续项（随本笔登记入 PLAN）
+
+- StompConnectAuthInterceptor 生产 bean 注册缺陷维持 @Import 临时供 bean，另立课题（不搭车）。
+- rocketmq-spring 2.3.1 fastjson 类加载兼容（record/verify/leaderboard 仍依赖 @Primary 模板 mock）另立课题。
+- 外部终验：push 后第 40 次外部门槛 CI 全绿（user 档必须实跑绿；四档若仍 SKIPPED 以 §7.2 等效读数登记不阻断；红则按签名归因禁重试）。
 
 ## §8 改派记录（round-1 停止归档）
 

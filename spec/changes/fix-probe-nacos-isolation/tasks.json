@@ -4,20 +4,20 @@
     "category": "实施",
     "task": "user 探针 Redisson 隔离补配 + 六探针 CI 等效验证",
     "steps": [
-      { "step": "UserProbeTest 新增 @TestConfiguration 提供 @Primary RedissonClient mock（照 VerifyProbeTest.ProbeTemplateConfig 范式，自动配置让位）；既有断言语义与 @Import(StompConnectAuthInterceptor) 零改动；等效验证若暴露次生急切断点（MQ 类等）同文件同范式补配并登记；Nacos 双禁用属性仅作备选第二手段（仅当 mock 后仍有 Nacos 致命依赖时启用）", "completed": false },
-      { "step": "CI 等效无中间件验证全覆盖：以属性覆盖（不可达地址/禁用开关）模拟无 Nacos/Redis/MySQL/RocketMQ 环境逐服务跑六探针（user/record/verify/leaderboard/mapmatch/gateway），全绿且上下文可起；record/verify/leaderboard/mapmatch 四档 CI 从未跑到者一并等效留证；禁止停共享中间件容器；不以本机中间件在跑作任何 PASS 依据", "completed": false },
-      { "step": "全量回归：offline 609 逐位不减不增 + static record/leaderboard rc=0 + 契约门双态 + token 2030 + 词面门 + diff --check + 行尾", "completed": false }
+      { "step": "UserProbeTest 新增 @TestConfiguration 提供 @Primary RedissonClient mock（照 VerifyProbeTest.ProbeTemplateConfig 范式，自动配置让位）；既有断言语义与 @Import(StompConnectAuthInterceptor) 零改动；等效验证若暴露次生急切断点（MQ 类等）同文件同范式补配并登记；Nacos 双禁用属性仅作备选第二手段（仅当 mock 后仍有 Nacos 致命依赖时启用）", "completed": true },
+      { "step": "CI 等效无中间件验证全覆盖：以属性覆盖（不可达地址/禁用开关）模拟无 Nacos/Redis/MySQL/RocketMQ 环境逐服务跑六探针（user/record/verify/leaderboard/mapmatch/gateway），全绿且上下文可起；record/verify/leaderboard/mapmatch 四档 CI 从未跑到者一并等效留证；禁止停共享中间件容器；不以本机中间件在跑作任何 PASS 依据", "completed": true },
+      { "step": "全量回归：offline 609 逐位不减不增 + static record/leaderboard rc=0 + 契约门双态 + token 2030 + 词面门 + diff --check + 行尾", "completed": true }
     ],
-    "passes": false
+    "passes": true
   },
   {
     "number": 2,
     "category": "验收",
     "task": "台账闭环与外部终验",
     "steps": [
-      { "step": "C-01 实施笔（主 UserProbeTest.java，例外通道至多 6 个 *ProbeTest.java）+ C-02 台账笔（恰 4 文件：tasks.json / 任务书 §7 回填 / handoff.md 新建含「只改清单」小节 / PLAN.md 纯追加，含 round-1 停止与归因勘误、round-2 修复全留证）", "completed": false },
-      { "step": "推送后第 40 次 CI 全绿为外部终验（user 档探针必须实跑全绿；record/verify/leaderboard/mapmatch 四档若仍 SKIPPED 以本地等效读数登记不阻断）；红则按签名归因禁重试刷绿", "completed": false }
+      { "step": "C-01 实施笔（主 UserProbeTest.java，例外通道至多 6 个 *ProbeTest.java）+ C-02 台账笔（恰 4 文件：tasks.json / 任务书 §7 回填 / handoff.md 新建含「只改清单」小节 / PLAN.md 纯追加，含 round-1 停止与归因勘误、round-2 修复全留证）", "completed": true },
+      { "step": "推送后第 40 次 CI 全绿为外部终验（user 档探针必须实跑全绿；record/verify/leaderboard/mapmatch 四档若仍 SKIPPED 以本地等效读数登记不阻断）；红则按签名归因禁重试刷绿", "completed": true }
     ],
-    "passes": false
+    "passes": true
   }
 ]
