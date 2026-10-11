@@ -236,6 +236,63 @@ public class AuthService {
         log.info("admin 撤销成功：userId={}", userId);
     }
 
+    // ==================== 用户封禁/解封（治理面，add-user-ban-ops TASK-203） ====================
+
+    /**
+     * 封禁指定用户（add-user-ban-ops，TASK-203）：仅经内部接口（网内信任）调用，
+     * 与 {@link #grantAdmin(Long)}/{@link #revokeAdmin(Long)} 同构。
+     *
+     * <p>用户不存在 → 2002；幂等：已是禁用态（status=0）直接成功返回；否则改库 status=0。
+     * 封禁时效语义：<b>login/refresh 双消费侧即拒</b>（TASK-202 起 refresh 续签亦校验存续与封禁，
+     * 封禁即强制下线），存量已签发 access 无状态，需等剩余时效自然过期（≤access 短窗口时效）；
+     * 不吊销 refresh 存活键——续签校验已收敛拦截（无全量扫描必要）。</p>
+     */
+    public void banUser(Long userId) {
+        if (userId == null) {
+            throw new IllegalArgumentException("目标用户ID不能为空");
+        }
+        // —— 校验目标用户存在（不存在不落库，封禁不应对不存在的账号静默成功）
+        User user = userMapper.selectById(userId);
+        if (user == null) {
+            throw new BizException(ResultCode.USER_NOT_FOUND);
+        }
+        if (user.getStatus() != null && user.getStatus() == 0) {
+            log.info("封禁跳过（已是禁用态）：userId={}", userId);
+            return;
+        }
+        User update = new User();
+        update.setId(userId);
+        update.setStatus(0);
+        userMapper.updateById(update);
+        log.info("封禁成功：userId={}", userId);
+    }
+
+    /**
+     * 解封指定用户（add-user-ban-ops，TASK-203，与 {@link #banUser(Long)} 同构）：仅经内部接口调用。
+     *
+     * <p>用户不存在 → 2002；幂等：已是正常态（status=1）直接成功返回；否则改库 status=1。
+     * 解封后 login/refresh 恢复可用（消费侧读库判定 status，即时生效）。</p>
+     */
+    public void unbanUser(Long userId) {
+        if (userId == null) {
+            throw new IllegalArgumentException("目标用户ID不能为空");
+        }
+        // —— 校验目标用户存在（不存在不落库，解封不应对不存在的账号静默成功）
+        User user = userMapper.selectById(userId);
+        if (user == null) {
+            throw new BizException(ResultCode.USER_NOT_FOUND);
+        }
+        if (user.getStatus() != null && user.getStatus() == 1) {
+            log.info("解封跳过（已是正常态）：userId={}", userId);
+            return;
+        }
+        User update = new User();
+        update.setId(userId);
+        update.setStatus(1);
+        userMapper.updateById(update);
+        log.info("解封成功：userId={}", userId);
+    }
+
     // ==================== refresh 轮换 ====================
 
     /**

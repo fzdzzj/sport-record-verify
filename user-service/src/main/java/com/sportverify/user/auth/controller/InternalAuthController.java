@@ -71,4 +71,28 @@ public class InternalAuthController {
         authService.revokeAdmin(dto.getUserId());
         return Result.success();
     }
+
+    /**
+     * 封禁指定用户（TASK-203，add-user-ban-ops，与 grant-admin 同构）。
+     *
+     * <p>路径同属服务本地 /internal/**（网关无对应路由），须携带 {@code X-Internal-Token} 共享密钥。
+     * 时效语义：封禁后 login/refresh 即拒（TASK-202 双消费侧），存量已签发 access 需等剩余时效自然过期。</p>
+     */
+    @PostMapping("/ban")
+    public Result<Void> banUser(@Valid @RequestBody AdminGrantRequestDTO dto) {
+        authService.banUser(dto.getUserId());
+        return Result.success();
+    }
+
+    /**
+     * 解封指定用户（TASK-203，add-user-ban-ops，与 revoke-admin 同构）。
+     *
+     * <p>路径同属服务本地 /internal/**（网关无对应路由），须携带 {@code X-Internal-Token} 共享密钥。
+     * 解封后 login/refresh 恢复可用（消费侧读库判定 status，即时生效）。</p>
+     */
+    @PostMapping("/unban")
+    public Result<Void> unbanUser(@Valid @RequestBody AdminGrantRequestDTO dto) {
+        authService.unbanUser(dto.getUserId());
+        return Result.success();
+    }
 }

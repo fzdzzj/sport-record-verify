@@ -151,7 +151,7 @@ curl -X POST http://127.0.0.1:8080/internal/auth/grant-admin \
   -H "X-Internal-Token: <your-internal-token>" \
   -d '{"userId": 123}'
 ```
-授予后，用户需重新登录以获取带 `role: "ADMIN"` 的 token。登录响应中 role 由后端签发并存 localStorage（依赖方向 2 的 role 存储）。
+授予后，用户重新登录或 refresh 续签后生效（最长延迟=access 剩余时效），以获取带 `role: "ADMIN"` 的 token。登录响应中 role 由后端签发并存 localStorage（依赖方向 2 的 role 存储）。
 
 **已验证约束**：
 - 仅 role=ADMIN 显示管理菜单；非管理员打开管理 URL 展示 403，不伪造。

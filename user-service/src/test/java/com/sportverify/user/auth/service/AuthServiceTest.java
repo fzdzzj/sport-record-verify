@@ -10,6 +10,7 @@ import com.sportverify.user.mapper.UserMapper;
 import io.jsonwebtoken.JwtException;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.mockito.ArgumentCaptor;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.data.redis.core.ValueOperations;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
@@ -32,6 +33,7 @@ import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -391,6 +393,76 @@ class AuthServiceTest {
         TokenDTO dto = service.refresh("incoming-refresh");
         assertEquals(User.ROLE_ADMIN, dto.getRole(), "授予后续签应返回 ADMIN");
         verify(jwtUtil).issueAccessToken(5L, User.ROLE_ADMIN);
+    }
+
+    // ==================== TASK-203 用户封禁/解封 R/G 判别式 ====================
+
+    /** R1 红：banUser 目标用户不存在 → USER_NOT_FOUND（2002，不落库） */
+    @Test
+    void R1_banUserMissingUserThrowsNotFound() {
+        when(userMapper.selectById(9L)).thenReturn(null);
+        BizException e = assertThrows(BizException.class, () -> service.banUser(9L));
+        assertEquals(ResultCode.USER_NOT_FOUND.getCode(), e.getCode(), "不存在用户封禁应 2002");
+        verify(userMapper, never()).updateById(any(User.class));
+    }
+
+    /** R2 红：unbanUser 目标用户不存在 → USER_NOT_FOUND（2002，不落库） */
+    @Test
+    void R2_unbanUserMissingUserThrowsNotFound() {
+        when(userMapper.selectById(9L)).thenReturn(null);
+        BizException e = assertThrows(BizException.class, () -> service.unbanUser(9L));
+        assertEquals(ResultCode.USER_NOT_FOUND.getCode(), e.getCode(), "不存在用户解封应 2002");
+        verify(userMapper, never()).updateById(any(User.class));
+    }
+
+    /** G1 绿：banUser status 1→0 落库；已是 0 幂等跳过（不再改库） */
+    @Test
+    void G1_banUserSetsStatusZeroAndIdempotent() {
+        // A. status=1 → 封禁改库 status=0
+        when(userMapper.selectById(1L)).thenReturn(user());
+        service.banUser(1L);
+        ArgumentCaptor<User> captor = ArgumentCaptor.forClass(User.class);
+        verify(userMapper).updateById(captor.capture());
+        assertEquals(0, captor.getValue().getStatus().intValue(), "封禁落库应写 status=0");
+        assertEquals(1L, captor.getValue().getId());
+
+        // B. status=0 已是禁用态 → 幂等跳过，不产生第二次改库
+        User banned = user();
+        banned.setId(2L);
+        banned.setStatus(0);
+        when(userMapper.selectById(2L)).thenReturn(banned);
+        assertDoesNotThrow(() -> service.banUser(2L));
+        verify(userMapper, times(1)).updateById(any(User.class));
+    }
+
+    /** G2 绿：unbanUser status 0→1 落库；已是 1 幂等跳过（不再改库） */
+    @Test
+    void G2_unbanUserSetsStatusOneAndIdempotent() {
+        // A. status=0 → 解封改库 status=1
+        User banned = user();
+        banned.setId(3L);
+        banned.setStatus(0);
+        when(userMapper.selectById(3L)).thenReturn(banned);
+        service.unbanUser(3L);
+        ArgumentCaptor<User> captor = ArgumentCaptor.forClass(User.class);
+        verify(userMapper).updateById(captor.capture());
+        assertEquals(1, captor.getValue().getStatus().intValue(), "解封落库应写 status=1");
+        assertEquals(3L, captor.getValue().getId());
+
+        // B. status=1 已是正常态 → 幂等跳过，不产生第二次改库
+        when(userMapper.selectById(4L)).thenReturn(user());
+        assertDoesNotThrow(() -> service.unbanUser(4L));
+        verify(userMapper, times(1)).updateById(any(User.class));
+    }
+
+    /** G3 绿：banUser 落库实参为封禁态 status==0（消费侧拒登录/续签语义由 TASK-202 既有用例守护，不重复实现） */
+    @Test
+    void G3_banUserWritesBannedState() {
+        when(userMapper.selectById(7L)).thenReturn(user());
+        service.banUser(7L);
+        ArgumentCaptor<User> captor = ArgumentCaptor.forClass(User.class);
+        verify(userMapper).updateById(captor.capture());
+        assertEquals(0, captor.getValue().getStatus().intValue(), "封禁态断言：落库 status 应为 0");
     }
 
     // ==================== 工具 ====================
