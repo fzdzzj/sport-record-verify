@@ -1,0 +1,24 @@
+[
+  {
+    "number": 1,
+    "category": "实施",
+    "task": "角色时效缺口修复：refresh 封禁校验 + revokeAdmin 端点 + 文档修正",
+    "steps": [
+      { "step": "AuthService.refresh 在 GETDEL 后加查库校验：用户不存在或 status=0 → 401（旧 jti 已消费，重放亦 401），status=1 轮换语义等价保持（A1）", "completed": false },
+      { "step": "AuthService 新增 revokeAdmin（存在性校验/已是 USER 幂等跳过/改库 role=USER）+ InternalAuthController 新增 POST /internal/auth/revoke-admin（复用 AdminGrantRequestDTO，同构 grantAdmin 范式）（A3）", "completed": false },
+      { "step": "grantAdmin javadoc 与 README 角色时效表述修正：「重新登录或 refresh 续签后生效，最长延迟=access 剩余时效」（A2）", "completed": false },
+      { "step": "AuthServiceTest 新增/改造用例：R1 封禁 refresh 401+重放 401 / R2 删号 401 / R3 revokeAdmin 不存在 USER_NOT_FOUND / G1 正常轮换不回归 / G2 revokeAdmin 幂等+撤销后续签 USER / G3 授予后续签 ADMIN", "completed": false }
+    ],
+    "passes": false
+  },
+  {
+    "number": 2,
+    "category": "验收",
+    "task": "门禁全量留证与两笔本地提交",
+    "steps": [
+      { "step": "offline 全量逐位对照 627（user 130 净增只增不减、其余六模块逐位不变）；契约门双态 --baseline=<派发笔>；token 2030；词面门；git diff --check；行尾（改文件保持 CRLF）", "completed": false },
+      { "step": "C-01 实施笔（fix(auth): refresh封禁校验与角色撤销端点补全（TASK-202），恰 5 文件=本课题 4 文件 + TASK-201 遗留 N1 顺带修复 common/.../GovernanceApiAuthFilterTest.java 末尾换行恢复，handoff 登记偏差）+ C-02 台账笔（docs(mailbox): 登记TASK-202角色时效缺口修复验收与台账闭环（TASK-202），恰 4 文件：tasks.json/spec.md §7/handoff.md/PLAN.md 纯追加），均不推送不建 PR", "completed": false }
+    ],
+    "passes": false
+  }
+]
