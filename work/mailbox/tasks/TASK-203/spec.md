@@ -67,3 +67,13 @@ C-02 台账笔恰 4 文件：spec/changes/add-user-ban-ops/tasks.json、work/mai
 ## §7 收口记录（执行侧回填，保持纯追加）
 
 （空——完成后按 handoff 规范回填两笔提交哈希、门禁留证、token 时点、CI 运行号）
+
+- 开工基线：764d9d0（派发笔，含提案三件套与任务书，恰 4 新文件）。
+- C-01 实施笔：452c2ed（feat(auth): 用户封禁解封管理端点补全（TASK-203），恰 4 文件 = §4 白名单全量）。
+- C-02 台账笔：本笔（docs(mailbox): 登记TASK-203超管功能面补全验收与台账闭环（TASK-203），恰 4 文件）。
+- 红绿判别式全绿（AuthServiceTest 新增 5 例）：R1/R2 不存在→USER_NOT_FOUND（2002 不落库）；G1 ban 1→0 落库 + 已是 0 幂等跳过；G2 unban 0→1 落库 + 已是 1 幂等跳过；G3 ban 落库实参 status==0。
+- 门禁留证：offline `--mode=offline test` rc=0 BUILD SUCCESS，七模块 52/50/141/151/159/70/15=638（user 136→141 净增 +5，其余六模块 common/gateway/record/verify/leaderboard/mapmatch 逐位不变）；契约门在途 `--open TASK-203 --baseline=764d9d0` rc=0；token 29 项 tracked `git grep -cF` SUM=2030 持平；词面门 CI-exact `-n -I -iE` 对改动文件 ZERO_HIT（rc=1）+ 合成探针阳性对照 rc=0（-E 必要性对照 BRE 不命中）；`git diff --check` rc=0；行尾 AuthService/InternalAuthController/AuthServiceTest 保持基线 CRLF、web/README.md 保持基线 LF。
+- 只改清单全等：C-01 恰 4 = 白名单；C-02 恰 4 = tasks.json / spec.md §7 / handoff.md / PLAN.md。
+- N4 修正：web/README.md:154「需重新登录」→「重新登录或 refresh 续签后生效（最长延迟=access 剩余时效）」。
+- 外部终验：CI 运行号待推送后由指导侧补记（本笔不推送、不建 PR）。
+- 异常与偏差：D1 C-02 自指哈希（同型先例）；D2 AuthServiceTest 首轮 mixed 行尾已归一为 CRLF。

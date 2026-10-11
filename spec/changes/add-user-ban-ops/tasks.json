@@ -4,21 +4,21 @@
     "category": "实施",
     "task": "用户封禁/解封端点补全 + N4 表述同步",
     "steps": [
-      { "step": "AuthService 新增 banUser/unbanUser（同构 grantAdmin/revokeAdmin：null→IAE、不存在→USER_NOT_FOUND、已是目标态幂等跳过、改库 status=0/1，javadoc 注明时效语义）（A）", "completed": false },
-      { "step": "InternalAuthController 新增 POST /internal/auth/ban 与 /internal/auth/unban（复用 AdminGrantRequestDTO，同构端点范式）（A）", "completed": false },
-      { "step": "web/README.md:154 表述修正：「需重新登录」→「重新登录或 refresh 续签后生效（最长延迟=access 剩余时效）」（B/N4）", "completed": false },
-      { "step": "AuthServiceTest 新增用例：R1/R2 不存在→USER_NOT_FOUND、G1 ban 1→0+幂等、G2 unban 0→1+幂等、G3 ban 后 status 断言", "completed": false }
+      { "step": "AuthService 新增 banUser/unbanUser（同构 grantAdmin/revokeAdmin：null→IAE、不存在→USER_NOT_FOUND、已是目标态幂等跳过、改库 status=0/1，javadoc 注明时效语义）（A）", "completed": true },
+      { "step": "InternalAuthController 新增 POST /internal/auth/ban 与 /internal/auth/unban（复用 AdminGrantRequestDTO，同构端点范式）（A）", "completed": true },
+      { "step": "web/README.md:154 表述修正：「需重新登录」→「重新登录或 refresh 续签后生效（最长延迟=access 剩余时效）」（B/N4）", "completed": true },
+      { "step": "AuthServiceTest 新增用例：R1/R2 不存在→USER_NOT_FOUND、G1 ban 1→0+幂等、G2 unban 0→1+幂等、G3 ban 后 status 断言", "completed": true }
     ],
-    "passes": false
+    "passes": true
   },
   {
     "number": 2,
     "category": "验收",
     "task": "门禁全量留证与两笔本地提交",
     "steps": [
-      { "step": "offline 全量逐位对照 633（user 136 净增只增不减、其余六模块逐位不变）；契约门双态 --baseline=<派发笔>；token 2030；词面门（-E 口径+阳性对照）；git diff --check；行尾（改文件保持基线 CRLF/LF）", "completed": false },
-      { "step": "C-01 实施笔（feat(auth): 用户封禁解封管理端点补全（TASK-203），恰 4 文件）+ C-02 台账笔（docs(mailbox): 登记TASK-203超管功能面补全验收与台账闭环（TASK-203），恰 4 文件：tasks.json/spec.md §7/handoff.md/PLAN.md 纯追加），均不推送不建 PR", "completed": false }
+      { "step": "offline 全量逐位对照 633（user 136 净增只增不减、其余六模块逐位不变）；契约门双态 --baseline=<派发笔>；token 2030；词面门（-E 口径+阳性对照）；git diff --check；行尾（改文件保持基线 CRLF/LF）", "completed": true },
+      { "step": "C-01 实施笔（feat(auth): 用户封禁解封管理端点补全（TASK-203），恰 4 文件）+ C-02 台账笔（docs(mailbox): 登记TASK-203超管功能面补全验收与台账闭环（TASK-203），恰 4 文件：tasks.json/spec.md §7/handoff.md/PLAN.md 纯追加），均不推送不建 PR", "completed": true }
     ],
-    "passes": false
+    "passes": true
   }
 ]
