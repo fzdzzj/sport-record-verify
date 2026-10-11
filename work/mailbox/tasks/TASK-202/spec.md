@@ -87,3 +87,17 @@ C-02 台账笔恰 4 文件：spec/changes/fix-role-freshness/tasks.json、work/m
 ## §7 收口记录（执行侧回填，保持纯追加）
 
 （空——完成后按 handoff 规范回填两笔提交哈希、门禁留证、token 时点、CI 运行号）
+
+### 回填（执行侧，C-02 台账笔，纯追加）
+
+- C-01 实施笔 `876d209`（`fix(auth): refresh封禁校验与角色撤销端点补全（TASK-202）`，恰 5 文件 =
+  §4 白名单全量含 N1 顺带件）。
+- C-02 台账笔本提交（`docs(mailbox): 登记TASK-202角色时效缺口修复验收与台账闭环（TASK-202）`，恰 4 文件）。
+- 红绿判别式：R1 封禁 refresh 401 + 重放同 refresh 401 / R2 删号 401 / R3 revokeAdmin 不存在 2002 /
+  G1 正常轮换不回归 / G2 revokeAdmin 幂等 + 撤销后续签 USER / G3 授予后续签 ADMIN —— 全绿（AuthServiceTest 新增 6 例）。
+- 门禁：offline 全量 `--mode=offline test` rc=0 逐位 52/50/136/151/159/70/15 = 633（user 130→136 净增 +6，
+  其余六模块逐位不变、common 52 不变）；契约门双态 rc=0（在途 `--open TASK-202 --baseline=4e63eee` + 收口无参）；
+  token 29 项 tracked `git grep -cF` SUM 2030 只增不减；词面门对改动文件 ZERO_HIT（探针 rc=0）；`git diff --check` rc=0；
+  行尾改文件保持基线（README/AuthService/InternalAuthController/AuthServiceTest 保持 CRLF、N1 文件保持 LF）。
+- N1 顺带完成：common GovernanceApiAuthFilterTest 末尾换行恢复（仅末字节，common 52 用例数不变）。
+- CI 运行号待推送后补记。

@@ -2364,3 +2364,16 @@ run `35802403723`（head `eba0108`，2026-09-23 00:31 UTC）——**web/build �
 | 终裁依据 | 四环节全过：指导侧亲核（提交链 + 网关内联 sign 实现抽查 + 向量双端硬编码命中 + D3 勘误心算验证）→ 独立复核子 agent 五块全量复跑 PASS 零阻断（Git 链/红线含 pom 零改动与零 common import/offline 627 串行复跑/static 双模块/token 三时点 2030/向量独立复算逐位命中/只改清单 15+4 双向全等）→ 两报告一致性裁决零矛盾 → 第 42 次 CI success 外部终验 |
 | 非阻断项 | N1 GovernanceApiAuthFilterTest 基线末尾换行丢失（committed blob pure-LF、内容完整），登记随批处理，下一课题台账笔顺带；N2 契约门在途态收口后 rc=1 为预期形态（权威收口无参 rc=0）；N3 spec §4「恰 13 文件」与 D2 后实改 15 的差异已在任务书 §4/handoff 登记 |
 | 课题终态 | 治理凭证由静态共享密码升级为 HMAC 签名凭证（网关每请求内联注签 v1.<ts>.<role>.<sig>，服务侧 codec 验签 + ADMIN 断言 + 300s 时间窗），F23「治理端点直连服务端口绕网关角色校验」缺口收口；顺带收口部署缺口（compose services 三服务密钥插值 + env.example 应用级密钥占位）；ADR-0007 L272「另一次拍板」待办落地；无双轨期，同批重启前提已在 README 登记 |
+
+## 验收记录：TASK-202（角色变更时效一致性与封禁续签缺口修复，执行侧，已提交）
+
+| 项 | 内容 |
+| --- | --- |
+| 开工基线 | 对照基线 `4e63eee`（提案三件套 + 任务书派发笔）；工作树干净；token 29 项开工实测 SUM=2030（tracked `git grep -cF` 权威口径） |
+| 实施两笔 | C-01 `876d209`（fix(auth): refresh封禁校验与角色撤销端点补全（TASK-202），5 文件，+170 −4）；C-02 本台账笔（docs(mailbox): 登记TASK-202角色时效缺口修复验收与台账闭环（TASK-202），4 文件，C-02 自指哈希同型偏差 D1 沿先例）。均未 push、未建 PR。 |
+| 目标与范围 | A1 `AuthService.refresh` 在 GETDEL 原子消费旧 jti 后、签发新对前查库校验存续（user==null 或 status==0 → 401「账号已被禁用」，旧 jti 保持已消费，封禁即强制下线、重放同 refresh 亦 401，与 login 统一 401 防探测口径）；A3 新增 `AuthService.revokeAdmin` 与 `InternalAuthController` POST `/internal/auth/revoke-admin`（复用 AdminGrantRequestDTO，同构 grantAdmin）；A2 grantAdmin/revokeAdmin javadoc 与 README:202 角色时效表述订正为「重新登录或 refresh 续签后生效，最长延迟=当前 access 剩余时效，主动续签即时」；N1 恢复 common `GovernanceApiAuthFilterTest` 末尾换行（零语义，common 52 不变）。 |
+| 红绿判别式 | R1 封禁 refresh 401 + 重放 401 / R2 删号 401 / R3 revokeAdmin 不存在→2002 / G1 正常轮换不回归（新对签发 + 旧 jti 作废 + 新存活键）/ G2 revokeAdmin 幂等跳过 + 撤销后续签 USER（降权即时）/ G3 授予后续签 ADMIN（提权即时）—— AuthServiceTest 新增 6 例全绿。 |
+| 本地门槛来源 | offline 全量 `--mode=offline test` rc=0 逐位 52/50/136/151/159/70/15 = 633（user 130→136 净增 +6，其余六模块含 common 52 逐位不变）；契约门双态 rc=0（在途 `--open TASK-202 --baseline=4e63eee` + 收口无参）；token 29 项 2030 只增不减；词面门改动集 ZERO_HIT + 探针三态；`git diff --check` rc=0；行尾（改文件保持基线 CRLF、N1 文件保持基线 LF）。 |
+| 是否到达外部门槛 | **未达到**：本地两笔提交，未 push、未建 PR，无 CI run；CI 外部终验待推送后补记。 |
+| 未覆盖/跳过 | 真实跨进程联调（封禁用户 refresh 实拒、内部撤销端点实调）未跑；`--mode=online` 与 CI 未跑；只做纯 JVM 单测断言；user 不在静态门且本课题未改静态门涉及模块，故未跑 static。 |
+| 偏差 | D1 C-02 自指哈希；D2 AuthServiceTest 首轮工作树 mixed→按基线 CRLF 归一（diff 纯 +117）；D3 Mockito `updateById` 重载歧义改用 `any(User.class)` 定型；N1 为 TASK-201 指导侧复核登记的非阻断项顺带落账。详见 handoff.md。 |
