@@ -156,3 +156,7 @@
   compose config CI 等效 rc=0；token 29 项 2030 只增不减；词面门 ZERO_HIT。
 - 详细留证与偏差见 handoff.md。
 - CI 运行号待推送后补记。
+- 补记（指导侧封盘笔，2026-10-11）：推送 ee891ab..73b237e（5 笔）后第 42 次 CI（run 38148926362，
+  head=73b237e）conclusion=success 全 job 绿（build：offline 全量 + 6 镜像构建 + Trivy 收缩态 + static +
+  词面门 + compose config；web：build/type-check/router types）。外部终验达成，TASK-201 封盘。
+  独立复核非阻断项 N1（GovernanceApiAuthFilterTest 基线末尾换行丢失）登记随批处理，下一课题台账笔顺带。

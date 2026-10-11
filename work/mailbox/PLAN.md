@@ -2355,3 +2355,12 @@ run `35802403723`（head `eba0108`，2026-09-23 00:31 UTC）——**web/build �
 | 是否到达外部门槛 | **未达到**：本地两笔提交，未 push、未建 PR，无 CI run；CI 外部终验待推送后补记。 |
 | 未覆盖/跳过 | 真实跨进程联调（网关→verify/leaderboard 签名注入→服务侧验签）未跑；`--mode=online` 未跑；只做纯 JVM 单测断言。 |
 | 偏差 | D1 C-02 自指哈希；D2 C-01 白名单 13→15（两既有 gateway 测试夹具升档 ≥32 字节，经用户裁决纳入）；D3 向量断言时钟参数勘误（now 取窗上界 1700000300，向量 sig 值零改动）；D4 本机 .env 既有畸形不影响 CI 等效 compose 门；offline 两轮并发假败（串行复跑 627 稳定）。详见 handoff.md。 |
+
+**TASK-201 外部终验达成与封盘补记（2026-10-11，run 38148926362，封盘笔本地未推送）**
+
+| 项目 | 内容 |
+| --- | --- |
+| 外部终验 | 第 42 次外部门槛 CI（run 38148926362，head=73b237e，推送 ee891ab..73b237e 共 5 笔：TASK-200 补记笔 a5a57e2 + TASK-201 派发/改派/实施/台账四笔）conclusion=success 全 job 绿：build（offline 627 + 6 镜像构建 + Trivy 收缩态 + static gate + 词面门 + compose config placeholder 含 GOVERNANCE_TOKEN）与 web（build/type-check/router types） |
+| 终裁依据 | 四环节全过：指导侧亲核（提交链 + 网关内联 sign 实现抽查 + 向量双端硬编码命中 + D3 勘误心算验证）→ 独立复核子 agent 五块全量复跑 PASS 零阻断（Git 链/红线含 pom 零改动与零 common import/offline 627 串行复跑/static 双模块/token 三时点 2030/向量独立复算逐位命中/只改清单 15+4 双向全等）→ 两报告一致性裁决零矛盾 → 第 42 次 CI success 外部终验 |
+| 非阻断项 | N1 GovernanceApiAuthFilterTest 基线末尾换行丢失（committed blob pure-LF、内容完整），登记随批处理，下一课题台账笔顺带；N2 契约门在途态收口后 rc=1 为预期形态（权威收口无参 rc=0）；N3 spec §4「恰 13 文件」与 D2 后实改 15 的差异已在任务书 §4/handoff 登记 |
+| 课题终态 | 治理凭证由静态共享密码升级为 HMAC 签名凭证（网关每请求内联注签 v1.<ts>.<role>.<sig>，服务侧 codec 验签 + ADMIN 断言 + 300s 时间窗），F23「治理端点直连服务端口绕网关角色校验」缺口收口；顺带收口部署缺口（compose services 三服务密钥插值 + env.example 应用级密钥占位）；ADR-0007 L272「另一次拍板」待办落地；无双轨期，同批重启前提已在 README 登记 |
