@@ -2435,3 +2435,17 @@ run `35802403723`（head `eba0108`，2026-09-23 00:31 UTC）——**web/build �
 | 未覆盖/跳过 | 真实跨进程/跨域 cookie 链路（浏览器实际带 cookie → 网关 → AuthController → 服务 401）未跑；`--mode=online` 与 CI 未跑；仅纯 JVM 控制器层单测断言。 |
 | 偏差 | D1 C-02 自指哈希（沿 TASK-178/183/204 先例）；D2 refresh/logout 的 `@Valid`（DTO 侧 NotBlank 与 cookie 通道空 body 冲突）移除并放宽 `@RequestBody(required=false)`，DTO 本体零改动、空值语义仍交 AuthService 既有 401/幂等裁决；停止条件 1/2/3/4/5/6 均未触发。详见 handoff.md。 |
 - 补记（指导侧封盘笔，2026-10-12）：推送 947b231..66e7f01（4 笔）后第 45 次 CI（run 38204317451，head=66e7f01）conclusion=success 全 job 绿——offline 655、镜像、Trivy、词面门、compose config、web build/type-check 全过（N2 本机 esbuild 受阻项经 CI web job 权威补验）。外部终验达成，TASK-205 封盘；四环节终裁全过（指导亲核/独立复核五块 PASS 零阻断/两报告零矛盾/CI success）；D2（refresh/logout 的 @Valid 移除与 required=false）裁决设计内必要调整；N1 真实跨进程 cookie 链路登记未覆盖；offline 终态 655=52/50/152/157/159/70/15，token 2030 持平。
+
+## 验收记录：`TASK-206`（真实跨进程链路验证——V1 归属校验 403/200 链路 + V2 refresh cookie 全链路，执行侧，已提交）
+
+| 项 | 内容 |
+| --- | --- |
+| 开工基线 | 派发笔 `753ce21`（proposal/tasks.json + 任务书）；工作树干净；offline 基线 655=52/50/152/157/159/70/15；token 29 项开工艺 2030 |
+| 台账笔 | 本笔 `docs(mailbox): 登记TASK-206真实链路验证与两N项闭环（TASK-206）`，恰 4 文件（tasks.json 勾选 / spec.md §7 / handoff.md / PLAN.md），自指哈希沿 D1 先例；未 push、未建 PR |
+| 目标与范围 | 零生产代码/配置/CI/compose 改动；起 gateway+user+record 三 jar（连已跑中间件 + 运行时注入 .env 演态值 + `--app.auth.enabled=true`），真实跨进程验证 TASK-204 N3（V1 归属）与 TASK-205 N1（V2 cookie）两 N 项闭环 |
+| 断言结果 | V1a=**PASS**(A 携 Bearer 访问 B 的 /points → 403/1002)；V1b=**PASS**(B 访问 → 200 返回轨迹点)；V1c-a=**PASS**(好友 accept 跨用户 → 403)/V1c-b=**偏差**(B 自 operation 归属断言通过后因 `notification_preference` 表缺失 500，环境缺口非归属缺陷)；V2a/V2b/V2c/V2d=**全 PASS**(login Set-Cookie 五属性+body null / 带 cookie refresh 200+新 cookie+新 access 可用 / 旧 cookie 重放 401 / logout Max-Age=0+后续 refresh 401) |
+| 本机门禁 | offline 逐位 **655=52/50/152/157/159/70/15** rc=0；契约门双态 rc=0（在途 `--open TASK-206 --baseline=753ce21` + 收口无参）；token 29 项 2030 只增不减；词面门对新台账文件 CI-exact ZERO_HIT；`git diff --check` rc=0；新文件纯 LF+末尾换行无 BOM |
+| 服务起停 | 起 2026-10-12 13:13（gateway 8.859s/user 15.296s/record 24.483s 就绪）；端口↔PID 8080→37004/8081→24896/8082→32132；停 2026-10-12 13:20:57 taskkill 全 SUCCESS，tasklist 无 java.exe、端口空、.trae/tmp 清空、无 override 残留 |
+| 是否到达外部门槛 | **未到达**：本笔未 push、未建 PR、无 CI run；CI 外部终验（MEDIUM 档收口挂 CI）待指导侧推动/推送后补记 |
+| 未覆盖/跳过 | `--mode=online` 与 CI 全流程未跑；V1c-b 通知副作用链路因 `notification_preference` 表缺失未覆盖（环境缺口，须数据卷迁移后方可，属环境动作非本课题红线内）；V2 轮换/登出吊销以重放原 cookie 值得 401 判定（curl jar 空 cookie 400 为交互伪影） |
+| 偏差 | D1 台账笔自指哈希（沿 TASK-178/183/204/205 先例）；D2 V1c-b 为环境数据层缺口（归属断言已通过），非 TASK-206 断言目标红；D3 curl jar Max-Age=0 空值 400 交互伪影；D4 运行 MySQL 卷口令与 .env 占位不一致（运行时环境变量覆盖）。明细见 handoff.md §8 |

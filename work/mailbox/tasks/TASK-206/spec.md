@@ -54,8 +54,8 @@
 - 环境清理留证：服务进程全停（jps/tasklist 证据）、.trae/tmp 空、无 override 残留、工作区 porcelain 空。
 
 ## §7 回填（台账笔后填写）
-- 台账笔哈希：________（自指，沿 D1 先例）
-- V1a/V1b/（V1c 如做）：________；V2a/V2b/V2c/V2d：________
-- 服务起停证据（进程清单/时间戳）：________
-- offline 逐位确认：655 = ________；token：2030 → ________
-- 偏差与未覆盖登记：________
+- 台账笔哈希：___（自指，沿 D1 先例）___
+- V1a/V1b/（V1c 如做）：V1a=**PASS**(A 携 Bearer 访问 B 的 /points → 403/1002)；V1b=**PASS**(B 访问 → 200 返回轨迹点)；V1c=**a PASS**(A 对 B 收到好友申请 accept → 403)/**b 偏差**(B 自 operation 在归属断言通过后因 `user_db.notification_preference` 表缺失抛 500，属环境数据层缺口，非归属实现缺陷)。V2a/V2b/V2c/V2d：**全 PASS**。
+- 服务起停证据（进程清单/时间戳）：起 2026-10-12 13:13（start-services 打印 START_TS=20261012-131310，gateway/user/record 三 jar 启动就绪：gateway 8.859s、user 15.296s、record 24.483s）；端口↔PID 8080→37004、8081→24896、8082→32132；停 2026-10-12 13:20:57 taskkill /F 三 PID 全 SUCCESS，随后 tasklist 无 java.exe、8080-8082 端口空。
+- offline 逐位确认：655 = **52/50/152/157/159/70/15**（rc=0）；token：2030 → **2030**（只增不减）。
+- 偏差与未覆盖登记：D1 台账笔自指哈希；D2 V1c-b 因 notification_preference 表缺失 500（环境缺口，非断言目标红）；D3 curl jar 空 cookie 400 交互伪影；D4 运行 MySQL 卷口令与 .env 占位不一致（运行时环境变量覆盖）。详见 handoff.md §8。
