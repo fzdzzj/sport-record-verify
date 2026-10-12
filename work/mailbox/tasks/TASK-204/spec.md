@@ -91,3 +91,15 @@ C-02 台账笔恰 4 文件：spec/changes/harden-idor-ownership/tasks.json、wor
 ## §7 收口记录（执行侧回填，保持纯追加）
 
 （空——完成后按 handoff 规范回填两笔提交哈希、门禁留证、token 时点、CI 运行号）
+
+### 收口记录（2026-10-12，执行侧回填）
+
+- **C-01 实施笔**：`0cca37a`（`fix(auth): id 类端点归属校验补全（TASK-204）`），恰 9 文件 = §4 白名单全量（+250 ／−44）。
+- **C-02 台账笔**：本记录所示 commits（`docs(mailbox): 登记TASK-204越权反例收口验收与台账闭环（TASK-204）`），恰 4 文件：tasks.json 勾选 / 本 §7 回填 / handoff.md（新建）/ PLAN.md（纯追加）。
+- 两笔均**未 push、未建 PR**。
+- **offline 全量**：`--mode=offline test` rc=0，逐位 **52 / 50 / 147 / 157 / 159 / 70 / 15**（=650）。user 141→147（+6，FriendServiceTest 17→23）、record 151→157（+6，新增 R1/R4 判别式各 3 例）；其余五模块 common/gateway/verify/leaderboard/mapmatch **逐位不变**（52/50/159/70/15）。
+- **契约门双态**：在途 `--open TASK-204 --baseline=91540a2` rc=0；handoff 建立后判据 B（`--baseline=91540a2`）rc=0；收口无参 rc=0。
+- **token**：29 项 tracked `git grep -cF` 开工/收口 SUM=**2030** 只增不减（新文档不枚举 token 字面量）。
+- **词面门**：CI-exact 正则对改动文件集 ZERO_HIT（rc=1）+ 合成探针阳性对照（`-E` 口径命中 rc=0、BRE 形态漏检 rc=1 证明 `-E` 必要性）。
+- **`git diff --check`** rc=0；**行尾**：改 9 文件保持各自基线（RecordControllerTest/InternalFriendController 为 LF，其余 7 文件 CRLF），无 BOM、无 mixed。
+- 红绿判别式全部通过（见 handoff §3）。

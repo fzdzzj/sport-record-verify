@@ -2399,3 +2399,16 @@ run `35802403723`（head `eba0108`，2026-09-23 00:31 UTC）——**web/build �
 | 是否到达外部门槛 | **未达到**：本地两笔提交，未 push、未建 PR，无 CI run；CI 外部终验待推送后补记（web job 亦需绿）。 |
 | 未覆盖/跳过 | 真实跨进程联调（内部 ban/unban 端点实调、封禁用户真实链路拒登录/拒续签）未跑；`--mode=online` 与 CI 未跑；只做纯 JVM 单测断言；user 不在静态门且本课题未改静态门涉及模块，故未跑 static。 |
 | 偏差 | D1 C-02 自指哈希；D2 AuthServiceTest 首轮工作树 mixed→按基线 CRLF 裸字节重建归一；停止条件 1/2/3/4 均未触发。详见 handoff.md。 |
+
+## 验收记录：`TASK-204`（越权反例收口——id 类端点归属校验补全，执行侧，已提交）
+
+| 项 | 内容 |
+| --- | --- |
+| 开工基线 | 派发笔 `91540a2`（proposal/spec-delta/tasks.json + 任务书，恰 4 新文件）；工作树干净；token 29 项开工实测 SUM=2030（tracked `git grep -cF` 权威口径）。 |
+| 实施两笔 | C-01 `0cca37a`（`fix(auth): id 类端点归属校验补全（TASK-204）`，恰 9 文件 = §4 白名单全量，+250 ／−44）；C-02 本台账笔（`docs(mailbox): 登记TASK-204越权反例收口验收与台账闭环（TASK-204）`，恰 4 文件，自指哈希沿 D1 先例）。均未 push、未建 PR。 |
+| 目标与范围 | R1 record-service `GET /records/{id}/points`：pagePoints 增 caller 归属断言（caller≠record.userId→403），listPoints 与内部契约零改动；R4 `POST /records/{id}/appeal`：appeal 增 caller 归属断言，建单仍以 record.getUserId() 为权威；R2/R3 user-service accept/reject：服务层增 caller==request.toUser 断言（天然阻断 from_user），InternalFriendController 显式传 null 注明 /internal/** 网内信任。仅 auth.enabled=true 生效，false 恒 null 零扰动；不改 resolveUserId 与局部异常。 |
+| 红绿判别式 | R1a 红 caller≠归属人→FORBIDDEN(1002)；R1b/R1c 绿 caller==归属人/==null；R4a 红 caller≠归属人→403；R4b/R4c 绿；R2a/R3a 红 caller≠to_user→403 不流转；R2b/R2c/R3b/R3c 绿。全部纯 JVM 服务层单测通过（FriendServiceTest 17→23、SportRecordServiceTest →39、RecordControllerTest 11 恒等）。 |
+| 本地门槛来源 | offline 全量 `--mode=offline test` rc=0 逐位 52/50/**147**/**157**/159/70/15 = **650**（user 141→147 净增 +6、record 151→157 净增 +6，其余五模块 common/gateway/verify/leaderboard/mapmatch 逐位不变）；契约门双态 rc=0（在途 `--open TASK-204 --baseline=91540a2` + handoff 建立后判据 B + 收口无参）；token 29 项 2030 只增不减（C-01 9 文件对受保护 token 命中 0）；词面门改动文件集 CI-exact ZERO_HIT rc=1 + 合成探针阳性对照（-E 口径命中 rc=0、BRE 形态漏检 rc=1 证明 -E 必要性）；`git diff --check` rc=0；行尾（改 9 文件保持基线各自身：RecordControllerTest/InternalFriendController 为 LF、其余 7 文件 CRLF，无 BOM 无 mixed）。 |
+| 是否到达外部门槛 | **未达到**：本地两笔提交，未 push、未建 PR，无 CI run；CI 外部终验待推送后由指导侧补记。 |
+| 未覆盖/跳过 | 真实跨进程/跨服务联调（网关注入 X-User-Id → 控制器 → 服务层真实 HTTP 403 链路）未跑；`--mode=online` 与 CI 未跑；仅纯 JVM 服务层单测断言。 |
+| 偏差 | D1 C-02 自指哈希（沿 TASK-178/183 先例）；D2 新增 `appeal_callerNull_degradeAllowed` 初版 anyInt 匹配空版本号误抛「并发冲突」，已改 record.setVersion(0)+精确 stub 修复并复跑全绿；停止条件 1/2/3/4/5 均未触发。详见 handoff.md。 |

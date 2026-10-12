@@ -4,24 +4,24 @@
     "category": "实施",
     "task": "id 类端点归属校验补全（R1/R4 record-service，R2/R3 user-service）",
     "steps": [
-      { "step": "RecordController.points 增 HttpServletRequest，caller=authEnabled?resolveUserId(request,null):null 下传；SportRecordService.pagePoints 增 caller 参数并在记录空判后断言 caller==record.userId，不一致→403/1002（R1）", "completed": false },
-      { "step": "RecordController.appeal 改传 caller=authEnabled?resolveUserId(request,dto.getUserId()):null；SportRecordService.appeal 增 caller 归属断言，建申诉单归属人仍以 record.getUserId() 为权威（R4）", "completed": false },
-      { "step": "FriendController.accept/reject 增 HttpServletRequest，caller=authEnabled?resolveUserId(request,null):null 下传；FriendService.accept/reject 增 caller 参数并断言 caller==request.toUser，不一致→403/1002；InternalFriendController 显式传 null（R2/R3）", "completed": false },
+      { "step": "RecordController.points 增 HttpServletRequest，caller=authEnabled?resolveUserId(request,null):null 下传；SportRecordService.pagePoints 增 caller 参数并在记录空判后断言 caller==record.userId，不一致→403/1002（R1）", "completed": true },
+      { "step": "RecordController.appeal 改传 caller=authEnabled?resolveUserId(request,dto.getUserId()):null；SportRecordService.appeal 增 caller 归属断言，建申诉单归属人仍以 record.getUserId() 为权威（R4）", "completed": true },
+      { "step": "FriendController.accept/reject 增 HttpServletRequest，caller=authEnabled?resolveUserId(request,null):null 下传；FriendService.accept/reject 增 caller 参数并断言 caller==request.toUser，不一致→403/1002；InternalFriendController 显式传 null（R2/R3）", "completed": true },
       {
         "step": "红绿判别式纯 JVM 落地：R1/R4 调用者≠归属人→403、R2/R3 调用者≠to_user→403（红）；caller==归属人成功 + caller==null 降级放行（绿）；更新既有调用点与测试（RecordControllerTest/SportRecordServiceTest/FriendServiceTest/FriendConcurrencyTest）",
-        "completed": false
+        "completed": true
       }
     ],
-    "passes": false
+    "passes": true
   },
   {
     "number": 2,
     "category": "验收",
     "task": "门禁全量留证与两笔本地提交",
     "steps": [
-      { "step": "offline 全量逐位对照 638（user/record 两模块净增只增不减、其余五模块逐位不变）；契约门双态 --baseline=<派发笔>；token 2030；词面门（-E 口径+阳性对照）；git diff --check；行尾（改文件保持基线 CRLF）", "completed": false },
-      { "step": "C-01 实施笔（fix(auth): id 类端点归属校验补全（TASK-204），恰 9 文件）+ C-02 台账笔（docs(mailbox): 登记TASK-204越权反例收口验收与台账闭环（TASK-204），恰 4 文件：tasks.json/spec.md §7/handoff.md/PLAN.md 纯追加），均不推送不建 PR", "completed": false }
+      { "step": "offline 全量逐位对照 638（user/record 两模块净增只增不减、其余五模块逐位不变）；契约门双态 --baseline=<派发笔>；token 2030；词面门（-E 口径+阳性对照）；git diff --check；行尾（改文件保持基线 CRLF）", "completed": true },
+      { "step": "C-01 实施笔（fix(auth): id 类端点归属校验补全（TASK-204），恰 9 文件）+ C-02 台账笔（docs(mailbox): 登记TASK-204越权反例收口验收与台账闭环（TASK-204），恰 4 文件：tasks.json/spec.md §7/handoff.md/PLAN.md 纯追加），均不推送不建 PR", "completed": true }
     ],
-    "passes": false
+    "passes": true
   }
 ]
