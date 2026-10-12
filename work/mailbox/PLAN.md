@@ -2421,3 +2421,16 @@ run `35802403723`（head `eba0108`，2026-09-23 00:31 UTC）——**web/build �
 | 终裁依据 | 四环节全过：指导侧亲核（Git 链 91540a2→0cca37a→947b231 + R1 pagePoints/R4 appeal 断言插入点与 createAppeal 权威口径抽查 + R2/R3 caller==toUser 断言与 InternalFriendController 显式 null 抽查）→ 独立复核子 agent 五块全量复跑 PASS 零阻断（offline 650 逐位 / Git 链与 13 文件只改清单 9+4 双向全等 / 契约门双态 / token 2030 / 词面门 -E 阳性对照 / 行尾 blob 基线一致）→ 两报告一致性零矛盾 → 第 44 次 CI success 外部终验 |
 | 非阻断项 | N1 行尾措辞（工作树/索引观感差异，blob 基线核对实质成立）；N2 token 措辞（新增行零命中、repo SUM 持平佐证）；N3 真实跨进程联调（已登记未覆盖，非复核范围） |
 | 课题终态 | R1 收口——轨迹分页仅记录归属人可读（pagePoints caller 断言，listPoints 内部契约不变）；R4 收口——申诉仅记录归属人可发起（createAppeal 仍以 record.userId 为权威）；R2/R3 收口——好友同意/拒绝仅申请 to_user 可操作（天然阻断 from_user 自同意）；均仅 auth.enabled=true 生效，false 零扰动；offline 基线 638→650（user 141→147、record 151→157 各 +6，其余五模块逐位不变） |
+## 验收记录：`TASK-205`（web 凭证面与 CORS 生产姿态——refresh cookie 化 + 前端适配 + CORS 环境变量化，执行侧，已提交）
+
+| 项 | 内容 |
+| --- | --- |
+| 开工基线 | 派发笔 `206ea6c`（proposal/spec-delta/tasks.json + 任务书）；工作树干净；token 29 项开工实测 SUM=2030（tracked `git grep -cF` 权威口径）；offline 基线 650。 |
+| 实施两笔 | C-01 `6d0318d`（`fix(auth): refresh凭证cookie化与CORS生产姿态（TASK-205）`，恰 7 文件 = §4 白名单全量，+274 ／−34）；C-02 本台账笔（`docs(mailbox): 登记TASK-205web凭证面加固验收与台账闭环（TASK-205）`，恰 4 文件，自指哈希沿 D1 先例）。均未 push、未建 PR。 |
+| 目标与范围 | R1 user-service AuthController 三端点 cookie 通道（login/refresh 成功 refresh 经 HttpOnly cookie 下发、body 置 null；读值 cookie 优先 body 兜底；logout cookie 优先 + Set-Cookie maxAge=0 清除；maxAge 取 refresh 存活 TTL 与 AuthService/JwtUtil 同源），AuthService / api 模块 DTO / InternalAuthController 零改动；R2 web 三文件（token.ts 删 refresh 持久化与 getRefreshToken、setTokens 两参、clearTokens 保留旧键一次性清理；client.ts 删本地 refresh 前置块、refresh 改无 body 凭证 + withCredentials、_retry 保留；login.page.vue 判空与 setTokens 适配）；R3 gateway application.yml allowedOrigins 环境变量占位（`${CORS_ALLOWED_ORIGINS:http://127.0.0.1:5173,http://localhost:5173}`）+ README 鉴权/CORS 章节同步。 |
+| 红绿判别式 | R1a 红 login Set-Cookie 属性 + body 置 null / R1b 红 cookie 优先 / R1c 红 logout 清除 maxAge=0 / R1d 红 body 兜底 —— AuthControllerTest 新增 5 例纯 JVM（Mockito + MockHttpServletRequest/Response）全绿；R2/PASS、R3/PASS（前端/配置文件实证 + type-check）；G1 零触碰面逐字不动、G2 AuthServiceTest 全量不回归（23 例）、G3 STOMP/notificationWs/main 零改动。 |
+| 本地门槛来源 | offline 全量 `--mode=offline test` rc=0 逐位 52/50/**152**/157/159/70/15 = **655**（user 147→152 净增 +5，其余六模块逐位不变）；契约门双态 rc=0（在途 `--open TASK-205 --baseline=206ea6c` + 收口无参）；token 29 项 2030 只增不减（C-01 7 文件对受保护 token 命中 0）；词面门改动文件集 CI-exact ZERO_HIT rc=1 + 合成探针阳性对照（-E 口径命中 rc=0、BRE 形态漏检 rc=1 证明 -E 必要性）；`git diff --check` 与两笔 `git show --check` 均 rc=0；行尾（AuthController.java/application.yml/README.md 保持基线 CRLF，token.ts/client.ts/login.page.vue 保持基线 LF，AuthControllerTest 新文件纯 LF + 末尾换行，无 BOM 无 mixed）。 |
+| web 验证 | `vue-tsc type-check` rc=0（全部 TS/Vue 类型正确）；`npm run build`（vite build）本机失败但非代码问题——3283 modules 全数 transpile 通过后 esbuild 清理 `$TEMP\esbuild-*` 临时目录触发 Windows `Access is denied`（重试复现，属环境 ACL），按任务书 §6 登记「CI web job 为权威，外部终验覆盖」。 |
+| 是否到达外部门槛 | **未达到**：本地两笔提交，未 push、未建 PR，无 CI run；CI 外部终验（含 web job）待推送后由指导侧补记。 |
+| 未覆盖/跳过 | 真实跨进程/跨域 cookie 链路（浏览器实际带 cookie → 网关 → AuthController → 服务 401）未跑；`--mode=online` 与 CI 未跑；仅纯 JVM 控制器层单测断言。 |
+| 偏差 | D1 C-02 自指哈希（沿 TASK-178/183/204 先例）；D2 refresh/logout 的 `@Valid`（DTO 侧 NotBlank 与 cookie 通道空 body 冲突）移除并放宽 `@RequestBody(required=false)`，DTO 本体零改动、空值语义仍交 AuthService 既有 401/幂等裁决；停止条件 1/2/3/4/5/6 均未触发。详见 handoff.md。 |

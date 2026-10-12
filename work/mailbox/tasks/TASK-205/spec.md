@@ -109,9 +109,9 @@
 
 ## §7 回填（C-02 台账笔，执行侧完成后填写）
 
-- 两笔提交哈希：C-01 = ________；C-02 = ________
-- offline 终值：650 → ______（user 147 → ______，其余逐位不变确认）
-- token 终值：2030 → ______
-- 红绿判别式逐条结果：R1a/R1b/R1c/R1d/R2/R3/G1/G2/G3 = ______
-- 只改清单实证：C-01 git diff --name-only 恰 7 文件；C-02 恰 4 文件（tasks.json/spec.md/handoff.md/PLAN.md）
-- 偏差与未覆盖登记：______
+- 两笔提交哈希：C-01 = 6d0318d；C-02 = 本台账笔所在提交（D1 自指哈希，以实际提交为准）
+- offline 终值：650 → **655**（user 147 → **152** 净增 +5，其余六模块 52/50/157/159/70/15 逐位不变确认）
+- token 终值：2030 → **2030**（只增不减，开工/C-01/收口三时点均 2030）
+- 红绿判别式逐条结果：R1a/R1b/R1c/R1d = **PASS**（AuthControllerTest 新增 5 例全绿）；R2/PASS、R3/PASS、G1/G2/G3 = PASS
+- 只改清单实证：C-01 git diff --name-only 恰 7 文件全等；C-02 恰 4 文件（tasks.json/spec.md/handoff.md/PLAN.md）
+- 偏差与未覆盖登记：见 handoff.md §7/§8——D1 C-02 自指哈希沿先例；D2 refresh/logout 的 @Valid（DTO @NotBlank 与 cookie 空 body 冲突）移除并放宽 required=false，DTO 本体零改动、空值语义仍交 AuthService 既有 401/幂等裁决；web vite build 本机因 esbuild 清理临时目录的环境级 Access denied 无法完成（3283 modules 已全数 transpile、vue-tsc rc=0），按 §6 登记「CI web job 为权威，外部终验覆盖」；真实跨进程 cookie 链路未跑登记未覆盖。

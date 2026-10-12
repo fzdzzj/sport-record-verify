@@ -4,21 +4,21 @@
     "category": "实施",
     "task": "web 凭证面与 CORS 生产姿态：refresh cookie 化 + 前端适配 + CORS 环境变量化",
     "steps": [
-      { "step": "R1 AuthController：login/refresh/logout 三端点 cookie 通道（Set-Cookie HttpOnly/SameSite=Lax/Path=/api/auth/maxAge 对齐 refresh TTL；读值 cookie 优先 body 兜底；body refreshToken 置 null）；AuthService/api 模块 DTO/InternalAuthController 零改动", "completed": false },
-      { "step": "R2 前端三文件：token.ts 删 refresh 持久化+签名收窄+存量键一次性清理；client.ts refresh 调用无 body 凭证+withCredentials、删本地前置判断、_retry 保留；login.page.vue 判空与 setTokens 适配", "completed": false },
-      { "step": "R3 gateway application.yml：allowedOrigins 环境变量占位（默认回退两个本地开发地址）；README 鉴权/CORS 章节同步", "completed": false },
-      { "step": "新建 AuthControllerTest：R1a Set-Cookie 属性+body 置 null / R1b cookie 优先 / R1c logout 清除 / 轮换吊销委托语义（红绿判别式见任务书 §2.5）", "completed": false }
+      { "step": "R1 AuthController：login/refresh/logout 三端点 cookie 通道（Set-Cookie HttpOnly/SameSite=Lax/Path=/api/auth/maxAge 对齐 refresh TTL；读值 cookie 优先 body 兜底；body refreshToken 置 null）；AuthService/api 模块 DTO/InternalAuthController 零改动", "completed": true },
+      { "step": "R2 前端三文件：token.ts 删 refresh 持久化+签名收窄+存量键一次性清理；client.ts refresh 调用无 body 凭证+withCredentials、删本地前置判断、_retry 保留；login.page.vue 判空与 setTokens 适配", "completed": true },
+      { "step": "R3 gateway application.yml：allowedOrigins 环境变量占位（默认回退两个本地开发地址）；README 鉴权/CORS 章节同步", "completed": true },
+      { "step": "新建 AuthControllerTest：R1a Set-Cookie 属性+body 置 null / R1b cookie 优先 / R1c logout 清除 / 轮换吊销委托语义（红绿判别式见任务书 §2.5）", "completed": true }
     ],
-    "passes": false
+    "passes": true
   },
   {
     "number": 2,
     "category": "验收",
     "task": "门禁全量留证与两笔本地提交",
     "steps": [
-      { "step": "offline 全量逐位对照 650=52/50/147/157/159/70/15（user 净增、其余六模块逐位不变）；契约门双态 --baseline=<派发笔>；token 2030 只增不减；词面门 CI-exact 口径+探针阳性对照；git diff --check；行尾保持基线各自身；web vite build 通过（本机或 CI web job）", "completed": false },
-      { "step": "C-01 实施笔（fix(auth): refresh凭证cookie化与CORS生产姿态（TASK-205），恰 7 文件）+ C-02 台账笔（docs(mailbox): 登记TASK-205web凭证面加固验收与台账闭环（TASK-205），恰 4 文件：tasks.json/spec.md §7 回填/handoff.md 新建/PLAN.md 纯追加），均不推送不建 PR", "completed": false }
+      { "step": "offline 全量逐位对照 650=52/50/147/157/159/70/15（user 净增、其余六模块逐位不变）；契约门双态 --baseline=<派发笔>；token 2030 只增不减；词面门 CI-exact 口径+探针阳性对照；git diff --check；行尾保持基线各自身；web vite build 通过（本机或 CI web job）", "completed": true },
+      { "step": "C-01 实施笔（fix(auth): refresh凭证cookie化与CORS生产姿态（TASK-205），恰 7 文件）+ C-02 台账笔（docs(mailbox): 登记TASK-205web凭证面加固验收与台账闭环（TASK-205），恰 4 文件：tasks.json/spec.md §7 回填/handoff.md 新建/PLAN.md 纯追加），均不推送不建 PR", "completed": true }
     ],
-    "passes": false
+    "passes": true
   }
 ]
