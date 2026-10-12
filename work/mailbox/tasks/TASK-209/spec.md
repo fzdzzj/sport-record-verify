@@ -47,8 +47,8 @@ leaderboard-service: LeaderboardController.java, LeaderboardService.java, contri
 - C-01 feat(leaderboard): ... (TASK-209); C-02 docs(mailbox): ... (TASK-209) ledger 4 files. No push, no PR.
 
 ## S7 backfill (after C-02)
-- commit hashes: C-01 = ___; C-02 = ___
-- offline final / token final: ___
-- discriminant results R1a-R1e, G1-G2: ___
-- deviations: ___
+- commit hashes: C-01 = 8b1a23b (feat(leaderboard): 日期范围榜单与周月视图（TASK-209）, 8 files / +328 −4); C-02 = <本台账笔所在提交，自指沿 D1 先例，以 git log 实测为准>
+- offline final / token final: 675 = 52/50/162/157/159/80/15 (leaderboard 70→80 净增 +10，其余六模块 common/gateway/user/record/verify/mapmatch 逐位不变) / token 29 项 post-C01=2030、close=2030（只增不减）
+- discriminant results R1a-R1e, G1-G2: 见 handoff.md §4（R1a 绿 多用户窗口 SUM 降序+rank+昵称；R1b 半开边界 end+1 排除；R1c 非 ACTIVE 排除；R1d start>end 400 + 跨度>366 400 + start 必填；R1e size 默认 50 / cap 500；G1 既有 top/daily/friend/settlement 用例零回归；G2 写入链/结算/ZSet/索引/sql diff 核空）
+- deviations: 见 handoff.md §7（D1 台账笔自指哈希；D2 web 本机 build 因 esbuild Windows temp Access is denied 受阻，fallback vue-tsc rc=0 + 登记 CI web job 权威；D3 冗余反射行清理、@Select 注解比较符直书不转义）
 

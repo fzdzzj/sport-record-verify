@@ -2481,3 +2481,17 @@ run `35802403723`（head `eba0108`，2026-09-23 00:31 UTC）——**web/build �
 | 未覆盖 | `--mode=online`、CI 全流程、真实跨进程 X-User-Id/cookie 链路未跑；未声明 @Transactional（DB 落 hash + Redis 吊销最终一致，ADR-0009）；无性能/吞吐声明 |
 | 偏差 | D1 台账笔自指哈希（沿 TASK-178/183/204/205/206/207 先例）；D2 web 本机 build 受阻 fallback（TASK-205 D-esbuild 先例）；D3 pwsh 回显伪影（脚本本体 BUILD SUCCESS rc=0 为权威）。明细见 handoff.md §7 |
 - 补记（指导侧封盘笔，2026-10-12）：推送 beae7cd..aa1d7f6（4 笔）后第 48 次 CI（run 38223686992，head=aa1d7f6）conclusion=success 全 job 绿——offline 665、镜像、Trivy、词面门、compose config、web build/type-check 全过。四环节终裁全过（指导亲核 PASS/独立复核四块复跑 PASS 零阻断——新口径四块首次应用于 FULL 档/两报告零矛盾/CI success），TASK-208 封盘。课题终态：POST /api/auth/change-password（X-User-Id 自归属，TASK-204 范式）落地，语义链=查库+封禁门 1001→BCrypt 验旧 1001（不泄漏存在性）→same-as-old 400→encode 落库→keys(auth:refresh:{userId}:*) 模式批删全量吊销（与单键 logout 删除同构）；改密后旧 refresh 即刻 401、盗号窗口收敛至 access 15min；前端 settings.page.vue+index 入口+typed-router 再生成；offline 基线 655→665（user 152→162 净增+10，其余六模块逐位不变），token 2030 持平；C-01 6bd3cd5（10 文件+493）/C-02 aa1d7f6（4 台账）。auth 域功能面全闭环。N1=HMAC javadoc 措辞瑕疵登记后续随手订正；真实跨进程改密链路未跑（纯 JVM 覆盖，与 N3/N1 前例同性质，如需可后续 MEDIUM 验证课题）。
+## 验收记录：`TASK-209`（日期范围榜单：周榜 / 月榜视图，执行侧，已收口）
+
+| 项 | 内容 |
+| --- | --- |
+| 开工基线 | 派发笔 `44edabc`（提案三件套 + 任务书）；工作树干净；offline 基线 665=52/50/162/157/159/70/15；token 29 项开工实测 SUM=2030 |
+| C-01 实施笔 | `8b1a23b` `feat(leaderboard): 日期范围榜单与周月视图（TASK-209）`，恰 8 文件 = §4 白名单（LeaderboardController.java/LeaderboardService.java/LeaderboardContributionMapper.java/LeaderboardServiceTest.java/LeaderboardControllerTest.java 新增/leaderboard.page.vue/client.ts/README.md） |
+| C-02 台账笔 | 本笔 `docs(mailbox): 登记TASK-209范围榜单验收与台账闭环（TASK-209）`，恰好 4 文件（tasks.json 勾选 / spec.md §7 / handoff.md / PLAN.md），自指哈希沿 D1 先例 |
+| 目标与范围 | `GET /api/leaderboard/range`：对 leaderboard_contribution 按 status=ACTIVE 且 settled_at 半开窗口 [start 0:00, end+1 日 0:00) 单查询聚合 SUM(distance) GROUP BY user_id 降序取前 N；rangeReport 默认 50/上限 500、rank 从 1、昵称 dailyReport 同路径；controller start 必填/end 缺省今天/start>end 400/跨度>366 400；web 今日/本周/本月 tab（周=ISO 周一、月=本月 1 号、end=今天）；README range 口径。写入链/结算/ZSet/索引/sql/api/其他服务零改动 |
+| 判别式红绿 | R1a 绿（多用户窗口 SUM 降序+rank+昵称）；R1b 半开边界（start 计入、end+1 排除）；R1c 非 ACTIVE 不入窗；R1d start>end 400 + 跨度>366 400 + start 必填；R1e size 默认 50/cap 500；G1 既有 top/daily/friend/settlement 用例零回归；G2 写入链/结算/ZSet/索引/sql diff 核空。明细见 handoff.md §4 |
+| 本机门禁 | offline 逐位 **675=52/50/162/157/159/80/15** BUILD SUCCESS rc=0（仅 leaderboard 70→80 净增 +10，其余六模块逐位不变）；静态 `--static=leaderboard-service` rc=0（Checkstyle 0 / SpotBugs Error 0 / PMD success）；契约门双态 rc=0（在途 `--open TASK-209 --baseline=44edabc` + 收口无参）；token 29 项 2030 只增不减；词面门改动文件集 CI-exact ZERO_HIT + 探针阳性对照；`git diff --check` rc=0；行尾新文件纯 LF+末尾换行无 BOM、改文件保持基线各自身 |
+| web | 本机 `pnpm run build` 因 esbuild Windows temp 清理 `Access is denied` 受阻（环境面，3283 模块已 transform）；fallback vue-tsc type-check rc=0，登记 CI web job 为权威（TASK-205/208 D-esbuild 先例） |
+| 是否到达外部门槛 | **未到达**：两笔均未 push、未建 PR、无 CI run；FULL 档外部终验（独立复核 + CI 全绿）待指导侧推动推送后补记 |
+| 未覆盖 | `--mode=online`、CI 全流程、真实 DB 聚合链路未跑；settled_at 无专用索引为已登记已知限制（全局禁加索引），未作性能/吞吐声明；范围榜为公共聚合面（同 /daily 无身份隔离） |
+| 偏差 | D1 台账笔自指哈希（沿 TASK-178/183/204/205/206/207/208 先例）；D2 web 本机 build 受阻 fallback（TASK-205/208 D-esbuild 先例）；D3 实现细节两处（start 必填以反射断言；@Select 注解比较符直书不转义）。明细见 handoff.md §7 |

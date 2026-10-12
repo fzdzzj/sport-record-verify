@@ -4,20 +4,20 @@
     "category": "Implementation",
     "task": "Range-aggregated leaderboard (weekly/monthly via date range)",
     "steps": [
-      { "step": "R1 backend: mapper range query (ACTIVE + settled_at window, GROUP BY user_id SUM DESC topN) + LeaderboardService.rangeReport (nickname assembly per dailyReport paradigm) + LeaderboardController GET /range with validation (start required, end default today, start>end 400, span>366 400, size cap 500)", "completed": false },
-      { "step": "R2 web: leaderboard.page.vue day/week/month tabs (natural-period start, end=today) + client api", "completed": false },
-      { "step": "Tests: service + controller red-green cases per preregistered matrix (R1a-R1e, G1-G2)", "completed": false }
+      { "step": "R1 backend: mapper range query (ACTIVE + settled_at window, GROUP BY user_id SUM DESC topN) + LeaderboardService.rangeReport (nickname assembly per dailyReport paradigm) + LeaderboardController GET /range with validation (start required, end default today, start>end 400, span>366 400, size cap 500)", "completed": true },
+      { "step": "R2 web: leaderboard.page.vue day/week/month tabs (natural-period start, end=today) + client api", "completed": true },
+      { "step": "Tests: service + controller red-green cases per preregistered matrix (R1a-R1e, G1-G2)", "completed": true }
     ],
-    "passes": false
+    "passes": true
   },
   {
     "number": 2,
     "category": "Acceptance",
     "task": "Full gates + two local commits (FULL tier, 4-block review)",
     "steps": [
-      { "step": "offline per-digit vs 665 baseline (leaderboard net increase, others unchanged); contract gate dual-state; token 2030 two-point; word-check + probe; git diff --check; line endings; web build or CI-web delegation; README range semantics", "completed": false },
-      { "step": "C-01 implementation commit + C-02 ledger commit (4 files), no push no PR", "completed": false }
+      { "step": "offline per-digit vs 665 baseline (leaderboard net increase, others unchanged); contract gate dual-state; token 2030 two-point; word-check + probe; git diff --check; line endings; web build or CI-web delegation; README range semantics", "completed": true },
+      { "step": "C-01 implementation commit + C-02 ledger commit (4 files), no push no PR", "completed": true }
     ],
-    "passes": false
+    "passes": true
   }
 ]
