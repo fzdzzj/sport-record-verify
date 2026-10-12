@@ -1,0 +1,23 @@
+[
+  {
+    "number": 1,
+    "category": "Implementation",
+    "task": "Track view page (pure frontend, SVG projection)",
+    "steps": [
+      { "step": "record-detail.page.vue: summary header + SVG track (normalized lat/lng polyline, start/end markers, per-point hover) + loading/empty/error(403) states", "completed": false },
+      { "step": "Entry links: index recent-records rows (verdict page optional); client.ts points call if absent; typed-router.d.ts regen (tracked, must commit)", "completed": false },
+      { "step": "Discriminants R1-R3, G1-G2 evidence", "completed": false }
+    ],
+    "passes": false
+  },
+  {
+    "number": 2,
+    "category": "Acceptance",
+    "task": "Gates + commits (MEDIUM tier: no independent review)",
+    "steps": [
+      { "step": "offline per-digit unchanged 684; contract dual-state; token 2030; word-check; diff --check; line endings; vue-tsc or CI web job; package.json zero-diff", "completed": false },
+      { "step": "C-01 feat + C-02 ledger (4 files), no push no PR", "completed": false }
+    ],
+    "passes": false
+  }
+]
