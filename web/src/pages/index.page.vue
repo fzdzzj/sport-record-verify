@@ -11,9 +11,11 @@
       </ul>
       <p class="mt-4">使用顶部导航进入各页。需先 <a @click="goLogin">登录</a>（依赖 auth 会话）。</p>
       <p class="mt-2 text-sm text-gray-600">本会话 recordId 存 sessionStorage；刷新或换浏览器不会从服务端恢复（诚实无列表 API）。</p>
+      <a-alert class="mt-4" type="info" show-icon message="自助改密（TASK-208）：修改密码后全量吊销该账号 refresh，需重新登录（入口见下）。" />
       <div class="mt-4">
         <a-button type="primary" @click="go('/record-submit')">开始：提交样例轨迹</a-button>
         <a-button class="ml-2" @click="go('/leaderboard')">查看榜单</a-button>
+        <a-button class="ml-2" @click="go('/settings')">修改密码</a-button>
       </div>
     </a-card>
     <a-alert type="info" class="mt-4" message="演示要求：网关+服务 app.auth.enabled=true ；前端始终带 Bearer；不伪造 userId。" />

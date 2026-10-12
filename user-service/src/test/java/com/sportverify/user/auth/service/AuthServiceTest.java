@@ -15,8 +15,10 @@ import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.data.redis.core.ValueOperations;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.TimeUnit;
 
@@ -27,6 +29,7 @@ import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyCollection;
 import static org.mockito.ArgumentMatchers.anyList;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.anyString;
@@ -83,6 +86,13 @@ class AuthServiceTest {
             store.remove(inv.getArgument(0));
             return Boolean.TRUE;
         }).when(redis).delete(anyString());
+        doAnswer(inv -> {
+            java.util.Collection<String> keys = inv.getArgument(0);
+            if (keys != null) {
+                keys.forEach(store::remove);
+            }
+            return (long) (keys == null ? 0 : keys.size());
+        }).when(redis).delete(anyCollection());
         when(redis.expire(anyString(), anyLong(), any(TimeUnit.class))).thenReturn(Boolean.TRUE);
         // —— 原子消费旧 jti（GETDEL_LUA）接线：按 key 从假存储「取走并删除」，等效真实 GETDEL 语义
         //    值为空 → 返回 null（已轮换/过期），据此可验证「旧 jti 已消费 → 重放 401」闭环
@@ -463,6 +473,123 @@ class AuthServiceTest {
         ArgumentCaptor<User> captor = ArgumentCaptor.forClass(User.class);
         verify(userMapper).updateById(captor.capture());
         assertEquals(0, captor.getValue().getStatus().intValue(), "封禁态断言：落库 status 应为 0");
+    }
+
+    // ==================== TASK-208 自助改密 R/G 判别式 ====================
+
+    /** R1a 绿：正确新旧密码 → 落库新 hash + 全量删除该用户 auth:refresh:{userId}:* 存活键 */
+    @Test
+    void R1a_changePassword_validUpdatesHashAndDeletesAllRefreshKeys() {
+        when(userMapper.selectById(1L)).thenReturn(user());
+        String oldKey1 = "auth:refresh:1:jti-a";
+        String oldKey2 = "auth:refresh:1:jti-b";
+        store.put(oldKey1, "1");
+        store.put(oldKey2, "1");
+        when(redis.keys("auth:refresh:1:*")).thenReturn(new HashSet<>(List.of(oldKey1, oldKey2)));
+
+        assertDoesNotThrow(() -> service.changePassword(1L, GOOD_PASSWORD, "new-secret-123"));
+
+        // 落库实参：仅改 id 与 passwordHash，新 hash 与「new-secret-123」匹配
+        ArgumentCaptor<User> captor = ArgumentCaptor.forClass(User.class);
+        verify(userMapper).updateById(captor.capture());
+        User updated = captor.getValue();
+        assertEquals(1L, updated.getId().longValue(), "应落库目标用户");
+        assertTrue(new BCryptPasswordEncoder().matches("new-secret-123", updated.getPasswordHash()),
+                "落库 hash 应匹配新密码，不再匹配旧密码");
+        assertFalse(new BCryptPasswordEncoder().matches(GOOD_PASSWORD, updated.getPasswordHash()),
+                "新 hash 不应再匹配旧密码");
+
+        // 全量吊销：auth:refresh:1:* 两键被批量删除
+        verify(redis).keys("auth:refresh:1:*");
+        verify(redis).delete(any(Set.class));
+        assertFalse(store.containsKey(oldKey1), "旧 refresh 键应被删除");
+        assertFalse(store.containsKey(oldKey2), "旧 refresh 键应被删除");
+    }
+
+    /** R1b 红：旧密码错误 → 1001；hash 不变、refresh 键保留（不求 keys/delete） */
+    @Test
+    void R1b_changePassword_wrongOldThrows1001_keepsHashAndKeys() {
+        when(userMapper.selectById(1L)).thenReturn(user());
+        String oldKey = "auth:refresh:1:jti-a";
+        store.put(oldKey, "1");
+
+        BizException e = assertThrows(BizException.class,
+                () -> service.changePassword(1L, "wrong-password", "new-secret-123"));
+        assertEquals(ResultCode.UNAUTHORIZED.getCode(), e.getCode(), "旧密码错误应 1001");
+
+        verify(userMapper, never()).updateById(any(User.class));
+        verify(redis, never()).keys(anyString());
+        verify(redis, never()).delete(any(Set.class));
+        assertTrue(store.containsKey(oldKey), "失败时 refresh 键应保留");
+    }
+
+    /** R1c 红：old==new → 400（IllegalArgumentException → GlobalExceptionHandler 400） */
+    @Test
+    void R1c_changePassword_sameAsOldThrowsIllegalArgument() {
+        when(userMapper.selectById(1L)).thenReturn(user());
+        assertThrows(IllegalArgumentException.class,
+                () -> service.changePassword(1L, GOOD_PASSWORD, GOOD_PASSWORD));
+        verify(userMapper, never()).updateById(any(User.class));
+        verify(redis, never()).keys(anyString());
+    }
+
+    /** R1d 红：status=0 用户 → 401（1001 口径，与 refresh 封禁校验同） */
+    @Test
+    void R1d_changePassword_bannedOrMissingUserThrows1001() {
+        User banned = user();
+        banned.setStatus(0);
+        when(userMapper.selectById(1L)).thenReturn(banned);
+        BizException e = assertThrows(BizException.class,
+                () -> service.changePassword(1L, GOOD_PASSWORD, "new-secret-123"));
+        assertEquals(ResultCode.UNAUTHORIZED.getCode(), e.getCode(), "封禁用户改密应 1001");
+        verify(userMapper, never()).updateById(any(User.class));
+
+        // 用户不存在
+        when(userMapper.selectById(2L)).thenReturn(null);
+        BizException e2 = assertThrows(BizException.class,
+                () -> service.changePassword(2L, GOOD_PASSWORD, "new-secret-123"));
+        assertEquals(ResultCode.UNAUTHORIZED.getCode(), e2.getCode(), "不存在用户改密应 1001");
+    }
+
+    /** G1 绿：改密后旧 refresh 轮换 401 → 新密码登录 200 / 旧密码 1001 */
+    @Test
+    void G1_afterChangePassword_oldRefreshDead_loginUsesNewPassword() {
+        User pre = user();                                   // hash = GOOD_PASSWORD
+        when(userMapper.selectById(1L)).thenReturn(pre);
+        String deadJti = "jti-prechange";
+        store.put("auth:refresh:1:" + deadJti, "1");
+        when(redis.keys("auth:refresh:1:*")).thenReturn(new HashSet<>(List.of("auth:refresh:1:" + deadJti)));
+        when(jwtUtil.parseRefresh("pre-change-refresh")).thenReturn(new JwtUtil.ParsedRefresh(1L, deadJti));
+
+        // 1. 改密成功（全量吊销）
+        assertDoesNotThrow(() -> service.changePassword(1L, GOOD_PASSWORD, "fresh-new-pw"));
+        ArgumentCaptor<User> captor = ArgumentCaptor.forClass(User.class);
+        verify(userMapper).updateById(captor.capture());
+        String newHash = captor.getValue().getPasswordHash();
+        assertFalse(store.containsKey("auth:refresh:1:" + deadJti), "改密后旧 refresh 键应已删除");
+
+        // 2. 重放改密前的 refresh → 401（key 已被吊销，alive=null）
+        BizException refreshReject = assertThrows(BizException.class,
+                () -> service.refresh("pre-change-refresh"));
+        assertEquals(ResultCode.UNAUTHORIZED.getCode(), refreshReject.getCode(),
+                "改密后重放旧 refresh 应 401");
+        verify(jwtUtil, never()).issueAccessToken(anyLong(), anyString());
+
+        // 3. 新密码登录成功（200 语义：非空 TokenDTO）
+        User afterNew = user();
+        afterNew.setPasswordHash(newHash);
+        when(userMapper.selectOne(any())).thenReturn(afterNew);
+        when(jwtUtil.issueRefreshToken(anyLong())).thenReturn("fresh-refresh");
+        TokenDTO dto = service.login(request(PHONE, "fresh-new-pw"));
+        assertNotNull(dto, "改密后新密码应可登录");
+
+        // 4. 旧密码登录 → 1001（hash 已是新值，matches 失败）
+        User unchanged = user();
+        unchanged.setPasswordHash(newHash);
+        when(userMapper.selectOne(any())).thenReturn(unchanged);
+        BizException oldLogin = assertThrows(BizException.class,
+                () -> service.login(request(PHONE, GOOD_PASSWORD)));
+        assertEquals(ResultCode.UNAUTHORIZED.getCode(), oldLogin.getCode(), "改密后旧密码登录应 1001");
     }
 
     // ==================== 工具 ====================

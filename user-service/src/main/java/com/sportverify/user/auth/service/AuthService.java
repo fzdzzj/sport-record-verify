@@ -22,6 +22,7 @@ import org.springframework.stereotype.Service;
 
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.Set;
 import java.util.concurrent.TimeUnit;
 
 /**
@@ -366,6 +367,66 @@ public class AuthService {
         log.info("登出成功：refresh 即刻作废 userId={}", parsed.userId());
     }
 
+    // ==================== 自助改密（TASK-208，含全量 refresh 吊销） ====================
+
+    /**
+     * 自助改密（规范「用户自助修改密码」，TASK-208）：校验旧密码 → 新 HMAC/BCrypt 哈希落库 →
+     * <b>全量吊销该用户所有存活 refresh</b>（auth:refresh:{userId}:*，一键清空）。
+     *
+     * <p>安全语义：</p>
+     * <ol>
+     *   <li>用户不存在或 status=0（封禁/删号）→ 401（1001），与 {@link #login}/{@link #refresh}
+     *       TASK-202 refresh 封禁校验同口径——不区分「不存在/封禁/旧密码错误」防用户枚举探测；</li>
+     *   <li>BCrypt matches(旧密码, 库 hash) 失败 → 401（1001），与登录失败统一，不泄漏用户存在性；</li>
+     *   <li>旧密码 == 新密码 → 400（PARAM）：改密语义要求「变更」，无变化即非法输入（预注册决策）；</li>
+     *   <li>否则 encode 新密码哈希、经 userMapper.updateById 落库（仅改 passwordHash），
+     *       <b>随后依法删该用户所有 refresh 存活键</b>（keys(pattern) 取该用户全部 jti 前缀再批量删除；
+     *       单用户存活 refresh 键基数极小，无需 SCAN 语义；空集 no-op）。</li>
+     * </ol>
+     *
+     * <p>时效口径（TASK-202）：改密即全量吊销——所有已签发 refresh 即刻作废（此后轮换 401，
+     * 窃取会话窗口收敛为 0）；存量已签发 <b>access 为无状态 token，最长仍在当前 15min 时效内自然过期</b>
+     * 方失效（与封禁/角色变更同一声明接受的短窗口，见 README 鉴权章节）。</p>
+     *
+     * <p>Redis 异常不虚假成功：DB 已落新 hash，但吊销失败会遗留可轮换的旧 refresh，属安全缺口，
+     * 故如实抛 500 业务异常（客户端可重试；重试时旧密码已失效将 401，属安全侧正确结果）。</p>
+     */
+    public void changePassword(Long userId, String oldPassword, String newPassword) {
+        // —— 1. 查库 + 封禁/不存在门（与 TASK-202 refresh 续签校验同一 1001 口径，前缀收回）
+        User user = userMapper.selectById(userId);
+        if (user == null || (user.getStatus() != null && user.getStatus() == 0)) {
+            log.warn("改密被拒：账号不存在或已禁用 userId={}", userId);
+            throw new BizException(ResultCode.UNAUTHORIZED, "账号不存在或已被禁用");
+        }
+        // —— 2. 旧密码校验（BCrypt matches 失败统一 1001，不泄漏用户存在性）
+        if (!passwordEncoder.matches(oldPassword, user.getPasswordHash())) {
+            log.warn("改密被拒：旧密码错误 userId={}", userId);
+            throw new BizException(ResultCode.UNAUTHORIZED, "旧密码错误");
+        }
+        // —— 3. 旧 == 新 → 400 PARAM（改密语义要求变更；预注册决策）
+        if (oldPassword.equals(newPassword)) {
+            log.warn("改密被拒：新旧密码相同 userId={}", userId);
+            throw new IllegalArgumentException("新密码不能与旧密码相同");
+        }
+        // —— 4. 新哈希落库（仅改 passwordHash，不动其他字段）
+        User update = new User();
+        update.setId(userId);
+        update.setPasswordHash(passwordEncoder.encode(newPassword));
+        userMapper.updateById(update);
+        // —— 5. 全量吊销该用户所有存活 refresh（auth:refresh:{userId}:*；空集 no-op）
+        try {
+            Set<String> liveKeys = stringRedisTemplate.keys(refreshUserPrefix(userId) + "*");
+            if (liveKeys != null && !liveKeys.isEmpty()) {
+                stringRedisTemplate.delete(liveKeys);
+            }
+        } catch (Exception e) {
+            // DB 已改 h，但吊销失败会遗留可用的旧 refresh，属安全缺口：如实报错不虚假成功
+            log.error("改密吊销 refresh 失败（Redis 异常）：userId={}", userId, e);
+            throw new BizException(ResultCode.SYSTEM_ERROR);
+        }
+        log.info("改密成功，全量吊销 refresh：userId={}", userId);
+    }
+
     // ==================== token 签发（登录/刷新共用） ====================
 
     /** 签发 access + refresh 双 token，并把 refresh 持久化到 Redis（存活校验 + 轮换作废的基础） */
@@ -475,6 +536,11 @@ public class AuthService {
     /** refresh 存活键：按 (userId, jti) 唯一（同一用户的多个 refresh 互不干扰） */
     private String refreshKey(Long userId, String jti) {
         return refreshPrefix + userId + ":" + jti;
+    }
+
+    /** 某用户全部 refresh 存活键的搜索前缀（改密全量吊销用，形如 auth:refresh:{userId}:*） */
+    private String refreshUserPrefix(Long userId) {
+        return refreshPrefix + userId + ":";
     }
 
     /** 手机号脱敏（日志口径，与 InternalUserController 同款：保留前 3 后 4） */

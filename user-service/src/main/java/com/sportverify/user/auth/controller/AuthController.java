@@ -9,6 +9,7 @@ import com.sportverify.common.exception.BizException;
 import com.sportverify.common.result.Result;
 import com.sportverify.common.result.ResultCode;
 import com.sportverify.user.auth.service.AuthService;
+import com.sportverify.user.dto.ChangePasswordRequestDTO;
 import jakarta.servlet.http.Cookie;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
@@ -22,6 +23,7 @@ import org.springframework.http.ResponseCookie;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
@@ -52,6 +54,13 @@ public class AuthController {
     /** 集中常量：cookie 名与 Path 不散落多处（TASK-205 禁止把属性散落）。 */
     private static final String REFRESH_COOKIE = "refresh_token";
     private static final String COOKIE_PATH = "/api/auth";
+
+    /** 网关注入的 userId 请求头（唯一可信来源，外部伪造同名头被网关覆盖，见 ADR-0007） */
+    private static final String HEADER_USER_ID = "X-User-Id";
+
+    /** 鉴权降级开关（false=旧行为显式携带 userId；true=以网关注入的 X-User-Id 为准） */
+    @Value("${app.auth.enabled:false}")
+    boolean authEnabled;
 
     /**
      * refresh 存活 TTL（天），与 JwtUtil/AuthService 同源配置 {@code app.auth.jwt.refresh-ttl-days}
@@ -127,6 +136,42 @@ public class AuthController {
         authService.logout(refresh);
         writeRefreshCookie(response, 0);
         return Result.success();
+    }
+
+    /**
+     * 自助改密（TASK-208）：校验旧密码 → 新哈希落库 → 全量吊销该用户所有存活 refresh。
+     *
+     * <p>身份认定沿 TASK-204 record pagePoints 范式：{@code app.auth.enabled=true} 时由网关注入的
+     * <b>X-User-Id</b> 请求头定位被改密用户（自服务归属隐式成立，请求体不含 userId，杜绝伪造他人改密）；
+     * false（默认，鉴权关闭）时无可信身份来源，按既有控制器口径拒绝（401，防未鉴权场景下无目标身份可用）。
+     * 改密语义与吊销：旧密码错误/账号封禁 → 401（1001）；新旧相同 → 400；成功后所有已签发 refresh
+     * 即刻作废，存量 access 最长仍在该 15min 短窗口内自然过期（TASK-202 时效口径，见 README 鉴权章节）。</p>
+     */
+    @PostMapping("/change-password")
+    public Result<Void> changePassword(@Valid @RequestBody ChangePasswordRequestDTO dto,
+                                       HttpServletRequest request) {
+        authService.changePassword(resolveUserId(request), dto.getOldPassword(), dto.getNewPassword());
+        return Result.success();
+    }
+
+    /**
+     * 自助改密身份认定：auth.enabled=true 时取网关注入的 X-User-Id，缺失/非法 → 401；
+     * false 时无自我服务身份来源，同样 401 拒绝（不可显式携带 userId，防越权）。
+     */
+    private Long resolveUserId(HttpServletRequest request) {
+        if (!authEnabled) {
+            log.warn("改密被拒：鉴权未开启，无可信用户身份");
+            throw new BizException(ResultCode.UNAUTHORIZED, "鉴权未开启，无法识别用户身份");
+        }
+        String header = request.getHeader(HEADER_USER_ID);
+        if (header == null || header.isBlank()) {
+            throw new BizException(ResultCode.UNAUTHORIZED, "缺少网关注入的 X-User-Id");
+        }
+        try {
+            return Long.parseLong(header);
+        } catch (NumberFormatException e) {
+            throw new BizException(ResultCode.UNAUTHORIZED, "X-User-Id 格式非法");
+        }
     }
 
     /**

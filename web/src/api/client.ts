@@ -300,3 +300,14 @@ export async function updateNotificationPreferences(
   const body = Array.isArray(prefs) ? { preferences: prefs } : prefs
   return api.put('/user/api/notifications/preferences', body)
 }
+
+// ===== Auth: self-service password change (add-change-password TASK-208) =====
+export interface ChangePasswordDTO {
+  oldPassword: string
+  newPassword: string
+}
+
+/** 自助改密：校验旧密码 → 新哈希落库 → 全量吊销该用户 refresh（X-User-Id 由网关注入，body 不含 userId）。 */
+export async function changePassword(dto: ChangePasswordDTO): Promise<Result> {
+  return api.post('/api/auth/change-password', dto)
+}

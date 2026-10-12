@@ -4,12 +4,20 @@ import com.sportverify.api.auth.dto.LoginRequestDTO;
 import com.sportverify.api.auth.dto.LogoutRequestDTO;
 import com.sportverify.api.auth.dto.RefreshRequestDTO;
 import com.sportverify.api.auth.dto.TokenDTO;
+import com.sportverify.common.exception.BizException;
 import com.sportverify.common.result.Result;
+import com.sportverify.common.result.ResultCode;
 import com.sportverify.user.auth.service.AuthService;
+import com.sportverify.user.dto.ChangePasswordRequestDTO;
+import jakarta.validation.ConstraintViolation;
+import jakarta.validation.Validation;
+import jakarta.validation.Validator;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.mock.web.MockHttpServletRequest;
 import org.springframework.mock.web.MockHttpServletResponse;
+
+import java.util.Set;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
@@ -148,5 +156,96 @@ class AuthControllerTest {
 
         verify(authService).logout("logout-body-only");
         assertTrue(setCookieHeader(response).contains("Max-Age=0"));
+    }
+
+    // ==================== TASK-208 自助改密：身份认定 + @Valid 判别式 ====================
+
+    /** R1e 红：空白/过短新密码 → @Valid 约束违规（controller 层 400 语义）；合法输入零违规 */
+    @Test
+    void R1e_changePasswordDTO_blankOrShortNewFailsValidation() {
+        Validator validator = Validation.buildDefaultValidatorFactory().getValidator();
+
+        ChangePasswordRequestDTO blank = new ChangePasswordRequestDTO();
+        blank.setOldPassword("oldpass6");
+        blank.setNewPassword("");
+        Set<ConstraintViolation<ChangePasswordRequestDTO>> v1 = validator.validate(blank);
+        assertTrue(v1.size() >= 1, "空白新密码应触发 @Valid 违规");
+
+        ChangePasswordRequestDTO shortNew = new ChangePasswordRequestDTO();
+        shortNew.setOldPassword("oldpass6");
+        shortNew.setNewPassword("123");
+        Set<ConstraintViolation<ChangePasswordRequestDTO>> v2 = validator.validate(shortNew);
+        assertTrue(v2.size() >= 1, "过短新密码应触发 @Valid 违规");
+
+        ChangePasswordRequestDTO blankOld = new ChangePasswordRequestDTO();
+        blankOld.setOldPassword("");
+        blankOld.setNewPassword("newsecret123");
+        Set<ConstraintViolation<ChangePasswordRequestDTO>> v3 = validator.validate(blankOld);
+        assertTrue(v3.size() >= 1, "空白旧密码应触发 @Valid 违规");
+
+        ChangePasswordRequestDTO valid = new ChangePasswordRequestDTO();
+        valid.setOldPassword("oldpass6");
+        valid.setNewPassword("newsecret123");
+        assertTrue(validator.validate(valid).isEmpty(), "合法输入不应有违规");
+    }
+
+    /** C1 绿：auth.enabled=true 且带 X-User-Id → 透传 service.changePassword，返回成功 */
+    @Test
+    void changePassword_enabledWithHeader_dispatchesById() {
+        controller.authEnabled = true;
+        ChangePasswordRequestDTO dto = new ChangePasswordRequestDTO();
+        dto.setOldPassword("oldpass6");
+        dto.setNewPassword("newsecret123");
+        MockHttpServletRequest req = new MockHttpServletRequest();
+        req.addHeader("X-User-Id", "42");
+
+        Result<Void> result = controller.changePassword(dto, req);
+
+        verify(authService).changePassword(42L, "oldpass6", "newsecret123");
+        assertNotNull(result);
+        assertEquals(0, result.getCode());
+    }
+
+    /** C2 红：auth.enabled=true 但缺 X-User-Id → 401（1001） */
+    @Test
+    void changePassword_enabledNoHeader_throws401() {
+        controller.authEnabled = true;
+        ChangePasswordRequestDTO dto = new ChangePasswordRequestDTO();
+        dto.setOldPassword("oldpass6");
+        dto.setNewPassword("newsecret123");
+
+        BizException e = org.junit.jupiter.api.Assertions.assertThrows(BizException.class,
+                () -> controller.changePassword(dto, new MockHttpServletRequest()));
+        assertEquals(ResultCode.UNAUTHORIZED.getCode(), e.getCode(), "缺 X-User-Id 应 401");
+    }
+
+    /** C3 红：auth.enabled=false → 拒绝（无可信身份来源，401） */
+    @Test
+    void changePassword_disabled_rejects() {
+        controller.authEnabled = false;
+        ChangePasswordRequestDTO dto = new ChangePasswordRequestDTO();
+        dto.setOldPassword("oldpass6");
+        dto.setNewPassword("newsecret123");
+        MockHttpServletRequest req = new MockHttpServletRequest();
+        req.addHeader("X-User-Id", "42");
+
+        BizException e = org.junit.jupiter.api.Assertions.assertThrows(BizException.class,
+                () -> controller.changePassword(dto, req));
+        assertEquals(ResultCode.UNAUTHORIZED.getCode(), e.getCode(), "鉴权未开启应拒绝");
+    }
+
+    /** C4 红：X-User-Id 非数字 → 401 */
+    @Test
+    void changePassword_invalidHeaderValue_throws401() {
+        controller.authEnabled = true;
+        ChangePasswordRequestDTO dto = new ChangePasswordRequestDTO();
+        dto.setOldPassword("oldpass6");
+        dto.setNewPassword("newsecret123");
+        MockHttpServletRequest req = new MockHttpServletRequest();
+        req.addHeader("X-User-Id", "abc");
+
+        BizException e = org.junit.jupiter.api.Assertions.assertThrows(BizException.class,
+                () -> controller.changePassword(dto, req));
+        assertEquals(ResultCode.UNAUTHORIZED.getCode(), e.getCode(), "非法 X-User-Id 应 401");
     }
 }
