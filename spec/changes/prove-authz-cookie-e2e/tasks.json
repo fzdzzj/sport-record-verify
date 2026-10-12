@@ -1,0 +1,24 @@
+[
+  {
+    "number": 1,
+    "category": "实施",
+    "task": "真实跨进程链路验证：V1 归属校验 403 链路 + V2 refresh cookie 链路",
+    "steps": [
+      { "step": "环境准备：确认共享中间件容器在跑（禁停禁改）；起 gateway+user+record 三 jar（连 scratch 库与已跑中间件；端口冲突用 --server.port 覆盖，禁 docker-compose.override）", "completed": false },
+      { "step": "V1：登录 A/B 两用户，A 携 token 访问 GET /api/records/{B记录}/points 断言 403，B 访问断言 200（网关真实注入 X-User-Id 通道）", "completed": false },
+      { "step": "V2：login Set-Cookie 五属性+body null → 带 cookie refresh 200+新 Set-Cookie+body null → 旧 cookie 重放 401 → logout 200+maxAge=0+后续 refresh 401", "completed": false },
+      { "step": "验证报告落台账：逐断言结果+实测输出摘录+服务起停证据；TASK-204 N3 与 TASK-205 N1 闭环登记", "completed": false }
+    ],
+    "passes": false
+  },
+  {
+    "number": 2,
+    "category": "验收",
+    "task": "门禁留证与台账笔（MEDIUM 档：免独立复核）",
+    "steps": [
+      { "step": "零改动证据：git diff 对生产代码/配置/CI/compose 全空；offline 逐位不变 655=52/50/152/157/159/70/15；token 2030；词面门对台账新文件+本批次探针对照复用；git diff --check；行尾新文件纯 LF+末尾换行", "completed": false },
+      { "step": "清理与提交：服务进程全停、.trae/tmp 清空、override 不存在；台账笔（docs(mailbox): 登记TASK-206真实链路验证与两N项闭环（TASK-206），恰 4 文件：tasks.json/spec.md §7 回填/handoff.md 新建/PLAN.md 纯追加），不推送不建 PR；MEDIUM 档免独立复核，指导亲核+CI 外部终验即收口", "completed": false }
+    ],
+    "passes": false
+  }
+]
