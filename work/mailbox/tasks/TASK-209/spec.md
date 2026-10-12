@@ -52,3 +52,7 @@ leaderboard-service: LeaderboardController.java, LeaderboardService.java, contri
 - discriminant results R1a-R1e, G1-G2: 见 handoff.md §4（R1a 绿 多用户窗口 SUM 降序+rank+昵称；R1b 半开边界 end+1 排除；R1c 非 ACTIVE 排除；R1d start>end 400 + 跨度>366 400 + start 必填；R1e size 默认 50 / cap 500；G1 既有 top/daily/friend/settlement 用例零回归；G2 写入链/结算/ZSet/索引/sql diff 核空）
 - deviations: 见 handoff.md §7（D1 台账笔自指哈希；D2 web 本机 build 因 esbuild Windows temp Access is denied 受阻，fallback vue-tsc rc=0 + 登记 CI web job 权威；D3 冗余反射行清理、@Select 注解比较符直书不转义）
 
+- 补记（指导侧封盘笔，2026-10-13）：推送 aa1d7f6..513fe0c（4 笔=TASK-208 封盘笔+TASK-209 派发/实施/台账笔）后第 49 次 CI
+  （run 38233752236，head=513fe0c）conclusion=success 全 job 绿（含 web job，D2 esbuild 受阻项经 CI 权威补验）。
+  四环节终裁全过（指导亲核/独立复核四块 PASS+重建后实质结论确认/两报告零矛盾/CI success），TASK-209 封盘。
+  D3=复核发现 ControllerTest 缺末尾换行，执行侧补 \\n 重建提交（747aa86/a9665f0→8b1a23b/513fe0c），重建后全量门禁复跑通过，指导侧裁决不再重派复核。
