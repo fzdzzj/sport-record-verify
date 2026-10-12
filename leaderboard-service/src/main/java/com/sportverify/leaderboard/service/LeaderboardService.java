@@ -453,6 +453,45 @@ public class LeaderboardService {
         return result;
     }
 
+    // ==================== 日期范围榜单只读查询（TASK-209） ====================
+
+    /**
+     * 日期范围榜单前 N 名（TASK-209）：对贡献表按 {@code settled_at} 半开窗口
+     * {@code [start, end+1d)} 聚合 ACTIVE 贡献里程，取前 {@code topN}（默认 50、上限 500）。
+     *
+     * <p><b>settled_at 归属口径</b>：贡献按<b>结算时间</b>（而非记录创建时间）归属周期——
+     * 贡献行在结算任务中被批量盖 settled_at（见 {@link #settleAndReconcile}），
+     * 三条边界语义：<code>settled_at</code>=start 当日 0 点后计入本窗；=
+     * end+1 日 0 点即被<b>排除</b>（半开窗口）；已回滚（非 ACTIVE）行不入窗。</p>
+     *
+     * <p>自然周期组装（周 = ISO 周一、月 = 本月 1 号，end=今天）由调用方（web/客户端）负责，
+     * 本服务只做原始范围聚合，不感知周/月语义——R2 前端按此约定传入开闭日。</p>
+     *
+     * <p>公共聚合面（同 {@link #dailyReport}）：不涉及 identity/userId，不缓存。昵称与
+     * 总榜同一路径（一次 Feign 批量补齐，user-service 不可用时降级为「用户{id}」占位）。</p>
+     */
+    public List<LeaderboardDTO> rangeReport(LocalDate start, LocalDate end, int topN) {
+        int size = topN <= 0 ? DEFAULT_TOP_N : Math.min(topN, DAILY_REPORT_MAX_SIZE);
+        LocalDateTime windowStart = start.atStartOfDay();
+        LocalDateTime windowEndExclusive = end.plusDays(1).atStartOfDay();
+        List<UserMileage> rows = contributionMapper.selectRangeSummaries(
+                ContributionStatus.ACTIVE.getCode(), windowStart, windowEndExclusive, size);
+        if (rows.isEmpty()) {
+            return List.of();
+        }
+        List<Long> userIds = rows.stream().map(UserMileage::getUserId).toList();
+        Map<Long, String> nicknames = resolveNicknames(userIds);
+
+        List<LeaderboardDTO> result = new ArrayList<>(rows.size());
+        for (int i = 0; i < rows.size(); i++) {
+            UserMileage row = rows.get(i);
+            result.add(LeaderboardDTO.of(i + 1, row.getUserId(),
+                    nicknames.getOrDefault(row.getUserId(), "用户" + row.getUserId()),
+                    row.getTotalDistance() == null ? BigDecimal.ZERO : row.getTotalDistance()));
+        }
+        return result;
+    }
+
     // ==================== 内部工具 ====================
 
     /** 「通过校验」终态：PASSED 与 RE_PASSED（申诉终判改判通过），与点赞域口径一致 */

@@ -57,6 +57,26 @@ public interface LeaderboardContributionMapper extends BaseMapper<LeaderboardCon
     List<UserMileage> selectActiveSummaries(@Param("status") Integer status);
 
     /**
+     * 日期范围榜单聚合（TASK-209）：{@code status = ACTIVE} 且 {@code settled_at} 落入
+     * 半开窗口 {@code [start, end+1d)} 的贡献按用户汇总里程降序取前 {@code size}。
+     *
+     * <p>窗口归属口径：按<b>结算时间</b>（{@code settled_at}）而非记录创建时间归属周期——
+     * 贡献行由定时结算任务批量盖 settled_at（见 LeaderboardService#settleAndReconcile），
+     * 同一用户多行贡献在窗口内累加为总分。已回滚（ROLLED_BACK）行不入窗（status 过滤）。</p>
+     *
+     * <p>已知限制：{@code settled_at} 无专用索引（全局禁加索引，见任务书 S0），
+     * 范围扫描走全表；演示规模下可接受，生产需在独立 perf 课题引入该索引。</p>
+     */
+    @Select("SELECT user_id AS userId, SUM(distance) AS totalDistance " +
+            "FROM leaderboard_contribution WHERE status = #{status} " +
+            "AND settled_at >= #{start} AND settled_at < #{endExclusive} " +
+            "GROUP BY user_id ORDER BY totalDistance DESC LIMIT #{size}")
+    List<UserMileage> selectRangeSummaries(@Param("status") Integer status,
+                                           @Param("start") LocalDateTime start,
+                                           @Param("endExclusive") LocalDateTime endExclusive,
+                                           @Param("size") int size);
+
+    /**
      * 结算对账聚合行（user_id + 累计 pass 里程），列别名与属性对齐映射。
      */
     class UserMileage {

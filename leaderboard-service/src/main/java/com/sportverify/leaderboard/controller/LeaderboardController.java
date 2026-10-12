@@ -73,6 +73,30 @@ public class LeaderboardController {
     }
 
     /**
+     * 日期范围榜单只读查询（TASK-209）：{@code GET /api/leaderboard/range?start=2026-09-01&end=2026-09-07&size=50}。
+     * 公共聚合面（同 daily，不涉 identity/userId）：按 {@code settled_at} 半开窗口聚合
+     * ACTIVE 贡献里程取前 N（默认 50、上限 500，service 内收敛）。start 必填、end 缺省今天；
+     * start&gt;end 或跨度&gt;366 天 → 400（IllegalArgumentException → GlobalExceptionHandler 400 PARAM）。
+     * 自然周期（周=ISO 周一、月=本月 1 号，end=今天）由调用方组装，服务只做原始范围聚合。
+     */
+    @GetMapping("/range")
+    public Result<List<LeaderboardDTO>> range(
+            @RequestParam("start") @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate start,
+            @RequestParam(value = "end", required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate end,
+            @RequestParam(value = "size", defaultValue = "50") int size) {
+        if (end == null) {
+            end = LocalDate.now();
+        }
+        if (start.isAfter(end)) {
+            throw new IllegalArgumentException("start 不能晚于 end：" + start + " > " + end);
+        }
+        if (start.plusDays(366).isBefore(end)) {
+            throw new IllegalArgumentException("日期范围跨度不能超过 366 天");
+        }
+        return Result.success(leaderboardService.rangeReport(start, end, size));
+    }
+
+    /**
      * 身份认定（数据隔离核心，见 ADR-0007）：true 时以网关 X-User-Id 为准，
      * 显式携带值不一致 → 403（1002，越权）；false 时降级为显式携带值（旧行为）。
      */

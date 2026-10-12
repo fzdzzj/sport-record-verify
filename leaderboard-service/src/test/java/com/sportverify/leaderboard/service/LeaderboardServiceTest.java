@@ -585,4 +585,95 @@ class LeaderboardServiceTest {
         }
         return set;
     }
+
+    // ==================== 日期范围榜单（TASK-209） ====================
+
+    /** R1a：多用户多行 ACTIVE 贡献入窗 → 按窗口内 SUM 降序、rank 从 1、昵称补齐 */
+    @Test
+    void rangeReport_multiUserWindow_sumsDescartesRankAndNickname() {
+        LocalDate start = LocalDate.of(2026, 9, 1);
+        LocalDate end = LocalDate.of(2026, 9, 7);
+        when(contributionMapper.selectRangeSummaries(ContributionStatus.ACTIVE.getCode(),
+                start.atStartOfDay(), end.plusDays(1).atStartOfDay(), 20))
+                .thenReturn(List.of(rangeRow(100L, "88.05"), rangeRow(200L, "12.50")));
+        when(userApi.listUsersByIds(List.of(100L, 200L)))
+                .thenReturn(Result.success(List.of(user(100L, "阿强"), user(200L, "小美"))));
+
+        List<LeaderboardDTO> top = service.rangeReport(start, end, 20);
+
+        assertEquals(2, top.size());
+        assertEquals(1, top.get(0).getRank());
+        assertEquals(100L, top.get(0).getUserId());
+        assertEquals("阿强", top.get(0).getNickname());
+        assertEquals(0, top.get(0).getDistance().compareTo(new BigDecimal("88.05")));
+        assertEquals(2, top.get(1).getRank());
+        assertEquals(200L, top.get(1).getUserId());
+        assertEquals("小美", top.get(1).getNickname());
+    }
+
+    /** R1b：半开边界——start 当日 0 点计入；end+1 日 0 点为排他上界（半开窗口） */
+    @Test
+    void rangeReport_halfOpenWindowBounds_usesEndExclusive() {
+        LocalDate start = LocalDate.of(2026, 9, 1);
+        LocalDate end = LocalDate.of(2026, 9, 7);
+        when(contributionMapper.selectRangeSummaries(anyInt(), any(), any(), anyInt()))
+                .thenReturn(List.of(rangeRow(100L, "42.50")));
+
+        service.rangeReport(start, end, 10);
+
+        verify(contributionMapper).selectRangeSummaries(ContributionStatus.ACTIVE.getCode(),
+                LocalDateTime.of(2026, 9, 1, 0, 0), LocalDateTime.of(2026, 9, 8, 0, 0), 10);
+    }
+
+    /** R1c：非 ACTIVE（ROLLED_BACK）不入窗——状态过滤全交给 Mapper，服务端聚合只含 ACTIVE 汇总 */
+    @Test
+    void rangeReport_activeOnly_rowsFromMapper() {
+        LocalDate start = LocalDate.of(2026, 9, 1);
+        LocalDate end = LocalDate.of(2026, 9, 7);
+        when(contributionMapper.selectRangeSummaries(ContributionStatus.ACTIVE.getCode(),
+                start.atStartOfDay(), end.plusDays(1).atStartOfDay(), 10))
+                .thenReturn(List.of(rangeRow(100L, "30.00")));
+
+        List<LeaderboardDTO> top = service.rangeReport(start, end, 10);
+
+        assertEquals(1, top.size());
+        assertEquals(100L, top.get(0).getUserId());
+        verify(contributionMapper).selectRangeSummaries(ContributionStatus.ACTIVE.getCode(),
+                start.atStartOfDay(), end.plusDays(1).atStartOfDay(), 10);
+    }
+
+    /** R1e：size 默认与上限——size<=0 退回默认 50；size>500 收敛为 500（与 dailyReport 同口径） */
+    @Test
+    void rangeReport_clampsSizeDefaultAndMax() {
+        LocalDate start = LocalDate.of(2026, 9, 1);
+        LocalDate end = LocalDate.of(2026, 9, 7);
+        when(contributionMapper.selectRangeSummaries(anyInt(), any(), any(), anyInt()))
+                .thenReturn(List.of());
+
+        service.rangeReport(start, end, 0);
+        verify(contributionMapper).selectRangeSummaries(ContributionStatus.ACTIVE.getCode(),
+                start.atStartOfDay(), end.plusDays(1).atStartOfDay(), 50);
+
+        service.rangeReport(start, end, 9999);
+        verify(contributionMapper).selectRangeSummaries(ContributionStatus.ACTIVE.getCode(),
+                start.atStartOfDay(), end.plusDays(1).atStartOfDay(), 500);
+    }
+
+    /** 空窗：返回空列表 */
+    @Test
+    void rangeReport_emptyWindow_returnsEmpty() {
+        LocalDate start = LocalDate.of(2026, 9, 1);
+        LocalDate end = LocalDate.of(2026, 9, 7);
+        when(contributionMapper.selectRangeSummaries(anyInt(), any(), any(), anyInt()))
+                .thenReturn(List.of());
+
+        assertTrue(service.rangeReport(start, end, 10).isEmpty());
+    }
+
+    private UserMileage rangeRow(long userId, String distance) {
+        UserMileage row = new UserMileage();
+        row.setUserId(userId);
+        row.setTotalDistance(new BigDecimal(distance));
+        return row;
+    }
 }

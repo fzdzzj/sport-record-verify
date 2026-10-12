@@ -218,6 +218,13 @@ export async function getLeaderboard(type: 'overall' | 'friend', size = 10): Pro
   return api.get('/leaderboard/api/leaderboard', { params: { type, size } })
 }
 
+// Date-range leaderboard (TASK-209): natural-period start assembled by caller, end defaults to today
+export async function getLeaderboardRange(start: string, size = 10, end?: string): Promise<Result<LeaderboardDTO[]>> {
+  return api.get('/leaderboard/api/leaderboard/range', {
+    params: end ? { start, end, size } : { start, size }
+  })
+}
+
 export const SAMPLE_TRACK_POINTS: TrackPointDTO[] = [
   {"seq":0,"lat":31.2453307,"lng":121.4576321,"ts":1700000000000},
   {"seq":1,"lat":31.2440070,"lng":121.4580362,"ts":1700000015000},

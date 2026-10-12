@@ -96,6 +96,7 @@ pnpm install && pnpm dev   # 默认 5173，Vite 代理原样转发网关 8080
 | 网关路由 | `curl -H "X-Internal-Token: local-demo-internal-token" http://127.0.0.1:8080/user/internal/health` | `{"code":0,"message":"success","data":"user-service is alive"}` |
 | Feign 探活 | `curl -H "X-Internal-Token: local-demo-internal-token" http://127.0.0.1:8080/verify/internal/probe/record` | `"record-service is alive"`（verify→record 跨服务调用） |
 | 榜单查询 | `curl http://127.0.0.1:8080/leaderboard/api/leaderboard?type=overall` | `{"code":0,...,"data":[...]}`（总榜；`type=friend&userId=` 查好友榜） |
+| 日期范围榜 | `curl "http://127.0.0.1:8080/leaderboard/api/leaderboard/range?start=2026-09-01&end=2026-09-07"` | 按 `settled_at` 半开窗口聚合 ACTIVE 贡献里程榜（start 必填、end 缺省今天、跨度 ≤366 天、size 默认 50 上限 500） |
 | 路网匹配 | `curl -X POST http://127.0.0.1:8080/mapmatch/match -H 'Content-Type: application/json' -d '{"points":[{"seq":0,"lat":31.23,"lng":121.4626,"ts":1700000000000},{"seq":1,"lat":31.2293,"lng":121.4627,"ts":1700000165000},{"seq":2,"lat":31.2287,"lng":121.4628,"ts":1700000428000}]}'` | `data.offRoadRatio≈0`（点位在南北高架路上，悬浮点位如黄浦江江心则 ≈1） |
 
 > 宿主机 3306 被本机 MySQL 占用时：复制 `scripts/verify/env.example` 为仓库根 `.env`，把 `MYSQL_PORT`
@@ -285,6 +286,17 @@ WALKING 取 3.5 m/s。判定时引擎按记录的 sportType 取对应阈值集�
 独立消费组 `leaderboard-consumer-group` 在 leaderboard-service 消费入榜/回滚（record 侧消费者已下线，
 无双写）；贡献表 `leaderboard_contribution` 复用 record_db（物理隔离拆库为可选项）；
 对 `sport_record` 仅只读快照查询（Mapper 结构上无写方法）。
+
+### 日期范围榜单（周榜 / 月榜，`add-leaderboard-range`）
+
+`GET /leaderboard/api/leaderboard/range?start=YYYY-MM-DD&end=YYYY-MM-DD&size=N` 对贡献表
+`leaderboard_contribution` 做单查询聚合：`status=ACTIVE` 且 `settled_at` 落入半开窗口
+`[start 0:00, end+1 日 0:00)` 的里程 `SUM(distance) GROUP BY user_id` 降序取前 N
+（默认 50、上限 500），rank 从 1 起、昵称批量补齐。**settled_at 归属口径**：贡献按结算时间
+（非记录创建时间）归属周期——settled_at 由定时结算任务批量盖章（见下）；end 当日 0 点即排除
+本窗（半开）。**自然周期组装**：周 = ISO 周一、月 = 本月 1 号为 start、end=今天（进行中周期可见）。
+已回滚（非 ACTIVE）行不入窗。范围榜为公共聚合面（无身份隔离）；`settled_at` 无专用索引为
+已登记已知限制（全局禁加索引，见任务书 S0），生产需独立 perf 课题引入。
 
 ## 道路拓扑匹配（服务数 5→6，选型理由见 [ADR-0006](docs/adr/0006-空间匹配.md)）
 
