@@ -51,8 +51,8 @@ user-service: AuthController.java, AuthService.java, dto/ChangePasswordRequestDT
 - C-01 fix(auth): ... (TASK-208) implementation commit; C-02 docs(mailbox): ... (TASK-208) ledger commit (tasks.json / spec.md S7 / handoff.md new / PLAN.md append-only). No push, no PR.
 
 ## S7 backfill (after C-02)
-- commit hashes: C-01 = ___; C-02 = ___
-- offline final / token final: ___
-- discriminant results R1a-R1e, G1-G2: ___
-- deviations: ___
+- commit hashes: C-01 = 6bd3cd5eb509818f6288fd247bec6f1f1ffcb904; C-02 = <本台账笔所在提交，自指沿 D1 先例，以 git log 实测为准>
+- offline final / token final: 665 = 52/50/162/157/159/70/15 (user 152→162 净增 +10，其余六模块逐位不变) / token 29 项 post-C01=2030、close=2030（只增不减）
+- discriminant results R1a-R1e, G1-G2: 见 handoff.md §4（R1a 绿；R1b 1001 hash 不变键保留；R1c 400；R1d 401；R1e @Valid 400；G1 改密后旧 refresh 401 + 新密码登录 200 / 旧密码 1001；G2 既有用例零回归）
+- deviations: 见 handoff.md §7（D1 自指哈希；D2 web 本机 build 因 esbuild Windows temp 访问被阻，fallback vue-tsc rc=0 + 登记 CI web job 权威）
 

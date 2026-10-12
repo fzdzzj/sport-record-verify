@@ -2465,3 +2465,18 @@ run `35802403723`（head `eba0108`，2026-09-23 00:31 UTC）——**web/build �
 | 未覆盖/跳过 | `--mode=online` 与 CI 全流程未跑；TASK-206 D2 闭合为可用性复现（scratch accept 200），非新增产品能力；词面门 CI 侧重跑待外部终验补记 |
 | 偏差 | D1 台账笔自指哈希（沿 TASK-178/183/204/205/206 先例）；D4 DB 口令实态沿用（容器卷口令与 .env 占位不一致，运行时环境变量覆盖）；D5 tasks.json 派发件第 2 任务对象缺逗号 JSON 语法修正（白名单内台账文件）；D6 offline 门 pwsh 回显伪影（脚本本体 BUILD SUCCESS rc=0 为权威，非 exit 3）。明细见 handoff.md §7 |
 - 补记（指导侧封盘笔，2026-10-12）：推送 024e1b3..beae7cd（3 笔）后第 47 次 CI（run 38215239129，head=beae7cd）conclusion=success 全 job 绿——offline 655、镜像、Trivy、词面门、compose config、web build/type-check 全过。MEDIUM 档外部终验达成，TASK-207 封盘（指导亲核 PASS/回传实测零矛盾/CI success 三环节，免独立复核）。成果：TASK-206 D2 环境缺口闭合——scratch user_db 经 sql/01-user-db.sql 原文 docker cp 字节级幂等重放补齐 notification/notification_preference 两表（git diff --no-index 归档对照 +28 行两新表 0 删 0 改、既有三表逐字全等零漂移），V2b 复验 C accept→200 ACCEPTED 全链落库（friend_request→ACCEPTED/friendship/notification FRIEND_ACCEPTED:2/notification_preference 查询成功）；offline 655 与 token 2030 逐位不变（零生产改动直接证据）；D5=指导侧派发笔 tasks.json 缺逗号笔误由执行侧白名单内合法修正（责任登记指导侧）。
+
+## 验收记录：`TASK-208`（用户自助改密与全量 refresh 吊销，执行侧，已收口）
+
+| 项 | 内容 |
+| --- | --- |
+| 开工基线 | 派发笔 `2d18d69`（提案三件套 + 任务书）；工作树干净；offline 基线 655=52/50/152/157/159/70/15；token 29 项开工实测 SUM=2030 |
+| C-01 实施笔 | `6bd3cd5` `fix(auth): 用户自助改密码与全量refresh吊销（TASK-208）`，恰 10 文件 = §4 白名单（AuthService.java/AuthController.java/ChangePasswordRequestDTO.java/AuthServiceTest.java/AuthControllerTest.java/settings.page.vue/index.page.vue/client.ts/typed-router.d.ts/README.md） |
+| C-02 台账笔 | 本笔 `docs(mailbox): 登记TASK-208改密码功能验收与台账闭环（TASK-208）`，恰好 4 文件（tasks.json 勾选 / spec.md §7 / handoff.md / PLAN.md），自指哈希沿 D1 先例 |
+| 目标与范围 | `POST /api/auth/change-password`（auth.enabled=true 时 X-User-Id 身份认定，self-ownership 隐式；false 拒绝 401）；AuthService.changePassword 查库+status=0→1001、BCrypt 旧密码失败→1001、old==new→400、encode 新 hash 落库 + stringRedisTemplate 模式删 `auth:refresh:{userId}:*` 全量吊销；当前 access 最长 15min 自然过期（TASK-202 时效口径）。api 模块零改动 |
+| 判别式红绿 | R1a 绿（200+hash 变+全量键删）；R1b 红（旧密码错 1001+hash 不变+键保留）；R1c 红（old==new 400）；R1d 红（status=0/不存在 401 1001）；R1e 红（空/短新密码 @Valid 400）；G1 绿（改密后旧 refresh 401 + 新密码登录 200 / 旧密码 1001）；G2 既有用例零回归。明细见 handoff.md §4 |
+| 本机门禁 | offline 逐位 **665=52/50/162/157/159/70/15** BUILD SUCCESS rc=0（仅 user 152→162 净增 +10，其余六模块逐位不变）；契约门双态 rc=0（在途 `--open TASK-208 --baseline=2d18d69` + 收口无参）；token 29 项 post-C01 2030 / close 2030 只增不减；词面门改动文件集 CI-exact ZERO_HIT + 探针阳性对照；`git diff --check` rc=0；行尾新文件纯 LF+末尾换行无 BOM、改文件保持基线各自身 |
+| web | 本机 `pnpm run build` 因 esbuild Windows temp 清理 `Access is denied` 受阻（环境面）；fallback vue-tsc type-check rc=0，登记 CI web job 为权威（TASK-205 D-esbuild 先例） |
+| 是否到达外部门槛 | **未到达**：两笔均未 push、未建 PR、无 CI run；FULL 档外部终验（独立复核 + CI 全绿）待指导侧推动推送后补记 |
+| 未覆盖 | `--mode=online`、CI 全流程、真实跨进程 X-User-Id/cookie 链路未跑；未声明 @Transactional（DB 落 hash + Redis 吊销最终一致，ADR-0009）；无性能/吞吐声明 |
+| 偏差 | D1 台账笔自指哈希（沿 TASK-178/183/204/205/206/207 先例）；D2 web 本机 build 受阻 fallback（TASK-205 D-esbuild 先例）；D3 pwsh 回显伪影（脚本本体 BUILD SUCCESS rc=0 为权威）。明细见 handoff.md §7 |
