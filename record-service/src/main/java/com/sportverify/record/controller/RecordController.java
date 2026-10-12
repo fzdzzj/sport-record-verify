@@ -3,6 +3,7 @@ package com.sportverify.record.controller;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.sportverify.api.record.dto.RecordSubmitDTO;
 import com.sportverify.api.record.dto.RecordSubmitResultDTO;
+import com.sportverify.api.record.dto.RecordSummaryDTO;
 import com.sportverify.api.record.dto.TrackPointDTO;
 import com.sportverify.api.verify.dto.AppealCreateDTO;
 import com.sportverify.api.verify.dto.AppealDTO;
@@ -72,6 +73,32 @@ public class RecordController {
     @GetMapping("/{id}/verify-result")
     public Result<VerificationResultDTO> verifyResult(@PathVariable("id") Long id) {
         return Result.success(sportRecordService.getVerifyResult(id));
+    }
+
+    /**
+     * 我的记录分页查询（TASK-211 个人统计面板数据面，归属即身份）。
+     *
+     * <p>身份语义（与 points/appeal 的 resolveUserId 口径一致，见 ADR-0007）：
+     * {@code app.auth.enabled=true} 时从网关注入的 {@code X-User-Id} 读取归属人，
+     * 缺失或空白 → 1001（HTTP 401）；false 时降级为显式 {@code userId} 查询参数，
+     * 必填缺失 → 400 PARAM。记录严格按解析出的归属人过滤
+     * （{@code WHERE user_id=?}），过滤即身份，构造上无越权。</p>
+     *
+     * <p>分页：{@code page>=1}，{@code size} 默认 20、上限 500（前端个人统计
+     * 单次拉取即契约上限，超出部分为已知限制）；响应形态对齐 points 端点的
+     * MyBatis-Plus {@code Page} 分页约定。</p>
+     */
+    @GetMapping("/my")
+    public Result<Page<RecordSummaryDTO>> myRecords(
+            @RequestParam(value = "userId", required = false) Long userId,
+            @RequestParam(defaultValue = "1") long page,
+            @RequestParam(defaultValue = "20") long size,
+            HttpServletRequest request) {
+        Long owner = authEnabled ? resolveUserId(request, null) : userId;
+        if (!authEnabled && owner == null) {
+            throw new IllegalArgumentException("缺少必须的 userId 查询参数");
+        }
+        return Result.success(sportRecordService.pageMyRecords(owner, page, size));
     }
 
     /**

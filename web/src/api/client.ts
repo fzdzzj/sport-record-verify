@@ -196,6 +196,21 @@ export async function getRecordPoints(recordId: number | string, page = 1, size 
   return api.get(`/record/api/records/${recordId}/points`, { params: { page, size } })
 }
 
+// ===== My-records (add-personal-stats TASK-211) =====
+export interface RecordSummaryDTO {
+  id: number
+  sportType: number
+  distance: number
+  status: number
+  // 落库时间；列表/统计按此字段聚合（近30天每日里程、最近记录排序）
+  createdAt?: string
+}
+
+/** 我的记录分页（GET /record/api/records/my）；auth 会话下 userId 由网关注入，前端不传。 */
+export async function getMyRecords(page = 1, size = 20): Promise<Result<PageResult<RecordSummaryDTO>>> {
+  return api.get('/record/api/records/my', { params: { page, size } })
+}
+
 // Friends
 export async function createFriendRequest(targetUserId: number): Promise<Result<FriendRequestDTO>> {
   return api.post('/user/api/friends/requests', { targetUserId })

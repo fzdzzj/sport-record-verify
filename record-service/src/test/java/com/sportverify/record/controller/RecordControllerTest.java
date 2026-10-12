@@ -3,6 +3,7 @@ package com.sportverify.record.controller;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.sportverify.api.record.dto.RecordSubmitDTO;
 import com.sportverify.api.record.dto.RecordSubmitResultDTO;
+import com.sportverify.api.record.dto.RecordSummaryDTO;
 import com.sportverify.api.record.dto.TrackPointDTO;
 import com.sportverify.api.verify.dto.AppealCreateDTO;
 import com.sportverify.api.verify.dto.AppealDTO;
@@ -154,6 +155,65 @@ class RecordControllerTest {
 
         assertEquals(page, out);
         verify(sportRecordService).pagePoints(5L, null, 2, 50);
+    }
+
+    // ==================== 我的记录（TASK-211） ====================
+
+    /** R1a 绿（auth 开）：X-User-Id 解析为归属人 → 仅以此 userId 查服务层（mapper 过滤见 ServiceTest） */
+    @Test
+    void myRecords_authEnabled_resolvesOwnerFromHeader() {
+        ReflectionTestUtils.setField(controller, "authEnabled", true);
+        when(request.getHeader("X-User-Id")).thenReturn("200");
+        Page<RecordSummaryDTO> page = new Page<>();
+        when(sportRecordService.pageMyRecords(200L, 1, 20)).thenReturn(page);
+
+        Page<RecordSummaryDTO> out = controller.myRecords(null, 1, 20, request).getData();
+
+        assertEquals(page, out);
+        verify(sportRecordService).pageMyRecords(200L, 1, 20);
+    }
+
+    /** R1b 绿：page/size 原样透传服务层（边界夹取在服务层，见 ServiceTest） */
+    @Test
+    void myRecords_delegatesPageSize() {
+        Page<RecordSummaryDTO> page = new Page<>();
+        when(sportRecordService.pageMyRecords(100L, 3, 50)).thenReturn(page);
+
+        Page<RecordSummaryDTO> out = controller.myRecords(100L, 3, 50, request).getData();
+
+        assertEquals(page, out);
+        verify(sportRecordService).pageMyRecords(100L, 3, 50);
+    }
+
+    /** R1c 红（auth 开，缺网关头）→ 1001 缺少 X-User-Id */
+    @Test
+    void myRecords_authEnabled_missingHeader_throwsUnauthorized() {
+        ReflectionTestUtils.setField(controller, "authEnabled", true);
+        when(request.getHeader("X-User-Id")).thenReturn(null);
+
+        BizException e = assertThrows(BizException.class,
+                () -> controller.myRecords(null, 1, 20, request));
+        assertEquals(ResultCode.UNAUTHORIZED.getCode(), e.getCode());
+    }
+
+    /** R1c 红（auth 关，缺显式 userId）→ 400 非法参数 */
+    @Test
+    void myRecords_authDisabled_missingUserId_throwsIllegalArgument() {
+        IllegalArgumentException e = assertThrows(IllegalArgumentException.class,
+                () -> controller.myRecords(null, 1, 20, request));
+        assertEquals("缺少必须的 userId 查询参数", e.getMessage());
+    }
+
+    /** R1c 绿（auth 关，显式 userId）→ 以此 userId 透传服务层 */
+    @Test
+    void myRecords_authDisabled_explicitUserId_delegates() {
+        Page<RecordSummaryDTO> page = new Page<>();
+        when(sportRecordService.pageMyRecords(88L, 1, 20)).thenReturn(page);
+
+        Page<RecordSummaryDTO> out = controller.myRecords(88L, 1, 20, request).getData();
+
+        assertEquals(page, out);
+        verify(sportRecordService).pageMyRecords(88L, 1, 20);
     }
 
     /** 局部异常处理：1001 → HTTP 401 + body code=1001 */

@@ -7,6 +7,7 @@ import com.sportverify.api.record.RecordStatus;
 import com.sportverify.api.record.SportType;
 import com.sportverify.api.record.dto.RecordSubmitDTO;
 import com.sportverify.api.record.dto.RecordSubmitResultDTO;
+import com.sportverify.api.record.dto.RecordSummaryDTO;
 import com.sportverify.api.record.dto.RecordWithPointsDTO;
 import com.sportverify.api.record.dto.SportRecordDTO;
 import com.sportverify.api.record.dto.StatusCallbackDTO;
@@ -370,6 +371,48 @@ public class SportRecordService {
         }
         SportRecordDTO dto = new SportRecordDTO();
         BeanUtils.copyProperties(record, dto);
+        return dto;
+    }
+
+    /**
+     * 我的记录分页查询（TASK-211 个人统计面板数据面）。
+     *
+     * <p>归属过滤即身份：以控制器解析出的 {@code userId} 作为唯一查询条件
+     * （{@code WHERE user_id=?}），构造上天然无越权——用户只能拿到自己的记录，
+     * 无需逐行归属断言。按创建时间倒序返回记录概要。</p>
+     *
+     * <p>分页边界：{@code page} 下限 1，{@code size} 夹在 [1, 500]（默认 20 由
+     * 控制器 {@code @RequestParam(defaultValue="20")} 承担）。500 上限即前端统计
+     * 单次拉取上限，超出部分视为已知限制（部分统计），由前端登记。</p>
+     *
+     * @param userId 归属用户（控制器按身份语义解析，非空）
+     * @param page   页码（下限 1）
+     * @param size   每页条数（1..500）
+     * @return 分页结果（{@code Page<RecordSummaryDTO>}），元素按 createdAt 倒序
+     */
+    public Page<RecordSummaryDTO> pageMyRecords(Long userId, long page, long size) {
+        long safePage = Math.max(page, 1L);
+        long safeSize = Math.min(Math.max(size, 1L), MAX_MY_RECORDS_SIZE);
+        Page<SportRecord> result = sportRecordMapper.selectPage(new Page<>(safePage, safeSize),
+                new LambdaQueryWrapper<SportRecord>()
+                        .eq(SportRecord::getUserId, userId)
+                        .orderByDesc(SportRecord::getCreatedAt));
+        Page<RecordSummaryDTO> dtoPage = new Page<>(result.getCurrent(), result.getSize(), result.getTotal());
+        dtoPage.setRecords(result.getRecords().stream().map(this::toSummary).toList());
+        return dtoPage;
+    }
+
+    /** 个人统计单次拉取每页上限（前端 size=500 全量聚合的契约上限）。 */
+    private static final int MAX_MY_RECORDS_SIZE = 500;
+
+    /** 实体 → 记录概要 DTO（字段：id/sportType/distance/status/createdAt）。 */
+    private RecordSummaryDTO toSummary(SportRecord record) {
+        RecordSummaryDTO dto = new RecordSummaryDTO();
+        dto.setId(record.getId());
+        dto.setSportType(record.getSportType());
+        dto.setDistance(record.getDistance());
+        dto.setStatus(record.getStatus());
+        dto.setCreatedAt(record.getCreatedAt());
         return dto;
     }
 

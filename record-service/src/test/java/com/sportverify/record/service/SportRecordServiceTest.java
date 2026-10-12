@@ -3,6 +3,7 @@ package com.sportverify.record.service;
 import com.sportverify.api.record.RecordStatus;
 import com.sportverify.api.record.dto.RecordSubmitDTO;
 import com.sportverify.api.record.dto.RecordSubmitResultDTO;
+import com.sportverify.api.record.dto.RecordSummaryDTO;
 import com.sportverify.api.record.dto.RecordWithPointsDTO;
 import com.sportverify.api.record.dto.StatusCallbackDTO;
 import com.sportverify.api.record.dto.TrackPointDTO;
@@ -747,6 +748,95 @@ class SportRecordServiceTest {
 
         var out = service.pagePoints(1L, null, 1, 20);
 
+        assertEquals(0, out.getRecords().size());
+    }
+
+    // ==================== 我的记录（TASK-211） ====================
+
+    /** R1a：mapper 过滤即身份——selectPage wrapper 必须携带 user_id=200 过滤（只查本人行） */
+    @Test
+    @SuppressWarnings("unchecked")
+    void pageMyRecords_filtersByUserId() {
+        TableInfoHelper.initTableInfo(
+                new MapperBuilderAssistant(new MybatisConfiguration(), ""), SportRecord.class);
+        Page<SportRecord> mpPage = new Page<>(1, 20, 0);
+        when(sportRecordMapper.selectPage(any(Page.class), any())).thenReturn(mpPage);
+
+        Page<RecordSummaryDTO> out = service.pageMyRecords(200L, 1, 20);
+
+        assertEquals(0, out.getRecords().size());
+        ArgumentCaptor<LambdaQueryWrapper> wrapper = ArgumentCaptor.forClass(LambdaQueryWrapper.class);
+        verify(sportRecordMapper).selectPage(any(Page.class), wrapper.capture());
+        assertTrue(wrapper.getValue().getSqlSegment().contains("user_id ="),
+                "归属即身份：分页查询必须带 user_id 过滤");
+        assertTrue(wrapper.getValue().getParamNameValuePairs().containsValue(200L),
+                "过滤值必须是解析出的归属人 user_id=200");
+    }
+
+    /** R1b：分页边界——page 下限 1、size 上限 500、默认由控制器 20 承担（此处夹取测试） */
+    @Test
+    @SuppressWarnings("unchecked")
+    void pageMyRecords_clampsPageAndSize() {
+        TableInfoHelper.initTableInfo(
+                new MapperBuilderAssistant(new MybatisConfiguration(), ""), SportRecord.class);
+        when(sportRecordMapper.selectPage(any(Page.class), any()))
+                .thenAnswer(inv -> {
+                    Page<SportRecord> p = inv.getArgument(0);
+                    return new Page<>(p.getCurrent(), p.getSize(), 0);
+                });
+
+        service.pageMyRecords(200L, 0, 501);
+        service.pageMyRecords(200L, -5, 1);
+        service.pageMyRecords(200L, 2, 500);
+
+        ArgumentCaptor<Page> pageArg = ArgumentCaptor.forClass(Page.class);
+        verify(sportRecordMapper, times(3)).selectPage(pageArg.capture(), any());
+        java.util.List<Page> pages = pageArg.getAllValues();
+        assertEquals(1L, pages.get(0).getCurrent(), "page 下限 1");
+        assertEquals(500L, pages.get(0).getSize(), "size cap 500");
+        assertEquals(1L, pages.get(1).getCurrent(), "负 page 夹到 1");
+        assertEquals(1L, pages.get(1).getSize(), "size 下限 1");
+        assertEquals(2L, pages.get(2).getCurrent());
+        assertEquals(500L, pages.get(2).getSize());
+    }
+
+    /** R1b：形如 points 端点的 Page 分页形态——DTO 字段映射完整（id/sportType/distance/status/createdAt） */
+    @Test
+    @SuppressWarnings("unchecked")
+    void pageMyRecords_mapsToSummaryDto() {
+        SportRecord rec = new SportRecord();
+        rec.setId(9L);
+        rec.setUserId(200L);
+        rec.setSportType(1);
+        rec.setDistance(new BigDecimal("12.5"));
+        rec.setStatus(RecordStatus.PASSED.getCode());
+        rec.setCreatedAt(LocalDateTime.of(2026, 10, 1, 10, 0));
+        Page<SportRecord> mpPage = new Page<>(1, 20, 1);
+        mpPage.setRecords(java.util.List.of(rec));
+        when(sportRecordMapper.selectPage(any(Page.class), any())).thenReturn(mpPage);
+
+        Page<RecordSummaryDTO> out = service.pageMyRecords(200L, 1, 20);
+
+        assertEquals(1, out.getTotal());
+        assertEquals(1, out.getRecords().size());
+        RecordSummaryDTO dto = out.getRecords().get(0);
+        assertEquals(9L, dto.getId());
+        assertEquals(1, dto.getSportType());
+        assertEquals(new BigDecimal("12.5"), dto.getDistance());
+        assertEquals(RecordStatus.PASSED.getCode(), dto.getStatus());
+        assertEquals(LocalDateTime.of(2026, 10, 1, 10, 0), dto.getCreatedAt());
+    }
+
+    /** R1d：空结果 → 空 Page（非错误，total=0、records 空） */
+    @Test
+    @SuppressWarnings("unchecked")
+    void pageMyRecords_emptyReturnsEmptyPage() {
+        when(sportRecordMapper.selectPage(any(Page.class), any()))
+                .thenReturn(new Page<SportRecord>(1, 20, 0));
+
+        Page<RecordSummaryDTO> out = service.pageMyRecords(200L, 1, 20);
+
+        assertEquals(0L, out.getTotal());
         assertEquals(0, out.getRecords().size());
     }
 
