@@ -9,6 +9,7 @@
         <li>好友申请/处理/列表</li>
         <li>总榜与好友榜</li>
         <li>我的记录与个人统计（登录态仪表盘）</li>
+        <li>记录轨迹查看（纯前端 SVG 投影，最近记录行「查看轨迹」入口）</li>
       </ul>
       <p class="mt-4">使用顶部导航进入各页。需先 <a @click="goLogin">登录</a>（依赖 auth 会话）后可见下方个人统计。</p>
       <p class="mt-2 text-sm text-gray-600">本会话 recordId 存 sessionStorage；刷新或换浏览器不会从服务端恢复（诚实无列表 API）。</p>
@@ -64,6 +65,7 @@
             <template #bodyCell="{ column, record }">
               <span v-if="column.key === 'sportType'">{{ sportTypeLabel(record.sportType) }}</span>
               <span v-else-if="column.key === 'status'">{{ statusLabel(record.status) }}</span>
+              <a v-else-if="column.key === 'actions'" @click="goTrack(record.id)">查看轨迹</a>
               <span v-else>{{ record[column.dataIndex] }}</span>
             </template>
           </a-table>
@@ -89,6 +91,8 @@ import { hasAccessToken } from '@/utils/token'
 const router = useRouter()
 function go(p: string) { router.push(p) }
 function goLogin() { router.push('/login') }
+/** 记录轨迹查看入口：recordId 经路由 query 传给 record-detail 页 */
+function goTrack(id: number) { router.push({ path: '/record-detail', query: { id: String(id) } }) }
 
 /** 登录态判定：仅依赖本地 access token 是否存在（取值口径同 auth 会话 util） */
 const authed = ref(hasAccessToken())
@@ -103,6 +107,7 @@ const recentColumns = [
   { title: '距离(km)', dataIndex: 'distance', key: 'distance' },
   { title: '状态', dataIndex: 'status', key: 'status' },
   { title: '创建时间', dataIndex: 'createdAt', key: 'createdAt' },
+  { title: '操作', key: 'actions' },
 ]
 
 /** 通过口径：isPassed 语义 = PASSED(2) 或 RE_PASSED(5)（终端态可入榜/可赞） */

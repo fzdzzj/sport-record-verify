@@ -86,6 +86,13 @@ declare module 'vue-router/auto-routes' {
       Record<never, never>,
       | never
     >,
+    '/record-detail': RouteRecordInfo<
+      '/record-detail',
+      '/record-detail',
+      Record<never, never>,
+      Record<never, never>,
+      | never
+    >,
     '/record-submit': RouteRecordInfo<
       '/record-submit',
       '/record-submit',
@@ -178,6 +185,12 @@ declare module 'vue-router/auto-routes' {
     'src/pages/probe.page.vue': {
       routes:
         | '/probe'
+      views:
+        | never
+    }
+    'src/pages/record-detail.page.vue': {
+      routes:
+        | '/record-detail'
       views:
         | never
     }
