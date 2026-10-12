@@ -2412,3 +2412,12 @@ run `35802403723`（head `eba0108`，2026-09-23 00:31 UTC）——**web/build �
 | 是否到达外部门槛 | **未达到**：本地两笔提交，未 push、未建 PR，无 CI run；CI 外部终验待推送后由指导侧补记。 |
 | 未覆盖/跳过 | 真实跨进程/跨服务联调（网关注入 X-User-Id → 控制器 → 服务层真实 HTTP 403 链路）未跑；`--mode=online` 与 CI 未跑；仅纯 JVM 服务层单测断言。 |
 | 偏差 | D1 C-02 自指哈希（沿 TASK-178/183 先例）；D2 新增 `appeal_callerNull_degradeAllowed` 初版 anyInt 匹配空版本号误抛「并发冲突」，已改 record.setVersion(0)+精确 stub 修复并复跑全绿；停止条件 1/2/3/4/5 均未触发。详见 handoff.md。 |
+
+**TASK-204 外部终验达成与封盘补记（2026-10-12，run 38195946253，封盘笔本地未推送）**
+
+| 项目 | 内容 |
+| --- | --- |
+| 外部终验 | 第 44 次外部门槛 CI（run 38195946253，head=947b231，推送 12a844b..947b231 共 7 笔：TASK-202 封盘笔 183d6f6 + TASK-203 派发/实施/台账三笔 + TASK-204 派发/实施/台账三笔）conclusion=success 全 job 绿：build（offline 650 + 6 镜像构建 + Trivy 收缩态 + 词面门 + compose config）与 web |
+| 终裁依据 | 四环节全过：指导侧亲核（Git 链 91540a2→0cca37a→947b231 + R1 pagePoints/R4 appeal 断言插入点与 createAppeal 权威口径抽查 + R2/R3 caller==toUser 断言与 InternalFriendController 显式 null 抽查）→ 独立复核子 agent 五块全量复跑 PASS 零阻断（offline 650 逐位 / Git 链与 13 文件只改清单 9+4 双向全等 / 契约门双态 / token 2030 / 词面门 -E 阳性对照 / 行尾 blob 基线一致）→ 两报告一致性零矛盾 → 第 44 次 CI success 外部终验 |
+| 非阻断项 | N1 行尾措辞（工作树/索引观感差异，blob 基线核对实质成立）；N2 token 措辞（新增行零命中、repo SUM 持平佐证）；N3 真实跨进程联调（已登记未覆盖，非复核范围） |
+| 课题终态 | R1 收口——轨迹分页仅记录归属人可读（pagePoints caller 断言，listPoints 内部契约不变）；R4 收口——申诉仅记录归属人可发起（createAppeal 仍以 record.userId 为权威）；R2/R3 收口——好友同意/拒绝仅申请 to_user 可操作（天然阻断 from_user 自同意）；均仅 auth.enabled=true 生效，false 零扰动；offline 基线 638→650（user 141→147、record 151→157 各 +6，其余五模块逐位不变） |

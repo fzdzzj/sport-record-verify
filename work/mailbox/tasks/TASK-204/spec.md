@@ -103,3 +103,7 @@ C-02 台账笔恰 4 文件：spec/changes/harden-idor-ownership/tasks.json、wor
 - **词面门**：CI-exact 正则对改动文件集 ZERO_HIT（rc=1）+ 合成探针阳性对照（`-E` 口径命中 rc=0、BRE 形态漏检 rc=1 证明 `-E` 必要性）。
 - **`git diff --check`** rc=0；**行尾**：改 9 文件保持各自基线（RecordControllerTest/InternalFriendController 为 LF，其余 7 文件 CRLF），无 BOM、无 mixed。
 - 红绿判别式全部通过（见 handoff §3）。
+- 补记（指导侧封盘笔，2026-10-12）：推送 12a844b..947b231（7 笔）后第 44 次 CI（run 38195946253，
+  head=947b231）conclusion=success 全 job 绿（build：offline 650 + 6 镜像构建 + Trivy 收缩态 + 词面门 +
+  compose config；web：build/type-check）。外部终验达成，TASK-204 封盘。独立复核非阻断项 N1（行尾措辞）、
+  N2（token 措辞）为报告层面；N3（真实跨进程联调）登记未覆盖。
