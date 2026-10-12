@@ -2507,3 +2507,15 @@ run `35802403723`（head `eba0108`，2026-09-23 00:31 UTC）——**web/build �
 | 是否到达外部门槛 | **未到达**：两笔均未 push、未建 PR、无 CI run；MEDIUM 档外部终验（指导亲核 + CI 外部终验收口）待指导侧推动推送后补记 |
 | 未覆盖 | `--mode=online`、CI 全流程、真实浏览器可视交互、真实 token 会话下 toggle→PUT 联调链路未跑；本任务不改变后端通知偏好语义，仅新增设置页视觉入口；开关状态以服务端返回为准 |
 | 偏差 | D1 台账笔自指哈希（沿 TASK-178/183/204/205/206/207/208/209 先例）；D2 R1 产物 client.ts 两函数为 TASK-187 既有代码仅审查取证零改动（C-01 恰 2 文件落在白名单 2-3 目标内）；D3 word-check 探针经 git add 后 grep 阳性对照、`git rm --cached` 还原无残留。明细见 handoff.md §7。C-01 bc0c6a2（2 文件+88/−2）/C-02 台账笔 4 文件 |
+
+
+## 验收记录：`TASK-211`（2026-10-12，我的记录端点与个人统计面板，FULL 档）
+
+| 项 | 内容 |
+| --- | --- |
+| 开工基线 | 派发笔 `ac6e469`（提案三件套 + 任务书）；工作树干净；offline 基线 675=52/50/162/157/159/80/15；token 29 项开工实测 SUM=2030 |
+| 本机门禁 | offline 逐位 **684=52/50/162/166/159/80/15** BUILD SUCCESS rc=0（record 157→166 净增 +9，其余六模块逐位不变）；静态门 `--static=record-service` rc=0（TASK-194 口径）；契约门双态 rc=0（在途 `--open TASK-211 --baseline=ac6e469` + 收口无参）；token 29 项 post-C01 2030 / close 2030（只增不减）；词面门改动文件集 CI-exact ZERO_HIT rc=1 + 探针阳性对照 HIT rc=0；`git diff --check` rc=0；行尾（RecordController.java/SportRecordService.java/SportRecordServiceTest.java/README.md 保持基线 CRLF，RecordControllerTest.java/client.ts/index.page.vue 保持基线 LF；RecordSummaryDTO.java 与 handoff.md 新文件纯 LF 无 BOM）；web `vue-tsc --noEmit` rc=0；`web/package.json` 零 diff |
+| 判别式 | R1a 仅返本人行（mapper selectPage wrapper 过滤 verify + X-User-Id=200 透传）；R1b 分页边界（page≥1/size cap500/默认20）；R1c auth 开缺头 401/1001、auth 关缺 userId 400、显式 userId 放行；R1d 空结果空 Page 非错误 + DTO 五字段映射；R2a 统计卡 SUM/计数/通过率=PASSED(2)+RE_PASSED(5)；R2b 近30天纯 CSS 条图零新依赖（package.json 零 diff）；R2c 最近记录前10条 createdAt 倒序；G1 record 既有用例零回归 offline 166 全绿 + vue-tsc rc=0；G2 红线 diff 空、api 仅新增 RecordSummaryDTO、未加 index（登记已知限制） |
+| 是否到达外部门槛 | **未到达**：两笔均未 push、未建 PR、无 CI run；FULL 档独立复核四块口径与 CI 外部终验待指导侧推动推送后补记 |
+| 未覆盖 | `--mode=online`、CI 全流程、真实网关注入 X-User-Id 的跨进程 HTTP 401/400 链路、真实浏览器可视交互未跑；本人记录 >500 条为部分统计（size cap 500 即单次拉取上限）；无性能/吞吐断言 |
+| 偏差 | D1 台账笔自指哈希（沿 TASK-178/183/204/205/206/207/208/209/210 先例）；D2 pwsh 管道遮蔽 Maven 退出码以 Maven 明文 BUILD SUCCESS 为准；D3 未跑本机 web build、按 S6 口径 vue-tsc rc=0 + CI web job 权威。明细见 handoff.md §8。C-01（feat(record)，8 文件）/ C-02 台账笔 4 文件 |

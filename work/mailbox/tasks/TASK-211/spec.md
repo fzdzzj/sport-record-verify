@@ -52,8 +52,8 @@ record-service: RecordController.java, RecordService.java, mapper file, RecordSu
 - C-01 feat(record): ... (TASK-211); C-02 docs(mailbox): ... (TASK-211) ledger 4 files. No push, no PR.
 
 ## S7 backfill (after C-02)
-- commit hashes: C-01 = ___; C-02 = ___
-- offline final / token final: ___
-- discriminant results: ___
-- deviations: ___
+- commit hashes: C-01 = 852e97b（feat(record): 我的记录端点与个人统计面板（TASK-211），8 文件 +444/−3）；C-02 = 本台账笔所在提交（自指沿 D1 先例，以 git log 实测为准）
+- offline final / token final: 684 = 52/50/162/166/159/80/15（record 157→166 净增 +9，其余六模块 common/gateway/user/verify/leaderboard/mapmatch 逐位不变） / token 29 项 post-C01=2030、close=2030（只增不减，新文档零 token 字面量）
+- discriminant results R1-R2, G1-G2: 见 handoff.md §4（R1a 仅返本人行 mapper 过滤 verify + X-User-Id 解析与提交；R1b 分页边界 page≥1/size cap500/默认20；R1c auth 开缺头 401/1001、auth 关缺 userId 400、显式 userId 放行；R1d 空结果空 Page 非错误 + DTO 五字段映射；R2a 统计卡 SUM/计数/通过率=PASSED(2)+RE_PASSED(5)；R2b 近30天纯 CSS 条图零新依赖、package.json 零 diff；R2c 最近记录前10条 createdAt 倒序；G1 record 既有用例零回归 offline 166 全绿 + vue-tsc rc=0；G2 红线 diff 空、api 仅新增 RecordSummaryDTO、未加 index）
+- deviations: 见 handoff.md §8（D1 C-02 自指哈希；D2 pwsh 管道遮蔽 Maven 退出码以 Maven 明文输出为准；D3 未跑本机 web build、按 S6 口径 vue-tsc rc=0 + CI web job 权威）
 
