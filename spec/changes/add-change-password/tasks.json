@@ -1,0 +1,23 @@
+[
+  {
+    "number": 1,
+    "category": "Implementation",
+    "task": "Self-service password change with full refresh revocation",
+    "steps": [
+      { "step": "R1 AuthService.changePassword: lookup+status gate, BCrypt old verify (1001 on fail), same-as-old 400, encode+update hash, bulk delete auth:refresh:{userId}:* keys; R2 AuthController POST /api/auth/change-password + local ChangePasswordRequestDTO (api module untouched)", "completed": false },
+      { "step": "R3 web: settings.page.vue + index entry + client api + typed-router.d.ts regen", "completed": false },
+      { "step": "Tests: AuthServiceTest/ AuthControllerTest red-green cases per preregistered matrix (R1a-R1e, G1-G2)", "completed": false }
+    ],
+    "passes": false
+  },
+  {
+    "number": 2,
+    "category": "Acceptance",
+    "task": "Full gates + two local commits (FULL tier, 4-block review)",
+    "steps": [
+      { "step": "offline per-digit vs 655 baseline (user net increase, others unchanged); contract gate dual-state; token 2030 two-point; word-check; git diff --check; line endings; web build or CI-web delegation", "completed": false },
+      { "step": "C-01 implementation commit + C-02 ledger commit (4 files), no push no PR", "completed": false }
+    ],
+    "passes": false
+  }
+]
