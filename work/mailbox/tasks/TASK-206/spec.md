@@ -59,3 +59,7 @@
 - 服务起停证据（进程清单/时间戳）：起 2026-10-12 13:13（start-services 打印 START_TS=20261012-131310，gateway/user/record 三 jar 启动就绪：gateway 8.859s、user 15.296s、record 24.483s）；端口↔PID 8080→37004、8081→24896、8082→32132；停 2026-10-12 13:20:57 taskkill /F 三 PID 全 SUCCESS，随后 tasklist 无 java.exe、8080-8082 端口空。
 - offline 逐位确认：655 = **52/50/152/157/159/70/15**（rc=0）；token：2030 → **2030**（只增不减）。
 - 偏差与未覆盖登记：D1 台账笔自指哈希；D2 V1c-b 因 notification_preference 表缺失 500（环境缺口，非断言目标红）；D3 curl jar 空 cookie 400 交互伪影；D4 运行 MySQL 卷口令与 .env 占位不一致（运行时环境变量覆盖）。详见 handoff.md §8。
+- 补记（指导侧封盘笔，2026-10-12）：推送 66e7f01..024e1b3（3 笔=TASK-205 封盘笔+TASK-206 派发笔+台账笔）后第 46 次 CI
+  （run 38209740992，head=024e1b3）conclusion=success 全 job 绿（build：offline 655 + 镜像 + Trivy + 词面门 + compose config；web：
+  build/type-check）。MEDIUM 档外部终验达成，TASK-206 封盘（三环节：指导亲核 PASS/回传实测零矛盾/CI success，免独立复核）。
+  TASK-204 N3 与 TASK-205 N1 两在册未覆盖项闭环；D2=scratch 库 notification_preference 表缺失环境缺口（候选后续课题，非阻断）。
