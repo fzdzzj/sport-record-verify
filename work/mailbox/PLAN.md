@@ -2450,3 +2450,17 @@ run `35802403723`（head `eba0108`，2026-09-23 00:31 UTC）——**web/build �
 | 未覆盖/跳过 | `--mode=online` 与 CI 全流程未跑；V1c-b 通知副作用链路因 `notification_preference` 表缺失未覆盖（环境缺口，须数据卷迁移后方可，属环境动作非本课题红线内）；V2 轮换/登出吊销以重放原 cookie 值得 401 判定（curl jar 空 cookie 400 为交互伪影） |
 | 偏差 | D1 台账笔自指哈希（沿 TASK-178/183/204/205 先例）；D2 V1c-b 为环境数据层缺口（归属断言已通过），非 TASK-206 断言目标红；D3 curl jar Max-Age=0 空值 400 交互伪影；D4 运行 MySQL 卷口令与 .env 占位不一致（运行时环境变量覆盖）。明细见 handoff.md §8 |
 - 补记（指导侧封盘笔，2026-10-12）：推送 66e7f01..024e1b3（3 笔）后第 46 次 CI（run 38209740992，head=024e1b3）conclusion=success 全 job 绿——offline 655、镜像、Trivy、词面门、compose config、web build/type-check 全过。MEDIUM 档外部终验达成，TASK-206 封盘（指导亲核 PASS/回传实测零矛盾/CI success 三环节，免独立复核——新口径首次应用）；TASK-204 N3（归属校验真实链路 V1a/V1b/V1c-a 实证 403/200）与 TASK-205 N1（cookie 链路 V2a-V2d 实证 Set-Cookie 五属性/轮换/重放 401/登出清除）两在册未覆盖项闭环；offline 655 与 token 2030 逐位不变（零生产改动直接证据）；D2=scratch 库 notification_preference 表缺失登记候选后续课题。
+
+## 验收记录：`TASK-207`（notification_preference scratch 环境同步与 V1c-b 复验闭环，执行侧，已提交）
+
+| 项 | 内容 |
+| --- | --- |
+| 开工基线 | 派发笔 `400e918`（提案三件套 + 任务书）；工作树干净；offline 基线 655=52/50/152/157/159/70/15；token 29 项开工实测 SUM=2030 |
+| 台账笔 | 本笔 `docs(mailbox): 登记TASK-207环境同步与V1c-b闭环（TASK-207）`，恰 4 文件（tasks.json 勾选 / spec.md §7 / handoff.md / PLAN.md），自指哈希沿 D1 先例；未 push、未建 PR |
+| 目标与范围 | 零生产代码/配置/CI/compose/pom 改动；对 scratch user_db 幂等重放 `sql/01-user-db.sql` 原文补上 notification 与 notification_preference 两表，复验 TASK-206 D2（V1c-b 环境缺口）闭环 |
+| 断言结果 | V1a=PASS（预检 SHOW TABLES + 逐表 SHOW CREATE 归档）；V1b=PASS（01-user-db.sql 原文重放 rc=0）；V1c=PASS（notification_preference 存在，既有 3 表零漂移：diff 仅 +2 表 0 删 0 改）；V2a=PASS（gateway/user 双 jar 起，auth.enabled=true）；V2b=PASS（B accept 自有收到好友申请 → HTTP 200 + 通知副作用落库）；V2c=PASS（双服务停、端口释放、中间件未动） |
+| 本机门禁 | offline 逐位 **655=52/50/152/157/159/70/15** BUILD SUCCESS rc=0；契约门双态 rc=0（在途 `--open TASK-207 --baseline=400e918` + 收口无参）；token 29 项 2030 只增不减；词面门对新台账文件 CI-exact ZERO_HIT；`git diff --check` rc=0；新文件纯 LF+末尾换行无 BOM |
+| 服务起停 | 起 2026-10-12 14:17（gateway Started 10.214s / user Started 17.393s，health UP）；端口→PID 8080→28420/8081→9492；停 2026-10-12 14:19 taskkill 全 SUCCESS，tasklist 无 java.exe、端口空、`.trae/tmp` 清空、无 override 残留 |
+| 是否到达外部门槛 | **未到达**：本笔未 push、未建 PR、无 CI run；CI 外部终验（MEDIUM 档收口挂 CI，含镜像/Trivy/词面门 compose config 等）待指导侧推动推送后补记 |
+| 未覆盖/跳过 | `--mode=online` 与 CI 全流程未跑；TASK-206 D2 闭合为可用性复现（scratch accept 200），非新增产品能力；词面门 CI 侧重跑待外部终验补记 |
+| 偏差 | D1 台账笔自指哈希（沿 TASK-178/183/204/205/206 先例）；D4 DB 口令实态沿用（容器卷口令与 .env 占位不一致，运行时环境变量覆盖）；D5 tasks.json 派发件第 2 任务对象缺逗号 JSON 语法修正（白名单内台账文件）；D6 offline 门 pwsh 回显伪影（脚本本体 BUILD SUCCESS rc=0 为权威，非 exit 3）。明细见 handoff.md §7 |

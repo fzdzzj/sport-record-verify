@@ -40,8 +40,8 @@ spec/changes/sync-notification-preference-env/tasks.json; work/mailbox/tasks/TAS
 - env cleanup evidence: services stopped, .trae/tmp empty, no override, porcelain empty.
 
 ## S7 backfill (after ledger commit)
-- ledger commit hash: ___ (self-referential, D1 precedent) ___
-- V1a/V1b/V1c/V2b results: ___
-- offline/token final: ___
-- TASK-206 D2 flip: closed with evidence.
+- ledger commit hash: `___`（self-referential，沿 D1 先例，以实际台账笔提交哈希为准）
+- V1a/V1b/V1c/V2b results: V1a=PASS（pre SHOW TABLES 存量表 user/friend_request/friendship + 逐表 SHOW CREATE 归档）；V1b=PASS（sql/01-user-db.sql 原文经容器内文件打开管道重放，rc=0）；V1c=PASS（notification_preference 新建且在位；既有 3 表与 V1a 归档逐表 SHOW CREATE 全等，零漂移：diff 仅 +28 行两新表、0 删除 0 修改）；V2b=PASS（B 对自有收到的好友申请 accept → HTTP 200，通知副作用 notification FRIEND_ACCEPTED 落库）。
+- offline/token final: offline 逐位 655=52/50/152/157/159/70/15（BUILD SUCCESS rc=0）；token 29 项台账笔后与收口两时点均 SUM 2030 只增不减。
+- TASK-206 D2 flip: closed with evidence.（notification_preference 表在位 + V2b accept 200 全链路实证，D2 环境数据层缺口闭合）
 
