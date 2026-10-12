@@ -115,3 +115,8 @@
 - 红绿判别式逐条结果：R1a/R1b/R1c/R1d = **PASS**（AuthControllerTest 新增 5 例全绿）；R2/PASS、R3/PASS、G1/G2/G3 = PASS
 - 只改清单实证：C-01 git diff --name-only 恰 7 文件全等；C-02 恰 4 文件（tasks.json/spec.md/handoff.md/PLAN.md）
 - 偏差与未覆盖登记：见 handoff.md §7/§8——D1 C-02 自指哈希沿先例；D2 refresh/logout 的 @Valid（DTO @NotBlank 与 cookie 空 body 冲突）移除并放宽 required=false，DTO 本体零改动、空值语义仍交 AuthService 既有 401/幂等裁决；web vite build 本机因 esbuild 清理临时目录的环境级 Access denied 无法完成（3283 modules 已全数 transpile、vue-tsc rc=0），按 §6 登记「CI web job 为权威，外部终验覆盖」；真实跨进程 cookie 链路未跑登记未覆盖。
+- 补记（指导侧封盘笔，2026-10-12）：推送 947b231..66e7f01（4 笔）后第 45 次 CI（run 38204317451，
+  head=66e7f01）conclusion=success 全 job 绿（build：offline 655 + 镜像 + Trivy + 词面门 + compose config；
+  web：build/type-check——N2 本机 esbuild 环境受阻项经 CI web job 权威验证补齐）。外部终验达成，TASK-205 封盘。
+  四环节终裁全过（指导亲核/独立复核五块 PASS 零阻断/两报告零矛盾/CI success）；非阻断项 N1（真实跨进程/跨域
+  cookie 链路）登记未覆盖；D2（refresh/logout @Valid 移除+required=false）裁决为设计内必要调整。

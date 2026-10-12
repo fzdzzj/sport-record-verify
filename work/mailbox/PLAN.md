@@ -2434,3 +2434,4 @@ run `35802403723`（head `eba0108`，2026-09-23 00:31 UTC）——**web/build �
 | 是否到达外部门槛 | **未达到**：本地两笔提交，未 push、未建 PR，无 CI run；CI 外部终验（含 web job）待推送后由指导侧补记。 |
 | 未覆盖/跳过 | 真实跨进程/跨域 cookie 链路（浏览器实际带 cookie → 网关 → AuthController → 服务 401）未跑；`--mode=online` 与 CI 未跑；仅纯 JVM 控制器层单测断言。 |
 | 偏差 | D1 C-02 自指哈希（沿 TASK-178/183/204 先例）；D2 refresh/logout 的 `@Valid`（DTO 侧 NotBlank 与 cookie 通道空 body 冲突）移除并放宽 `@RequestBody(required=false)`，DTO 本体零改动、空值语义仍交 AuthService 既有 401/幂等裁决；停止条件 1/2/3/4/5/6 均未触发。详见 handoff.md。 |
+- 补记（指导侧封盘笔，2026-10-12）：推送 947b231..66e7f01（4 笔）后第 45 次 CI（run 38204317451，head=66e7f01）conclusion=success 全 job 绿——offline 655、镜像、Trivy、词面门、compose config、web build/type-check 全过（N2 本机 esbuild 受阻项经 CI web job 权威补验）。外部终验达成，TASK-205 封盘；四环节终裁全过（指导亲核/独立复核五块 PASS 零阻断/两报告零矛盾/CI success）；D2（refresh/logout 的 @Valid 移除与 required=false）裁决设计内必要调整；N1 真实跨进程 cookie 链路登记未覆盖；offline 终态 655=52/50/152/157/159/70/15，token 2030 持平。
