@@ -2521,3 +2521,18 @@ run `35802403723`（head `eba0108`，2026-09-23 00:31 UTC）——**web/build �
 | 偏差 | D1 台账笔自指哈希（沿 TASK-178/183/204/205/206/207/208/209/210 先例）；D2 pwsh 管道遮蔽 Maven 退出码以 Maven 明文 BUILD SUCCESS 为准；D3 未跑本机 web build、按 S6 口径 vue-tsc rc=0 + CI web job 权威。明细见 handoff.md §8。C-01（feat(record)，8 文件）/ C-02 台账笔 4 文件 |- 补记（指导侧封盘笔，2026-10-13）：推送 513fe0c..fbe7d1e（4 笔）后第 50 次 CI（run 38239853834，head=fbe7d1e）conclusion=success 全 job 绿——offline 675、镜像、Trivy、词面门、compose config、web build/type-check 全过。MEDIUM 档三环节终裁（指导亲核/回传零矛盾/CI success），TASK-210 封盘。课题终态：settings 页新增通知偏好开关区块（onMounted GET 动态渲染、切换 PUT 单行、响应回填+失败回滚+toggling 防抖）；client.ts 两函数系 TASK-187 既有实现仅审查取证（D2，C-01 实际仅 2 文件=README+settings.page.vue）；后端零触碰、offline 675 与 token 2030 逐位不变。C-01 bc0c6a2/C-02 fbe7d1e。
 - TASK-212（LIGHT 档文档订正，2026-10-13）：① NotificationPreferenceView.java:22 javadoc 通知类型三类→四类（补 RECORD_LIKED，对齐 SUPPORTED_TYPES 实况——TASK-211 立项侦察发现该注释滞后曾致误判「点赞通知无法关闭」，实为已可关闭）；② AuthService.java:373 javadoc「HMAC/BCrypt」→「BCrypt」（TASK-208 N1 收口，实为纯 BCrypt）；③ index.page.vue 补 EOF 末尾换行（TASK-211 复核 N2 卫生项）。单笔提交，三文件均为文档/行尾性质零语义改动。
 - 补记（指导侧封盘笔，2026-10-13）：推送 fbe7d1e..70cb954（5 笔）后第 51 次 CI（run 38264375773，head=70cb954）conclusion=success 全 job 绿——offline 684、静态、镜像、Trivy、词面门、compose config、web build/type-check 全过。四环节终裁全过，TASK-211 封盘（E1 数据面板课题收官）；TASK-212（E2 LIGHT 档文档订正）随批验证收官，TASK-208 N1/TASK-211 复核 N2/立项侦察注释误判三 N 项一次清零。E1+E2 双课题闭环：GET /api/records/my（X-User-Id 归属/过滤即身份/分页 cap500）+ index 页个人仪表盘（统计卡/30 天纯 CSS 趋势/最近记录，零新依赖）；offline 基线 675→684（record 157→166 净增+9，其余逐位不变），token 2030 持平。C-01 852e97b（8 文件+444/−3）/C-02 0c2c79d；已知限制：>500 条部分统计、user_id 无专用索引、真实浏览器交互未跑（CI web job 权威）。
+
+## 验收记录：`TASK-213`（2026-10-12，记录轨迹查看页 SVG 投影，纯前端 MEDIUM 档）
+
+| 项 | 内容 |
+| --- | --- |
+| 开工基线 | 派发笔 `cc9ce4a`（提案三件套 + 任务书）；工作树干净；offline 基线 684=52/50/162/166/159/80/15；token 29 项开工实测 SUM=2030 |
+| C-01 实施笔 | `7e4be36` `feat(web): 记录轨迹查看页SVG投影（TASK-213）`，恰 4 文件 = §4 白名单（record-detail.page.vue 新 / index.page.vue / typed-router.d.ts / README.md），+203／−0 |
+| C-02 台账笔 | 本笔 `docs(mailbox): 登记TASK-213轨迹页验收与台账闭环（TASK-213）`，恰 4 文件（tasks.json 勾选 / spec.md §7 / handoff.md / PLAN.md），自指哈希沿 D1 先例 |
+| 目标与范围 | Web 新增 `/record-detail` 页消费既有 `GET /record/api/records/{id}/points`（size=500 单次拉取），min-max 归一化投影 lat/lng 到固定 viewBox SVG（polyline + 起点绿/终点红 + 逐点 circle 悬停 seq/speed/ts），摘要头经既有 verify-result（失败降级仅轨迹）；index 最近记录行「查看轨迹」入口（query 传 recordId）；六后端/api/common/父 pom/sql/ci.yml/scripts/compose/web package.json 零改动 |
+| 判别式红绿 | R1 绿（min-max 归一化 + 单点/同坐标退化取 0.5 落中）；R2 绿（403/1002→权限错误态，前端零绕过零本地身份判断）；R3 绿（size=500 单次 + >500 部分轨迹限制标注）；G1 绿（vue-tsc rc=0 + pnpm build 成功）；G2 绿（package.json 零 diff + 后端 diff 空 + typed-router 含新路由）。明细见 handoff.md §4 |
+| 本机门禁 | offline 逐位 **684=52/50/162/166/159/80/15** BUILD SUCCESS rc=0（纯前端七模块与基线逐位不变）；契约门双态 rc=0（在途 `--open TASK-213 --baseline=cc9ce4a` + 收口无参）；token 29 项 post-C01 2030 / close 2030（只增不减）；词面门改动文件集 CI-exact ZERO_HIT + 探针阳性对照 HIT；`git diff --check` rc=0；行尾新文件纯 LF+末尾换行无 BOM、改文件保持基线各自身 |
+| web | `pnpm run type-check` rc=0；`pnpm run build` 本机成功（TMP 重定向仓内 .trae/tmp 规避 esbuild temp 清理）；typed-router.d.ts 由构建再生成 13 行，CI `git diff --exit-code` 判据前提成立 |
+| 是否到达外部门槛 | **未到达**：两笔均未 push、未建 PR、无 CI run；MEDIUM 档外部终验（指导亲核 + CI 外部终验收口）待指导侧推动推送后补记 |
+| 未覆盖 | `--mode=online`、CI 全流程、真实网关注入 X-User-Id 的跨进程 403 链路、真实浏览器可视交互未跑；真实地图底图（Leaflet+OSM）为设计性非目标；无性能/吞吐声明 |
+| 偏差 | D1 台账笔自指哈希（沿 TASK-178/183/204/205/206/207/208/209/210/211 先例）；D2 client.ts 既有 getRecordPoints 满足 size 参数，未改动（C-01 落 4 文件）；D3 本机 build 成功无 esbuild 阻断；D4 tasks.json 重写补回末尾换行。明细见 handoff.md §8 |
