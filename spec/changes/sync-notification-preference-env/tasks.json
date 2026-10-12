@@ -1,0 +1,22 @@
+[
+  {
+    "number": 1,
+    "category": "Implementation",
+    "task": "notification_preference scratch env sync + V1c-b reverification",
+    "steps": [
+      { "step": "V1: pre-check SHOW TABLES + SHOW CREATE TABLE archive of existing tables; idempotent replay of sql/01-user-db.sql against scratch user_db; post-check evidence: notification_preference exists, existing tables zero drift", "completed": false },
+      { "step": "V2: start gateway+user jars; reverify V1c-b: B accept real-friend request -> 200; stop services with evidence", "completed": false }
+    ],
+    "passes": false
+  },
+  {
+    "number": 2,
+    "category": "Acceptance",
+    "task": "gates evidence + ledger commit (MEDIUM tier)"
+    "steps": [
+      { "step": "offline per-digit 655=52/50/152/157/159/70/15; contract gate dual-state --baseline=<dispatch>; token 2030 two-point; word-check on new ledger files (probe reuse); git diff --check; pure LF for new files", "completed": false },
+      { "step": "ledger commit exactly 4 files (tasks.json / spec.md S7 / handoff.md new / PLAN.md append-only), no push no PR; MEDIUM tier: no independent review, lead check + CI close", "completed": false }
+    ],
+    "passes": false
+  }
+]
