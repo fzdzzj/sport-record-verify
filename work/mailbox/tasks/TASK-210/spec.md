@@ -46,3 +46,5 @@ web/src/pages/settings.page.vue, web/src/api/client.ts, README.md (optional). Ta
 - discriminant results R1/R2, G1/G2: 见 handoff.md §4（R1 client.ts 契约一致：getNotificationPreferences 用 GET `/user/api/notifications/preferences`、updateNotificationPreferences 用 PUT 同路径 body `{preferences:[{type,enabled}]}`，与既有通知调用 `/user/api/notifications` 前缀范式一致、与任务书 §1 逐项对上；R2 settings.page.vue 自 GET 响应动态渲染开关列表，源码无硬编码类型数组、切换单行 PUT `[{type,enabled}]`、成功 message + 响应回填本地态、加载失败非致命提示+空区块；G1 vue-tsc --noEmit rc=0；G2 后端 diff `git diff a581972..HEAD` 全空）
 - deviations: 见 handoff.md §7（D1 台账笔自指哈希；D2 R1 产物 client.ts 两函数为 TASK-187 既有代码，本次仅代码审查取证、无改动；无 web build 受阻、vue-tsc 本机直接 rc=0）
 
+- 补记（指导侧封盘笔，2026-10-13）：推送 513fe0c..fbe7d1e（4 笔=TASK-209 封盘笔+TASK-210 派发/实施/台账笔）后第 50 次 CI
+  （run 38239853834，head=fbe7d1e）conclusion=success 全 job 绿。三环节终裁（MEDIUM 档：指导亲核 PASS/回传实测零矛盾/CI success，免独立复核），TASK-210 封盘。
