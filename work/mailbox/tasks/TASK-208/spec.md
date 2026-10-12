@@ -56,3 +56,8 @@ user-service: AuthController.java, AuthService.java, dto/ChangePasswordRequestDT
 - discriminant results R1a-R1e, G1-G2: 见 handoff.md §4（R1a 绿；R1b 1001 hash 不变键保留；R1c 400；R1d 401；R1e @Valid 400；G1 改密后旧 refresh 401 + 新密码登录 200 / 旧密码 1001；G2 既有用例零回归）
 - deviations: 见 handoff.md §7（D1 自指哈希；D2 web 本机 build 因 esbuild Windows temp 访问被阻，fallback vue-tsc rc=0 + 登记 CI web job 权威）
 
+- 补记（指导侧封盘笔，2026-10-12）：推送 beae7cd..aa1d7f6（4 笔=TASK-207 封盘笔+TASK-208 派发/实施/台账笔）后第 48 次 CI
+  （run 38223686992，head=aa1d7f6）conclusion=success 全 job 绿（含 web build/type-check，D2 本机 esbuild 受阻项经 CI 权威补验）。
+  四环节终裁全过（指导亲核/独立复核四块 PASS 零阻断——新口径首次 FULL 复核/两报告零矛盾/CI success），TASK-208 封盘。
+  auth 域功能面至此全闭环（register/login/refresh/logout/ban/unban/grant/revoke/change-password）。
+  N1=AuthService.java:373 javadoc「HMAC/BCrypt」措辞瑕疵（实为纯 BCrypt），非阻断，后续课题随手订正。
