@@ -57,3 +57,5 @@ record-service: RecordController.java, RecordService.java, mapper file, RecordSu
 - discriminant results R1-R2, G1-G2: 见 handoff.md §4（R1a 仅返本人行 mapper 过滤 verify + X-User-Id 解析与提交；R1b 分页边界 page≥1/size cap500/默认20；R1c auth 开缺头 401/1001、auth 关缺 userId 400、显式 userId 放行；R1d 空结果空 Page 非错误 + DTO 五字段映射；R2a 统计卡 SUM/计数/通过率=PASSED(2)+RE_PASSED(5)；R2b 近30天纯 CSS 条图零新依赖、package.json 零 diff；R2c 最近记录前10条 createdAt 倒序；G1 record 既有用例零回归 offline 166 全绿 + vue-tsc rc=0；G2 红线 diff 空、api 仅新增 RecordSummaryDTO、未加 index）
 - deviations: 见 handoff.md §8（D1 C-02 自指哈希；D2 pwsh 管道遮蔽 Maven 退出码以 Maven 明文输出为准；D3 未跑本机 web build、按 S6 口径 vue-tsc rc=0 + CI web job 权威）
 
+- 补记（指导侧封盘笔，2026-10-13）：推送 fbe7d1e..70cb954（5 笔=TASK-211 派发/实施/台账+TASK-210 封盘笔+TASK-212 订正笔）后第 51 次 CI
+  （run 38264375773，head=70cb954）conclusion=success 全 job 绿。四环节终裁全过（指导亲核/独立复核四块 PASS 零阻断/两报告零矛盾/CI success），TASK-211 封盘；交付边界裁决以 0c2c79d 为准（81ca771 系 TASK-210 封盘笔 OOS 时序偏移，复核 N1 已归因）。
