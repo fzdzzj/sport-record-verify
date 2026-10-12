@@ -19,7 +19,7 @@ public class NotificationPreferenceView implements Serializable {
 
     private static final long serialVersionUID = 1L;
 
-    /** 通知类型：RECORD_VERIFIED / RECORD_REJECTED / FRIEND_ACCEPTED */
+    /** 通知类型：RECORD_VERIFIED / RECORD_REJECTED / FRIEND_ACCEPTED / RECORD_LIKED */
     private String type;
 
     /** 是否接收：true 开启，false 关闭 */
