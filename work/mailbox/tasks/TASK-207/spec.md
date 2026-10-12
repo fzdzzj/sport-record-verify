@@ -45,3 +45,8 @@ spec/changes/sync-notification-preference-env/tasks.json; work/mailbox/tasks/TAS
 - offline/token final: offline 逐位 655=52/50/152/157/159/70/15（BUILD SUCCESS rc=0）；token 29 项台账笔后与收口两时点均 SUM 2030 只增不减。
 - TASK-206 D2 flip: closed with evidence.（notification_preference 表在位 + V2b accept 200 全链路实证，D2 环境数据层缺口闭合）
 
+- 补记（指导侧封盘笔，2026-10-12）：推送 024e1b3..beae7cd（3 笔=TASK-206 封盘笔+TASK-207 派发笔+台账笔）后第 47 次 CI
+  （run 38215239129，head=beae7cd）conclusion=success 全 job 绿。MEDIUM 档外部终验达成，TASK-207 封盘（三环节：指导亲核 PASS/回传实测
+  零矛盾/CI success，免独立复核）。TASK-206 D2 正式翻转闭环：scratch user_db 经 01-user-db.sql 原文幂等重放补齐
+  notification/notification_preference 两表（既有三表零结构漂移），V1c-b 复验 C accept→200 ACCEPTED 全链落库实证。
+  D5=指导侧派发笔 tasks.json 缺逗号笔误，执行侧白名单内合法修正（责任在指导侧，登记留痕）。
