@@ -35,16 +35,16 @@ public class InternalFriendController {
         return Result.success(friendService.createRequest(dto.getUserId(), dto.getTargetUserId()));
     }
 
-    /** 同意申请 */
+    /** 同意申请（/internal/** 网内信任，无调用者上下文，caller 显式 null 走降级语义，见 TASK-204） */
     @PostMapping("/requests/{id}/accept")
     public Result<FriendRequestDTO> accept(@PathVariable("id") Long id) {
-        return Result.success(friendService.accept(id));
+        return Result.success(friendService.accept(id, null));
     }
 
-    /** 拒绝申请 */
+    /** 拒绝申请（/internal/** 网内信任，无调用者上下文，caller 显式 null 走降级语义，见 TASK-204） */
     @PostMapping("/requests/{id}/reject")
     public Result<FriendRequestDTO> reject(@PathVariable("id") Long id) {
-        return Result.success(friendService.reject(id));
+        return Result.success(friendService.reject(id, null));
     }
 
     /** 好友列表（分页，仅 ACCEPTED；record-service 好友榜过滤入口） */

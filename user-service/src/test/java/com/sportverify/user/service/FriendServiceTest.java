@@ -174,7 +174,7 @@ class FriendServiceTest {
         when(requestMapper.selectById(5L)).thenReturn(pendingRequest(5L, 1001L, 1002L));
         when(requestMapper.updateStatus(eq(5L), eq(0), eq(1), any())).thenReturn(1);
 
-        FriendRequestDTO dto = service.accept(5L);
+        FriendRequestDTO dto = service.accept(5L, 1002L);
 
         assertEquals("ACCEPTED", dto.getStatus());
         ArgumentCaptor<Friendship> captor = ArgumentCaptor.forClass(Friendship.class);
@@ -193,7 +193,7 @@ class FriendServiceTest {
     void accept_requestNotFound() {
         when(requestMapper.selectById(5L)).thenReturn(null);
 
-        BizException e = assertThrows(BizException.class, () -> service.accept(5L));
+        BizException e = assertThrows(BizException.class, () -> service.accept(5L, null));
 
         assertEquals(ResultCode.FRIEND_RELATION_NOT_FOUND.getCode(), e.getCode());
         verify(friendshipMapper, never()).insert(ArgumentMatchers.<Friendship>any());
@@ -205,7 +205,7 @@ class FriendServiceTest {
         when(requestMapper.selectById(5L)).thenReturn(pendingRequest(5L, 1001L, 1002L));
         when(requestMapper.updateStatus(anyLong(), anyInt(), anyInt(), any())).thenReturn(0);
 
-        BizException e = assertThrows(BizException.class, () -> service.accept(5L));
+        BizException e = assertThrows(BizException.class, () -> service.accept(5L, 1002L));
 
         assertEquals(ResultCode.FRIEND_RELATION_NOT_FOUND.getCode(), e.getCode());
         verify(friendshipMapper, never()).insert(ArgumentMatchers.<Friendship>any());
@@ -219,12 +219,49 @@ class FriendServiceTest {
         doThrow(new DuplicateKeyException("duplicate key 1001_1002"))
                 .when(friendshipMapper).insert(ArgumentMatchers.<Friendship>any());
 
-        FriendRequestDTO dto = service.accept(5L);
+        FriendRequestDTO dto = service.accept(5L, 1002L);
 
         assertEquals("ACCEPTED", dto.getStatus());
         // 关系冲突吞掉仍是幂等成功，好友通过通知照常写（同事务）
         verify(notificationService).createNotification(eq(1001L), eq("FRIEND_ACCEPTED"), eq(5L),
                 any(), any(), eq("FRIEND_ACCEPTED:5"));
+    }
+
+    // ==================== 归属校验（TASK-204） ====================
+
+    /** 红 R2a：accept caller 非空且非申请 to_user（to_user=1002L）→ 403，不流转不写关系 */
+    @Test
+    void accept_callerMismatch_throwsForbidden() {
+        when(requestMapper.selectById(5L)).thenReturn(pendingRequest(5L, 1001L, 1002L));
+
+        BizException e = assertThrows(BizException.class, () -> service.accept(5L, 1003L));
+
+        assertEquals(ResultCode.FORBIDDEN.getCode(), e.getCode());
+        verify(friendshipMapper, never()).insert(ArgumentMatchers.<Friendship>any());
+    }
+
+    /** 绿 R2b：accept caller == 申请 to_user → ACCEPTED */
+    @Test
+    void accept_callerIsReceiver_passes() {
+        when(requestMapper.selectById(5L)).thenReturn(pendingRequest(5L, 1001L, 1002L));
+        when(requestMapper.updateStatus(eq(5L), eq(0), eq(1), any())).thenReturn(1);
+        when(friendshipMapper.insert(any(Friendship.class))).thenReturn(1);
+
+        FriendRequestDTO dto = service.accept(5L, 1002L);
+
+        assertEquals("ACCEPTED", dto.getStatus());
+    }
+
+    /** 绿 R2c：accept caller 为 null（鉴权关闭降级）→ 放行 */
+    @Test
+    void accept_callerNull_degradeAllowed() {
+        when(requestMapper.selectById(5L)).thenReturn(pendingRequest(5L, 1001L, 1002L));
+        when(requestMapper.updateStatus(eq(5L), eq(0), eq(1), any())).thenReturn(1);
+        when(friendshipMapper.insert(any(Friendship.class))).thenReturn(1);
+
+        FriendRequestDTO dto = service.accept(5L, null);
+
+        assertEquals("ACCEPTED", dto.getStatus());
     }
 
     /**
@@ -233,7 +270,7 @@ class FriendServiceTest {
      */
     @Test
     void accept_twoWritesShareTransactionalMethod() throws Exception {
-        Method m = FriendService.class.getMethod("accept", Long.class);
+        Method m = FriendService.class.getMethod("accept", Long.class, Long.class);
         Transactional tx = m.getAnnotation(Transactional.class);
         assertNotNull(tx, "accept 必须标注 @Transactional，保证申请状态与好友行同进退");
         assertTrue(tx.rollbackFor().length > 0, "rollbackFor 须显式声明");
@@ -242,7 +279,7 @@ class FriendServiceTest {
         when(requestMapper.updateStatus(eq(5L), eq(0), eq(1), any())).thenReturn(1);
         when(friendshipMapper.insert(any(Friendship.class))).thenReturn(1);
 
-        FriendRequestDTO dto = service.accept(5L);
+        FriendRequestDTO dto = service.accept(5L, 1002L);
 
         assertEquals("ACCEPTED", dto.getStatus());
         // 同一 accept 调用内完成两写（Mockito 单测无法验证真库回滚，用注解+调用序锁定契约）
@@ -260,7 +297,7 @@ class FriendServiceTest {
         when(requestMapper.selectById(5L)).thenReturn(pendingRequest(5L, 1001L, 1002L));
         when(requestMapper.updateStatus(eq(5L), eq(0), eq(2), any())).thenReturn(1);
 
-        FriendRequestDTO dto = service.reject(5L);
+        FriendRequestDTO dto = service.reject(5L, 1002L);
 
         assertEquals("REJECTED", dto.getStatus());
         verify(friendshipMapper, never()).insert(ArgumentMatchers.<Friendship>any());
@@ -269,13 +306,46 @@ class FriendServiceTest {
                 any(), any(), any());
     }
 
+    /** 红 R3a：reject caller 非空且非申请 to_user（to_user=1002L）→ 403，不流转 */
+    @Test
+    void reject_callerMismatch_throwsForbidden() {
+        when(requestMapper.selectById(5L)).thenReturn(pendingRequest(5L, 1001L, 1002L));
+
+        BizException e = assertThrows(BizException.class, () -> service.reject(5L, 1003L));
+
+        assertEquals(ResultCode.FORBIDDEN.getCode(), e.getCode());
+        verify(requestMapper, never()).updateStatus(anyLong(), anyInt(), anyInt(), any());
+    }
+
+    /** 绿 R3b：reject caller == 申请 to_user → REJECTED */
+    @Test
+    void reject_callerIsReceiver_passes() {
+        when(requestMapper.selectById(5L)).thenReturn(pendingRequest(5L, 1001L, 1002L));
+        when(requestMapper.updateStatus(eq(5L), eq(0), eq(2), any())).thenReturn(1);
+
+        FriendRequestDTO dto = service.reject(5L, 1002L);
+
+        assertEquals("REJECTED", dto.getStatus());
+    }
+
+    /** 绿 R3c：reject caller 为 null（鉴权关闭降级）→ 放行 */
+    @Test
+    void reject_callerNull_degradeAllowed() {
+        when(requestMapper.selectById(5L)).thenReturn(pendingRequest(5L, 1001L, 1002L));
+        when(requestMapper.updateStatus(eq(5L), eq(0), eq(2), any())).thenReturn(1);
+
+        FriendRequestDTO dto = service.reject(5L, null);
+
+        assertEquals("REJECTED", dto.getStatus());
+    }
+
     /** 拒绝非 PENDING 申请 → 5002 */
     @Test
     void reject_alreadyProcessed() {
         when(requestMapper.selectById(5L)).thenReturn(pendingRequest(5L, 1001L, 1002L));
         when(requestMapper.updateStatus(anyLong(), anyInt(), anyInt(), any())).thenReturn(0);
 
-        BizException e = assertThrows(BizException.class, () -> service.reject(5L));
+        BizException e = assertThrows(BizException.class, () -> service.reject(5L, 1002L));
 
         assertEquals(ResultCode.FRIEND_RELATION_NOT_FOUND.getCode(), e.getCode());
     }

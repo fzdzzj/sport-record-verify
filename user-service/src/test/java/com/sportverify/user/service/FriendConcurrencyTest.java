@@ -185,7 +185,7 @@ class FriendConcurrencyTest {
 
         // —— 目标用户同意 → friendship 仅一条（规范化键 1001_1002）
         FriendRequest only = requestStore.values().iterator().next();
-        FriendRequestDTO accepted = service.accept(only.getId());
+        FriendRequestDTO accepted = service.accept(only.getId(), null);
         assertEquals("ACCEPTED", accepted.getStatus());
         assertEquals(1, friendshipStore.size(), "并发互加最终只产生一条 friendship");
         assertTrue(friendshipStore.containsKey("1001_1002"), "关系必须以 user_low<user_high 规范化存储");

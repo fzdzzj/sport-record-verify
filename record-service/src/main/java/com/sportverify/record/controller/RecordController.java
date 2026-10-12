@@ -76,22 +76,29 @@ public class RecordController {
 
     /**
      * 提交申诉（仅 REJECTED 记录可申诉，规范「申诉提交」场景）。
+     * 归属校验（TASK-204）：true 时以网关 X-User-Id 为调用者，服务层断言调用者==记录归属人；
+     * false 时 caller=null 降级旧行为。
      */
     @PostMapping("/{id}/appeal")
     public Result<AppealDTO> appeal(@PathVariable("id") Long id,
                                     @Valid @RequestBody AppealCreateDTO dto,
                                     HttpServletRequest request) {
-        return Result.success(sportRecordService.appeal(id, resolveUserId(request, dto.getUserId()), dto.getReason()));
+        Long caller = authEnabled ? resolveUserId(request, dto.getUserId()) : null;
+        return Result.success(sportRecordService.appeal(id, caller, dto.getReason()));
     }
 
     /**
      * 轨迹分页查询（分片分页：验证 MyBatis-Plus 分页插件 × ShardingSphere 代理数据源）。
+     * 归属校验（TASK-204）：true 时以网关 X-User-Id 为调用者，服务层断言调用者==记录归属人；
+     * false 时 caller=null 降级旧行为。
      */
     @GetMapping("/{id}/points")
     public Result<Page<TrackPointDTO>> points(@PathVariable("id") Long id,
                                               @RequestParam(defaultValue = "1") long page,
-                                              @RequestParam(defaultValue = "20") long size) {
-        return Result.success(sportRecordService.pagePoints(id, page, size));
+                                              @RequestParam(defaultValue = "20") long size,
+                                              HttpServletRequest request) {
+        Long caller = authEnabled ? resolveUserId(request, null) : null;
+        return Result.success(sportRecordService.pagePoints(id, caller, page, size));
     }
 
     /**

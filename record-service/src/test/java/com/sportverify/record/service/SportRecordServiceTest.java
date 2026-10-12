@@ -457,11 +457,68 @@ class SportRecordServiceTest {
         when(sportRecordMapper.updateStatus(5L, RecordStatus.REJECTED.getCode(),
                 RecordStatus.APPEALING.getCode(), 3)).thenReturn(1);
 
-        AppealDTO out = service.appeal(5L, 100L, "理由");
+        AppealDTO out = service.appeal(5L, 200L, "理由");
 
         assertEquals(appeal, out);
-        // userId 以记录归属人为准（200L），而非入参 100L
+        // userId 以记录归属人为准（200L），而非入参 200L（归属对齐，TASK-204）
         verify(verifyApi).createAppeal(eq(new com.sportverify.api.verify.dto.AppealCreateDTO(5L, 200L, "理由")));
+    }
+
+    /** 红 R4a：appeal caller 非空且非记录归属人（record.userId=200L）→ FORBIDDEN，不建单不迁移 */
+    @Test
+    void appeal_callerMismatch_throwsForbidden() {
+        SportRecord record = new SportRecord();
+        record.setId(5L);
+        record.setUserId(200L);
+        record.setStatus(RecordStatus.REJECTED.getCode());
+        when(sportRecordMapper.selectById(5L)).thenReturn(record);
+
+        BizException e = assertThrows(BizException.class, () -> service.appeal(5L, 100L, "理由"));
+
+        assertEquals(ResultCode.FORBIDDEN.getCode(), e.getCode());
+        verify(verifyApi, never()).createAppeal(any());
+        verify(sportRecordMapper, never()).updateStatus(anyLong(), anyInt(), anyInt(), anyInt());
+    }
+
+    /** 绿 R4b：appeal caller == 记录归属人 → 成功（createAppeal 以 200L 为权威） */
+    @Test
+    void appeal_callerIsOwner_passes() {
+        SportRecord record = new SportRecord();
+        record.setId(5L);
+        record.setUserId(200L);
+        record.setStatus(RecordStatus.REJECTED.getCode());
+        record.setVersion(3);
+        when(sportRecordMapper.selectById(5L)).thenReturn(record);
+        AppealDTO appeal = new AppealDTO();
+        appeal.setId(9L);
+        when(verifyApi.createAppeal(any(com.sportverify.api.verify.dto.AppealCreateDTO.class)))
+                .thenReturn(com.sportverify.common.result.Result.success(appeal));
+        when(sportRecordMapper.updateStatus(5L, RecordStatus.REJECTED.getCode(),
+                RecordStatus.APPEALING.getCode(), 3)).thenReturn(1);
+
+        AppealDTO out = service.appeal(5L, 200L, "理由");
+
+        assertEquals(appeal, out);
+        verify(verifyApi).createAppeal(eq(new com.sportverify.api.verify.dto.AppealCreateDTO(5L, 200L, "理由")));
+    }
+
+    /** 绿 R4c：appeal caller 为 null（鉴权关闭降级）→ 放行 */
+    @Test
+    void appeal_callerNull_degradeAllowed() {
+        SportRecord record = new SportRecord();
+        record.setId(5L);
+        record.setUserId(200L);
+        record.setStatus(RecordStatus.REJECTED.getCode());
+        record.setVersion(0);
+        when(sportRecordMapper.selectById(5L)).thenReturn(record);
+        AppealDTO appeal = new AppealDTO();
+        when(verifyApi.createAppeal(any())).thenReturn(com.sportverify.common.result.Result.success(appeal));
+        when(sportRecordMapper.updateStatus(5L, RecordStatus.REJECTED.getCode(),
+                RecordStatus.APPEALING.getCode(), record.getVersion())).thenReturn(1);
+
+        AppealDTO out = service.appeal(5L, null, "理由");
+
+        assertEquals(appeal, out);
     }
 
     /** 提交申诉：非 REJECTED 记录 → 3003 */
@@ -472,7 +529,7 @@ class SportRecordServiceTest {
         record.setStatus(RecordStatus.PASSED.getCode());
         when(sportRecordMapper.selectById(5L)).thenReturn(record);
 
-        BizException e = assertThrows(BizException.class, () -> service.appeal(5L, 100L, "理由"));
+        BizException e = assertThrows(BizException.class, () -> service.appeal(5L, null, "理由"));
         assertEquals(ResultCode.RECORD_STATUS_INVALID.getCode(), e.getCode());
     }
 
@@ -481,7 +538,7 @@ class SportRecordServiceTest {
     void appeal_recordNotFound_throws() {
         when(sportRecordMapper.selectById(5L)).thenReturn(null);
 
-        BizException e = assertThrows(BizException.class, () -> service.appeal(5L, 100L, "理由"));
+        BizException e = assertThrows(BizException.class, () -> service.appeal(5L, null, "理由"));
         assertEquals(ResultCode.RECORD_NOT_FOUND.getCode(), e.getCode());
     }
 
@@ -496,7 +553,7 @@ class SportRecordServiceTest {
         when(verifyApi.createAppeal(any())).thenReturn(new com.sportverify.common.result.Result<>(
                 ResultCode.VERIFY_SERVICE_UNAVAILABLE.getCode(), "不可用", null));
 
-        BizException e = assertThrows(BizException.class, () -> service.appeal(5L, 100L, "理由"));
+        BizException e = assertThrows(BizException.class, () -> service.appeal(5L, 200L, "理由"));
         assertEquals(ResultCode.VERIFY_SERVICE_UNAVAILABLE.getCode(), e.getCode());
     }
 
@@ -517,7 +574,7 @@ class SportRecordServiceTest {
         cur.setStatus(RecordStatus.APPEALING.getCode());
         when(sportRecordMapper.selectById(5L)).thenReturn(record, cur);
 
-        AppealDTO out = service.appeal(5L, 100L, "理由");
+        AppealDTO out = service.appeal(5L, 200L, "理由");
 
         assertEquals(appeal, out);
     }
@@ -538,7 +595,7 @@ class SportRecordServiceTest {
         stillRejected.setStatus(RecordStatus.REJECTED.getCode());
         when(sportRecordMapper.selectById(5L)).thenReturn(record, stillRejected);
 
-        BizException e = assertThrows(BizException.class, () -> service.appeal(5L, 100L, "理由"));
+        BizException e = assertThrows(BizException.class, () -> service.appeal(5L, 200L, "理由"));
         assertEquals(ResultCode.RECORD_STATUS_INVALID.getCode(), e.getCode());
     }
 
@@ -642,7 +699,53 @@ class SportRecordServiceTest {
         when(trackPointMapper.selectPage(any(com.baomidou.mybatisplus.extension.plugins.pagination.Page.class),
                 any())).thenReturn(new com.baomidou.mybatisplus.extension.plugins.pagination.Page<>(1, 20));
 
-        var out = service.pagePoints(1L, 1, 20);
+        var out = service.pagePoints(1L, 100L, 1, 20);
+
+        assertEquals(0, out.getRecords().size());
+    }
+
+    // ==================== 归属校验（TASK-204） ====================
+
+    /** 红 R1a：caller 非空且非记录归属人 → 403（FORBIDDEN），拒绝读取他人轨迹 */
+    @Test
+    void pagePoints_callerMismatch_throwsForbidden() {
+        SportRecord record = new SportRecord();
+        record.setId(1L);
+        record.setUserId(100L);
+        when(sportRecordMapper.selectById(1L)).thenReturn(record);
+
+        BizException e = assertThrows(BizException.class,
+                () -> service.pagePoints(1L, 999L, 1, 20));
+        assertEquals(ResultCode.FORBIDDEN.getCode(), e.getCode());
+        verify(trackPointMapper, never()).selectPage(any(Page.class), any());
+    }
+
+    /** 绿 R1b：caller == 记录归属人 → 正常分页 */
+    @Test
+    void pagePoints_callerIsOwner_passes() {
+        SportRecord record = new SportRecord();
+        record.setId(1L);
+        record.setUserId(100L);
+        when(sportRecordMapper.selectById(1L)).thenReturn(record);
+        when(trackPointMapper.selectPage(any(com.baomidou.mybatisplus.extension.plugins.pagination.Page.class),
+                any())).thenReturn(new com.baomidou.mybatisplus.extension.plugins.pagination.Page<>(1, 20));
+
+        var out = service.pagePoints(1L, 100L, 1, 20);
+
+        assertEquals(0, out.getRecords().size());
+    }
+
+    /** 绿 R1c：caller 为 null（鉴权关闭降级）→ 放行 */
+    @Test
+    void pagePoints_callerNull_degradeAllowed() {
+        SportRecord record = new SportRecord();
+        record.setId(1L);
+        record.setUserId(100L);
+        when(sportRecordMapper.selectById(1L)).thenReturn(record);
+        when(trackPointMapper.selectPage(any(com.baomidou.mybatisplus.extension.plugins.pagination.Page.class),
+                any())).thenReturn(new com.baomidou.mybatisplus.extension.plugins.pagination.Page<>(1, 20));
+
+        var out = service.pagePoints(1L, null, 1, 20);
 
         assertEquals(0, out.getRecords().size());
     }
@@ -670,7 +773,7 @@ class SportRecordServiceTest {
         assertEquals(ResultCode.RECORD_NOT_FOUND.getCode(), assertThrows(
                 BizException.class, () -> service.listPoints(1L)).getCode());
         assertEquals(ResultCode.RECORD_NOT_FOUND.getCode(), assertThrows(
-                BizException.class, () -> service.pagePoints(1L, 1, 20)).getCode());
+                BizException.class, () -> service.pagePoints(1L, null, 1, 20)).getCode());
         assertEquals(ResultCode.RECORD_NOT_FOUND.getCode(), assertThrows(
                 BizException.class, () -> service.getDto(1L)).getCode());
     }
@@ -718,7 +821,7 @@ class SportRecordServiceTest {
         archPage.setRecords(List.of(arch));
         when(trackPointArchiveMapper.selectPage(any(Page.class), any())).thenReturn(archPage);
 
-        var out = service.pagePoints(1L, 1, 20);
+        var out = service.pagePoints(1L, 100L, 1, 20);
 
         assertEquals(1, out.getTotal());
         assertEquals(1, out.getRecords().size());
@@ -757,7 +860,7 @@ class SportRecordServiceTest {
         record.setArchived(1);
         when(sportRecordMapper.selectById(5L)).thenReturn(record);
 
-        BizException e = assertThrows(BizException.class, () -> service.appeal(5L, 100L, "理由"));
+        BizException e = assertThrows(BizException.class, () -> service.appeal(5L, 200L, "理由"));
         assertEquals(ResultCode.RECORD_STATUS_INVALID.getCode(), e.getCode());
         verify(sportRecordMapper, never()).updateStatus(anyLong(), anyInt(), anyInt(), anyInt());
         verify(verifyApi, never()).createAppeal(any());

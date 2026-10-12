@@ -131,29 +131,29 @@ class RecordControllerTest {
         verify(sportRecordService).getVerifyResult(3L);
     }
 
-    /** 提交申诉（auth 关）→ 透传 */
+    /** 提交申诉（auth 关）→ 关键 caller 为 null 透传 */
     @Test
     void appeal_delegates() {
         AppealCreateDTO dto = new AppealCreateDTO(5L, 100L, "理由");
         AppealDTO appeal = new AppealDTO();
-        when(sportRecordService.appeal(5L, 100L, "理由")).thenReturn(appeal);
+        when(sportRecordService.appeal(5L, null, "理由")).thenReturn(appeal);
 
         AppealDTO out = controller.appeal(5L, dto, request).getData();
 
         assertEquals(appeal, out);
-        verify(sportRecordService).appeal(5L, 100L, "理由");
+        verify(sportRecordService).appeal(5L, null, "理由");
     }
 
-    /** 轨迹分页查询 → 透传 page/size */
+    /** 轨迹分页查询（auth 关）→ 关键 caller 为 null 透传 page/size */
     @Test
     void points_delegatesWithPagingParams() {
         Page<TrackPointDTO> page = new Page<>();
-        when(sportRecordService.pagePoints(5L, 2, 50)).thenReturn(page);
+        when(sportRecordService.pagePoints(5L, null, 2, 50)).thenReturn(page);
 
-        Page<TrackPointDTO> out = controller.points(5L, 2, 50).getData();
+        Page<TrackPointDTO> out = controller.points(5L, 2, 50, request).getData();
 
         assertEquals(page, out);
-        verify(sportRecordService).pagePoints(5L, 2, 50);
+        verify(sportRecordService).pagePoints(5L, null, 2, 50);
     }
 
     /** 局部异常处理：1001 → HTTP 401 + body code=1001 */

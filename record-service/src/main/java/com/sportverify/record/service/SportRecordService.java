@@ -242,10 +242,15 @@ public class SportRecordService {
      * 再乐观锁迁移 REJECTED→APPEALING；若迁移影响 0 行但记录已 APPEALING，
      * 视为并发重复申诉（幂等成功）。跨库无强一致（§5.3），由重试收敛。</p>
      */
-    public AppealDTO appeal(Long recordId, Long userId, String reason) {
+    public AppealDTO appeal(Long recordId, Long caller, String reason) {
         SportRecord record = sportRecordMapper.selectById(recordId);
         if (record == null) {
             throw new BizException(ResultCode.RECORD_NOT_FOUND);
+        }
+        // 归属校验（TASK-204）：caller 非空且不等于记录归属人 → 403 越权。
+        // 仅 app.auth.enabled=true 时 caller 非空；false 时恒 null → 零改动降级旧行为。
+        if (caller != null && !caller.equals(record.getUserId())) {
+            throw new BizException(ResultCode.FORBIDDEN);
         }
         if (record.getStatus() == null || record.getStatus() != RecordStatus.REJECTED.getCode()) {
             throw new BizException(ResultCode.RECORD_STATUS_INVALID, "仅 REJECTED 记录可发起申诉");
@@ -326,10 +331,15 @@ public class SportRecordService {
      * 代理对 COUNT/LIMIT 分片重写并在内存合并——分页插件绑定代理数据源后跨分片结果完整。
      * 按 archived 标志冷热路由（课题 3）：归档分支同口径查 track_point_archive。
      */
-    public Page<TrackPointDTO> pagePoints(Long recordId, long page, long size) {
+    public Page<TrackPointDTO> pagePoints(Long recordId, Long caller, long page, long size) {
         SportRecord record = sportRecordMapper.selectById(recordId);
         if (record == null) {
             throw new BizException(ResultCode.RECORD_NOT_FOUND);
+        }
+        // 归属校验（TASK-204）：caller 非空且不等于记录归属人 → 403 越权。
+        // 仅 app.auth.enabled=true 时 caller 非空；false 时恒 null → 零改动降级旧行为。
+        if (caller != null && !caller.equals(record.getUserId())) {
+            throw new BizException(ResultCode.FORBIDDEN);
         }
         Page<TrackPoint> result;
         if (Objects.equals(record.getArchived(), 1)) {

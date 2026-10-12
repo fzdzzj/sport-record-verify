@@ -151,10 +151,15 @@ public class FriendService {
      * 中间失败同进退，避免申请已 ACCEPTED 却无好友行。锁在方法内获取（锁与事务嵌套顺序为已知权衡，不借机重构）。</p>
      */
     @Transactional(rollbackFor = Exception.class)
-    public FriendRequestDTO accept(Long requestId) {
+    public FriendRequestDTO accept(Long requestId, Long caller) {
         FriendRequest request = friendRequestMapper.selectById(requestId);
         if (request == null) {
             throw new BizException(ResultCode.FRIEND_RELATION_NOT_FOUND, "好友申请不存在");
+        }
+        // 归属校验（TASK-204）：仅申请对方 to_user 可同意；caller 非空且非 to_user → 403 越权。
+        // 天然阻断 from_user 自同意。false（caller=null）时零改动降级旧行为。
+        if (caller != null && !caller.equals(request.getToUser())) {
+            throw new BizException(ResultCode.FORBIDDEN);
         }
         long low = Math.min(request.getFromUser(), request.getToUser());
         long high = Math.max(request.getFromUser(), request.getToUser());
@@ -202,10 +207,15 @@ public class FriendService {
      * 拒绝申请（规范差异「申请状态机」）：PENDING → REJECTED，不落 friendship。
      * 非 PENDING 流转被拒（乐观语义影响 0 行）→ 5002。
      */
-    public FriendRequestDTO reject(Long requestId) {
+    public FriendRequestDTO reject(Long requestId, Long caller) {
         FriendRequest request = friendRequestMapper.selectById(requestId);
         if (request == null) {
             throw new BizException(ResultCode.FRIEND_RELATION_NOT_FOUND, "好友申请不存在");
+        }
+        // 归属校验（TASK-204）：仅申请对方 to_user 可拒绝；caller 非空且非 to_user → 403 越权。
+        // 天然阻断 from_user 自拒绝。false（caller=null）时零改动降级旧行为。
+        if (caller != null && !caller.equals(request.getToUser())) {
+            throw new BizException(ResultCode.FORBIDDEN);
         }
         long low = Math.min(request.getFromUser(), request.getToUser());
         long high = Math.max(request.getFromUser(), request.getToUser());

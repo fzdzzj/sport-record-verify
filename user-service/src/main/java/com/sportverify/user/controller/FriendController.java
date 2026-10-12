@@ -61,20 +61,26 @@ public class FriendController {
 
     /**
      * 同意申请（规范差异「申请状态机」）：PENDING → ACCEPTED 并落 friendship；
-     * 非 PENDING 流转 → 5002。
+     * 非 PENDING 流转 → 5002。归属校验（TASK-204）：true 时以网关注入的 X-User-Id
+     * 为调用者，服务层断言调用者==申请 to_user；false 时 caller=null 降级旧行为。
      */
     @PostMapping("/requests/{id}/accept")
-    public Result<FriendRequestDTO> accept(@PathVariable("id") Long id) {
-        return Result.success(friendService.accept(id));
+    public Result<FriendRequestDTO> accept(@PathVariable("id") Long id,
+                                           HttpServletRequest request) {
+        Long caller = authEnabled ? resolveUserId(request, null) : null;
+        return Result.success(friendService.accept(id, caller));
     }
 
     /**
      * 拒绝申请（规范差异「申请状态机」）：PENDING → REJECTED，不落 friendship；
-     * 非 PENDING 流转 → 5002。
+     * 非 PENDING 流转 → 5002。归属校验（TASK-204）：true 时以网关注入的 X-User-Id
+     * 为调用者，服务层断言调用者==申请 to_user；false 时 caller=null 降级旧行为。
      */
     @PostMapping("/requests/{id}/reject")
-    public Result<FriendRequestDTO> reject(@PathVariable("id") Long id) {
-        return Result.success(friendService.reject(id));
+    public Result<FriendRequestDTO> reject(@PathVariable("id") Long id,
+                                           HttpServletRequest request) {
+        Long caller = authEnabled ? resolveUserId(request, null) : null;
+        return Result.success(friendService.reject(id, caller));
     }
 
     /**
