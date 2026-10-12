@@ -1,0 +1,23 @@
+[
+  {
+    "number": 1,
+    "category": "Implementation",
+    "task": "My-records endpoint + personal stats dashboard",
+    "steps": [
+      { "step": "R1 backend: RecordSummaryDTO (api, new file) + mapper page-by-userId + service method + GET /api/records/my controller with identity semantics (X-User-Id 401 / explicit userId 400) + page/size caps", "completed": false },
+      { "step": "R2 frontend: index.page.vue dashboard (stat cards + 30-day CSS/SVG trend + recent list), client.ts my-records call, README update", "completed": false },
+      { "step": "Tests per preregistered matrix R1a-R1d, R2a-R2c, G1-G2", "completed": false }
+    ],
+    "passes": false
+  },
+  {
+    "number": 2,
+    "category": "Acceptance",
+    "task": "Full gates + two commits (FULL tier, 4-block review)",
+    "steps": [
+      { "step": "offline per-digit vs 675 (record net increase, others unchanged); contract gate dual-state; token 2030 two-point; word-check + probe; diff --check; line endings; vue-tsc or CI web job; no new dependencies proof", "completed": false },
+      { "step": "C-01 feat + C-02 ledger (4 files), no push no PR", "completed": false }
+    ],
+    "passes": false
+  }
+]
