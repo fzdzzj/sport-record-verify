@@ -1,10 +1,11 @@
 /**
- * Token 存储工具（分别存储 access/refresh/role，按规范不使用单 token 头）。
- * 使用 localStorage 持久化演示用；生产可考虑 httpOnly cookie + refresh 端点。
+ * Token 存储工具（access 经 localStorage，role 判定管理端）。
+ * refresh 自 TASK-205 起不再经 JS 存储与发送：改由后端经 HttpOnly cookie（SameSite=Lax，
+ * Path=/api/auth）下发与回传，XSS 无法读取（凭证窗口收敛为 access 15min 短窗口）。
+ * access 仍需 JS 可读（供 Authorization: Bearer 头与 STOMP CONNECT 帧级鉴权，见 README）。
  */
 export const TOKEN_KEYS = {
   ACCESS: 'access_token',
-  REFRESH: 'refresh_token',
   ROLE: 'user_role',
 } as const
 
@@ -12,23 +13,19 @@ export function getAccessToken(): string | null {
   return localStorage.getItem(TOKEN_KEYS.ACCESS)
 }
 
-export function getRefreshToken(): string | null {
-  return localStorage.getItem(TOKEN_KEYS.REFRESH)
-}
-
 export function getRole(): string | null {
   return localStorage.getItem(TOKEN_KEYS.ROLE)
 }
 
-export function setTokens(accessToken: string, refreshToken: string, role: string): void {
+export function setTokens(accessToken: string, role: string): void {
   localStorage.setItem(TOKEN_KEYS.ACCESS, accessToken)
-  localStorage.setItem(TOKEN_KEYS.REFRESH, refreshToken)
   localStorage.setItem(TOKEN_KEYS.ROLE, role)
 }
 
 export function clearTokens(): void {
   localStorage.removeItem(TOKEN_KEYS.ACCESS)
-  localStorage.removeItem(TOKEN_KEYS.REFRESH)
+  // 存量清理：移除历史上持久化的 refresh 键（presented 旧版），此后该键不再写入
+  localStorage.removeItem('refresh_token')
   localStorage.removeItem(TOKEN_KEYS.ROLE)
 }
 

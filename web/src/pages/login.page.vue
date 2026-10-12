@@ -58,10 +58,10 @@ async function onFinish() {
       phone: formState.phone,
       password: formState.password,
     })
-    // res = {code:0, message, data: {accessToken, refreshToken, role, ...}}
+    // t = {accessToken, role, ...}; refresh 经 HttpOnly cookie 下发，body 无 refreshToken
     const t = res.data
-    if (t && t.accessToken && t.refreshToken && t.role) {
-      setTokens(t.accessToken, t.refreshToken, t.role)
+    if (t && t.accessToken && t.role) {
+      setTokens(t.accessToken, t.role)
       // 成功保存双 token 与 role
       router.push('/')
     } else {

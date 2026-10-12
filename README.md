@@ -78,7 +78,7 @@ java $JAVA_OPTS -jar mapmatch-service/target/sport-verify-mapmatch-service-0.1.0
 cd web
 pnpm install && pnpm dev   # 默认 5173，Vite 代理原样转发网关 8080
 # pnpm dev 走 Vite 代理（默认 5173 反向代理 8080），浏览器请求同源，不触发 CORS 预检。
-# 静态页直连 8080（或 build 后独立访问、其他 Origin 浏览器直连网关）才需要 CORS；网关默认仅允许 http://127.0.0.1:5173 与 http://localhost:5173，允许 Authorization 头与 OPTIONS，凭证场景禁止 *。
+# 静态页直连 8080（或 build 后独立访问、其他 Origin 浏览器直连网关）才需要 CORS；网关允许源由环境变量 CORS_ALLOWED_ORIGINS 注入（逗号分隔，默认回退 http://127.0.0.1:5173 与 http://localhost:5173，本地零扰动），允许 Authorization 头与 OPTIONS，allowCredentials=true 故凭证场景禁止 *。
 ```
 
 > `java` 必须是 JDK 21（PATH 上是 JDK 8 时会报 UnsupportedClassVersionError，改用绝对路径如
@@ -187,6 +187,12 @@ stderr 打出"按口径记为未覆盖"的提示，台账须照此记录，不�
 - **数据隔离**（record/user/leaderboard）：业务 controller 的 userId 已改从 `X-User-Id` 读取，
   显式携带值不一致 → 403（1002 越权）。
 - **refresh 轮换**：refresh 存 Redis（`auth:refresh:{userId}:{jti}`，TTL=7d），刷新时 GETDEL 原子作废旧 jti → 防重放。
+- **refresh 下发通道（HttpOnly cookie，TASK-205）**：login/refresh 成功后 refresh 不再随 body 下发，改经
+  `Set-Cookie`（`refresh_token`；HttpOnly；SameSite=Lax；Path=/api/auth；maxAge 对齐 refresh 存活 TTL）
+  下发；前端凭 cookie 回传（withCredentials、body 无凭证字段）完成轮换；logout 以 cookie 优先、body 兜底
+  吊销并 Set-Cookie maxAge=0 清除浏览器残留。XSS 因 HttpOnly 无法读取 refresh，凭证窃取窗口由 refresh 存活期
+  收敛为 access 15min 短窗口。反转边界：`access` 仍需 JS 可读（Authorization: Bearer 头 + STOMP CONNECT
+  帧级鉴权均依赖它），故 access 不 cookie 化，这是本课题声明接受的设计权衡。
 - **降级开关**：`app.auth.enabled`（默认 false）= 旧行为（显式携带 userId，压测脚本不破坏）；
   切 true 强制鉴权 + 数据隔离（需同步更新压测脚本带 token）。
 - **上线前加固清单**（TASK-191 生产姿态硬约束）：

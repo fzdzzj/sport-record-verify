@@ -1,5 +1,5 @@
 import axios, { AxiosError, AxiosInstance, InternalAxiosRequestConfig } from 'axios'
-import { getAccessToken, getRefreshToken, setTokens, triggerAuthFail } from '@/utils/token'
+import { getAccessToken, setTokens, triggerAuthFail } from '@/utils/token'
 
 export interface Result<T = any> {
   code: number
@@ -128,20 +128,14 @@ api.interceptors.response.use(
         throw err
       }
 
-      const rt = getRefreshToken()
-      if (!rt) {
-        triggerAuthFail()
-        const err = new Error('未登录或会话失效') as any
-        err.status = 401
-        throw err
-      }
-
       originalRequest._retry = true
       try {
-        const refreshRes = await api.post('/api/auth/refresh', { refreshToken: rt })
+        // refresh 凭证在 HttpOnly cookie 中（JS 不可读），body 无凭证字段；withCredentials 使同源 cookie
+        // 随请求携带（跨域时亦携带）。cookie 是否可用由服务端 401 裁决，前端不预设本地值。
+        const refreshRes = await api.post('/api/auth/refresh', {}, { withCredentials: true })
         const t = refreshRes.data
         if (t && t.accessToken) {
-          setTokens(t.accessToken, t.refreshToken || rt, t.role || '')
+          setTokens(t.accessToken, t.role || '')
           // update header for retry
           originalRequest.headers = originalRequest.headers || {}
           originalRequest.headers['Authorization'] = `Bearer ${t.accessToken}`
