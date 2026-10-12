@@ -1,0 +1,23 @@
+[
+  {
+    "number": 1,
+    "category": "Implementation",
+    "task": "Notification preference UI in settings page (pure frontend)",
+    "steps": [
+      { "step": "client.ts: getNotificationPreferences/updateNotificationPreferences per verified contract (GET/PUT, batch body preferences:[{type,enabled}])", "completed": false },
+      { "step": "settings.page.vue: preference section - onMounted GET render dynamic switch list (no hardcoded types), toggle -> PUT single item -> feedback + refresh from response", "completed": false },
+      { "step": "README notification section: UI entry line (optional)", "completed": false }
+    ],
+    "passes": false
+  },
+  {
+    "number": 2,
+    "category": "Acceptance",
+    "task": "Gates + ledger commit (MEDIUM tier: no independent review)",
+    "steps": [
+      { "step": "offline per-digit unchanged 675=52/50/162/157/159/80/15; contract gate dual-state; token 2030 two-point; word-check + probe reuse; git diff --check; line endings per baseline; vue-tsc rc=0 or CI web job authoritative", "completed": false },
+      { "step": "C-01 single implementation+ledger split per convention (impl commit + ledger commit 4 files), no push no PR; backend diff empty as audit evidence", "completed": false }
+    ],
+    "passes": false
+  }
+]
