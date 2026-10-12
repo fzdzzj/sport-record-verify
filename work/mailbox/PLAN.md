@@ -2496,3 +2496,14 @@ run `35802403723`（head `eba0108`，2026-09-23 00:31 UTC）——**web/build �
 | 未覆盖 | `--mode=online`、CI 全流程、真实 DB 聚合链路未跑；settled_at 无专用索引为已登记已知限制（全局禁加索引），未作性能/吞吐声明；范围榜为公共聚合面（同 /daily 无身份隔离） |
 | 偏差 | D1 台账笔自指哈希（沿 TASK-178/183/204/205/206/207/208 先例）；D2 web 本机 build 受阻 fallback（TASK-205/208 D-esbuild 先例）；D3 实现细节两处（start 必填以反射断言；@Select 注解比较符直书不转义）。明细见 handoff.md §7 |
 - 补记（指导侧封盘笔，2026-10-13）：推送 aa1d7f6..513fe0c（4 笔）后第 49 次 CI（run 38233752236，head=513fe0c）conclusion=success 全 job 绿——offline 675、镜像、Trivy、词面门、compose config、web build/type-check 全过。四环节终裁全过，TASK-209 封盘。课题终态：GET /api/leaderboard/range（start 必填/end 默认今天/start>end 与跨度>366 双 400/size cap 500）落地，聚合=contribution 表单查询（status=ACTIVE AND settled_at∈[start, end+1) 半开窗口，GROUP BY user_id SUM(distance) 降序 topN，settled_at 归属口径：按结算时间而非记录创建时间归属周期）；权威源同定时结算对账表，写入链/ZSet/index/sql 零改动（settled_at 无专用索引登记已知限制，留待未来性能课题）；前端日/周/月 tab（自然周期：ISO 周一/月 1 号，进行中周期截至今天）；offline 基线 665→675（leaderboard 70→80 净增+10，其余六模块逐位不变），token 2030 持平；C-01 8b1a23b（8 文件+328/−4，含复核修复重建）/C-02 513fe0c（4 台账）；静态门 leaderboard rc=0（Checkstyle 0/SpotBugs 0/PMD success）。D3=复核发现 ControllerTest 缺末尾换行→修复重建提交，实质结论经复核确认仍立。已知限制：settled_at 聚合无专用索引；真实跨进程 range 链路未跑（纯 JVM 覆盖，同前例）。
+
+## 验收记录：`TASK-210`（2026-10-13，设置页通知偏好 UI，纯前端 MEDIUM 档）
+
+| 项 | 内容 |
+| --- | --- |
+| 开工基线 | 派发笔 `a581972`（提案三件套 + 任务书）；工作树干净；offline 基线 675=52/50/162/157/159/80/15；token 29 项开工实测 SUM=2030 |
+| 本机门禁 | offline 逐位 **675=52/50/162/157/159/80/15** BUILD SUCCESS rc=0（纯前端零后端改动，七模块计数维持基线）；契约门双态 rc=0（在途 `--open TASK-210 --baseline=a581972` + 收口无参）；token 29 项 post-C01 2030 / close 2030（只增不减）；词面门改动文件集 CI-exact ZERO_HIT + 探针阳性对照；`git diff --check` rc=0；行尾（settings.page.vue 保持基线 LF、README.md 保持基线 CRLF；handoff.md 新文件纯 LF 无 BOM）；web `vue-tsc --noEmit` rc=0 |
+| 判别式 | R1 client.ts 契约一致（get/updateNotificationPreferences 命中 GET/PUT `/user/api/notifications/preferences`、PUT body `{preferences:[{type,enabled}]}`，与任务书 §1 逐项对上，属 TASK-187 既有代码仅审查取证零改动）；R2 settings.page.vue 自 GET 响应动态渲染开关列表、源码无硬编码类型数组、切换单行 PUT `[{type,enabled}]` + 成功 message + 响应回填、加载失败非致命提示+空区块；G1 vue-tsc --noEmit rc=0；G2 后端 diff `git diff a581972..HEAD` 全空（审计证据） |
+| 是否到达外部门槛 | **未到达**：两笔均未 push、未建 PR、无 CI run；MEDIUM 档外部终验（指导亲核 + CI 外部终验收口）待指导侧推动推送后补记 |
+| 未覆盖 | `--mode=online`、CI 全流程、真实浏览器可视交互、真实 token 会话下 toggle→PUT 联调链路未跑；本任务不改变后端通知偏好语义，仅新增设置页视觉入口；开关状态以服务端返回为准 |
+| 偏差 | D1 台账笔自指哈希（沿 TASK-178/183/204/205/206/207/208/209 先例）；D2 R1 产物 client.ts 两函数为 TASK-187 既有代码仅审查取证零改动（C-01 恰 2 文件落在白名单 2-3 目标内）；D3 word-check 探针经 git add 后 grep 阳性对照、`git rm --cached` 还原无残留。明细见 handoff.md §7。C-01 bc0c6a2（2 文件+88/−2）/C-02 台账笔 4 文件 |

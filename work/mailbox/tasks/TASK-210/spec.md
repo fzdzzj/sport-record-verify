@@ -41,8 +41,8 @@ web/src/pages/settings.page.vue, web/src/api/client.ts, README.md (optional). Ta
 - C-01 feat(web): ... (TASK-210) 2-3 files; C-02 docs(mailbox): ... (TASK-210) ledger 4 files (tasks.json/spec.md S7/handoff.md/PLAN.md pure-append). No push, no PR.
 
 ## S7 backfill (after C-02)
-- commit hashes: C-01 = ___; C-02 = ___
-- offline final / token final: ___ (expect unchanged 675 / 2030)
-- discriminant results R1/R2, G1/G2: ___
-- deviations: ___
+- commit hashes: C-01 = bc0c6a2 (feat(web): 设置页通知偏好开关区块（TASK-210）, 2 files / +88 −2); C-02 = <本台账笔所在提交，自指沿 D1 先例，以 git log 实测为准>
+- offline final / token final: 675 = 52/50/162/157/159/80/15 (逐位不变，纯前端零后端改动) / token 29 项 post-C01=2030、close=2030（只增不减，新文档零 token 字面量）
+- discriminant results R1/R2, G1/G2: 见 handoff.md §4（R1 client.ts 契约一致：getNotificationPreferences 用 GET `/user/api/notifications/preferences`、updateNotificationPreferences 用 PUT 同路径 body `{preferences:[{type,enabled}]}`，与既有通知调用 `/user/api/notifications` 前缀范式一致、与任务书 §1 逐项对上；R2 settings.page.vue 自 GET 响应动态渲染开关列表，源码无硬编码类型数组、切换单行 PUT `[{type,enabled}]`、成功 message + 响应回填本地态、加载失败非致命提示+空区块；G1 vue-tsc --noEmit rc=0；G2 后端 diff `git diff a581972..HEAD` 全空）
+- deviations: 见 handoff.md §7（D1 台账笔自指哈希；D2 R1 产物 client.ts 两函数为 TASK-187 既有代码，本次仅代码审查取证、无改动；无 web build 受阻、vue-tsc 本机直接 rc=0）
 
