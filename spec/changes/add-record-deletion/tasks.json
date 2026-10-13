@@ -1,0 +1,26 @@
+[
+  {
+    "number": 1,
+    "category": "Implementation",
+    "task": "Owner-only record deletion with in-service cascade + web",
+    "steps": [
+      { "step": "S1 recon: leaderboard data source (live query vs own persistence) + like Redis key shapes + archive-branch dual tables — decide propagation path", "completed": false },
+      { "step": "record-service: SportRecordService.deleteRecord(caller, id) ownership + transactional cascade (record/points/archive/like rows) + best-effort Redis cleanup + RecordController DELETE /{id} + tests", "completed": false },
+      { "step": "web: my-records delete button + confirm dialog + client.ts + tests", "completed": false },
+      { "step": "Discriminants R1-R6, G1-G3 evidence", "completed": false }
+    ],
+    "passes": false
+  },
+  {
+    "number": 2,
+    "category": "Acceptance",
+    "task": "FULL gates + commits + independent review + external CI",
+    "steps": [
+      { "step": "offline record net-add only, other five modules per-digit unchanged; web four-piece; contract dual-state; token SUM unchanged; word-check; diff --check; line endings; new test classes pass isolated -Dtest runs", "completed": false },
+      { "step": "C-01 feat + C-02 ledger, no push no PR", "completed": false },
+      { "step": "Independent review subagent, zero-write", "completed": false },
+      { "step": "Supervisor push + external CI green", "completed": false }
+    ],
+    "passes": false
+  }
+]
