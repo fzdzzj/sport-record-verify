@@ -1,0 +1,24 @@
+[
+  {
+    "number": 1,
+    "category": "Implementation",
+    "task": "Image log dir fix (six Dockerfiles)",
+    "steps": [
+      { "step": "Five service Dockerfiles: mkdir -p /app/logs + chown in existing RUN", "completed": false },
+      { "step": "gateway Dockerfile: /app/logs/sentinel + ENTRYPOINT -Dcsp.sentinel.log.dir", "completed": false },
+      { "step": "Live verification zero-scaffold: six healthy + three assertions + in-container log evidence", "completed": false },
+      { "step": "Discriminants R1/R2/R3, G1-G3 evidence", "completed": false }
+    ],
+    "passes": false
+  },
+  {
+    "number": 2,
+    "category": "Acceptance",
+    "task": "Gates + commits (MEDIUM tier: no independent review)",
+    "steps": [
+      { "step": "offline 698 per-digit unchanged; contract dual-state; token 2030; word-check; diff --check; line endings", "completed": false },
+      { "step": "C-01 fix(build) + C-02 ledger (4 files), no push no PR", "completed": false }
+    ],
+    "passes": false
+  }
+]
