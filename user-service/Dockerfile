@@ -18,7 +18,7 @@ RUN mvn -B -pl user-service -am -DskipTests package
 # ---- 运行阶段：仅 JRE，非 root 运行 ----
 FROM eclipse-temurin:21-jre
 WORKDIR /app
-RUN groupadd -r app && useradd -r -g app app
+RUN groupadd -r app && useradd -r -g app app && mkdir -p /app/logs && chown app:app /app/logs
 COPY --from=build /workspace/user-service/target/*.jar app.jar
 USER app
 EXPOSE 8081

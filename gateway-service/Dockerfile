@@ -19,8 +19,8 @@ RUN mvn -B -pl gateway-service -am -DskipTests package
 # ---- 运行阶段：仅 JRE，非 root 运行 ----
 FROM eclipse-temurin:21-jre
 WORKDIR /app
-RUN groupadd -r app && useradd -r -g app app
+RUN groupadd -r app && useradd -r -g app app && mkdir -p /app/logs/sentinel && chown -R app:app /app/logs
 COPY --from=build /workspace/gateway-service/target/*.jar app.jar
 USER app
 EXPOSE 8080
-ENTRYPOINT ["java", "-jar", "app.jar"]
+ENTRYPOINT ["java", "-Dcsp.sentinel.log.dir=/app/logs/sentinel", "-jar", "app.jar"]
