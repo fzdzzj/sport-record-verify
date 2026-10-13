@@ -70,6 +70,44 @@
       <div v-if="points.length" class="mt-2">
         <a-button size="small" @click="exportGpx">导出 GPX</a-button>
       </div>
+
+      <!-- 配速趋势（纯前端，TASK-219：复用已拉取 points；X=累计 km、Y=配速秒/公里倒置快在上；停顿断线） -->
+      <div v-if="paceSectionVisible" class="mt-4">
+        <div class="mb-1 text-sm font-medium">配速趋势</div>
+        <svg
+          :viewBox="`0 0 ${PW} ${PH}`"
+          class="w-full border border-gray-200 rounded"
+          style="max-height:240px"
+          role="img"
+          aria-label="配速趋势示意图"
+        >
+          <polyline
+            v-for="(seg, si) in paceSegments"
+            :key="si"
+            :points="seg"
+            fill="none"
+            stroke="#1677ff"
+            stroke-width="2"
+          />
+          <circle v-for="(g, i) in paceDisplay" :key="i" :cx="g.x" :cy="g.y" :r="3" fill="#1677ff">
+            <title>{{ paceTitle(g) }}</title>
+          </circle>
+          <text :x="PW - 8" :y="16" text-anchor="end" font-size="12" fill="#888">
+            快 {{ formatPace(paceMinMax.min) }}
+          </text>
+          <text :x="PW - 8" :y="PH - 10" text-anchor="end" font-size="12" fill="#888">
+            慢 {{ formatPace(paceMinMax.max) }}
+          </text>
+          <text :x="8" :y="PH - 10" font-size="12" fill="#888">0</text>
+          <text :x="PW - 8" :y="PH - 10" text-anchor="end" font-size="12" fill="#888">
+            {{ totalKmText }}
+          </text>
+        </svg>
+        <p class="mt-1 text-xs text-gray-500">
+          X=累计公里（haversine R=6371km 逐段累加），Y=配速秒/公里（倒置：越快越靠上）；
+          停顿点（speed 缺失/为 0，或配速大于 60 分/公里）断线不连。
+        </p>
+      </div>
     </a-card>
   </div>
 </template>
@@ -84,6 +122,7 @@ import {
   type VerificationResultDTO,
 } from '@/api/client'
 import { generateGpx } from '@/utils/gpx'
+import { computePaceSeries, formatPace, isDrawablePace } from '@/utils/pace'
 
 const route = useRoute()
 
@@ -146,6 +185,94 @@ const polylinePoints = computed(() => projected.value.map((p) => `${p.x},${p.y}`
 function pointTitle(p: TrackPointDTO): string {
   const speed = p.speed === undefined || p.speed === null ? '-' : p.speed
   return `seq=${p.seq} speed=${speed} ts=${p.ts}`
+}
+
+// ===== 配速趋势（纯前端，TASK-219）=====
+// 折线几何：X=累计 km（haversine 逐段累加），Y=配速秒/公里反转（快在上，配速图惯例）；
+// paceSec null 或 >3600 视为停顿 → 断线（paceSegments 分段）；悬停复用 <title> 范式。
+const PW = 800
+const PH = 200
+
+interface PaceDisplayItem {
+  x: number
+  y: number
+  distKm: number
+  paceSec: number | null
+  ts: number
+}
+
+const paceSeries = computed(() => computePaceSeries(points.value))
+
+const paceHasDrawable = computed(() => paceSeries.value.some((p) => isDrawablePace(p.paceSec)))
+
+// 区块门控：至少两个轨迹点且存在至少一个可绘配速点
+const paceSectionVisible = computed(() => points.value.length > 1 && paceHasDrawable.value)
+
+const totalKm = computed(() => {
+  const s = paceSeries.value
+  return s.length ? s[s.length - 1].distKm : 0
+})
+
+const totalKmText = computed(() => `${totalKm.value.toFixed(2)} km`)
+
+// 可绘配速极值：min=最快（秒数最小）、max=最慢
+const paceMinMax = computed(() => {
+  const vals = paceSeries.value
+    .map((p) => p.paceSec)
+    .filter((s): s is number => isDrawablePace(s))
+  if (!vals.length) return { min: 0, max: 0 }
+  return { min: Math.min(...vals), max: Math.max(...vals) }
+})
+
+// 与 paceSeries 对齐的几何数组；不可绘点为 null（断线锚）。Y 反转：快（小 paceSec）在上。
+const paceGeometry = computed<(PaceDisplayItem | null)[]>(() => {
+  const series = paceSeries.value
+  if (series.length < 2) return []
+  const { max } = paceMinMax.value
+  const pRange = max - paceMinMax.value.min
+  const total = totalKm.value
+  const innerW = PW - PAD * 2
+  const innerH = PH - PAD * 2
+  return series.map((p, i) => {
+    if (!isDrawablePace(p.paceSec)) return null
+    const fx = total > 0 ? p.distKm / total : 0.5
+    // Y 反转：pace 小（快）→ fy 大 → y 小（靠上）；pace 大（慢）→ 靠下
+    const fy = pRange > 0 ? (max - p.paceSec!) / pRange : 0.5
+    return {
+      x: Number((PAD + fx * innerW).toFixed(2)),
+      y: Number((PH - PAD - fy * innerH).toFixed(2)),
+      distKm: p.distKm,
+      paceSec: p.paceSec,
+      ts: points.value[i].ts,
+    }
+  })
+})
+
+// 分段折线：连续可绘点连成一段，停顿点断开（分段 polyline）
+const paceSegments = computed(() => {
+  const segs: string[] = []
+  let cur: string[] = []
+  for (const g of paceGeometry.value) {
+    if (!g) {
+      if (cur.length) {
+        segs.push(cur.join(' '))
+        cur = []
+      }
+      continue
+    }
+    cur.push(`${g.x},${g.y}`)
+  }
+  if (cur.length) segs.push(cur.join(' '))
+  return segs
+})
+
+// 悬停圆点（仅可绘点），title 显示 距离+配速+时刻
+const paceDisplay = computed(() =>
+  paceGeometry.value.filter((g): g is PaceDisplayItem => g !== null),
+)
+
+function paceTitle(g: PaceDisplayItem): string {
+  return `dist=${g.distKm.toFixed(2)}km pace=${formatPace(g.paceSec)} ts=${g.ts}`
 }
 
 async function load() {

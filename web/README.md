@@ -181,3 +181,4 @@ curl -X POST http://127.0.0.1:8080/internal/auth/grant-admin \
 
 - 记录轨迹页 `/record-detail`（TASK-213）：单次拉取 points（size=500），SVG 归一化投影示意形状。
 - 有轨迹点时可点击「导出 GPX」：纯前端生成 GPX 1.1（`web/src/utils/gpx.ts`，trkpt lat/lon 固定 6 位小数、`<time>` ISO8601、name XML 转义、空数组抛错），经 Blob(application/gpx+xml) + a[download] 下载为 `record-{id}.gpx`；零后端、零新依赖。
+- 「配速趋势」区块（TASK-219）：轨迹 SVG 下方折线图，X=累计公里（`web/src/utils/pace.ts` 私有 haversine R=6371km 逐段累加）、Y=配速秒/公里（倒置，越快越靠上）；speed 缺失/为 0 或配速大于 60 分/公里按停顿断线；悬停显示距离+配速+时刻；区块在 points>1 且存在可绘配速点时渲染；配套 vitest 6 测（`pace.test.ts`）；零后端、零新依赖。
