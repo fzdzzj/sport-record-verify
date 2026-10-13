@@ -102,4 +102,12 @@ web/README.md.
 - Independent review subagent (user-dispatched): five-block rerun — git state/commit chain, red-line spot check, both-side gate rerun, evidence chain, changed-set equality; zero writes, self-attest porcelain empty at end.
 
 ## S7 backfill (after C-02)
-- (to be filled by executor: commit hashes, offline/web/token final, discriminant red/green, deviations, handoff.md path)
+
+- C-01 实施笔：`ff806359037854fc2df052d9fd4ed3e4d81daf5b`（`feat(record): 记录可见性三态与读取面访问门（TASK-221）`，恰 21 文件 = S4 白名单全等，+666/−23）。
+- C-02 台账笔：本 handoff 所在提交（`docs(mailbox)`），恰 4 文件。
+- offline 最终：52/50/170/196/159/80/26（=733；record 178→196 净增 18、user 165→170 净增 5，其余五模块逐位不变，仅净增不下降）。
+- web 门禁：pnpm test rc=0（4 套 24 测不变）、type-check rc=0、build 成功（3283 modules）、typed-router diff 干净。
+- token 29 项两点：基线 1ee1cdc=**2036**、worktree=**2036**（≥2034，只增不减）。
+- 契约门双态：在途 `--open TASK-221 --baseline=1ee1cdc` rc=0（判据 B 25 文件实质核全等）；收口无参 rc=0（重建 C-02 后复跑读数）。
+- 判别式红绿细目、§6 门禁留证与偏差登记见 `work/mailbox/tasks/TASK-221/handoff.md`。
+- 偏差登记（详见 handoff §8）：`--static=user-service`/`--static=api` 非本仓声明插件模块，用通用 checkstyle 配置实测存在基线违规（毫及未触碰端点/字段）——静态门仅对声明并强制的 record-service 生效且 rc=0；迁移幂等二跑已在 scratch 库证明（第二次命中跳过分支）；真实浏览器交互未跑登记未覆盖。

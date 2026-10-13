@@ -4,22 +4,22 @@
     "category": "Implementation",
     "task": "Record visibility three-state (enum + migration + read-path gate + submit path + web)",
     "steps": [
-      { "step": "api: RecordVisibility enum + RecordSubmitDTO/RecordSummaryDTO visibility + UserApi.areFriends + UserApiFallback(false)", "completed": false },
-      { "step": "sql: migrations/add-record-visibility.sql (idempotent) + 02-record-db.sql dual-write", "completed": false },
-      { "step": "user-service: FriendService.areFriends + InternalFriendController GET /internal/friends/exists + tests", "completed": false },
-      { "step": "record-service: SportRecord.visibility + resolveVisibility on submit + assertCanView gate on pagePoints/getVerifyResult/like trio + tests", "completed": false },
-      { "step": "web: submit selector + my-records badge + client.ts types + README", "completed": false },
-      { "step": "Discriminants R1-R6, G1-G3 evidence", "completed": false }
+      { "step": "api: RecordVisibility enum + RecordSubmitDTO/RecordSummaryDTO visibility + UserApi.areFriends + UserApiFallback(false)", "completed": true },
+      { "step": "sql: migrations/add-record-visibility.sql (idempotent) + 02-record-db.sql dual-write", "completed": true },
+      { "step": "user-service: FriendService.areFriends + InternalFriendController GET /internal/friends/exists + tests", "completed": true },
+      { "step": "record-service: SportRecord.visibility + resolveVisibility on submit + assertCanView gate on pagePoints/getVerifyResult/like trio + tests", "completed": true },
+      { "step": "web: submit selector + my-records badge + client.ts types + README", "completed": true },
+      { "step": "Discriminants R1-R6, G1-G3 evidence", "completed": true }
     ],
-    "passes": false
+    "passes": true
   },
   {
     "number": 2,
     "category": "Acceptance",
     "task": "FULL gates + commits + independent review",
     "steps": [
-      { "step": "offline record/user net-add only, other five modules per-digit unchanged; web test/type-check/build; contract dual-state; token 2034; word-check; diff --check; line endings", "completed": false },
-      { "step": "C-01 feat + C-02 ledger (4 files), no push no PR", "completed": false },
+      { "step": "offline record/user net-add only, other five modules per-digit unchanged; web test/type-check/build; contract dual-state; token 2034; word-check; diff --check; line endings", "completed": true },
+      { "step": "C-01 feat + C-02 ledger (4 files), no push no PR", "completed": true },
       { "step": "Independent review subagent (five-block rerun, zero-write)", "completed": false }
     ],
     "passes": false

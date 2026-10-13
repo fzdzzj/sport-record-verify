@@ -2640,3 +2640,16 @@ run `35802403723`（head `eba0108`，2026-09-23 00:31 UTC）——**web/build �
 | 偏差 | D1 台账笔自指哈希（沿先例）；D2 词面门/token 模式文件落 gitignored .trae/tmp 不入库；D3 offline Nacos 连接噪音对计数零影响；D4 web build chunk 体积告警为既有非阻断 advisory。明细见 handoff.md §8 |
 | 状态 | TASK-220 本地闭环：P1 连续打卡聚合端点与仪表盘卡落地（后端只读聚合 + 前端卡，零新依赖零新表零新 SQL 形态），外部终验待推送后补记 |
 - 补记（指导侧封盘笔，2026-10-13）：推送 96e9777..43598e8（4 笔=TASK-219 封盘笔+TASK-220 派发/C-01/C-02）后第 59 次 CI（run 38387682776，head=43598e8）conclusion=success 全 job 绿（web/build）——offline（含 record 178 新基线）、镜像、Trivy、词面门、compose config、web 全过。MEDIUM 档三环节终裁全过（指导亲核 PASS：StreakCalculator 全文审读（anchor 语义=含 today 从 today 否则含 yesterday 从 yesterday 连击活到当日结束否则 0+longest 排序 run 扫描断档重置+HashSet 归一容忍乱序重复+today 注入式便于固定日期断言）+服务层 myStreak 抽查（单列投影 select(getCreatedAt)+eq userId+in status 恰 {PASSED, RE_PASSED}+toLocalDate distinct+LocalDate.now() 注入）；回传 vs 实况零矛盾），TASK-220 封盘（P1 连续打卡课题收官）。课题终态：粘性核心功能落地——有效打卡=PASSED/RE_PASSED 终态（与贡献口径一致防刷）、同日多条算一天、今日无记录从昨日续算（连击活到当日结束）；GET /api/records/my/streak 只读聚合端点（/my 同构归属）+StreakCalculator 纯函数 7 场景单测+仪表盘第 4 统计卡。offline 基线 698→710（record 166→178 恰 +12=StreakCalculatorTest 7+ServiceTest 1+ControllerTest 4，六模块逐位不变），token 2034 持平。已知限制（非阻断）：真实浏览器卡片交互未跑（沿先例口径）、跨时区日界语义未做多时区适配（服务器时区口径）。C-01 8853079（10 文件+357/−2）/C-02 43598e8。 |
+## 验收记录：TASK-221（记录可见性三态与读取面访问门，P3，FULL 档，2026-10-13）
+
+| 项 | 内容 |
+| --- | --- |
+| 开工基线 | 派发笔 1ee1cdc（提案三件套 + 任务书）；工作树干净；offline 基线 52/50/165/178/159/80/26；token 29 项基线 2034 |
+| C-01 实施笔 | ff80635 feat(record): 记录可见性三态与读取面访问门（TASK-221），恰 21 文件 = S4 白名单全等（RecordVisibility 新 / add-record-visibility.sql 新 / 无新增测试类——测试均并入既有类），+666/−23 |
+| C-02 台账笔 | 本笔 docs(mailbox): 登记TASK-221可见性三态验收与台账闭环（TASK-221），恰 4 文件（tasks.json 勾选 / spec.md §7 回填 / handoff.md 新建 / PLAN.md 纯追加）；C-02 自指哈希沿 D1 先例 |
+| 判别式红绿 | R1 绿（枚举 0/1/2 + 迁移二跑幂等命中跳过分支 + 02 diff 恰一行）；R2 绿（门矩阵 13 组合，owner×3 放行/陌生人 PUBLIC 放行/好友 FRIENDS 放行/陌生人 FRIENDS 403/非 owner PRIVATE 403/降级态放行/UserApi 软降级 false 403）；R3 绿（verify-result 越权收口，非 owner PRIVATE→403 body 1002、owner→200、降级态持平）；R4 绿（null→0、显式 1/2 落库、越界 3007 拒绝）；R5 绿（点赞三端点同矩阵）；R6 绿（提交单选钮默认公开 + 我的记录徽标，type-check+build 承载）；G1/G2/G3 绿。明细见 handoff.md §4 |
+| 本机门禁 | offline 逐位 **52/50/170/196/159/80/26** BUILD SUCCESS rc=0（record 178→196 恰 +18、user 165→170 恰 +5，其余五模块逐位不变，仅净增不下降）；record-service 静态 rc=0（0 Checkstyle violations/SpotBugs/PMD——唯一声明并强制三件套的改动模块）；web pnpm test rc=0（4 套 24 测不变）、type-check rc=0、build 成功（3283 modules）、typed-router diff rc=0；契约门双态 rc=0（在途 --open TASK-221 --baseline=1ee1cdc，判据 B 25 文件实质核全等） + 收口无参；token 29 项两点 2036/2036 只增不减且 ≥2034；词面门改动集 CI-exact ZERO_HIT rc=1 + 探针阳性对照 HIT rc=0；git diff --check rc=0；迁移幂等二跑在 scratch 库证明（第二次命中跳过分支）；行尾两新文件纯 LF+末尾换行无 BOM |
+| 是否到达外部门槛 | **未达到**：两笔均未 push、未建 PR、无 CI run；FULL 档独立 review 复核待指导侧派发 |
+| 未覆盖/跳过 | --mode=online、CI 全流程、真实浏览器可见性表单/徽标交互（沿 TASK-213/220 口径）、真实 MySQL/Redis/RocketMQ 跨服务好友判断联调（--it 未执行）、PRIVATE/FRIENDS 存量行视觉回归 |
+| 偏差 | D1 C-02 自指哈希；D2 词面门/token/迁移验证临时件落 gitignored .trae/tmp；D3 --static=user-service/api 模块未声明三件套插件、通用配置下存在基线违规（未触碰端点/字段），静态门以 record-service 为准且 rc=0；D4/D5 offline 噪音与 build chunk 告警为既有；D6 独立复核发现 §2 缩写路径致契约门判据 B 失配 + 在途证据时点失实，已展开全路径重建 C-02 修复、双态实测 rc=0。明细见 handoff.md §8 |
+| 状态 | TASK-221 本地闭环：记录可见性三态（PUBLIC/FRIENDS/PRIVATE）schema + 跨服务好友判断 + 读取面访问门，外部门槛与独立 review 待指导
