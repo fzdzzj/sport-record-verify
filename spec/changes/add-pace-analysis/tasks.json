@@ -4,21 +4,21 @@
     "category": "Implementation",
     "task": "Pace analysis (pure function + tests + page chart)",
     "steps": [
-      { "step": "utils/pace.ts: computePaceSeries + formatPace (haversine cumulative km, 1000/speed, null pauses, 3600s clamp)", "completed": false },
-      { "step": "__tests__/pace.test.ts: distance/pace conversion/zero-speed/format boundaries/empty", "completed": false },
-      { "step": "record-detail.page.vue pace trend SVG section (Y inverted, pause breaks, hover)", "completed": false },
-      { "step": "Discriminants R1/R2/R3, G1-G3 evidence", "completed": false }
+      { "step": "utils/pace.ts: computePaceSeries + formatPace (haversine cumulative km, 1000/speed, null pauses, 3600s clamp)", "completed": true },
+      { "step": "__tests__/pace.test.ts: distance/pace conversion/zero-speed/format boundaries/empty", "completed": true },
+      { "step": "record-detail.page.vue pace trend SVG section (Y inverted, pause breaks, hover)", "completed": true },
+      { "step": "Discriminants R1/R2/R3, G1-G3 evidence", "completed": true }
     ],
-    "passes": false
+    "passes": true
   },
   {
     "number": 2,
     "category": "Acceptance",
     "task": "Gates + commits (MEDIUM tier: no independent review)",
     "steps": [
-      { "step": "offline 698 per-digit unchanged; pnpm test (incl. new suite)/type-check/build/typed-router diff clean; contract dual-state; token 2034; word-check; diff --check; line endings", "completed": false },
-      { "step": "C-01 feat(web) + C-02 ledger (4 files), no push no PR", "completed": false }
+      { "step": "offline 698 per-digit unchanged; pnpm test (incl. new suite)/type-check/build/typed-router diff clean; contract dual-state; token 2034; word-check; diff --check; line endings", "completed": true },
+      { "step": "C-01 feat(web) + C-02 ledger (4 files), no push no PR", "completed": true }
     ],
-    "passes": false
+    "passes": true
   }
 ]

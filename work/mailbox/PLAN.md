@@ -2610,3 +2610,17 @@ run `35802403723`（head `eba0108`，2026-09-23 00:31 UTC）——**web/build �
 | 偏差 | D1 台账笔自指哈希（沿先例）；D2 词面门/token 模式文件落 gitignored .trae/tmp 不入库；D3 README 尾行一次修正（diff --check 自纠后复检干净）；D4 offline Nacos 连接噪音对计数零影响。明细见 handoff.md §8 |
 | 状态 | TASK-218 本地闭环：E13 GPX 导出落地（纯前端零后端零依赖，vitest 3 套 18 测），外部终验待推送后补记 |
 - 补记（指导侧封盘笔，2026-10-13）：推送 1cb4383..2e5cbf3（4 笔=TASK-217 封盘笔+TASK-218 派发/C-01/C-02）后第 57 次 CI（run 38371556173，head=2e5cbf3）conclusion=success 全 job 绿（web/build）——**gpx 新测试套件在 CI web job 真实通过**（3 套 18 测），offline、镜像、Trivy、词面门、compose config、web type-check/build 全过。MEDIUM 档三环节终裁全过（指导亲核 PASS：git 链恰 8 文件全等+gpx.ts 全文审读（escapeXml 顺序正确 & 最先防二次转义、GPX 1.1 结构完整、creator/name/属性值全转义、lat/lon toFixed(6)、time ISO8601、空抛错）+页面 diff 零夹带（按钮 v-if points.length 门控、handler=generateGpx→Blob(application/gpx+xml)→objectURL→a[download=record-{id}.gpx]→revoke 与预注册一致）；回传 vs 实况零矛盾），TASK-218 封盘（E13 GPX 导出课题收官）。课题终态：轨迹页「查看→带走」价值闭环——纯前端零后端零依赖 GPX 1.1 导出（utils/gpx.ts 纯函数 5 单测锁定：计数/顺序/精度/ISO8601/转义/空抛），TASK-215 vitest 基建首次承接新功能课题即复利。已知限制（非阻断）：真实浏览器下载点击未跑（TASK-213 口径）、GPX 第三方解析器兼容验证未做、>500 点部分轨迹导出沿页内已知限制。C-01 70d9679（4 文件+147）/C-02 2e5cbf3。 |
+
+## 验收记录：TASK-219（配速趋势分析，P2，MEDIUM 档，2026-10-13）
+
+| 项 | 内容 |
+| --- | --- |
+| 开工基线 | 派发笔 `8ba3072`（提案三件套 + 任务书）；工作树干净；offline 基线 698=52/50/165/166/159/80/26；token 29 项基线 2034 |
+| C-01 实施笔 | `15e1e19` `feat(web): 轨迹配速趋势图纯前端实现（TASK-219）`，恰 4 文件 = §4 白名单（web/src/utils/pace.ts 新 / web/src/utils/__tests__/pace.test.ts 新 / web/src/pages/record-detail.page.vue / web/README.md），+263 |
+| C-02 台账笔 | 本笔 `docs(mailbox): 登记TASK-219配速分析验收与台账闭环（TASK-219）`，恰 4 文件（tasks.json 勾选 / spec.md §7 回填 / handoff.md 新建 / PLAN.md 纯追加）；C-02 自指哈希沿 D1 先例 |
+| 判别式红绿 | R1 绿（累计距离单调非递减、首点 0、pace=1000÷speed 精确、零/缺省 speed→paceSec null、空→[]、formatPace 边界、isDrawablePace 停顿规则）；R2 绿（pace.test.ts 6 测全过，pnpm test 4 套 24 测 rc=0）；R3 绿（区块门控 points>1 且 ≥1 可绘点、Y 反转快在上、停顿断线分段 polyline、悬停 dist+pace+ts、轴标签配速 min/max+总 km；type-check+build+代码审查承载，真实浏览器交互未覆盖）；G1/G2/G3 绿。明细见 handoff.md §4 |
+| 本机门禁 | offline 逐位 **698=52/50/165/166/159/80/26** BUILD SUCCESS rc=0（零后端改动，与基线逐位不变）；web `pnpm test` rc=0（4 套 24 测：token 6 + gpx 5 + client 7 + pace 6，TMP 重定向 .trae/tmp）、type-check rc=0、build 成功、typed-router diff rc=0；契约门双态 rc=0（在途 --open TASK-219 --baseline=8ba3072 + 收口无参）；token 29 项两点 2034/2034 只增不减；词面门改动集 CI-exact ZERO_HIT rc=1 + 探针阳性对照 HIT rc=0；git diff --check rc=0；行尾两新文件纯 LF+末尾换行无 BOM、改文件保持基线（均 i/lf w/lf） |
+| 是否到达外部门槛 | **未达到**：两笔均未 push、未建 PR、无 CI run；MEDIUM 档外部终验（指导亲核 + CI 外部终验收口，web job 含新 pace 套件）待指导侧推动推送后补记 |
+| 未覆盖/跳过 | `--mode=online`、CI 全流程、真实浏览器配速区块交互（沿 TASK-213/218 口径登记未覆盖）、>500 点部分轨迹（沿用页内已知限制说明） |
+| 偏差 | D1 台账笔自指哈希（沿先例）；D2 词面门/token 模式文件落 gitignored .trae/tmp 不入库；D3 offline 后台任务包装器报 exit 1 属采集伪影（同构管道 $LASTEXITCODE 验证 0，Maven log BUILD SUCCESS 为权威）；D4 offline Nacos 连接噪音对计数零影响。明细见 handoff.md §8 |
+| 状态 | TASK-219 本地闭环：P2 配速趋势分析落地（纯前端零后端零依赖，vitest 4 套 24 测），外部终验待推送后补记 |

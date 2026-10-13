@@ -47,7 +47,7 @@ web/src/utils/pace.ts (new), web/src/utils/__tests__/pace.test.ts (new), web/src
 - C-01 feat(web): ... (TASK-219); C-02 docs(mailbox): ... (TASK-219) ledger 4 files. No push, no PR.
 
 ## S7 backfill (after C-02)
-- commit hashes: C-01 = TBD; C-02 = self-referencing hash (precedent)
-- web test results / offline / token final: TBD
-- discriminant results: TBD
-- deviations: TBD
+- commit hashes: C-01 = 15e1e19; C-02 = self-referencing hash (沿 TASK-178/183/204/205/213/214/215/216/217/218 先例，以 git log 为准)
+- web test results / offline / token final: offline 698=52/50/165/166/159/80/26 逐位不变 BUILD SUCCESS rc=0；web pnpm test rc=0（4 套 24 测：token 6 + gpx 5 + client 7 + pace 6）、type-check rc=0、build 成功、typed-router diff 干净；token 29 项两点 2034/2034 只增不减
+- discriminant results: R1 绿（累计距离单调非递减/首点 0/pace=1000÷speed 精确/零或缺省 speed→null/空→[]/formatPace 边界 45→0'45"、500→8'20"、3659→60'59"/isDrawablePace null/0 与 >3600 断线）；R2 绿（pace.test.ts 6 测全过）；R3 绿（区块 v-if 门控 points>1 且 ≥1 可绘点、Y 倒置快在上、停顿断线分段、悬停 dist+pace+ts、轴标签配速 min/max+总 km；type-check+build+代码审查承载，真实浏览器交互未覆盖）；G1 绿（offline 698 逐位）；G2 绿（改动集恰白名单 4+4 文件）；G3 绿（契约双态 rc=0、token 2034、词面门 ZERO_HIT+探针、diff --check、行尾合规）
+- deviations: D1 C-02 自指哈希（沿先例）；D2 词面门/token 模式文件落 gitignored .trae/tmp 不入库；D3 offline 后台包装器 exit 1 属采集伪影（$LASTEXITCODE 同构管道验证 0，Maven log BUILD SUCCESS 为权威）；token 29 项字面量不枚举入新文档（沿 TASK-188 N1 教训）
