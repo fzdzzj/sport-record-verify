@@ -39,6 +39,21 @@ git diff --exit-code -- src/typed-router.d.ts   # 非 0 = 提交的生成物与�
   垫片只补类型，不改运行时（`createRouter` 仍来自插件的 `vue-router/auto` 别名）。
 - 后端联调前提（起网关与各服务、`app.auth.enabled=true`）见下节，与这四条命令无关。
 
+## 前端测试（Vitest 基线）
+
+- 运行：`cd web && pnpm test`（即 `vitest run`，单次执行；happy-dom 环境；测试内显式
+  `import { describe, it, expect, vi } from 'vitest'`，不开全局注入）。
+- CI：web job 在 `Type check` 之后、`Build` 之前增加 `pnpm --dir web run test` 一步
+  （见 `.github/workflows/ci.yml`）。
+- 范围（第一阶段）：`src/utils/__tests__/token.test.ts`（凭证存储：键常量、setTokens 双键回环、
+  clearTokens 清理含存量 `refresh_token` 键、auth-fail handler 注册/调用/异常吞没）与
+  `src/api/__tests__/client.test.ts`（拦截器链：Bearer 注入有无、code=0 透传、code!=0 抛出、
+  401 单次 refresh 重试含 `withCredentials`、`/api/auth/*` 401 零 refresh、refresh 失败触发 auth-fail）。
+- 传输层以 axios adapter 注入（替换 `api.defaults.adapter`）模拟，不引入 axios-mock-adapter / msw；
+  仅新增 devDeps `vitest` + `happy-dom`，无 @vue/test-utils、无 Playwright。
+- 组件 / E2E 后置理由：页面为路由 / axios / query 重度耦合，无轻量可挂载组件（组件测试另立变更）；
+  E2E 与 TASK-206 HTTP 级真链路验证范式重叠且 CI 成本高（设计性非目标）。
+
 ## 认证会话（add-web-auth-session）
 
 - 注册页：`/register` ，POST /api/auth/register ，成功不返回 token，提示去登录；重复手机号 2001。

@@ -138,6 +138,9 @@ jobs:
       - name: Type check
         run: pnpm --dir web run type-check
 
+      - name: Web unit tests
+        run: pnpm --dir web run test
+
       - name: Build
         run: pnpm --dir web run build
 

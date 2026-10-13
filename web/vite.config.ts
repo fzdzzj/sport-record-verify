@@ -1,4 +1,4 @@
-import { defineConfig } from 'vite'
+import { defineConfig } from 'vitest/config'
 import vue from '@vitejs/plugin-vue'
 import path from 'path'
 import tailwindcss from '@tailwindcss/vite'
@@ -19,6 +19,13 @@ export default defineConfig({
     alias: {
       '@': path.resolve(__dirname, 'src'),
     },
+  },
+  test: {
+    name: 'web',
+    // DOM 环境：token.ts 依赖 localStorage / window（happy-dom 提供）
+    environment: 'happy-dom',
+    // 显式 import 测试 API（describe/it/expect/vi），不注入全局
+    globals: false,
   },
   server: {
     port: 5173,
