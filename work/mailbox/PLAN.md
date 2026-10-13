@@ -2537,3 +2537,16 @@ run `35802403723`（head `eba0108`，2026-09-23 00:31 UTC）——**web/build �
 | 未覆盖 | `--mode=online`、CI 全流程、真实网关注入 X-User-Id 的跨进程 403 链路、真实浏览器可视交互未跑；真实地图底图（Leaflet+OSM）为设计性非目标；无性能/吞吐声明 |
 | 偏差 | D1 台账笔自指哈希（沿 TASK-178/183/204/205/206/207/208/209/210/211 先例）；D2 client.ts 既有 getRecordPoints 满足 size 参数，未改动（C-01 落 4 文件）；D3 本机 build 成功无 esbuild 阻断；D4 tasks.json 重写补回末尾换行。明细见 handoff.md §8 |
 - 补记（指导侧封盘笔，2026-10-13）：推送 70cb954..7f1f9f8（4 笔=TASK-211 封盘笔+TASK-213 派发/C-01/C-02）后第 52 次 CI（run 38273487517，head=7f1f9f8）conclusion=success 全 job 绿（web/build）——offline 684、镜像、Trivy、词面门、compose config、web build/type-check 全过。MEDIUM 档三环节终裁（指导亲核 PASS：git 链 cc9ce4a..7f1f9f8 恰 8 文件与白名单全等、后端/api/common/pom/sql/ci/scripts/compose/package.json diff 全空；R2 归属链抽查——前端零本地身份判断、403/1002→权限错误态服务端权威；R1 投影抽查——min-max 归一化/退化取 0.5/y 翻转北在上，与回传零矛盾；回传 vs 实况一致），TASK-213 封盘（E3 轨迹页课题收官）。课题终态：web 新增 /record-detail 轨迹页消费既有 GET /api/records/{id}/points（归属由服务端 TASK-204 校验裁决），min-max 归一化 SVG 投影（polyline+起点绿/终点红+逐点悬停 seq/speed/ts，单点/同坐标退化落中），摘要头经既有 verify-result 失败降级仅轨迹；入口=首页最近记录「查看轨迹」；size=500 单次拉取（>500 部分轨迹已知限制）；零后端、零新依赖（package.json 零 diff）、client.ts 未改动（D2）。offline 684 逐位不变，token 2030 持平。C-01 7e4be36（4 文件+203/−0）/C-02 7f1f9f8。 |
+
+## 验收记录：`TASK-214`（2026-10-13，mapmatch 契约与偏好鉴权路径测试补强，纯测试 MEDIUM 档）
+
+| 项 | 内容 |
+| --- | --- |
+| 开工基线 | 派发笔 `4431dbf`（提案三件套 + 任务书）；工作树干净；offline 基线 684=52/50/162/166/159/80/15；token 29 项开工账单参照 SUM=2030 |
+| C-01 实施笔 | `cb5c0f1` `test(mapmatch): 契约校验与偏好鉴权路径测试补强（TASK-214）`，恰 4 文件 = §4 白名单（MapMatchRequestValidationTest 新 / MapMatchControllerTest 新 / MatchPropertiesTest 新 / NotificationControllerTest 增补），+321／−0 |
+| C-02 台账笔 | 本笔 `docs(mailbox): 登记TASK-214测试补强验收与台账闭环（TASK-214）`，恰 4 文件（tasks.json 勾选 / spec.md §7 / handoff.md / PLAN.md），自指哈希沿 D1 先例 |
+| 判别式红绿 | R1a 绿（空 points 恰 1 条 NotEmpty，path=points）；R1b 绿（20000 合法 / 20001 恰 1 条 Size）；R1c 绿（seq=null→points[0].seq、lat=90.5→points[0].lat、lng=null→points[0].lng 各恰 1 条级联违规）；R1d 绿（全合法零违规）；R2 绿（Result.success 包装 + data 同实例 + 请求实例透传 assertSame）；R3a 绿（默认值 200/50/25/300 承重契约逐位）；R3b 绿（mapmatch.match.* 四键 Binder 覆盖）；R4a/R4b 绿（authEnabled=true + X-User-Id=42 → getPreferences(42L)/updatePreferences(42L, body) 命中 SUCCESS）；R4c 绿（claimed=999≠42 → FORBIDDEN(1002) 偏好服务零触达）；G1/G2 绿。明细见 handoff.md §4 |
+| 本机门禁 | offline 逐位 **698=52/50/165/166/159/80/26** BUILD SUCCESS rc=0（mapmatch 15→26 净增 +11、user 162→165 净增 +3，五不变模块逐位持平）；static 既有范围双跑 rc=0（--static=record-service + --static 缺省 leaderboard）；契约门双态 rc=0（在途 --open + 收口 --baseline=4431dbf 判据 B 白名单 8 token 全等实审）；token 29 项 post-C01 2030 / close 2030（只增不减，改动集零凭证字面量佐证）；词面门改动文件集 CI-exact ZERO_HIT + 探针阳性对照 HIT；`git diff --check` rc=0；行尾三新文件纯 LF+末尾换行无 BOM、改文件保持基线 |
+| 是否到达外部门槛 | **未到达**：两笔均未 push、未建 PR、无 CI run；MEDIUM 档外部终验（指导亲核 + CI 外部终验收口）待指导侧推动推送后补记 |
+| 未覆盖 | `--mode=online`、CI 全流程、MockMvc 层 400 校验映射端到端、seq 负值与 lng 越界等未注册校验形态、Nacos 运行时叠加未测（纯 Binder 语义）；无性能/吞吐断言 |
+| 偏差 | D1 台账笔自指哈希（沿先例）；D2 任务书 S1「既有 17 测」与实测 14 测为措辞偏差，仅追加预注册 3 测后总数恰 17（diff +52/−0 纯追加，user 162→165 与 §6 口径吻合）；D3 token 权威 29 项清单由指导侧持有复测（沿 TASK-213 同口径）；D4 tasks.json 末尾换行前置保留。明细见 handoff.md §8 |

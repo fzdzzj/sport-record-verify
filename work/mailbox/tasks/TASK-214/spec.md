@@ -52,7 +52,7 @@ user-service/src/test/java/com/sportverify/user/controller/NotificationControlle
 - C-01 test(mapmatch): ... (TASK-214); C-02 docs(mailbox): ... (TASK-214) ledger 4 files. No push, no PR.
 
 ## S7 backfill (after C-02)
-- commit hashes: C-01 = TBD; C-02 = self-referencing hash (TASK-178/183/204/205/206/207/208/209/210/211/213 precedent)
-- offline / token final: TBD
-- discriminant results: TBD
-- deviations: TBD
+- commit hashes: C-01 = cb5c0f1（test(mapmatch): 契约校验与偏好鉴权路径测试补强（TASK-214），恰 4 文件 +321/−0）; C-02 = self-referencing hash (TASK-178/183/204/205/206/207/208/209/210/211/213 precedent)
+- offline / token final: offline 698 = 52/50/165/166/159/80/26（mapmatch 15→26 净增 +11、user 162→165 净增 +3，common/gateway/record/verify/leaderboard 五模块逐位不变），BUILD SUCCESS rc=0；static 既有范围双跑 rc=0（--static=record-service、--static 缺省 leaderboard）；token 29 项两点读数 2030 持平（只增不减；改动文件无任何凭证字面量，词面门凭证自检 ZERO_HIT 佐证，权威 29 项清单由指导侧复测）
+- discriminant results: R1a 绿（空 points 恰 1 条 NotEmpty，path=points）；R1b 绿（20000 合法零违规 / 20001 恰 1 条 Size）；R1c 绿（seq=null→points[0].seq、lat=90.5→points[0].lat、lng=null→points[0].lng 各恰 1 条级联违规）；R1d 绿（全合法零违规）；R2 绿（code=SUCCESS、data 与服务返回值同实例、请求实例透传 assertSame）；R3a 绿（默认值 200/50/25/300 逐位）；R3b 绿（mapmatch.match.* 四键 Binder 覆盖生效）；R4a/R4b 绿（authEnabled=true + X-User-Id=42 + claimed=null → getPreferences(42L)/updatePreferences(42L, body) 命中且 SUCCESS）；R4c 绿（claimed=999≠42 → BizException FORBIDDEN(1002)，偏好服务 never 调用）；G1 绿（七模块 Failures/Errors/Skipped 全 0，五不变模块逐位持平）；G2 绿（生产面零 diff，只改清单恰 8 文件全等）
+- deviations: D1 C-02 台账笔自指哈希（沿先例）；D2 任务书 S1「NotificationControllerTest 既有 17 测」与实测 14 测存在措辞偏差——本课题严格仅追加预注册 3 测（R4a/R4b/R4c，既有 14 测零改动，diff +52/−0），追加后总数恰 17 与 offline 实测（Tests run: 17）一致，无语义影响；D3 其余无
