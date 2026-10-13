@@ -56,3 +56,5 @@ web/src/utils/__tests__/token.test.ts (new), web/src/api/__tests__/client.test.t
 - token 29 items two-point: 2030 (open) / 2030 (close); changed-set zero credential literals (pnpm-lock new lines carry only dep specifiers/integrity + js-tokens package name).
 - discriminant results: R1 green; R2a-f green; R3a-g green (R3f asserts refresh withCredentials:true + retried original carries new Bearer); G1/G2/G3 green.
 - deviations: D1 C-02 self-referencing hash (precedent); D2 vite.config.ts single stray CR introduced by editor was normalized to pure LF (baseline LF); D3 new test files' trailing LF re-added; D4 web/README verification section still says "四条命令" (left untouched to honor "登记一节" scope) though CI now runs a fifth (test) command — the new section documents the added step.
+
+- 补记（指导侧封盘笔，2026-10-13）：推送 a70340d..45f347d（4 笔=TASK-214 封盘笔+本课题派发/C-01/C-02）后第 54 次 CI（run 38348221360，head=45f347d）conclusion=success 全 job 绿（web/build），新 Web unit tests step 真实 CI 首跑通过。MEDIUM 档三环节终裁全过（指导亲核 PASS：git 链 11 文件全等+ci.yml diff 恰 3 行单 step+package.json dependencies 段零 diff+生产 web src 零 diff+R3f 快照断言修正属实；回传零矛盾；CI success 外部终验），TASK-215 封盘（E8 前端测试基建课题收官）。
