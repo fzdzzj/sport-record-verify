@@ -20,6 +20,7 @@ import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
@@ -224,5 +225,56 @@ class NotificationControllerTest {
                 () -> controller.updatePreferences(null, body, request));
 
         assertEquals(ResultCode.UNAUTHORIZED.getCode(), ex.getCode());
+    }
+
+    // ==================== 鉴权态偏好路径补强（TASK-214） ====================
+
+    /** 偏好查询：auth=true 以网关注入 X-User-Id 为准（claimed=null 不影响），命中服务返回数据 */
+    @Test
+    void getPreferences_usesHeaderIdentityWhenAuthEnabled() {
+        ReflectionTestUtils.setField(controller, "authEnabled", true);
+        when(request.getHeader("X-User-Id")).thenReturn("42");
+        List<NotificationPreferenceView> list =
+                List.of(new NotificationPreferenceView("RECORD_VERIFIED", true, null));
+        when(preferenceService.getPreferences(42L)).thenReturn(list);
+
+        Result<List<NotificationPreferenceView>> r = controller.getPreferences(null, request);
+
+        assertEquals(ResultCode.SUCCESS.getCode(), r.getCode());
+        assertEquals(1, r.getData().size());
+        verify(preferenceService).getPreferences(42L);
+    }
+
+    /** 偏好更新：auth=true 以网关注入 X-User-Id 为准，body 原样透传服务 */
+    @Test
+    void updatePreferences_usesHeaderIdentityWhenAuthEnabled() {
+        ReflectionTestUtils.setField(controller, "authEnabled", true);
+        when(request.getHeader("X-User-Id")).thenReturn("42");
+        UpdateNotificationPreferenceRequest body = new UpdateNotificationPreferenceRequest(List.of(
+                new UpdateNotificationPreferenceRequest.PreferenceItem("RECORD_VERIFIED", false)
+        ));
+        List<NotificationPreferenceView> list =
+                List.of(new NotificationPreferenceView("RECORD_VERIFIED", false, null));
+        when(preferenceService.updatePreferences(42L, body)).thenReturn(list);
+
+        Result<List<NotificationPreferenceView>> r = controller.updatePreferences(null, body, request);
+
+        assertEquals(ResultCode.SUCCESS.getCode(), r.getCode());
+        assertEquals(1, r.getData().size());
+        verify(preferenceService).updatePreferences(42L, body);
+    }
+
+    /** 偏好查询：auth=true 显式携带(999)与网关注入(42)不一致 → 越权 1002，偏好服务零触达 */
+    @Test
+    void getPreferences_claimedMismatchHeader_throwsForbidden() {
+        ReflectionTestUtils.setField(controller, "authEnabled", true);
+        when(request.getHeader("X-User-Id")).thenReturn("42");
+
+        BizException ex = assertThrows(BizException.class,
+                () -> controller.getPreferences(999L, request));
+
+        assertEquals(ResultCode.FORBIDDEN.getCode(), ex.getCode());
+        verify(preferenceService, never()).getPreferences(anyLong());
+        verify(preferenceService, never()).updatePreferences(anyLong(), any());
     }
 }
