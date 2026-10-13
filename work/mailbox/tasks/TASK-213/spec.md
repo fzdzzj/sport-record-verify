@@ -45,3 +45,5 @@ record-detail.page.vue (new), index.page.vue, client.ts, typed-router.d.ts, READ
 - discriminant results: R1 绿（min-max 归一化投影 + 单点/同坐标退化取 0.5 落中，代码审查留证）；R2 绿（403/1002 → 权限错误态，前端零绕过、零本地 userId 判断，代码审查留证）；R3 绿（getRecordPoints(id,1,500) 单次拉取，>500 点部分轨迹已渲染已知限制标注）；G1 绿（vue-tsc --noEmit rc=0，pnpm build 本机成功）；G2 绿（package.json 零 diff、后端 diff 全空、typed-router.d.ts 含新路由）
 - deviations: D1 台账笔自指哈希（见上）；D2 client.ts 既有 getRecordPoints 满足 size 参数需求，未新增/改动（C-01 落 4 文件）；D3 本机 web build 成功（无 esbuild 阻断），typed-router.d.ts 由构建再生成 13 行；D4 台账笔 tasks.json 重写时补回末尾换行避免 "No newline at end of file"
 
+- 补记（指导侧封盘笔，2026-10-13）：推送 70cb954..7f1f9f8（4 笔=TASK-211 封盘笔+本课题派发/C-01/C-02）后第 52 次 CI（run 38273487517，head=7f1f9f8）conclusion=success 全 job 绿（web/build）。MEDIUM 档三环节终裁全过（指导亲核 PASS：git 链 8 文件全等+红线面 diff 全空+R2 归属链/R1 投影定向抽查零矛盾+回传 vs 实况一致；回传零矛盾；CI success 外部终验），TASK-213 封盘。
+
