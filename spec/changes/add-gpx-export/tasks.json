@@ -4,21 +4,21 @@
     "category": "Implementation",
     "task": "GPX export (pure function + tests + page button)",
     "steps": [
-      { "step": "utils/gpx.ts: generateGpx pure function (GPX 1.1, trkpt lat/lon/time, escaping, empty-throws)", "completed": false },
-      { "step": "__tests__/gpx.test.ts: counts/precision/ISO8601/escaping/empty", "completed": false },
-      { "step": "record-detail.page.vue export button + blob download", "completed": false },
-      { "step": "Discriminants R1/R2/R3, G1-G3 evidence", "completed": false }
+      { "step": "utils/gpx.ts: generateGpx pure function (GPX 1.1, trkpt lat/lon/time, escaping, empty-throws)", "completed": true },
+      { "step": "__tests__/gpx.test.ts: counts/precision/ISO8601/escaping/empty", "completed": true },
+      { "step": "record-detail.page.vue export button + blob download", "completed": true },
+      { "step": "Discriminants R1/R2/R3, G1-G3 evidence", "completed": true }
     ],
-    "passes": false
+    "passes": true
   },
   {
     "number": 2,
     "category": "Acceptance",
     "task": "Gates + commits (MEDIUM tier: no independent review)",
     "steps": [
-      { "step": "offline 698 per-digit unchanged; pnpm test (incl. new suite)/type-check/build/typed-router diff clean; contract dual-state; token 2034; word-check; diff --check; line endings", "completed": false },
-      { "step": "C-01 feat(web) + C-02 ledger (4 files), no push no PR", "completed": false }
+      { "step": "offline 698 per-digit unchanged; pnpm test (incl. new suite)/type-check/build/typed-router diff clean; contract dual-state; token 2034; word-check; diff --check; line endings", "completed": true },
+      { "step": "C-01 feat(web) + C-02 ledger (4 files), no push no PR", "completed": true }
     ],
-    "passes": false
+    "passes": true
   }
 ]

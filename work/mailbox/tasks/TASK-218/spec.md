@@ -47,7 +47,7 @@ web/src/utils/gpx.ts (new), web/src/utils/__tests__/gpx.test.ts (new), web/src/p
 - C-01 feat(web): ... (TASK-218); C-02 docs(mailbox): ... (TASK-218) ledger 4 files. No push, no PR.
 
 ## S7 backfill (after C-02)
-- commit hashes: C-01 = TBD; C-02 = self-referencing hash (precedent)
-- web test results / offline / token final: TBD
-- discriminant results: TBD
-- deviations: TBD
+- commit hashes: C-01 = 70d9679; C-02 = self-referencing hash (沿 TASK-178/183/204/205/213/214/215/216/217 先例，以 git log 为准)
+- web test results / offline / token final: offline 698=52/50/165/166/159/80/26 逐位不变 rc=0；web pnpm test rc=0（3 套 18 测：token 6 + gpx 5 + client 7）、type-check rc=0、build 成功（3283 modules）、typed-router diff 干净；token 29 项两点 2034/2034 只增不减
+- discriminant results: R1 绿（GPX 1.1 完整结构/trkpt 计数与序/lat-lon 6 位/time ISO8601/name 转义/空抛错）；R2 绿（vitest 5 测全过）；R3 绿（按钮 v-if points.length、a[download=record-{id}.gpx]、blob application/gpx+xml，type-check+build+代码审查承载，真实浏览器点击未覆盖）；G1 绿（offline 698 逐位）；G2 绿（改动集恰白名单 8 文件）；G3 绿（契约双态 rc=0、token 2034、词面门 ZERO_HIT+探针、diff --check、行尾合规）
+- deviations: D1 C-02 自指哈希（沿先例）；D2 词面门/探针模式文件落 gitignored .trae/tmp 不入库；D3 token 29 项字面量不枚举入新文档（沿 TASK-188 N1 教训）

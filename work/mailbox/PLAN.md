@@ -2595,3 +2595,17 @@ run `35802403723`（head `eba0108`，2026-09-23 00:31 UTC）——**web/build �
 | 偏差 | D1 台账笔自指哈希（沿先例）；D2 原生 Redis 占 6379 → 临时 gitignored 覆盖重映射 16379（未入库、验证后删）；D3 token 参照 2030 vs 实测基线 2034（基线漂移，单向门满足）；D4 契约门 Dockerfile 无扩展名提取盲区（README 已知盲区）致落盘后基线比对假性红，故在途门于 C-01 窗口亲跑；D5 MySQL 数据卷口令此前已对齐（复用既有卷）。明细见 handoff.md §8 |
 | 状态 | TASK-217 全链路闭环，**外部终验待推送后外部门槛 CI 绿**；E18 镜像可写日志目录缺陷修复落地，六服务容器化零脚手架裸引导恢复 |
 - 补记（指导侧封盘笔，2026-10-13）：推送 1e63ab5..1cb4383（4 笔=TASK-216 封盘笔+TASK-217 派发/C-01/C-02）后第 56 次 CI（run 38365738324，head=1cb4383）conclusion=success 全 job 绿（web/build）——**镜像构建门以修复后六 Dockerfile 首建全绿**（外部终验核心），offline、Trivy、词面门、compose config、web 全过。MEDIUM 档三环节终裁全过（指导亲核 PASS：git 链恰 10 文件全等+六 Dockerfile diff 逐行核对零夹带（五服务各恰 1 行 RUN 扩展、gateway 恰 2 行含 sentinel dir 参数）+R3 零脚手架六断言证据详实（六 healthy/六 targets up/up query 六序列值 1/Grafana 200/容器内 JSON 日志行/sentinel-record.log app:app 属主）+回传 vs 实况零矛盾），TASK-217 封盘（E18 镜像日志目录缺陷课题收官）。课题终态：F20 容器化裸引导阻断根治——六镜像运行阶段 mkdir /app/logs（+gateway /app/logs/sentinel 经 csp.sentinel.log.dir 官方属性统一日志根），TASK-198 JSON 日志链路在容器内真实落盘（user-service.log JSON 行+sentinel-record.log 实证）；TASK-216 的 tmpfs 绕法正式退役。指导侧偏差裁决：D2 Redis 端口重映射为与缺陷正交之本地处置合理；D3 token 2034 为既有基线漂移（e408e0c 已存在+4）只增不减门满足；D4 Dockerfile 无扩展名提取盲区沿 README 已知盲区先例在途窗口亲跑。新基准：token 29 项基准读数更新为 2034。C-01 4ce4df8（6 文件+7/−7）/C-02 1cb4383。 |
+
+## 验收记录：TASK-218（GPX 轨迹导出，E13，MEDIUM 档，2026-10-13）
+
+| 项 | 内容 |
+| --- | --- |
+| 开工基线 | 派发笔 `9df3d6c`（提案三件套 + 任务书）；工作树干净；offline 基线 698=52/50/165/166/159/80/26；token 29 项基准 2034（沿 TASK-217 更新后口径） |
+| C-01 实施笔 | `70d9679` `feat(web): 轨迹GPX导出纯前端实现（TASK-218）`，恰 4 文件 = §4 白名单（web/src/utils/gpx.ts 新 / web/src/utils/__tests__/gpx.test.ts 新 / web/src/pages/record-detail.page.vue / web/README.md），+147 |
+| C-02 台账笔 | 本笔 `docs(mailbox): 登记TASK-218 GPX导出验收与台账闭环（TASK-218）`，恰 4 文件（tasks.json 勾选 / spec.md §7 回填 / handoff.md 新建 / PLAN.md 纯追加），C-02 自指哈希 D1 先例 |
+| 判别式红绿 | R1 绿（GPX 1.1 完整结构、trkpt 计数与序、lat/lon 6 位小数、time ISO8601、name 转义、空数组抛错）；R2 绿（gpx.test.ts 5 测全过，pnpm test 3 套 18 测 rc=0）；R3 绿（按钮 v-if points.length、a[download=record-{id}.gpx]、blob application/gpx+xml；type-check+build+代码审查承载，真实浏览器点击未覆盖）；G1/G2/G3 绿。明细见 handoff.md §4 |
+| 本机门禁 | offline 逐位 **698=52/50/165/166/159/80/26** BUILD SUCCESS rc=0（零后端改动与基线逐位不变）；web `pnpm test` rc=0（3 套 18 测：token 6 + gpx 5 + client 7，TMP 重定向 .trae/tmp）、type-check rc=0、build 成功（3283 modules）、typed-router diff rc=0；契约门双态 rc=0（在途 --open TASK-218 --baseline=9df3d6c + 收口无参）；token 29 项两点 2034/2034 只增不减；词面门改动集 CI-exact ZERO_HIT rc=1 + 探针阳性对照 HIT rc=0；git diff --check rc=0；行尾两新文件纯 LF+末尾换行无 BOM、改文件保持基线（均 i/lf w/lf） |
+| 是否到达外部门槛 | **未达到**：两笔均未 push、未建 PR、无 CI run；MEDIUM 档外部终验（指导亲核 + CI 外部终验收口，web job 含新 gpx 套件）待指导侧推动推送后补记 |
+| 未覆盖/跳过 | `--mode=online`、CI 全流程、真实浏览器下载点击（沿 TASK-213 口径登记未覆盖）、GPX 第三方解析器兼容验证、>500 点部分轨迹导出口径（沿用页内已知限制说明） |
+| 偏差 | D1 台账笔自指哈希（沿先例）；D2 词面门/token 模式文件落 gitignored .trae/tmp 不入库；D3 README 尾行一次修正（diff --check 自纠后复检干净）；D4 offline Nacos 连接噪音对计数零影响。明细见 handoff.md §8 |
+| 状态 | TASK-218 本地闭环：E13 GPX 导出落地（纯前端零后端零依赖，vitest 3 套 18 测），外部终验待推送后补记 |
