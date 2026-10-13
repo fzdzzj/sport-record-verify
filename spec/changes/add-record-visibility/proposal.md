@@ -1,0 +1,17 @@
+## Proposal: add-record-visibility (TASK-221, P3)
+
+### Background
+sport_record has no visibility column: today ANY logged-in caller can read arbitrary record trajectories (GET /{id}/points ownership-gated only for the owner via TASK-204), arbitrary verification verdicts (GET /{id}/verify-result has NO caller check at all), and like any PASSED record. Real fitness apps (Strava/Keep) treat per-record visibility (public / friends / private) as the base privacy primitive — it is also the prerequisite for P4 (feed), P9 (share cards) and any social surface.
+
+### Plan (FULL tier: schema + cross-service friend check + read-path authorization semantics; independent review applies)
+- Three-state enum RecordVisibility (api module): PUBLIC(0, default & backfill for existing rows), FRIENDS(1), PRIVATE(2).
+- New idempotent migration sql/migrations/add-record-visibility.sql (information_schema + PREPARE pattern per add-user-role.sql; MySQL 8.0 has no ADD COLUMN IF NOT EXISTS) + same column added to sql/02-record-db.sql CREATE TABLE (new-install path, per migrations README "01~04 already contain all columns required by current code" convention; TASK-108 dual-write precedent). DEFAULT 0 = existing rows stay public (backward compatible, zero breakage).
+- Read-path authorization gate (core): SportRecordService.assertCanView(record, caller) — caller==owner pass; caller==null (auth.enabled=false degrade mode) pass unchanged (TASK-204 degrade-zero-perturbation precedent; production is strictly auth.enabled=true via TASK-191 strict linkage); PRIVATE → 403 for non-owner; FRIENDS → friend check via new UserApi.areFriends(owner, caller); PUBLIC → pass. UserApiFallback soft-degrades areFriends to false (fail-safe privacy, same posture as friends-leaderboard empty-board precedent).
+- Cross-service friend check: user-service InternalFriendController GET /internal/friends/exists?userId=&otherUserId= backed by FriendService.areFriends (normalized user_low<user_high friendship selectCount>0, null arg → false). No new Feign chain — record-service already has UserApi available (api module contract).
+- Read paths gated: pagePoints (replaces caller==owner assertion), getVerifyResult (gains caller param — closes the today-open verdict exposure), RecordLikeService.like/unlike/getLike (visibility gate after record lookup). appeal stays owner-only (write path, unchanged). /my and /my/streak stay ownership-as-identity (owner sees own everything).
+- Submit path: RecordSubmitDTO gains optional Integer visibility (@Min(0) @Max(2)), service resolves null→PUBLIC, out-of-range rejected (resolveSportType precedent); RecordSummaryDTO gains Integer visibility for frontend display.
+- web: submit form visibility selector (three options, default public), my-records list visibility badge on index page, client.ts type fields, README registration.
+- No leaderboard changes (user-adjudicated 2026-10-13: contribution credit stays orthogonal to visibility — leaderboard exposes aggregate distance only, no record detail; visibility×leaderboard linkage deferred to its own future topic). No post-hoc visibility PATCH endpoint (user-adjudicated: deferred; record editing is absent site-wide, E14-class). No new index (point lookups go by PK then in-memory gate), no state machine / MQ / event-DTO / gateway / ci.yml changes.
+
+### Non-Goals
+- No feed (P4), no visibility editing (deferred), no leaderboard linkage (deferred), no per-viewer analytics, no timezone/locale work, no admin visibility override, no notification on visibility change (no such mutation exists).
