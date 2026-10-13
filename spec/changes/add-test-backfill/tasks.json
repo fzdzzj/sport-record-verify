@@ -1,0 +1,23 @@
+[
+  {
+    "number": 1,
+    "category": "Implementation",
+    "task": "Test backfill (mapmatch contract + notification preference auth paths)",
+    "steps": [
+      { "step": "MapMatchRequestValidationTest: empty/size-boundary/cascaded/valid; MapMatchControllerTest: delegation+wrapper; MatchPropertiesTest: defaults+Binder override", "completed": false },
+      { "step": "NotificationControllerTest additions: preference auth-enabled positive paths + claimed-mismatch 403", "completed": false },
+      { "step": "Discriminants R1a-R1d/R2/R3a-R3b/R4a-R4c, G1-G2 evidence", "completed": false }
+    ],
+    "passes": false
+  },
+  {
+    "number": 2,
+    "category": "Acceptance",
+    "task": "Gates + commits (MEDIUM tier: no independent review)",
+    "steps": [
+      { "step": "offline full: mapmatch/user net-add only, other five modules per-digit unchanged; contract dual-state; token 2030; word-check; diff --check; line endings", "completed": false },
+      { "step": "C-01 test + C-02 ledger (4 files), no push no PR", "completed": false }
+    ],
+    "passes": false
+  }
+]
