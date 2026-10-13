@@ -112,3 +112,4 @@ web/README.md.
 - 判别式红绿细目、§6 门禁留证与偏差登记见 `work/mailbox/tasks/TASK-221/handoff.md`。
 - 偏差登记（详见 handoff §8）：`--static=user-service`/`--static=api` 非本仓声明插件模块，用通用 checkstyle 配置实测存在基线违规（毫及未触碰端点/字段）——静态门仅对声明并强制的 record-service 生效且 rc=0；迁移幂等二跑已在 scratch 库证明（第二次命中跳过分支）；真实浏览器交互未跑登记未覆盖。
 - D7 修复笔：`test(user): 修复areFriends单测TableInfo初始化缺失（TASK-221 D7）`（本笔，恰 1 实施文件 +2 台账文件；哈希留空由指导侧封盘笔回填或写「本笔」，详见 handoff §8 D7）。
+- 指导侧封盘补记（2026-10-13）：外部 CI 三程 38411110326 红（job 悬置怪象，曾误判基建抖动）/38412925568 复红定因 D7/D7 修复笔 1158db6 推送后 38417778846 conclusion=success 全 job 绿——外部终验达成，TASK-221 封盘（D7 修复笔哈希回填=1158db6）。

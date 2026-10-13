@@ -2653,6 +2653,7 @@ run `35802403723`（head `eba0108`，2026-09-23 00:31 UTC）——**web/build �
 | 未覆盖/跳过 | --mode=online、CI 全流程、真实浏览器可见性表单/徽标交互（沿 TASK-213/220 口径）、真实 MySQL/Redis/RocketMQ 跨服务好友判断联调（--it 未执行）、PRIVATE/FRIENDS 存量行视觉回归 |
 | 偏差 | D1 C-02 自指哈希；D2 词面门/token/迁移验证临时件落 gitignored .trae/tmp；D3 --static=user-service/api 模块未声明三件套插件、通用配置下存在基线违规（未触碰端点/字段），静态门以 record-service 为准且 rc=0；D4/D5 offline 噪音与 build chunk 告警为既有；D6 独立复核发现 §2 缩写路径致契约门判据 B 失配 + 在途证据时点失实，已展开全路径重建 C-02 修复、双态实测 rc=0。明细见 handoff.md §8 |
 | 状态 | TASK-221 本地闭环：记录可见性三态（PUBLIC/FRIENDS/PRIVATE）schema + 跨服务好友判断 + 读取面访问门，外部门槛与独立 review 待指导侧终裁与推送后补记 |
+- 补记（指导侧封盘笔，2026-10-13）：FULL 档三环节终裁全过（指导亲核 PASS + 独立复核四块，复核曾发现阻断-1=handoff §2 缩写路径致契约门判据 B 失配+在途证据时点失实，已重建 C-02' d0e10b4 修复并增量复验四项全过）。批次推送（8a12876..d0e10b4 四笔）后外部 CI 三程：run 38411110326（head=d0e10b4）红且叠加 job 记录悬置/不可重试怪象——指导侧曾误判基建抖动；run 38412925568（head=fba7ee5，src 同树台账笔）复红定因=D7（FriendServiceTest:398 纯 Mockito 单测 getSqlSegment 解析 Friendship lambda 缺 TableInfo 惯用法，本地 offline 类序偶然掩盖、CI online 类序暴露，误判就此纠正）；D7 修复笔 1158db6（恰 3 文件 +9：惯用法补齐断言零删弱 + handoff §8 D7 如实登记 + spec §7 补记）随 TASK-222 派发笔 481e644 推送后，run 38417778846（head=1158db6）conclusion=success 全 job 绿（web/build）——外部终验达成（绿头含 D7 修复，如实双记）。TASK-221 封盘。C-01 ff80635 / C-02' d0e10b4 / D7 1158db6。
 
 ## 方向候选与待办（指导侧常备）
 
