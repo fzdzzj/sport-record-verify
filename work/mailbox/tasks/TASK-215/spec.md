@@ -50,7 +50,9 @@ web/src/utils/__tests__/token.test.ts (new), web/src/api/__tests__/client.test.t
 - C-01 test(web): ... (TASK-215); C-02 docs(mailbox): ... (TASK-215) ledger 4 files. No push, no PR.
 
 ## S7 backfill (after C-02)
-- commit hashes: C-01 = TBD; C-02 = self-referencing hash (precedent)
-- web test counts / offline / token final: TBD
-- discriminant results: TBD
-- deviations: TBD
+- commit hashes: C-01 = bc448db (test(web), 7 files, +634/−2); C-02 = self-referencing hash (precedent)
+- web test results: vitest 3.2.7, 2 suites / 13 tests (token 6 + client 7) all green rc=0; type-check rc=0; build success (3283 modules); typed-router diff clean.
+- offline (web not in offline baseline): 698 = 52/50/165/166/159/80/26 per-digit unchanged, BUILD SUCCESS rc=0.
+- token 29 items two-point: 2030 (open) / 2030 (close); changed-set zero credential literals (pnpm-lock new lines carry only dep specifiers/integrity + js-tokens package name).
+- discriminant results: R1 green; R2a-f green; R3a-g green (R3f asserts refresh withCredentials:true + retried original carries new Bearer); G1/G2/G3 green.
+- deviations: D1 C-02 self-referencing hash (precedent); D2 vite.config.ts single stray CR introduced by editor was normalized to pure LF (baseline LF); D3 new test files' trailing LF re-added; D4 web/README verification section still says "四条命令" (left untouched to honor "登记一节" scope) though CI now runs a fifth (test) command — the new section documents the added step.

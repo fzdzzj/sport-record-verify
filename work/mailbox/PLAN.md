@@ -2551,3 +2551,16 @@ run `35802403723`（head `eba0108`，2026-09-23 00:31 UTC）——**web/build �
 | 未覆盖 | `--mode=online`、CI 全流程、MockMvc 层 400 校验映射端到端、seq 负值与 lng 越界等未注册校验形态、Nacos 运行时叠加未测（纯 Binder 语义）；无性能/吞吐断言 |
 | 偏差 | D1 台账笔自指哈希（沿先例）；D2 任务书 S1「既有 17 测」与实测 14 测为措辞偏差，仅追加预注册 3 测后总数恰 17（diff +52/−0 纯追加，user 162→165 与 §6 口径吻合）；D3 token 权威 29 项清单由指导侧持有复测（沿 TASK-213 同口径）；D4 tasks.json 末尾换行前置保留。明细见 handoff.md §8 |
 - 补记（指导侧封盘笔，2026-10-13）：推送 7f1f9f8..a70340d（4 笔=TASK-213 封盘笔+TASK-214 派发/C-01/C-02）后第 53 次 CI（run 38344140935，head=a70340d）conclusion=success 全 job 绿（web/build）——offline、镜像、Trivy、词面门、compose config、web build/type-check 全过。MEDIUM 档三环节终裁全过（指导亲核 PASS：git 链 8 文件全等+红线面 diff 全空+R1c 级联/R2 透传/R3b Binder/R4c 越权 403 定向抽查零矛盾+规模 321=130+77+62+52 逐文件核对；回传 vs 实况零矛盾；CI success 外部终验），TASK-214 封盘（E4 测试补强课题收官）。课题终态：mapmatch 契约测试三件——MapMatchRequestValidationTest 7 测锁 @NotEmpty 空 points/@Size 20000 边界/级联三形态（points[0].seq/lat/lng propertyPath 精确）/全合法零违规、MapMatchControllerTest 2 测（Result.success 包装+请求同实例透传双 assertSame 防 @Data equals 假绿）、MatchPropertiesTest 2 测（默认值 200/50/25/300 黄金值承重契约+Binder 前缀覆盖，MutablePropertySources 无系统源）；NotificationControllerTest 增补 3 测（偏好鉴权态正向×2+claimed 不一致 403+偏好服务零触达）。offline 基线 684→698（mapmatch 15→26 净增+11、user 162→165 净增+3，五模块逐位不变），token 2030 持平。已知限制（非阻断）：MockMvc 层 400 映射端到端未测（纯 Validator 语义承载）、Nacos 运行时叠加未测（纯 Binder 语义）。C-01 cb5c0f1（4 文件+321/−0）/C-02 a70340d。 |
+
+## 验收记录：`TASK-215`（2026-10-13，web 前端测试基建第一阶段 Vitest + token/client 锚点测试，MEDIUM 档）
+
+| 项 | 内容 |
+| --- | --- |
+| 开工基线 | 派发笔 `e90fe6a`（提案三件套 + 任务书）；工作树干净；offline 基线 698=52/50/165/166/159/80/26（web 不进 offline）；token 29 项开工账单参照 SUM=2030 |
+| C-01 实施笔 | `bc448db` `test(web): Vitest测试基建与token/client拦截器锚点测试（TASK-215）`，恰 7 文件 = §4 白名单（package.json / pnpm-lock.yaml / vite.config.ts / token.test.ts 新 / client.test.ts 新 / ci.yml 单 step / web README），+634／−2 |
+| C-02 台账笔 | 本笔 `docs(mailbox): 登记TASK-215测试基建验收与台账闭环（TASK-215）`，恰 4 文件（tasks.json 勾选 / spec.md §7 / handoff.md / PLAN.md），自指哈希沿 D1 先例 |
+| 判别式红绿 | R1 绿（vitest 2 套 13 测全绿 + type-check rc=0 + build 成功 + typed-router diff 净）；R2a-f 绿（TOKEN_KEYS 精确 / setTokens 双键回环 / clearTokens 清含 refresh 键 / 无 handler 仅清理不抛 / handler 被调 / handler 异常吞没）；R3a-g 绿（无 token 无 Authorization / 有 token Bearer / code=0 透传 body / code!=0 err.code+message / /api/auth/* 401 零 refresh / 业务 401 refresh(withCredentials) 后携新 token 单次重试 / refresh 自身 401 触发 auth-fail）；G1/G2/G3 绿。明细见 handoff.md §4 |
+| 本机门禁 | offline 逐位 **698=52/50/165/166/159/80/26** BUILD SUCCESS exit 0（纯前端七模块与基线逐位不变）；web `pnpm test` rc=0（vitest 3.2.7 / 2 套 13 测，TMP 重定向 .trae/tmp）、type-check rc=0、build 成功（3283 modules）、typed-router diff rc=0；契约门双态 rc=0（在途 --open TASK-215 --baseline=e90fe6a + 收口无参）；token 29 项 post-C01 2030 / close 2030（只增不减，改动集零真实凭证字面量佐证）；词面门改动文件集 CI-exact ZERO_HIT + 探针阳性对照 HIT；`git diff --check` rc=0；行尾两新文件纯 LF+末尾换行无 BOM、改文件保持基线各自身（ci.yml CRLF、其余 LF） |
+| 是否到达外部门槛 | **未到达**：两笔均未 push、未建 PR、无 CI run；MEDIUM 档外部终验（指导亲核 + CI 外部终验收口，web job 含新 test step）待指导侧推动推送后补记 |
+| 未覆盖 | `--mode=online`、CI 全流程（含新 web test step 真实执行）、真实浏览器可视交互、组件挂载与 E2E 未跑；R3 以 adapter 注入验证拦截器语义、未起真实 HTTP/网关；无性能/吞吐断言 |
+| 偏差 | D1 台账笔自指哈希（沿先例）；D2 vite.config.ts 编辑器引入 1 CR 已归一化纯 LF；D3 两新测试文件末尾 LF 补齐后重跑仍绿；D4 web README「四条命令」表述因「登记一节」范围限制保留原样、新节已明示新增 step。明细见 handoff.md §8 |

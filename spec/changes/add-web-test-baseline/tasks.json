@@ -4,22 +4,22 @@
     "category": "Implementation",
     "task": "Web test baseline (vitest + token/client anchor tests)",
     "steps": [
-      { "step": "package.json test script + vitest/happy-dom devDeps + pnpm-lock + vite.config.ts test field", "completed": false },
-      { "step": "token.test.ts: keys/get/set/has/legacy-key cleanup/auth-fail handler", "completed": false },
-      { "step": "client.test.ts via adapter injection: Bearer, code!=0 throw, 401 refresh retry, auth-endpoint bypass, refresh failure", "completed": false },
-      { "step": "CI web job test step + web README section", "completed": false },
-      { "step": "Discriminants R1-R5, G1-G3 evidence", "completed": false }
+      { "step": "package.json test script + vitest/happy-dom devDeps + pnpm-lock + vite.config.ts test field", "completed": true },
+      { "step": "token.test.ts: keys/get/set/has/legacy-key cleanup/auth-fail handler", "completed": true },
+      { "step": "client.test.ts via adapter injection: Bearer, code!=0 throw, 401 refresh retry, auth-endpoint bypass, refresh failure", "completed": true },
+      { "step": "CI web job test step + web README section", "completed": true },
+      { "step": "Discriminants R1-R5, G1-G3 evidence", "completed": true }
     ],
-    "passes": false
+    "passes": true
   },
   {
     "number": 2,
     "category": "Acceptance",
     "task": "Gates + commits (MEDIUM tier: no independent review)",
     "steps": [
-      { "step": "offline 698 per-digit unchanged (web not in offline); pnpm test rc=0 (TMP redirect to repo .trae/tmp); type-check + build + typed-router diff clean; contract dual-state; token 2030; word-check; diff --check; line endings", "completed": false },
-      { "step": "C-01 test(web) + C-02 ledger (4 files), no push no PR", "completed": false }
+      { "step": "offline 698 per-digit unchanged (web not in offline); pnpm test rc=0 (TMP redirect to repo .trae/tmp); type-check + build + typed-router diff clean; contract dual-state; token 2030; word-check; diff --check; line endings", "completed": true },
+      { "step": "C-01 test(web) + C-02 ledger (4 files), no push no PR", "completed": true }
     ],
-    "passes": false
+    "passes": true
   }
 ]
