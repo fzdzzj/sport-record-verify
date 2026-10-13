@@ -60,3 +60,11 @@
 ## S7 backfill (after C-02)
 
 C-02 回填本节：判别式红绿、门禁留证、偏差 D1-Dn（含 D7 类隔离性问题的如遇）、未覆盖清单（真实浏览器交互/跨服务真实联调沿先例口径）。handoff.md §2 只改清单用 git 全路径逐字符（禁缩写、禁散文 token）。
+
+### 回填（2026-10-13，C-02 台账笔）
+
+- **判别式红绿**：R1-R6 / G1-G3 逐条实证绿，证据见 `handoff.md §4`。
+- **门禁留证**：offline 全量逐位、静态 record-service、web 四件套、契约门双态、token 29 项两点、词面门 CI-exact ZERO_HIT + 探针正控、`git diff --check`、行尾，均留证于 `handoff.md §5`.
+- **偏差**：D1（feed card 时长字段不出现——FeedItemDTO 契约按 proposal 为 RecordSummaryDTO 全字段 + author*，不含 duration，卡片据可用字段渲染并如实登记，非设计变更）；D2（token/词面门/迁移验证临时件落 gitignored `.trae/tmp`）；D3（`--static=user-service/api` 模块未声明三件套、通用配置基线违规，静态门以 record-service 为准）；D4/D5（offline 噪音与 build chunk 告警为既有）。明细见 `handoff.md §8`。
+- **未覆盖清单**：真实浏览器 `/feed` 卡片与分页交互、跨服务真实联调（未起六服务 + auth.enabled=true 全栈，`--it` 未执行）、`--mode=online` 与外部 CI。均沿 TASK-213/220/221 口径登记，未写成通过，见 `handoff.md §10`.
+- **停止条件**：S3 §1-§5 无一按字面触发（对账见 `handoff.md §8`）。

@@ -2659,3 +2659,17 @@ run `35802403723`（head `eba0108`，2026-09-23 00:31 UTC）——**web/build �
 
 - 2026-10-13 建档：work/mailbox/BACKLOG.md 为方向候选与待办常备清单（指导侧维护，随立项/封盘更新状态）。首批评审：F1 好友动态流（首推）/F2 记录删除撤回/F3 周月运动目标/F4 我的记录筛选 + H1 E2E 真实浏览器验证批/H2 E5 生产部署姿态演练/H3 LIGHT 清理批；推荐序 F1 → H3 → 其余按需，近期上生产则 H2 提前。
 - 本笔顺带修正 TASK-221 状态行历史断尾（补「侧终裁与推送后补记」闭行管道符）。
+
+## 验收记录：TASK-222（好友动态订阅与跨服务聚合读路径，P4，FULL 档，2026-10-13）
+
+| 项 | 内容 |
+| --- | --- |
+| 开工基线 | 派发笔 84a6e2d（TASK-221 封盘笔）；工作树干净；offline 基线 52/50/170/196/159/80/26；token 29 项基线 2036 |
+| C-01 实施笔 | 9db644a feat(feed): 好友动态订阅与跨服务聚合读路径（TASK-222），恰 16 文件 = S4 白名单全等（FeedItemDTO 新 / feed.page.vue 新 / typed-router.d.ts 再生成含 /feed 路由沿 TASK-213 提交生成物先例），+730，2 新文件 |
+| C-02 台账笔 | 本笔 docs(mailbox): 登记TASK-222好友动态验收与台账闭环（TASK-222），恰 4 文件（tasks.json 勾选 / spec.md §7 回填 / handoff.md 新建 / PLAN.md 纯追加）；C-02 自指哈希沿 D1 先例 |
+| 判别式红绿 | R1 绿（auth on feed 恰含 own任意+friends PUBLIC/FRIENDS，createdAt DESC，陌生人 user_id IN 排除）；R2 绿（degrade caller=null→PUBLIC 全站、缺头 1001 /my 同构）；R3 绿（/internal/friends/ids 双向还原 + fallback 空→仅本人 fail-safe）；R4 绿（昵称复用既有 listUsersByIds 当页批量、fallback 空→回退 userId 字符串）；R5 绿（/feed 卡片要素+顶栏「动态」+a-pagination，type-check/build/test 承载）；R6 绿（既有 visibility 门零 diff + feed 预过滤与 assertCanView 等价论证=返回集⊆门可读集，never 越过门）；G1/G2/G3 绿。明细见 handoff.md §4 |
+| 本机门禁 | offline 逐位 **52/50/173/206/159/80/26** BUILD SUCCESS rc=0（user 170→173 恰 +3、record 196→206 恰 +10，其余五模块逐位不变，仅净增不下降）；三承载新断言的测试类隔离单跑绿（FriendServiceTest 31 / SportRecordServiceTest 63 / RecordControllerTest 25，D7 惯用法 @BeforeEach init TableInfo）；record-service 静态 rc=0（0 Checkstyle violations/SpotBugs Error size 0/PMD——唯一声明并强制三件套的改动模块）；web pnpm test rc=0（4 套 25 测）、type-check rc=0、build 成功（3283 modules，typed-router 再生成 +13 且二次构建 idempotent）；契约门双态 rc=0（在途 --open TASK-222 --baseline=84a6e2d 判据 A 待办放行 + 判据 B 一致，收口无参）；token 29 项两点 2036/2036 只增不减且 ≥2034，改动集 token 扫描 ZERO_HIT；词面门改动集 CI-exact ZERO_HIT rc=1 + 探针阳性对照 HIT rc=0；git diff --check rc=0；行尾两新文件纯 LF+末尾换行无 BOM |
+| 是否到达外部门槛 | **未达到**：两笔均未 push、未建 PR、无 CI run；FULL 档独立 review 复核待指导侧派发 |
+| 未覆盖/跳过 | --mode=online、CI 全流程、真实浏览器 /feed 卡片/分页/顶栏交互（沿 TASK-213/220 口径）、真实 MySQL/Redis 跨服务联调（listFriendIds/listUsersByIds 真 Feign + feed 真 SQL，--it 未执行）、陌生人/降级态真实渲染视觉回归 |
+| 偏差 | D1 feed 卡片不显示时长（FeedItemDTO 契约按 proposal 不含 duration，卡片据可用字段渲染，非设计变更）；D2 token/词面门/契约/tokencheck 临时件落 gitignored .trae/tmp；D3 --static=user-service/api 模块未声明三件套插件、通用配置下存在基线违规（未触碰代码），静态门以 record-service 为准且 rc=0；D4/D5 offline 噪音与 build chunk 告警为既有；D6 recon 确认昵称批量面复用既有 listUsersByIds（S1「有则复用」不加 briefs 端点）且 typed-router 生成物随 /feed 路由提交沿 TASK-213 先例。明细见 handoff.md §8 |
+| 状态 | TASK-222 本地闭环：好友动态 feed（pull-on-read 跨服务聚合读路径，零 schema/零索引/零 MQ，feed 预过滤与 visibility 门等价论证），外部门槛与独立 review 待指导侧终裁与推送后补记 |

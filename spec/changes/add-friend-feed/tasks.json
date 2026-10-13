@@ -4,21 +4,21 @@
     "category": "Implementation",
     "task": "Friend activity feed (cross-service aggregation read path + web)",
     "steps": [
-      { "step": "api: UserApi.listFriendIds/listUserBriefs + fallbacks (empty-list fail-safe) + brief DTO if needed", "completed": false },
-      { "step": "user-service: InternalFriendController GET /internal/friends/ids + author-brief surface (reuse if recon finds one) + tests", "completed": false },
-      { "step": "record-service: SportRecordService.pageFeed (own any-visibility + friends PUBLIC/FRIENDS, createdAt DESC) + FeedItemDTO + RecordController GET /api/records/feed + tests (isolated-run discipline, D7 lesson)", "completed": false },
-      { "step": "web: /feed page (author + badge + summary cards) + nav entry + pagination + client.ts types + tests", "completed": false },
-      { "step": "Discriminants R1-R6, G1-G3 evidence", "completed": false }
+      { "step": "api: UserApi.listFriendIds/listUserBriefs + fallbacks (empty-list fail-safe) + brief DTO if needed", "completed": true },
+      { "step": "user-service: InternalFriendController GET /internal/friends/ids + author-brief surface (reuse if recon finds one) + tests", "completed": true },
+      { "step": "record-service: SportRecordService.pageFeed (own any-visibility + friends PUBLIC/FRIENDS, createdAt DESC) + FeedItemDTO + RecordController GET /api/records/feed + tests (isolated-run discipline, D7 lesson)", "completed": true },
+      { "step": "web: /feed page (author + badge + summary cards) + nav entry + pagination + client.ts types + tests", "completed": true },
+      { "step": "Discriminants R1-R6, G1-G3 evidence", "completed": true }
     ],
-    "passes": false
+    "passes": true
   },
   {
     "number": 2,
     "category": "Acceptance",
     "task": "FULL gates + commits + independent review + external CI",
     "steps": [
-      { "step": "offline record/user net-add only, other five modules per-digit unchanged; web four-piece; contract dual-state; token SUM unchanged; word-check; diff --check; line endings; new test classes pass isolated -Dtest runs", "completed": false },
-      { "step": "C-01 feat + C-02 ledger, no push no PR", "completed": false },
+      { "step": "offline record/user net-add only, other five modules per-digit unchanged; web four-piece; contract dual-state; token SUM unchanged; word-check; diff --check; line endings; new test classes pass isolated -Dtest runs", "completed": true },
+      { "step": "C-01 feat + C-02 ledger, no push no PR", "completed": true },
       { "step": "Independent review subagent, zero-write", "completed": false },
       { "step": "Supervisor push + external CI green (online mode lesson from TASK-221 D7)", "completed": false }
     ],
