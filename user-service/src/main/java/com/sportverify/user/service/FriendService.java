@@ -271,6 +271,31 @@ public class FriendService {
         return count != null && count > 0;
     }
 
+    /**
+     * 好友 ID 全量列表（TASK-222 add-friend-feed）：返回 {@code userId} 的全部已接受好友
+     * user_id，双向还原（本人是 low 端取 high、high 端取 low），**不分页**一次拉齐。
+     *
+     * <p>供好友动态 feed 构造 {@code user_id IN (self ∪ 好友)} 的候选作者集合——分页截断
+     * 会让 feed 丢失未见好友的记录，故必须全量。friendship 表只承载 ACCEPTED 关系，
+     * 天然不含 PENDING/REJECTED。入参 null → 空列表（fail-safe，调用方退化为仅本人）。</p>
+     *
+     * @param userId 查询用户
+     * @return 该用户全部好友 user_id（可能为空）
+     */
+    public List<Long> listFriendIds(Long userId) {
+        if (userId == null) {
+            return List.of();
+        }
+        List<Friendship> rels = friendshipMapper.selectList(new LambdaQueryWrapper<Friendship>()
+                .eq(Friendship::getUserLow, userId)
+                .or()
+                .eq(Friendship::getUserHigh, userId));
+        return rels.stream()
+                .map(f -> f.getUserLow().equals(userId) ? f.getUserHigh() : f.getUserLow())
+                .distinct()
+                .toList();
+    }
+
     /** 好友列表（规范差异「好友列表」）：分页返回，仅 ACCEPTED 关系
      * （friendship 表本身只承载已接受关系，天然排除 PENDING/REJECTED/CANCELLED）。
      *

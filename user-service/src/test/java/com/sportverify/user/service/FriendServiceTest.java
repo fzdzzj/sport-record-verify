@@ -443,6 +443,45 @@ class FriendServiceTest {
         verifyNoInteractions(friendshipMapper);
     }
 
+    // ==================== 好友 ID 全量列表（TASK-222 add-friend-feed） ====================
+
+    /** 绿 R3：listFriendIds 双向还原全部好友 ID（本人 low 端取 high、high 端取 low），不分页 */
+    @Test
+    void listFriendIds_bidirectionalRestore() {
+        when(friendshipMapper.selectList(any())).thenReturn(java.util.Arrays.asList(
+                friendship(1001L, 1002L), // 本人是 low 端 → 对方 1002
+                friendship(1003L, 1001L))); // 本人是 high 端 → 对方 1003
+
+        List<Long> ids = service.listFriendIds(1001L);
+
+        assertEquals(2, ids.size());
+        assertTrue(ids.contains(1002L), "low 端本人应取 high 端");
+        assertTrue(ids.contains(1003L), "high 端本人应取 low 端");
+    }
+
+    /** 绿：好友 ID 去重（同一好友多关系只出现一次） */
+    @Test
+    void listFriendIds_deduplicates() {
+        when(friendshipMapper.selectList(any())).thenReturn(java.util.Arrays.asList(
+                friendship(1001L, 1002L),
+                friendship(1001L, 1002L)));
+        List<Long> ids = service.listFriendIds(1001L);
+        assertEquals(1, ids.size());
+        assertTrue(ids.contains(1002L));
+    }
+
+    /** 绿 fail-safe：无好友 → 空列表；入参 null → 空列表且零 mapper 访问 */
+    @Test
+    void listFriendIds_emptyOrNull() {
+        when(friendshipMapper.selectList(any())).thenReturn(java.util.Collections.emptyList());
+        // 1001 非 null：selectList 恰一次（返回空 → 空结果）
+        assertTrue(service.listFriendIds(1001L).isEmpty());
+        verify(friendshipMapper, times(1)).selectList(any());
+        // null：短路返回空，不得触碰 mapper（fail-safe 契约）
+        assertTrue(service.listFriendIds(null).isEmpty());
+        verify(friendshipMapper, times(1)).selectList(any());
+    }
+
     // ==================== 锁键归一 ====================
 
     /** 规范差异「锁键归一一致」：A→B 与 B→A 两方向得到相同锁键 lock:friend:{low}_{high}（min/max） */

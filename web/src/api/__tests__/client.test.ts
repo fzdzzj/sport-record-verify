@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { AxiosError, type AxiosResponse } from 'axios'
 import api from '@/api/client'
 import { getAccessToken, setAuthFailHandler, setTokens } from '@/utils/token'
+import { getFeed } from '@/api/client'
 
 // adapter 注入范式：替换 api.defaults.adapter 为 vi.fn 模拟传输层，
 // 请求/响应两段拦截器链全真实执行（不 mock axios 自身）。
@@ -144,5 +145,42 @@ describe('client.ts 拦截器锚点（TASK-215）', () => {
     expect(failHandler).toHaveBeenCalledTimes(1)
     // 原请求 + refresh = 2 次，无重试
     expect(adapter).toHaveBeenCalledTimes(2)
+  })
+})
+
+// ===== 好友动态 feed（TASK-222 add-friend-feed） =====
+describe('client.ts feed（TASK-222）', () => {
+  // R1：getFeed 请求打 GET /record/api/records/feed 且携带 page/size 查询参数
+  it('R1 getFeed hits /record/api/records/feed with page/size params', async () => {
+    const pageBody = {
+      code: 0,
+      message: 'ok',
+      data: {
+        current: 1,
+        size: 20,
+        total: 1,
+        records: [
+          {
+            id: 9,
+            sportType: 1,
+            distance: 12.5,
+            status: 2,
+            visibility: 0,
+            createdAt: '2026-10-01T10:00:00',
+            authorUserId: 201,
+            authorNickname: 'B',
+          },
+        ],
+      },
+    }
+    adapter.mockImplementationOnce((config: unknown) => Promise.resolve(ok(config, pageBody)))
+
+    const res = await getFeed(3, 50)
+
+    expect(res.data.current).toBe(1)
+    expect(adapter).toHaveBeenCalledTimes(1)
+    const call = adapter.mock.calls[0][0] as { url: string; params?: Record<string, number> }
+    expect(call.url).toBe('/record/api/records/feed')
+    expect(call.params).toEqual({ page: 3, size: 50 })
   })
 })

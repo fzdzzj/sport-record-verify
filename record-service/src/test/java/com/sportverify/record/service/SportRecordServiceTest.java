@@ -6,6 +6,7 @@ import com.sportverify.api.record.dto.RecordSubmitDTO;
 import com.sportverify.api.record.dto.RecordSubmitResultDTO;
 import com.sportverify.api.record.dto.RecordSummaryDTO;
 import com.sportverify.api.record.dto.RecordWithPointsDTO;
+import com.sportverify.api.record.dto.FeedItemDTO;
 import com.sportverify.api.record.dto.StatusCallbackDTO;
 import com.sportverify.api.record.dto.TrackPointDTO;
 import com.sportverify.common.exception.BizException;
@@ -41,6 +42,7 @@ import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
@@ -1061,6 +1063,204 @@ class SportRecordServiceTest {
 
         assertEquals(0L, out.getTotal());
         assertEquals(0, out.getRecords().size());
+    }
+
+    // ==================== 好友动态 feed（TASK-222 add-friend-feed） ====================
+
+    /**
+     * 红 R1：auth on feed 过滤即身份——候选归属人 = self ∪ friendIds（user_id IN），
+     * 且可见性约束 user_id=self OR visibility ∈ {0,1}（本人任意、好友 PUBLIC/FRIENDS）。
+     * 陌生人记录即使 PUBLIC 也不入 feed：feed 查询携带的候选作者集合不含陌生人。
+     */
+    @Test
+    @SuppressWarnings("unchecked")
+    void pageFeed_authOn_filtersSelfAndFriendAuthors() {
+        TableInfoHelper.initTableInfo(
+                new MapperBuilderAssistant(new MybatisConfiguration(), ""), SportRecord.class);
+        when(userApi.listFriendIds(200L))
+                .thenReturn(Result.success(java.util.List.of(201L, 202L, 500L)));
+        when(sportRecordMapper.selectPage(any(Page.class), any()))
+                .thenReturn(new Page<SportRecord>(1, 20, 0));
+
+        Page<FeedItemDTO> out = service.pageFeed(200L, 1, 20);
+
+        assertEquals(0, out.getRecords().size());
+        ArgumentCaptor<LambdaQueryWrapper> wrapper = ArgumentCaptor.forClass(LambdaQueryWrapper.class);
+        verify(sportRecordMapper).selectPage(any(Page.class), wrapper.capture());
+        String segment = wrapper.getValue().getSqlSegment();
+        assertTrue(segment.contains("user_id IN"), "feed 必须按候选作者集 user_id IN 过滤：" + segment);
+        // 候选集 = self(200) ∪ 好友(201,202,500)；陌生人(如 999)不在其内
+        assertTrue(wrapper.getValue().getParamNameValuePairs().containsValue(200L),
+                "候选作者集必须含本人 user_id=200");
+        assertTrue(wrapper.getValue().getParamNameValuePairs().containsValue(201L),
+                "候选作者集必须含好友 201");
+        assertTrue(wrapper.getValue().getParamNameValuePairs().containsValue(500L),
+                "候选作者集必须含好友 500");
+        verify(userApi).listFriendIds(200L);
+    }
+
+    /**
+     * 红 R6：auth on 可见性约束——好友记录仅 PUBLIC/FRIENDS；feed wrapper 携带
+     * 可见性 IN (0,1) 与「本人任意」的 or 分支，使 PRIVATE 好友记录 / 陌生人不入 feed。
+     */
+    @Test
+    @SuppressWarnings("unchecked")
+    void pageFeed_authOn_visibilityConstraint() {
+        TableInfoHelper.initTableInfo(
+                new MapperBuilderAssistant(new MybatisConfiguration(), ""), SportRecord.class);
+        when(userApi.listFriendIds(200L)).thenReturn(Result.success(java.util.List.of(201L)));
+        when(sportRecordMapper.selectPage(any(Page.class), any()))
+                .thenReturn(new Page<SportRecord>(1, 20, 0));
+
+        service.pageFeed(200L, 1, 20);
+
+        ArgumentCaptor<LambdaQueryWrapper> wrapper = ArgumentCaptor.forClass(LambdaQueryWrapper.class);
+        verify(sportRecordMapper).selectPage(any(Page.class), wrapper.capture());
+        String segment = wrapper.getValue().getSqlSegment();
+        assertTrue(segment.contains("visibility IN"), "可见性约束必须含 visibility IN (0,1)：" + segment);
+        // 本人任意可见性：user_id=200 与 visibility 约束按 or 组织（segments 含 OR）
+        assertTrue(segment.toUpperCase().contains("OR"), "本人任意可见性与好友可见性约束须 OR：" + segment);
+    }
+
+    /**
+     * 红 R2/R4：auth on feed 组装——creator DESC 返回时，FeedItemDTO 载 Summary 全字段 +
+     * authorUserId；昵称仅当页 distinct author 经 listUsersByIds 批量补齐。
+     */
+    @Test
+    @SuppressWarnings("unchecked")
+    void pageFeed_authOn_assemblesDtoWithNickname() {
+        SportRecord own = rec(1L, 200L, 1, 0, "12.5");
+        SportRecord friend = rec(2L, 201L, 2, 1, "20.0");
+        Page<SportRecord> mpPage = new Page<>(1, 20, 2);
+        mpPage.setRecords(java.util.List.of(friend, own)); // createdAt DESC
+        when(userApi.listFriendIds(200L)).thenReturn(Result.success(java.util.List.of(201L)));
+        when(sportRecordMapper.selectPage(any(Page.class), any())).thenReturn(mpPage);
+        com.sportverify.api.user.dto.UserDTO u = new com.sportverify.api.user.dto.UserDTO();
+        u.setId(201L);
+        u.setNickname("B");
+        // 当页 distinct author 顺序为 [201,200]（friend 先）；用 any 匹配批量拉取
+        when(userApi.listUsersByIds(any()))
+                .thenReturn(Result.success(java.util.List.of(u)));
+
+        Page<FeedItemDTO> out = service.pageFeed(200L, 1, 20);
+
+        assertEquals(2, out.getRecords().size());
+        FeedItemDTO first = out.getRecords().get(0); // friend 先（createdAt DESC）
+        assertEquals(2L, first.getId());
+        assertEquals(2, first.getSportType()); // friend sportType=2
+        assertEquals(RecordStatus.PASSED.getCode(), first.getStatus());
+        assertEquals(Integer.valueOf(1), first.getVisibility(), "friend 节点可见性=FRIENDS(1)");
+        assertEquals(201L, first.getAuthorUserId());
+        assertEquals("B", first.getAuthorNickname());
+        assertEquals(200L, out.getRecords().get(1).getAuthorUserId());
+        ArgumentCaptor<java.util.List<Long>> idsCap = ArgumentCaptor.forClass(java.util.List.class);
+        verify(userApi).listUsersByIds(idsCap.capture());
+        List<Long> asked = idsCap.getValue();
+        assertTrue(asked.contains(200L) && asked.contains(201L),
+                "昵称批量拉取必须只含当页 distinct author（本人+好友）:" + asked);
+    }
+
+    /** 红 R4 fail-safe：昵称拉取软降级空 → authorNickname=null（web 回退 userId 字符串），不报错 */
+    @Test
+    @SuppressWarnings("unchecked")
+    void pageFeed_nicknameFallback_null() {
+        SportRecord own = rec(1L, 200L, 1, 0, "12.5");
+        Page<SportRecord> mpPage = new Page<>(1, 20, 1);
+        mpPage.setRecords(java.util.List.of(own));
+        when(userApi.listFriendIds(200L)).thenReturn(Result.success(java.util.List.of()));
+        when(sportRecordMapper.selectPage(any(Page.class), any())).thenReturn(mpPage);
+        when(userApi.listUsersByIds(java.util.List.of(200L)))
+                .thenReturn(Result.success(java.util.Collections.emptyList()));
+
+        Page<FeedItemDTO> out = service.pageFeed(200L, 1, 20);
+
+        assertNull(out.getRecords().get(0).getAuthorNickname());
+        assertEquals(200L, out.getRecords().get(0).getAuthorUserId());
+    }
+
+    /**
+     * 红 R3 fail-safe：user-service 不可用（listFriendIds 软降级空）→ feed 退化为仅本人。
+     * 候选作者集合只含 self，查询仍执行（不崩）。
+     */
+    @Test
+    @SuppressWarnings("unchecked")
+    void pageFeed_userApiDown_degradesToSelfOnly() {
+        TableInfoHelper.initTableInfo(
+                new MapperBuilderAssistant(new MybatisConfiguration(), ""), SportRecord.class);
+        when(userApi.listFriendIds(200L)).thenThrow(new RuntimeException("熔断"));
+        when(sportRecordMapper.selectPage(any(Page.class), any()))
+                .thenReturn(new Page<SportRecord>(1, 20, 0));
+
+        service.pageFeed(200L, 1, 20);
+
+        // fail-safe：user-service 不可用仍执行 self 作用域 IN 查询（非全扫），不崩；
+        // 候选作者集不含任何好友（friend 500 不出现），降级为仅本人。
+        verify(userApi).listFriendIds(200L);
+        ArgumentCaptor<LambdaQueryWrapper> wrapper = ArgumentCaptor.forClass(LambdaQueryWrapper.class);
+        verify(sportRecordMapper).selectPage(any(Page.class), wrapper.capture());
+        String segment = wrapper.getValue().getSqlSegment();
+        assertTrue(segment.contains("user_id IN"), "降级后仍须按候选作者集 user_id IN 过滤：" + segment);
+        // 好友集空 → 候选只含本人：不出现好友 id 参数
+        assertFalse(wrapper.getValue().getParamNameValuePairs().containsValue(500L),
+                "好友不可用后候选集不得含好友 500");
+        assertFalse(wrapper.getValue().getParamNameValuePairs().containsValue(201L),
+                "好友不可用后候选集不得含好友 201");
+    }
+
+    /** 红 R2 degrade：caller=null → PUBLIC(0) 全站时间线（不区分归属），无好友/昵称调用 */
+    @Test
+    @SuppressWarnings("unchecked")
+    void pageFeed_degrade_callerNull_publicOnly() {
+        TableInfoHelper.initTableInfo(
+                new MapperBuilderAssistant(new MybatisConfiguration(), ""), SportRecord.class);
+        when(sportRecordMapper.selectPage(any(Page.class), any()))
+                .thenReturn(new Page<SportRecord>(1, 20, 0));
+
+        service.pageFeed(null, 1, 20);
+
+        ArgumentCaptor<LambdaQueryWrapper> wrapper = ArgumentCaptor.forClass(LambdaQueryWrapper.class);
+        verify(sportRecordMapper).selectPage(any(Page.class), wrapper.capture());
+        String segment = wrapper.getValue().getSqlSegment();
+        assertTrue(segment.contains("visibility =") || segment.contains("visibility =0"),
+                "degrade 必须按 visibility=PUBLIC 过滤全站：" + segment);
+        assertTrue(wrapper.getValue().getParamNameValuePairs().containsValue(0),
+                "degrade 过滤值必须是 PUBLIC(0)");
+        verifyNoInteractions(userApi);
+    }
+
+    /** R1 分页边界：page 下限 1、size 夹 [1,500]，与 /my 同款钳制 */
+    @Test
+    @SuppressWarnings("unchecked")
+    void pageFeed_clampsPageAndSize() {
+        when(sportRecordMapper.selectPage(any(Page.class), any()))
+                .thenAnswer(inv -> {
+                    Page<SportRecord> p = inv.getArgument(0);
+                    return new Page<>(p.getCurrent(), p.getSize(), 0);
+                });
+
+        service.pageFeed(200L, 0, 501);
+        service.pageFeed(200L, -5, 1);
+
+        ArgumentCaptor<Page> pageArg = ArgumentCaptor.forClass(Page.class);
+        verify(sportRecordMapper, times(2)).selectPage(pageArg.capture(), any());
+        java.util.List<Page> pages = pageArg.getAllValues();
+        assertEquals(1L, pages.get(0).getCurrent(), "page 下限 1");
+        assertEquals(500L, pages.get(0).getSize(), "size cap 500");
+        assertEquals(1L, pages.get(1).getCurrent(), "负 page 夹到 1");
+        assertEquals(1L, pages.get(1).getSize(), "size 下限 1");
+    }
+
+    /** 构造 feed 测试记录（visibility 显式置入） */
+    private SportRecord rec(Long id, Long userId, Integer sportType, Integer visibility, String dist) {
+        SportRecord r = new SportRecord();
+        r.setId(id);
+        r.setUserId(userId);
+        r.setSportType(sportType);
+        r.setVisibility(visibility);
+        r.setDistance(new BigDecimal(dist));
+        r.setStatus(RecordStatus.PASSED.getCode());
+        r.setCreatedAt(LocalDateTime.of(2026, 10, 1, 10, 0).plusSeconds(id));
+        return r;
     }
 
     /** 记录详情：记录存在 → 拷贝返回 */

@@ -5,6 +5,7 @@ import com.sportverify.api.record.dto.MyStreakDTO;
 import com.sportverify.api.record.dto.RecordSubmitDTO;
 import com.sportverify.api.record.dto.RecordSubmitResultDTO;
 import com.sportverify.api.record.dto.RecordSummaryDTO;
+import com.sportverify.api.record.dto.FeedItemDTO;
 import com.sportverify.api.record.dto.TrackPointDTO;
 import com.sportverify.api.verify.dto.AppealCreateDTO;
 import com.sportverify.api.verify.dto.AppealDTO;
@@ -22,7 +23,10 @@ import org.springframework.test.util.ReflectionTestUtils;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -240,6 +244,46 @@ class RecordControllerTest {
 
         assertEquals(page, out);
         verify(sportRecordService).pageMyRecords(88L, 1, 20);
+    }
+
+    // ==================== 好友动态 feed（TASK-222 add-friend-feed） ====================
+
+    /** 绿 R2（auth 开）：X-User-Id 解析为 caller → 以此透传服务层 pageFeed /my 同构门 */
+    @Test
+    void feed_authEnabled_resolvesCallerFromHeader() {
+        ReflectionTestUtils.setField(controller, "authEnabled", true);
+        when(request.getHeader("X-User-Id")).thenReturn("200");
+        Page<FeedItemDTO> page = new Page<>();
+        when(sportRecordService.pageFeed(200L, 2, 50)).thenReturn(page);
+
+        Page<FeedItemDTO> out = controller.feed(2, 50, request).getData();
+
+        assertEquals(page, out);
+        verify(sportRecordService).pageFeed(200L, 2, 50);
+    }
+
+    /** 红 R2（auth 开，缺网关头）→ 1001 缺少 X-User-Id（/my 同构门） */
+    @Test
+    void feed_authEnabled_missingHeader_throwsUnauthorized() {
+        ReflectionTestUtils.setField(controller, "authEnabled", true);
+        when(request.getHeader("X-User-Id")).thenReturn(null);
+
+        BizException e = assertThrows(BizException.class, () -> controller.feed(1, 20, request));
+
+        assertEquals(ResultCode.UNAUTHORIZED.getCode(), e.getCode());
+        verify(sportRecordService, never()).pageFeed(any(), anyLong(), anyLong());
+    }
+
+    /** 红 R2 degrade（auth 关）：caller=null → 服务层 PAGE feed 走 PUBLIC-only（degrade 零扰动） */
+    @Test
+    void feed_authDisabled_degrade_callerNull() {
+        Page<FeedItemDTO> page = new Page<>();
+        when(sportRecordService.pageFeed(null, 1, 20)).thenReturn(page);
+
+        Page<FeedItemDTO> out = controller.feed(1, 20, request).getData();
+
+        assertEquals(page, out);
+        verify(sportRecordService).pageFeed(null, 1, 20);
     }
 
     /** 局部异常处理：1001 → HTTP 401 + body code=1001 */

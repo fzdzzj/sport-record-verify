@@ -70,6 +70,16 @@ public class UserApiFallback implements FallbackFactory<UserApi> {
             }
 
             @Override
+            public Result<List<Long>> listFriendIds(Long userId) {
+                // 读路径软降级：空好友 ID 列表 → 调用方（feed）退化为仅显示本人记录
+                // （fail-safe：不把好友动态错误地当全部，也不报错阻断 feed 主链路）。
+                // 与 listUsersByIds/listFriends 空成功结果同口径（好友榜空榜/昵称占位符兜底）。
+                log.warn("user-service 熔断降级：listFriendIds 返回空列表（feed 退化为仅本人），userId={}, cause={}",
+                        userId, cause == null ? "unknown" : cause.toString());
+                return Result.success(Collections.emptyList());
+            }
+
+            @Override
             public Result<Boolean> areFriends(Long userId, Long otherUserId) {
                 // 读路径软降级为 false（失败安全隐私）：FRIENDS 可见记录对非确认好友最保守裁决是「非好友」→
                 // 调用方 403。绝不允许软成功为 true（否则隐私泄露），与好友榜空榜同口径。

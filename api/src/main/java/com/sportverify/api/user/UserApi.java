@@ -83,4 +83,17 @@ public interface UserApi {
     @GetMapping("/friends/exists")
     Result<Boolean> areFriends(@RequestParam("userId") Long userId,
                                @RequestParam("otherUserId") Long otherUserId);
+
+    /**
+     * 好友 ID 全量列表（{@code userId} 的全部已接受好友 user_id，双向还原），
+     * 供好友动态 feed（TASK-222 add-friend-feed）一次内部调用拉齐 {@code IN (...)}
+     * 子句的候选归属人集合。
+     *
+     * <p>与 {@link #listFriends} 的分页返回不同，本接口<b>不分页</b>，一次返回该用户
+     * 全部好友 ID（feed 查询依赖完整集合做 {@code user_id IN} 过滤，分页截断会让 feed
+     * 丢失未见好友的记录）。user-service 不可用时由 {@link UserApiFallback} 软降级为空列表
+     * ——feed 退化为仅显示本人记录（fail-safe，不阻断不报错）。</p>
+     */
+    @GetMapping("/friends/ids")
+    Result<List<Long>> listFriendIds(@RequestParam("userId") Long userId);
 }

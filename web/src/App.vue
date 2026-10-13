@@ -6,6 +6,7 @@
         <a-button type="link" style="color: #fff;" @click="goTo('/record-submit')">提交记录</a-button>
         <a-button type="link" style="color: #fff;" @click="goTo('/verdict')">判定/申诉/点赞</a-button>
         <a-button type="link" style="color: #fff;" @click="goTo('/friends')">好友</a-button>
+        <a-button type="link" style="color: #fff;" @click="goTo('/feed')">动态</a-button>
         <a-button type="link" style="color: #fff;" @click="goTo('/leaderboard')">榜单</a-button>
         <a-button v-if="isAdmin" type="link" style="color: #0ff; font-weight: bold;" @click="goTo('/admin-rules')">规则版本</a-button>
         <a-button v-if="isAdmin" type="link" style="color: #0ff; font-weight: bold;" @click="goTo('/admin-appeal')">申诉终判</a-button>

@@ -14,7 +14,9 @@ import com.sportverify.api.record.dto.RecordWithPointsDTO;
 import com.sportverify.api.record.dto.SportRecordDTO;
 import com.sportverify.api.record.dto.StatusCallbackDTO;
 import com.sportverify.api.record.dto.TrackPointDTO;
+import com.sportverify.api.record.dto.FeedItemDTO;
 import com.sportverify.api.user.UserApi;
+import com.sportverify.api.user.dto.UserDTO;
 import com.sportverify.api.verify.VerifyApi;
 import com.sportverify.api.verify.dto.AppealCreateDTO;
 import com.sportverify.api.verify.dto.AppealDTO;
@@ -43,6 +45,7 @@ import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 
 /**
@@ -413,6 +416,119 @@ public class SportRecordService {
         Page<RecordSummaryDTO> dtoPage = new Page<>(result.getCurrent(), result.getSize(), result.getTotal());
         dtoPage.setRecords(result.getRecords().stream().map(this::toSummary).toList());
         return dtoPage;
+    }
+
+    /**
+     * 好友动态 feed（TASK-222 add-friend-feed，跨服务聚合读路径，单查无 join、零 schema）。
+     *
+     * <p>过滤即身份（与 /my 同构）：本方法不返回任何会被门矩阵拒读的记录，而是按
+     * caller 语义直接构造查询集——</p>
+     * <ul>
+     *   <li><b>auth on（caller 非空）</b>：候选归属人 = self ∪ friendIds（
+     *       {@code user_id IN (...)}，friendIds 经 user-service {@code listFriendIds}
+     *       一次内部调用拉齐）；再按可见性约束 {@code user_id = self OR visibility IN (0,1)}
+     *       ——本人记录任意可见性、好友记录仅 PUBLIC/FRIENDS，陌生人记录（即使 PUBLIC）
+     *       不支持入 feed（feed ≠ explore）。</li>
+     *   <li><b>degrade（caller=null，auth.enabled=false）</b>：PUBLIC(0) 全站时间线，不区分归属
+     *       （沿 assertCanView caller=null 放行降级态先例，TASK-204）。</li>
+     * </ul>
+     *
+     * <p>排序 createdAt DESC，分页边界同 /my（page 下限 1，size 夹 [1,500]，默认 20）。
+     * 昵称解析仅对当页 distinct author_user_id 批量调用 user-service {@code listUsersByIds}；
+     * user-service 不可用（软降级空列表）→ 昵称空，web 回退 authorUserId 字符串渲染，不报错。</p>
+     *
+     * @param caller 读取者（auth on 时非空；degrade 时 null）
+     * @param page   页码（下限 1）
+     * @param size   每页条数（1..500）
+     * @return feed 分页结果（{@code Page<FeedItemDTO>}），元素按 createdAt 倒序
+     */
+    public Page<FeedItemDTO> pageFeed(Long caller, long page, long size) {
+        long safePage = Math.max(page, 1L);
+        long safeSize = Math.min(Math.max(size, 1L), MAX_MY_RECORDS_SIZE);
+        Page<SportRecord> result;
+        if (caller == null) {
+            // degrade：PUBLIC 全站时间线（不区分归属）
+            result = sportRecordMapper.selectPage(new Page<>(safePage, safeSize),
+                    new LambdaQueryWrapper<SportRecord>()
+                            .eq(SportRecord::getVisibility, RecordVisibility.PUBLIC.getCode())
+                            .orderByDesc(SportRecord::getCreatedAt));
+        } else {
+            // auth on：候选归属人 = self ∪ friendIds（fail-safe：friendIds 空 → 仅本人）
+            java.util.List<Long> friendIds = listFeedFriendIds(caller);
+            java.util.Set<Long> authors = new java.util.LinkedHashSet<>();
+            authors.add(caller);
+            if (friendIds != null) {
+                authors.addAll(friendIds);
+            }
+            result = sportRecordMapper.selectPage(new Page<>(safePage, safeSize),
+                    new LambdaQueryWrapper<SportRecord>()
+                            .in(SportRecord::getUserId, authors)
+                            .and(w -> w.eq(SportRecord::getUserId, caller)
+                                    .or()
+                                    .in(SportRecord::getVisibility,
+                                            RecordVisibility.PUBLIC.getCode(),
+                                            RecordVisibility.FRIENDS.getCode()))
+                            .orderByDesc(SportRecord::getCreatedAt));
+        }
+        Page<FeedItemDTO> dtoPage = new Page<>(result.getCurrent(), result.getSize(), result.getTotal());
+        dtoPage.setRecords(buildFeedItems(result.getRecords()));
+        return dtoPage;
+    }
+
+    /** 拉取本人好友 ID 集合；user-service 软降级/异常 → 空集（feed 退化为仅本人，fail-safe）。 */
+    private java.util.List<Long> listFeedFriendIds(Long caller) {
+        try {
+            Result<java.util.List<Long>> resp = userApi.listFriendIds(caller);
+            return resp == null ? java.util.List.of()
+                    : resp.getData() == null ? java.util.List.of() : resp.getData();
+        } catch (Exception e) {
+            log.warn("好友 ID 拉取异常，feed 退化为仅本人：caller={}", caller, e);
+            return java.util.List.of();
+        }
+    }
+
+    /** feed 条目组装：Summary 字段 + 作者字段，昵称按当页 distinct author 批量补齐（feign 软降级空 → 昵称 null）。 */
+    private java.util.List<FeedItemDTO> buildFeedItems(java.util.List<SportRecord> records) {
+        java.util.List<Long> authorIds = records.stream()
+                .map(SportRecord::getUserId)
+                .filter(Objects::nonNull)
+                .distinct()
+                .toList();
+        Map<Long, String> nickMap = authorIds.isEmpty() ? Map.of() : fetchNicknames(authorIds);
+        return records.stream().map(rec -> {
+            FeedItemDTO dto = new FeedItemDTO();
+            dto.setId(rec.getId());
+            dto.setSportType(rec.getSportType());
+            dto.setDistance(rec.getDistance());
+            dto.setStatus(rec.getStatus());
+            dto.setVisibility(rec.getVisibility());
+            dto.setCreatedAt(rec.getCreatedAt());
+            dto.setAuthorUserId(rec.getUserId());
+            if (rec.getUserId() != null) {
+                dto.setAuthorNickname(nickMap.get(rec.getUserId()));
+            }
+            return dto;
+        }).toList();
+    }
+
+    /** 批量拉作者昵称；user-service 软降级空列表 → 空 map（web 回退 userId 字符串）。 */
+    private Map<Long, String> fetchNicknames(java.util.List<Long> authorIds) {
+        try {
+            Result<java.util.List<UserDTO>> resp = userApi.listUsersByIds(authorIds);
+            if (resp == null || resp.getData() == null) {
+                return Map.of();
+            }
+            Map<Long, String> map = new java.util.HashMap<>();
+            for (UserDTO u : resp.getData()) {
+                if (u.getId() != null && u.getNickname() != null) {
+                    map.put(u.getId(), u.getNickname());
+                }
+            }
+            return map;
+        } catch (Exception e) {
+            log.warn("作者昵称批量拉取异常，web 将回退 authorUserId：authors={}", authorIds, e);
+            return Map.of();
+        }
     }
 
     /**

@@ -215,6 +215,22 @@ export async function getMyRecords(page = 1, size = 20): Promise<Result<PageResu
   return api.get('/record/api/records/my', { params: { page, size } })
 }
 
+// ===== Friend activity feed (TASK-222 add-friend-feed) =====
+// FeedItemDTO = RecordSummaryDTO 全字段 + authorUserId + authorNickname；后端按当页 distinct
+// author 批量补齐昵称，authorNickname 缺失（user-service 不可用时）前端回退 authorUserId 字符串。
+export interface FeedItemDTO extends RecordSummaryDTO {
+  authorUserId: number
+  authorNickname?: string
+}
+
+/**
+ * 好友动态 feed（GET /record/api/records/feed）；auth 会话下 caller 由网关注入，前端不传。
+ * 页码 1 起，size 1..500（与 /my 同口径）。auth 关闭降级态为 PUBLIC 全站时间线。
+ */
+export async function getFeed(page = 1, size = 20): Promise<Result<PageResult<FeedItemDTO>>> {
+  return api.get('/record/api/records/feed', { params: { page, size } })
+}
+
 // ===== My streak (TASK-220) =====
 export interface MyStreakDTO {
   current: number

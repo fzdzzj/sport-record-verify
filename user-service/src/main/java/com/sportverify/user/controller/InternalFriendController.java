@@ -16,6 +16,8 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
+import java.util.List;
+
 /**
  * user-api Feign 契约实现（好友域，接口与实现分离，规范「服务间 Feign 契约」）。
  *
@@ -64,5 +66,16 @@ public class InternalFriendController {
     public Result<Boolean> exists(@RequestParam("userId") Long userId,
                                   @RequestParam("otherUserId") Long otherUserId) {
         return Result.success(friendService.areFriends(userId, otherUserId));
+    }
+
+    /**
+     * 好友 ID 全量列表（TASK-222 add-friend-feed）：供 record-service 拉好友动态 feed 的
+     * 候选作者集合（{@code user_id IN (self ∪ 好友)}）。纯委托
+     * {@link FriendService#listFriendIds}，不分页一次返回全部好友 user_id；
+     * Feign 契约见 {@link com.sportverify.api.user.UserApi#listFriendIds}。
+     */
+    @GetMapping("/ids")
+    public Result<List<Long>> ids(@RequestParam("userId") Long userId) {
+        return Result.success(friendService.listFriendIds(userId));
     }
 }

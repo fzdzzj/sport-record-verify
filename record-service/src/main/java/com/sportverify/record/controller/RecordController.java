@@ -5,6 +5,7 @@ import com.sportverify.api.record.dto.MyStreakDTO;
 import com.sportverify.api.record.dto.RecordSubmitDTO;
 import com.sportverify.api.record.dto.RecordSubmitResultDTO;
 import com.sportverify.api.record.dto.RecordSummaryDTO;
+import com.sportverify.api.record.dto.FeedItemDTO;
 import com.sportverify.api.record.dto.TrackPointDTO;
 import com.sportverify.api.verify.dto.AppealCreateDTO;
 import com.sportverify.api.verify.dto.AppealDTO;
@@ -106,6 +107,24 @@ public class RecordController {
             throw new IllegalArgumentException("缺少必须的 userId 查询参数");
         }
         return Result.success(sportRecordService.pageMyRecords(owner, page, size));
+    }
+
+    /**
+     * 好友动态 feed（TASK-222 add-friend-feed，跨服务聚合读路径）。
+     *
+     * <p>身份语义（与 /my 同构，见 ADR-0007）：{@code app.auth.enabled=true} 时以网关注入的
+     * {@code X-User-Id} 为读取者 caller，缺失或空白 → 1001（HTTP 401）；false 时 caller=null
+     * （降级态）→ PUBLIC(0) 全站时间线（不区分归属，TASK-204 零扰动先例）。feed 的过滤即身份
+     * 在服务层 {@code pageFeed}：auth on 时仅返回本人（任意可见性）+ 好友（PUBLIC/FRIENDS）记录，
+     * 陌生人记录不入 feed——预过滤与 {@code assertCanView} 在 feed 场景下等价（见判别式 R6）。</p>
+     */
+    @GetMapping("/feed")
+    public Result<Page<FeedItemDTO>> feed(
+            @RequestParam(defaultValue = "1") long page,
+            @RequestParam(defaultValue = "20") long size,
+            HttpServletRequest request) {
+        Long caller = authEnabled ? resolveUserId(request, null) : null;
+        return Result.success(sportRecordService.pageFeed(caller, page, size));
     }
 
     /**
