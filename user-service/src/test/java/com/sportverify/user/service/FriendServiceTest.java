@@ -1,6 +1,8 @@
 package com.sportverify.user.service;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.baomidou.mybatisplus.core.MybatisConfiguration;
+import com.baomidou.mybatisplus.core.metadata.TableInfoHelper;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.sportverify.api.common.PageResult;
 import com.sportverify.api.user.dto.FriendDTO;
@@ -13,6 +15,7 @@ import com.sportverify.user.entity.User;
 import com.sportverify.user.mapper.FriendRequestMapper;
 import com.sportverify.user.mapper.FriendshipMapper;
 import com.sportverify.user.mapper.UserMapper;
+import org.apache.ibatis.builder.MapperBuilderAssistant;
 import org.junit.jupiter.api.BeforeEach;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -78,6 +81,10 @@ class FriendServiceTest {
         // 注意：构造参数顺序与 @RequiredArgsConstructor 字段声明顺序一致
         service = new FriendService(requestMapper, friendshipMapper, userMapper, redissonClient,
                 notificationService);
+        // MP 单测惯用初始化（与 NotificationServiceTest:46 / SportRecordServiceTest:762 同源）：
+        // 注册 Friendship 实体列缓存，使 LambdaQuery wrapper 的 lambda 列名可渲染而不需真 Spring 上下文
+        TableInfoHelper.initTableInfo(
+                new MapperBuilderAssistant(new MybatisConfiguration(), ""), Friendship.class);
     }
 
     // ==================== 好友申请创建 ====================

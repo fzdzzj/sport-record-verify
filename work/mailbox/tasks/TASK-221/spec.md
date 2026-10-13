@@ -111,3 +111,4 @@ web/README.md.
 - 契约门双态：在途 `--open TASK-221 --baseline=1ee1cdc` rc=0（判据 B 25 文件实质核全等）；收口无参 rc=0（重建 C-02 后复跑读数）。
 - 判别式红绿细目、§6 门禁留证与偏差登记见 `work/mailbox/tasks/TASK-221/handoff.md`。
 - 偏差登记（详见 handoff §8）：`--static=user-service`/`--static=api` 非本仓声明插件模块，用通用 checkstyle 配置实测存在基线违规（毫及未触碰端点/字段）——静态门仅对声明并强制的 record-service 生效且 rc=0；迁移幂等二跑已在 scratch 库证明（第二次命中跳过分支）；真实浏览器交互未跑登记未覆盖。
+- D7 修复笔：`test(user): 修复areFriends单测TableInfo初始化缺失（TASK-221 D7）`（本笔，恰 1 实施文件 +2 台账文件；哈希留空由指导侧封盘笔回填或写「本笔」，详见 handoff §8 D7）。
