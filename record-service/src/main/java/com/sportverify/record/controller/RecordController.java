@@ -1,6 +1,7 @@
 package com.sportverify.record.controller;
 
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
+import com.sportverify.api.record.dto.MyStreakDTO;
 import com.sportverify.api.record.dto.RecordSubmitDTO;
 import com.sportverify.api.record.dto.RecordSubmitResultDTO;
 import com.sportverify.api.record.dto.RecordSummaryDTO;
@@ -99,6 +100,26 @@ public class RecordController {
             throw new IllegalArgumentException("缺少必须的 userId 查询参数");
         }
         return Result.success(sportRecordService.pageMyRecords(owner, page, size));
+    }
+
+    /**
+     * 我的连续打卡统计（TASK-220 个人仪表盘数据面，归属即身份）。
+     *
+     * <p>身份语义与 {@code /my} 完全一致（见 myRecords javadoc）：true 时从网关注入的
+     * {@code X-User-Id} 读取归属人，缺失或空白 → 1001（HTTP 401）；false 时降级为显式
+     * {@code userId} 查询参数，必填缺失 → 400 PARAM。统计口径见
+     * {@link com.sportverify.api.record.dto.MyStreakDTO}：仅计入通过终态
+     * （PASSED / RE_PASSED），同一天多条只算一天，今日无记录从昨日续算。</p>
+     */
+    @GetMapping("/my/streak")
+    public Result<MyStreakDTO> myStreak(
+            @RequestParam(value = "userId", required = false) Long userId,
+            HttpServletRequest request) {
+        Long owner = authEnabled ? resolveUserId(request, null) : userId;
+        if (!authEnabled && owner == null) {
+            throw new IllegalArgumentException("缺少必须的 userId 查询参数");
+        }
+        return Result.success(sportRecordService.myStreak(owner));
     }
 
     /**

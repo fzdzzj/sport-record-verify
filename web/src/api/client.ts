@@ -211,6 +211,17 @@ export async function getMyRecords(page = 1, size = 20): Promise<Result<PageResu
   return api.get('/record/api/records/my', { params: { page, size } })
 }
 
+// ===== My streak (TASK-220) =====
+export interface MyStreakDTO {
+  current: number
+  longest: number
+}
+
+/** 连续打卡统计（GET /record/api/records/my/streak）：仅计入通过终态（PASSED/RE_PASSED），同日多条算一天；auth 会话下 userId 由网关注入。 */
+export async function getMyStreak(): Promise<Result<MyStreakDTO>> {
+  return api.get('/record/api/records/my/streak')
+}
+
 // Friends
 export async function createFriendRequest(targetUserId: number): Promise<Result<FriendRequestDTO>> {
   return api.post('/user/api/friends/requests', { targetUserId })

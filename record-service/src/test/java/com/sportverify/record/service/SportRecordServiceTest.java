@@ -1,6 +1,7 @@
 package com.sportverify.record.service;
 
 import com.sportverify.api.record.RecordStatus;
+import com.sportverify.api.record.dto.MyStreakDTO;
 import com.sportverify.api.record.dto.RecordSubmitDTO;
 import com.sportverify.api.record.dto.RecordSubmitResultDTO;
 import com.sportverify.api.record.dto.RecordSummaryDTO;
@@ -34,6 +35,7 @@ import org.springframework.transaction.support.TransactionSynchronization;
 import org.springframework.transaction.support.TransactionSynchronizationManager;
 
 import java.math.BigDecimal;
+import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.List;
 
@@ -954,5 +956,58 @@ class SportRecordServiceTest {
         assertEquals(ResultCode.RECORD_STATUS_INVALID.getCode(), e.getCode());
         verify(sportRecordMapper, never()).updateStatus(anyLong(), anyInt(), anyInt(), anyInt());
         verify(verifyApi, never()).createAppeal(any());
+    }
+
+    // ==================== 连续打卡（TASK-220） ====================
+
+    /**
+     * R2 判别式：myStreak 以单列投影 selectList 查询——
+     * (a) 归属过滤 user_id=200；(b) status 过滤恰为通过终态集 {PASSED(2), RE_PASSED(5)}
+     * （captor 参数值集精确断言，非通过终态值不得混入）；(c) createdAt 映射自然日且同日去重；
+     * (d) 输出由真实 StreakCalculator 对固定日期（相对服务器时钟 today）计算：今日/昨日/前日
+     * 三条（含同日第二条）→ current=3、longest=3。
+     */
+    @Test
+    @SuppressWarnings("unchecked")
+    void myStreak_filtersPassedStatuses_mapsDates_computesStreak() {
+        TableInfoHelper.initTableInfo(
+                new MapperBuilderAssistant(new MybatisConfiguration(), ""), SportRecord.class);
+        LocalDate today = LocalDate.now();
+        SportRecord today1 = new SportRecord();
+        today1.setUserId(200L);
+        today1.setStatus(RecordStatus.PASSED.getCode());
+        today1.setCreatedAt(today.atTime(9, 0));
+        SportRecord today2 = new SportRecord(); // 同日第二条：去重后只算一天
+        today2.setUserId(200L);
+        today2.setStatus(RecordStatus.PASSED.getCode());
+        today2.setCreatedAt(today.atTime(22, 0));
+        SportRecord yesterday = new SportRecord();
+        yesterday.setUserId(200L);
+        yesterday.setStatus(RecordStatus.RE_PASSED.getCode());
+        yesterday.setCreatedAt(today.minusDays(1).atTime(8, 0));
+        SportRecord before = new SportRecord(); // today-2：与今昨构成连续 3 天
+        before.setUserId(200L);
+        before.setStatus(RecordStatus.PASSED.getCode());
+        before.setCreatedAt(today.minusDays(2).atTime(8, 0));
+        SportRecord rejected = new SportRecord(); // 非通过终态：必须被 status 过滤剔除
+        rejected.setUserId(200L);
+        rejected.setStatus(RecordStatus.REJECTED.getCode());
+        rejected.setCreatedAt(today.atTime(7, 0));
+        when(sportRecordMapper.selectList(any())).thenReturn(List.of(today1, today2, yesterday, before, rejected));
+
+        MyStreakDTO out = service.myStreak(200L);
+
+        assertEquals(3, out.getCurrent(), "今日/昨日/前日连续 → current=3（同日去重不得计 4）");
+        assertEquals(3, out.getLongest(), "历史最长连续段 = 3");
+        ArgumentCaptor<LambdaQueryWrapper> wrapper = ArgumentCaptor.forClass(LambdaQueryWrapper.class);
+        verify(sportRecordMapper).selectList(wrapper.capture());
+        String segment = wrapper.getValue().getSqlSegment();
+        assertTrue(segment.contains("user_id ="), "归属即身份：查询必须带 user_id 过滤：" + segment);
+        assertTrue(segment.contains("IN"), "必须按状态集合过滤（in）：" + segment);
+        java.util.Set<Object> paramValues = new java.util.HashSet<>(
+                wrapper.getValue().getParamNameValuePairs().values());
+        assertEquals(new java.util.HashSet<>(java.util.Arrays.asList(200L,
+                        RecordStatus.PASSED.getCode(), RecordStatus.RE_PASSED.getCode())),
+                paramValues, "status 过滤参数值必须恰为 {PASSED, RE_PASSED}，不得混入其他状态");
     }
 }

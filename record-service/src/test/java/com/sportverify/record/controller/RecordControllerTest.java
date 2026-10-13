@@ -1,6 +1,7 @@
 package com.sportverify.record.controller;
 
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
+import com.sportverify.api.record.dto.MyStreakDTO;
 import com.sportverify.api.record.dto.RecordSubmitDTO;
 import com.sportverify.api.record.dto.RecordSubmitResultDTO;
 import com.sportverify.api.record.dto.RecordSummaryDTO;
@@ -248,5 +249,57 @@ class RecordControllerTest {
         verify(response, org.mockito.Mockito.never()).setStatus(org.mockito.ArgumentMatchers.anyInt());
         assertEquals(ResultCode.RECORD_NOT_FOUND.getCode(), out.getCode());
         assertNull(out.getData());
+    }
+
+    // ==================== 连续打卡（TASK-220） ====================
+
+    /** R3 绿（auth 开）：X-User-Id 解析为归属人 → Result SUCCESS 携 service DTO（沿 /my 先例） */
+    @Test
+    void myStreak_authEnabled_resolvesOwnerFromHeader() {
+        ReflectionTestUtils.setField(controller, "authEnabled", true);
+        when(request.getHeader("X-User-Id")).thenReturn("200");
+        MyStreakDTO dto = new MyStreakDTO();
+        dto.setCurrent(3);
+        dto.setLongest(5);
+        when(sportRecordService.myStreak(200L)).thenReturn(dto);
+
+        Result<MyStreakDTO> out = controller.myStreak(null, request);
+
+        assertEquals(0, out.getCode());
+        assertEquals(3, out.getData().getCurrent());
+        assertEquals(5, out.getData().getLongest());
+        verify(sportRecordService).myStreak(200L);
+    }
+
+    /** R3 红（auth 开，缺网关头）→ 1001 缺少 X-User-Id（沿 /my 缺头先例） */
+    @Test
+    void myStreak_authEnabled_missingHeader_throwsUnauthorized() {
+        ReflectionTestUtils.setField(controller, "authEnabled", true);
+        when(request.getHeader("X-User-Id")).thenReturn(null);
+
+        BizException e = assertThrows(BizException.class,
+                () -> controller.myStreak(null, request));
+        assertEquals(ResultCode.UNAUTHORIZED.getCode(), e.getCode());
+    }
+
+    /** R3 红（auth 关，缺显式 userId）→ 400 非法参数（沿 /my 先例） */
+    @Test
+    void myStreak_authDisabled_missingUserId_throwsIllegalArgument() {
+        IllegalArgumentException e = assertThrows(IllegalArgumentException.class,
+                () -> controller.myStreak(null, request));
+        assertEquals("缺少必须的 userId 查询参数", e.getMessage());
+    }
+
+    /** R3 绿（auth 关，显式 userId）→ 以此 userId 透传服务层 */
+    @Test
+    void myStreak_authDisabled_explicitUserId_delegates() {
+        MyStreakDTO dto = new MyStreakDTO();
+        when(sportRecordService.myStreak(88L)).thenReturn(dto);
+
+        Result<MyStreakDTO> out = controller.myStreak(88L, request);
+
+        assertEquals(0, out.getCode());
+        assertEquals(dto, out.getData());
+        verify(sportRecordService).myStreak(88L);
     }
 }

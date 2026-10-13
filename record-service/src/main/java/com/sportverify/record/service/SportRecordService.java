@@ -5,6 +5,7 @@ import com.baomidou.mybatisplus.core.toolkit.IdWorker;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.sportverify.api.record.RecordStatus;
 import com.sportverify.api.record.SportType;
+import com.sportverify.api.record.dto.MyStreakDTO;
 import com.sportverify.api.record.dto.RecordSubmitDTO;
 import com.sportverify.api.record.dto.RecordSubmitResultDTO;
 import com.sportverify.api.record.dto.RecordSummaryDTO;
@@ -36,6 +37,7 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.transaction.support.TransactionSynchronization;
 import org.springframework.transaction.support.TransactionSynchronizationManager;
 
+import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
@@ -400,6 +402,37 @@ public class SportRecordService {
         Page<RecordSummaryDTO> dtoPage = new Page<>(result.getCurrent(), result.getSize(), result.getTotal());
         dtoPage.setRecords(result.getRecords().stream().map(this::toSummary).toList());
         return dtoPage;
+    }
+
+    /**
+     * 我的连续打卡统计（TASK-220 个人仪表盘数据面，归属即身份）。
+     *
+     * <p>统计口径（与 {@link com.sportverify.api.record.dto.MyStreakDTO} 一致）：
+     * 仅计入通过终态（PASSED / RE_PASSED）的记录——单列投影只取 createdAt（个人量级，
+     * 无分页）；映射为自然日 {@code toLocalDate()} 后去重（同一天多条算一天）；
+     * 交由 {@link StreakCalculator} 计算当前/最长连续天数，today 取服务器时钟
+     * {@code LocalDate.now()}。归属过滤即身份：以控制器解析出的 {@code userId} 作为
+     * 唯一查询条件（{@code WHERE user_id=?}），构造上天然无越权。</p>
+     *
+     * @param userId 归属用户（控制器按身份语义解析，非空）
+     * @return 连续打卡统计（current 当前连续天数 / longest 历史最长连续天数）
+     */
+    public MyStreakDTO myStreak(Long userId) {
+        List<LocalDate> checkinDates = sportRecordMapper.selectList(
+                        new LambdaQueryWrapper<SportRecord>()
+                                .select(SportRecord::getCreatedAt)
+                                .eq(SportRecord::getUserId, userId)
+                                .in(SportRecord::getStatus,
+                                        List.of(RecordStatus.PASSED.getCode(), RecordStatus.RE_PASSED.getCode())))
+                .stream()
+                .map(record -> record.getCreatedAt().toLocalDate())
+                .distinct()
+                .toList();
+        int[] streak = StreakCalculator.compute(checkinDates, LocalDate.now());
+        MyStreakDTO dto = new MyStreakDTO();
+        dto.setCurrent(streak[0]);
+        dto.setLongest(streak[1]);
+        return dto;
     }
 
     /** 个人统计单次拉取每页上限（前端 size=500 全量聚合的契约上限）。 */

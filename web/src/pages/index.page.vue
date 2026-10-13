@@ -27,7 +27,7 @@
         <div v-if="loading" class="py-4 text-gray-500">加载中…</div>
         <a-alert v-else-if="loadError" type="error" :message="loadError" />
         <template v-else>
-          <div class="grid grid-cols-3 gap-4 mb-4">
+          <div class="grid grid-cols-4 gap-4 mb-4">
             <div class="rounded border border-gray-200 p-4 text-center">
               <div class="text-2xl font-semibold">{{ totalDistance }}</div>
               <div class="text-xs text-gray-500 mt-1">总里程 (km)</div>
@@ -39,6 +39,10 @@
             <div class="rounded border border-gray-200 p-4 text-center">
               <div class="text-2xl font-semibold">{{ passRate }}</div>
               <div class="text-xs text-gray-500 mt-1">通过率</div>
+            </div>
+            <div class="rounded border border-gray-200 p-4 text-center">
+              <div class="text-lg font-semibold leading-snug">{{ streakText }}</div>
+              <div class="text-xs text-gray-500 mt-1">连续打卡</div>
             </div>
           </div>
 
@@ -85,7 +89,7 @@
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue'
 import { useRouter } from 'vue-router/auto'
-import { getMyRecords, type RecordSummaryDTO } from '@/api/client'
+import { getMyRecords, getMyStreak, type MyStreakDTO, type RecordSummaryDTO } from '@/api/client'
 import { hasAccessToken } from '@/utils/token'
 
 const router = useRouter()
@@ -100,6 +104,14 @@ const authed = ref(hasAccessToken())
 const records = ref<RecordSummaryDTO[]>([])
 const loading = ref(false)
 const loadError = ref('')
+
+/** 连续打卡（TASK-220）：current 当前连续天数 / longest 历史最长；未加载或失败显示 — */
+const streak = ref<MyStreakDTO | null>(null)
+
+const streakText = computed(() => {
+  if (!streak.value) return '—'
+  return `当前 ${streak.value.current} 天 · 最长 ${streak.value.longest} 天`
+})
 
 const recentColumns = [
   { title: 'id', dataIndex: 'id', key: 'id' },
@@ -200,6 +212,14 @@ onMounted(async () => {
     records.value = []
   } finally {
     loading.value = false
+  }
+
+  // 连续打卡（TASK-220）：独立拉取，失败不拖垮统计卡区（卡内显示 —）
+  try {
+    const res = await getMyStreak()
+    streak.value = res.data || null
+  } catch {
+    streak.value = null
   }
 })
 </script>
