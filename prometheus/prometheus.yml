@@ -16,13 +16,14 @@ rule_files:
   - /etc/prometheus/alert-rules.yml
 
 scrape_configs:
-  # ---------- 抓取地址说明（重要，勿盲目改成容器服务名） ----------
-  # 四个 Java 服务以宿主机进程（java -jar）方式运行，不在 compose 内，
-  # 因此 target 用 host.docker.internal 从容器内访问宿主机端口
-  # （Docker Desktop 原生支持；compose 侧 prometheus 服务已加
-  #   extra_hosts: host.docker.internal:host-gateway，Linux 宿主机同样可用）。
-  # 若日后把服务容器化并 join sport-verify-net，把 host.docker.internal
-  # 换成对应 compose 服务名（如 gateway-service:8080）即可。
+  # ---------- 抓取地址说明（重要） ----------
+  # 权威口径：六服务以容器化形态运行（docker-compose.services.yml，join sport-verify-net），
+  # 因此 target 直接用 compose 网络内的服务名（DNS 直达容器端口），与端口发布无关
+  # （网关 8080 全接口发布、后端 8081-8085 仅绑 127.0.0.1，均不影响容器内抓取）。
+  # 宿主机进程开发态（java -jar + 仅中间件 compose）为降级容忍：此时服务名不可解析，
+  # 监控可能失效；如需在开发态抓取，另配一份以 host.docker.internal 为 target 的配置
+  # （Docker Desktop 原生支持；Linux 宿主机靠本服务已加的
+  #   extra_hosts: host.docker.internal:host-gateway 映射）。
   # 指标路径必须是 /actuator/prometheus：Spring Boot Actuator 默认暴露在
   # /actuator 前缀下，而非 Prometheus 惯用的 /metrics。
 
@@ -30,25 +31,25 @@ scrape_configs:
   - job_name: gateway-service
     metrics_path: /actuator/prometheus
     static_configs:
-      - targets: ['host.docker.internal:8080']
+      - targets: ['gateway-service:8080']
 
   # ---------- 用户服务（宿主机 8081，user_db + Redis） ----------
   - job_name: user-service
     metrics_path: /actuator/prometheus
     static_configs:
-      - targets: ['host.docker.internal:8081']
+      - targets: ['user-service:8081']
 
   # ---------- 记录服务（宿主机 8082，record_db 分片 + RocketMQ + Redis） ----------
   - job_name: record-service
     metrics_path: /actuator/prometheus
     static_configs:
-      - targets: ['host.docker.internal:8082']
+      - targets: ['record-service:8082']
 
   # ---------- 校验服务（宿主机 8083，verify_db + RocketMQ） ----------
   - job_name: verify-service
     metrics_path: /actuator/prometheus
     static_configs:
-      - targets: ['host.docker.internal:8083']
+      - targets: ['verify-service:8083']
 
   # ---------- 排行榜服务（宿主机 8084，独立榜单服务，见 ADR-0005） ----------
   # add-leaderboard-service 提案已落地：榜单职责自 record-service 拆出（服务数 4→5），
@@ -56,7 +57,7 @@ scrape_configs:
   - job_name: leaderboard-service
     metrics_path: /actuator/prometheus
     static_configs:
-      - targets: ['host.docker.internal:8084']
+      - targets: ['leaderboard-service:8084']
 
   # ---------- 路网匹配服务（宿主机 8085，PostGIS 路网 + 匹配算法，见 ADR-0006） ----------
   # add-mapmatch-service 提案已落地：道路拓扑匹配独立成服务（服务数 5→6）；
@@ -64,4 +65,4 @@ scrape_configs:
   - job_name: mapmatch-service
     metrics_path: /actuator/prometheus
     static_configs:
-      - targets: ['host.docker.internal:8085']
+      - targets: ['mapmatch-service:8085']

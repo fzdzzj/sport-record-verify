@@ -234,8 +234,9 @@ curl http://127.0.0.1:8080/user/api/friends?page=1\&size=20 \
 ## 监控与告警（Prometheus + Grafana，选型理由见 [ADR-0003](docs/adr/0003-监控选型.md)）
 
 `docker compose up -d` 已包含监控栈（prometheus:9090 / grafana:3000），无需额外命令。各服务经
-`/actuator/prometheus` 暴露 Micrometer 指标（JVM / HTTP / 连接池），Prometheus 抓取宿主机
-`host.docker.internal:8080-8085`（服务以宿主机进程运行；容器化后改 target 为服务名即可，见 prometheus.yml 注释）。
+`/actuator/prometheus` 暴露 Micrometer 指标（JVM / HTTP / 连接池），Prometheus 在 compose 网络内按
+服务名抓取 `gateway-service:8080` / `user-service:8081` / `record-service:8082` / `verify-service:8083` /
+`leaderboard-service:8084` / `mapmatch-service:8085`（容器化形态为权威口径；宿主机进程开发态监控降级容忍，见 prometheus.yml 注释）。
 **生产 profile 应收敛 actuator**：收窄 include（或管理端口隔离 + 内网抓取），网关不转发 actuator；本地演示的 prometheus/metrics 公网可读配置不可直接用于生产（见 ADR-0007 §10）。
 
 | 访问入口 | 地址 | 说明 |
