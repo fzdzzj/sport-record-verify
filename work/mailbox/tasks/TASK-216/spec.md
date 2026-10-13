@@ -49,7 +49,7 @@ prometheus/prometheus.yml, README.md (root).
 - C-01 fix(obs): ... (TASK-216); C-02 docs(mailbox): ... (TASK-216) ledger 4 files. No push, no PR.
 
 ## S7 backfill (after C-02)
-- commit hashes: C-01 = TBD; C-02 = self-referencing hash (precedent)
-- live verification evidence / offline / token final: TBD
-- discriminant results: TBD
-- deviations: TBD
+- commit hashes: C-01 = `721ae46` (fix(obs): Prometheus抓取target对齐容器化服务名（TASK-216）, 2 files, +17/-15); C-02 = self-referencing hash (precedent).
+- live verification evidence / offline / token final: R3 full containerized stack — all six scrape pools health=="up" via service-name URLs, query=up returns six series value=1, Grafana /login HTTP 200; offline rc=0 698 = 52/50/165/166/159/80/26 per-digit unchanged; token 29 items SUM=2030 two-point (only-increase).
+- discriminant results: R1/R2/R3/G1/G2/G3 all green (detail in handoff.md).
+- deviations: D1 self-referencing C-02 hash; D2 local-env blockers (stale service images, native Redis service on 6379, missing writable logs dir in image, MySQL volume password drift) resolved by local repair + a gitignored transient scaffold, deleted after use; pre-existing image defect (logback `logs/` dir absent for non-root user) recorded as non-blocking, unrelated to this change. See handoff.md S8.

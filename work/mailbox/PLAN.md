@@ -2565,3 +2565,17 @@ run `35802403723`（head `eba0108`，2026-09-23 00:31 UTC）——**web/build �
 | 未覆盖 | `--mode=online`、CI 全流程（含新 web test step 真实执行）、真实浏览器可视交互、组件挂载与 E2E 未跑；R3 以 adapter 注入验证拦截器语义、未起真实 HTTP/网关；无性能/吞吐断言 |
 | 偏差 | D1 台账笔自指哈希（沿先例）；D2 vite.config.ts 编辑器引入 1 CR 已归一化纯 LF；D3 两新测试文件末尾 LF 补齐后重跑仍绿；D4 web README「四条命令」表述因「登记一节」范围限制保留原样、新节已明示新增 step。明细见 handoff.md §8 |
 - 补记（指导侧封盘笔，2026-10-13）：推送 a70340d..45f347d（4 笔=TASK-214 封盘笔+TASK-215 派发/C-01/C-02）后第 54 次 CI（run 38348221360，head=45f347d）conclusion=success 全 job 绿（web/build）——offline、镜像、Trivy、词面门、compose config、web type-check/**新 test step 真实 CI 首跑**/build/typed-router diff 全过。MEDIUM 档三环节终裁全过（指导亲核 PASS：git 链 11 文件全等+**ci.yml diff 恰 3 行单 step**（Type check 后 Build 前）+package.json dependencies 段零 diff/devDeps 恰 vitest+happy-dom+生产 web src 零 diff（diff 中 web/src 仅两个 __tests__ 新文件）+R3f 快照断言修正属实非弱化；回传 vs 实况零矛盾；CI success 外部终验），TASK-215 封盘（E8 前端测试基建课题收官）。课题终态：web 测试基线从零到一——vitest 3.2.7 + happy-dom 21.0.1（devDeps 恰两个）、scripts.test=vitest run、vite.config.ts test 字段（@ alias 共享）；锚点测试 2 套 13 测（token 6 测锁 TASK-205 凭证姿态：双键回环/存量 refresh_token 清理/auth-fail handler 注册/触发/异常吞没；client 拦截器 7 测经 adapter 注入锁安全语义：Bearer 注入有/无、code=0 透传、code!=0 带码 reject、401 auth 端点旁路零 refresh、业务 401 单次 refresh 重试（withCredentials+新 token 重放）、refresh 失败登出）；CI web job 增 Web unit tests step。offline 基线 698 逐位不变（web 不进 offline），token 2030 持平。已知限制（非阻断）：R3 为 adapter 注入语义验证未起真实 HTTP/网关、组件挂载与 E2E 未跑（选型裁决后置）；D4 README「四条命令」旧表述留后续随手订正。C-01 bc448db（7 文件+634/−2）/C-02 45f347d。 |
+
+## 验收记录：`TASK-216`（2026-10-13，Prometheus 抓取 target 容器化形态对齐（E11），纯配置 MEDIUM 档）
+
+| 项 | 内容 |
+| --- | --- |
+| 开工基线 | 派发笔 `146fd0e`（提案三件套 + 任务书）；工作树干净；offline 基线 698=52/50/165/166/159/80/26；token 29 项开工账单参照 SUM=2030 |
+| C-01 实施笔 | `721ae46` `fix(obs): Prometheus抓取target对齐容器化服务名（TASK-216）`，恰 2 文件 = §4 白名单（prometheus/prometheus.yml / README.md），+17／−15 |
+| C-02 台账笔 | 本笔 `docs(mailbox): 登记TASK-216抓取target对齐验收与台账闭环（TASK-216）`，恰 4 文件（tasks.json 勾选 / spec.md §7 / handoff.md / PLAN.md），自指哈希沿 D1 先例 |
+| 判别式红绿 | R1 绿（六 target 改 compose 服务名 + 「抓取地址说明」注释块重写；scrape_interval/evaluation_interval/rule_files/metrics_path/job 名零动；LF 保持）；R2 绿（README 监控段姿态改写为容器化服务名，ADR-0003 链接与生产 actuator 收敛告警口径零动；CRLF 保持）；R3 绿（全栈六 target 全 up，up 查询六序列值=1，Grafana /login=200）；G1/G2/G3 绿。明细见 handoff.md §4 |
+| 本机门禁 | offline 逐位 **698=52/50/165/166/159/80/26** BUILD SUCCESS rc=0（零 Java 改动与基线逐位不变）；契约门双态 rc=0（在途 `--open TASK-216 --baseline=146fd0e` + 收口无参）；token 29 项 post-C01 2030 / close 2030（只增不减）；词面门改动集 CI-exact ZERO_HIT + 探针阳性对照 HIT；`git diff --check` rc=0；行尾 prometheus.yml=w/lf、README.md=w/crlf 各保基线 |
+| 是否到达外部门槛 | **未到达**：两笔均未 push、未建 PR、无 CI run；MEDIUM 档外部终验（指导亲核 + CI 外部终验收口）待指导侧推动推送后补记 |
+| 未覆盖 | `--mode=online`、CI 全流程、告警 firing 实测、长时抓取稳定性；R3 实测以临时脚手架（gitignored、用完删）使服务可引导 |
+| 偏差 | D1 台账笔自指哈希（沿先例）；D2 本机 .env 换行损坏本地修复（未入库）；D3 原生 Redis 服务占 6379 → 临时覆盖 `!override` 重映射 16379（未入库、验证后删）；D4 六服务镜像陈旧（构建于 2026-10-10，早于 TASK-198/200/201/205 修复）→ 按原始命令 `--build` 重建，重建后暴露既有 logback `logs/` 目录缺陷（非本课题、修它越白名单，实测期以 tmpfs 脚手架，缺陷登记非阻断）；D5 MySQL 数据卷口令漂移 → `ALTER USER` 对齐 .env（非破坏）。明细见 handoff.md §8 |
+| 状态 | TASK-216 全链路闭环，**外部终验待推送后外部门槛 CI 绿**；E11 抓取 target 容器化对齐落地；既有镜像 logback `logs/` 缺陷建议单独立项 |

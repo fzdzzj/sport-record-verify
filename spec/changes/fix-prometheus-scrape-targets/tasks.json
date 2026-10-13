@@ -4,21 +4,21 @@
     "category": "Implementation",
     "task": "Prometheus scrape targets containerized-posture alignment",
     "steps": [
-      { "step": "prometheus.yml: six job targets host.docker.internal:808x -> compose service names + comment posture-switch documentation", "completed": false },
-      { "step": "README monitoring paragraph sync (lines ~236-238)", "completed": false },
-      { "step": "Live verification: containerized stack (or minimal degraded set) targets UP + up query non-empty + Grafana reachable", "completed": false },
-      { "step": "Discriminants R1/R2/R3, G1-G3 evidence", "completed": false }
+      { "step": "prometheus.yml: six job targets host.docker.internal:808x -> compose service names + comment posture-switch documentation", "completed": true },
+      { "step": "README monitoring paragraph sync (lines ~236-238)", "completed": true },
+      { "step": "Live verification: containerized stack (or minimal degraded set) targets UP + up query non-empty + Grafana reachable", "completed": true },
+      { "step": "Discriminants R1/R2/R3, G1-G3 evidence", "completed": true }
     ],
-    "passes": false
+    "passes": true
   },
   {
     "number": 2,
     "category": "Acceptance",
     "task": "Gates + commits (MEDIUM tier: no independent review)",
     "steps": [
-      { "step": "offline 698 per-digit unchanged; contract dual-state; token 2030; word-check; diff --check; line endings", "completed": false },
-      { "step": "C-01 fix(obs) + C-02 ledger (4 files), no push no PR", "completed": false }
+      { "step": "offline 698 per-digit unchanged; contract dual-state; token 2030; word-check; diff --check; line endings", "completed": true },
+      { "step": "C-01 fix(obs) + C-02 ledger (4 files), no push no PR", "completed": true }
     ],
-    "passes": false
+    "passes": true
   }
 ]
