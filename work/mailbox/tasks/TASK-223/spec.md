@@ -54,3 +54,11 @@ record-service（RecordController、SportRecordService、RecordLikeService 若�
 ## S7 backfill (after C-02)
 
 C-02 回填：判别式红绿、门禁留证、偏差 D1-Dn、未覆盖清单（真实浏览器删除交互/真实 Redis 联调/--it/online 沿先例口径）。
+
+### 回填（2026-10-14，C-02 台账笔）
+
+- **判别式红绿**：R1-R6 / G1-G3 逐条实证绿，证据见 `handoff.md §4`。
+- **门禁留证**：offline 全量逐位（52/50/173/217/159/80/26，record +11）、测试隔离单跑、静态 record-service、web 四件套、契约门双态、token 29 项两点（2036 持平）、词面门 CI-exact ZERO_HIT + 探针正控、`git diff --check`、行尾，均留证于 `handoff.md §5`。
+- **偏差**：D1（榜单数据源定稿为自有聚合持久表，贡献不实时回撤，登记为偏差与已知限制，不引入 MQ 补偿写）；D2（Checkstyle ParameterNumber 8 参家法下采用 setter 注入）；D3（token/词面门临时件落 gitignored `.trae/tmp`）；D4/D5（offline 噪音与 build chunk 告警为既有）。明细见 `handoff.md §8`。
+- **未覆盖清单**：真实浏览器删除与二次确认交互、真实 MySQL 分片删除与 Redis 联调（未起全栈服务，`--it` 未执行）、`--mode=online` 与外部 CI。均沿 TASK-213/220/221/222 口径登记，未写成通过，见 `handoff.md §10`。
+- **停止条件**：S3 §1-§5 无一按字面触发（对账见 `handoff.md §8`）。

@@ -2674,3 +2674,17 @@ run `35802403723`（head `eba0108`，2026-09-23 00:31 UTC）——**web/build �
 | 偏差 | D1 feed 卡片不显示时长（FeedItemDTO 契约按 proposal 不含 duration，卡片据可用字段渲染，非设计变更）；D2 token/词面门/契约/tokencheck 临时件落 gitignored .trae/tmp；D3 --static=user-service/api 模块未声明三件套插件、通用配置下存在基线违规（未触碰代码），静态门以 record-service 为准且 rc=0；D4/D5 offline 噪音与 build chunk 告警为既有；D6 recon 确认昵称批量面复用既有 listUsersByIds（S1「有则复用」不加 briefs 端点）且 typed-router 生成物随 /feed 路由提交沿 TASK-213 先例。明细见 handoff.md §8 |
 | 状态 | TASK-222 本地闭环：好友动态 feed（pull-on-read 跨服务聚合读路径，零 schema/零索引/零 MQ，feed 预过滤与 visibility 门等价论证），外部门槛与独立 review 待指导侧终裁与推送后补记 |
 - 补记（指导侧封盘笔，2026-10-14）：FULL 档三环节终裁全过（指导亲核 PASS：20 文件全等/红线面空/pageFeed 核心语义与预注册一致；独立复核四块全 PASS 零阻断零非阻断，留痕 N-1 typed-router 生成物沿 7e4be36 先例、N-2 token 扫描措辞过强实质门成立、N-3 proposal duration 措辞矛盾由 D1 披露）。批次推送 1158db6..ffc98bd（3 笔=TASK-221 封盘笔+TASK-222 C-01/C-02）后 run 38431818947：首跑 Build and test（online 全量，user 173/record 206 含 feed 测试与 D7 修复）绿、镜像构建步撞 Maven Central 502 瞬断红；重跑 attempt 2 conclusion=success 全 job 绿（build 11m24s/web 23s）——外部终验达成（502 系上游基建瞬断非代码缺陷，如实记录）。TASK-222 封盘。C-01 9db644a / C-02 ffc98bd。
+
+## 验收记录：TASK-223（记录删除/撤回与单事务级联清理，P5，FULL 档，2026-10-14）
+
+| 项 | 内容 |
+| --- | --- |
+| 开工基线 | 派发笔 `08732b7`；工作树干净；offline 基线 52/50/173/206/159/80/26；token 29 项基线 2036 |
+| C-01 实施笔 | `40ce0d3` `feat(record): 记录删除与撤回及单事务级联清理（TASK-223）`，恰 11 文件 = §4 白名单，+388/−8 |
+| C-02 台账笔 | 本笔 `docs(mailbox): 登记TASK-223记录删除验收与台账闭环（TASK-223）`，恰 4 文件（tasks.json 勾选 / spec.md §7 回填 / handoff.md 新建 / PLAN.md 纯追加）；C-02 自指哈希沿 D1 先例 |
+| 判别式红绿 | R1 绿（owner 200 / 缺头 1001 / 非 owner 403 1002 / 不存在 404 3001）；R2 绿（单事务级联恰四表：主记录、轨迹分片点、轨迹归档分片点、点赞持久行）；R3 绿（afterCommit best-effort 双层 try-catch 清理 Redis 计数与成员集合，异常吞并留证）；R4 绿（删除后既有读取面 requireRecord 自然 404，零门修改）；R5 绿（S1 recon 定稿榜单为自有聚合持久表，不发 MQ 补偿，登记 Dn 偏差与已知限制）；R6 绿（web 我的记录操作列 Popconfirm 确认 + 删除 + 列表与打卡刷新）；G1/G2/G3 绿。明细见 handoff.md §4 |
+| 本机门禁 | offline 逐位 **52/50/173/217/159/80/26** BUILD SUCCESS rc=0（record 206→217 恰 +11 = RecordLikeServiceTest 3 + RecordControllerTest 4 + SportRecordServiceTest 4，其余六模块逐位不变）；三承载新断言的测试类隔离单跑全绿（RecordLikeServiceTest 39 / RecordControllerTest 29 / SportRecordServiceTest 67）；record-service 静态 rc=0（0 Checkstyle violations/SpotBugs Error size 0/PMD——唯一声明并强制三件套的改动模块）；web pnpm test rc=0（4 套 26 测）、type-check rc=0、build 成功（3283 modules）、typed-router diff rc=0；契约门双态 rc=0（在途 --open TASK-223 --baseline=08732b7 判据 A 待办放行 + 判据 B 一致，收口无参）；token 29 项两点 2036/2036 只增不减且 ≥2034，改动集 token 扫描 ZERO_HIT；词面门改动集 CI-exact ZERO_HIT rc=1 + 探针阳性对照 HIT rc=0；git diff --check rc=0；改动文件保持基线行尾 |
+| 是否到达外部门槛 | **未达到**：两笔均未 push、未建 PR、无 CI run；FULL 档独立 review 复核待指导侧派发 |
+| 未覆盖/跳过 | --mode=online、CI 全流程、真实浏览器我的记录删除行内二次确认/列表刷新交互（沿 TASK-213/220/221/222 口径）、真实 MySQL 分片删除/Redis 键清理跨中间件联调（--it 未执行） |
+| 偏差 | D1 榜单数据源定稿为自有聚合持久表，贡献不实时回撤，登记为偏差与已知限制，不引入 MQ 补偿写；D2 Checkstyle ParameterNumber 8 参家法下采用 setter 注入；D3 token/词面门/契约临时件落 gitignored .trae/tmp；D4/D5 offline 噪音与 build chunk 告警为既有。明细见 handoff.md §8 |
+| 状态 | TASK-223 本地闭环：记录删除与撤回落地（单事务级联四表 + Redis best-effort 清理 + web Popconfirm 二次确认，零 schema/零新状态值/零 MQ/零跨服务写），外部门槛与独立 review 待指导侧终裁与推送后补记 |
