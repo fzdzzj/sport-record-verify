@@ -244,7 +244,34 @@ public class FriendService {
     // ==================== 好友列表 ====================
 
     /**
-     * 好友列表（规范差异「好友列表」）：分页返回，仅 ACCEPTED 关系
+     * 两点是否互为好友（add-record-visibility，TASK-221）：{@code friendship} 表以
+     * {@code user_low<user_high} 规范化存储的关系存在即互为好友。
+     *
+     * <p>入参约束（契约独立成立）：任一参数为 null → 返回 false（不抛错，读取面把它当「非好友」= 403，
+     * 失败安全）；两点相同 → true（同一个人当然与自己是「好友」，但 record-service 的归属短路不会走到这里）；
+     * 否则以 min/max 归一后 {@code selectCount > 0} 判定。读路径轻量逐对判断，
+     * 复用 {@code selectCount} 与 existing-friendship 检查同款查询。</p>
+     *
+     * @param userId        一点（读取者）
+     * @param otherUserId   另一点（记录归属人）
+     * @return 若 {@code userId} 与 {@code otherUserId} 互为好友则 true，否则 false（含 null 参数）
+     */
+    public boolean areFriends(Long userId, Long otherUserId) {
+        if (userId == null || otherUserId == null) {
+            return false;
+        }
+        if (userId.equals(otherUserId)) {
+            return true;
+        }
+        long low = Math.min(userId, otherUserId);
+        long high = Math.max(userId, otherUserId);
+        Long count = friendshipMapper.selectCount(new LambdaQueryWrapper<Friendship>()
+                .eq(Friendship::getUserLow, low)
+                .eq(Friendship::getUserHigh, high));
+        return count != null && count > 0;
+    }
+
+    /** 好友列表（规范差异「好友列表」）：分页返回，仅 ACCEPTED 关系
      * （friendship 表本身只承载已接受关系，天然排除 PENDING/REJECTED/CANCELLED）。
      *
      * <p>反规范化：由 {@code (user_low,user_high)} 还原对方 userId，再回表 user 取昵称。</p>

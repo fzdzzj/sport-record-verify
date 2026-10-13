@@ -12,6 +12,15 @@
           </a-select>
         </a-form-item>
 
+        <a-form-item label="可见性 (visibility，TASK-221)">
+          <a-radio-group v-model:value="visibility">
+            <a-radio :value="0">公开</a-radio>
+            <a-radio :value="1">好友可见</a-radio>
+            <a-radio :value="2">仅自己</a-radio>
+          </a-radio-group>
+          <div class="mt-1 text-xs text-gray-500">默认「公开」；读取面按可见性授权（PRIVATE 仅自己/FRIENDS 仅好友/PUBLIC 所有人）。</div>
+        </a-form-item>
+
         <a-form-item label="样例轨迹 (内置 10 点)">
           <a-button @click="loadSample" class="mr-2">加载内置样例</a-button>
           <a-button @click="clearPoints">清空</a-button>
@@ -76,6 +85,7 @@ import { submitRecord, SAMPLE_TRACK_POINTS, getRecordPoints, type RecordSubmitRe
 const router = useRouter()
 
 const sportType = ref(1)
+const visibility = ref(0)
 const points = ref<TrackPointDTO[]>([])
 const requestId = ref('')
 const submitting = ref(false)
@@ -105,6 +115,7 @@ async function onSubmit() {
     const dto = {
       requestId: requestId.value,
       sportType: sportType.value,
+      visibility: visibility.value,
       points: points.value
     }
     const res = await submitRecord(dto)

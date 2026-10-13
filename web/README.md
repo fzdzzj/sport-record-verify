@@ -186,3 +186,7 @@ curl -X POST http://127.0.0.1:8080/internal/auth/grant-admin \
 ## 连续打卡（TASK-220）
 
 - 个人仪表盘统计卡区新增「连续打卡」卡：调用 `GET /record/api/records/my/streak`（后端单列投影聚合，仅计入通过终态 PASSED/RE_PASSED，同日多条算一天，今日无记录从昨日续算），展示「当前 N 天 · 最长 M 天」；独立拉取，失败不拖垮统计卡区（显示 —）；后端零新依赖、零新 SQL 形态。
+
+## 记录可见性三态（TASK-221）
+
+- 提交页新增「可见性」三选 radio（公开=0 默认 / 好友可见=1 / 仅自己=2），随提交载荷 `visibility` 下发（缺省服务端回退 PUBLIC）；我的记录列表新增可见性列：仅自己/好友可见显示彩色 tag，公开显示「公开」。`client.ts` 的 `RecordSubmitDTO`/`RecordSummaryDTO` 类型同步加 `visibility?: number`。读取面授权在后端统一收敛（PRIVATE 仅归属人 / FRIENDS 仅好友 / PUBLIC 所有人）。

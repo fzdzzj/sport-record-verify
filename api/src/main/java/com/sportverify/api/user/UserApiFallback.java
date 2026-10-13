@@ -21,7 +21,10 @@ import java.util.List;
  * <p><b>产品口径（好友榜过滤）</b>：user-service 不可用时好友榜<b>返回空榜</b>，
  * 不选「不过滤」。不过滤会把总榜非好友泄露为好友排名，破坏隐私与产品语义；
  * 空榜仅短期可用性降级，可接受。本工厂对 {@code listFriends}/{@code listUsersByIds}
- * 返回空成功结果；写路径（申请/同意/拒绝）与探活不可软成功，抛 4006。</p>
+ * 返回空成功结果；{@code areFriends} 在 user-service 不可用时<b>返回 false</b>
+ * （失败安全隐私：读路径对 {@code FRIENDS} 可见记录的最保守裁决是「非好友」= 403，
+ * 与好友榜空榜同口径——不允许把好友判断软成功为 true 而泄露），写路径（申请/同意/拒绝）
+ * 与探活不可软成功，抛 4006。</p>
  */
 @Slf4j
 @Component
@@ -64,6 +67,15 @@ public class UserApiFallback implements FallbackFactory<UserApi> {
                 log.warn("user-service 熔断降级：listUsersByIds 返回空列表，ids={}, cause={}",
                         ids == null ? 0 : ids.size(), cause == null ? "unknown" : cause.toString());
                 return Result.success(Collections.emptyList());
+            }
+
+            @Override
+            public Result<Boolean> areFriends(Long userId, Long otherUserId) {
+                // 读路径软降级为 false（失败安全隐私）：FRIENDS 可见记录对非确认好友最保守裁决是「非好友」→
+                // 调用方 403。绝不允许软成功为 true（否则隐私泄露），与好友榜空榜同口径。
+                log.warn("user-service 熔断降级：areFriends 返回 false（失败安全隐私），userId={}, otherUserId={}, cause={}",
+                        userId, otherUserId, cause == null ? "unknown" : cause.toString());
+                return Result.success(false);
             }
         };
     }

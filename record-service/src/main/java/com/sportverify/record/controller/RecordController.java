@@ -70,10 +70,16 @@ public class RecordController {
 
     /**
      * 查询判定结果（verify_db，经 verify-api 拉取；未终判时 verdict=VERIFYING）。
+     *
+     * <p>读取面授权（TASK-221）：caller 经服务层 {@code assertCanView} 门判断——true 时以
+     * 网关 X-User-Id 为读取者（缺失 → 1001），false 时 caller=null（降级态放行，行为与今日
+     * 逐字节一致）。关闭了此前「任何人可读任意判定」的开放暴露。</p>
      */
     @GetMapping("/{id}/verify-result")
-    public Result<VerificationResultDTO> verifyResult(@PathVariable("id") Long id) {
-        return Result.success(sportRecordService.getVerifyResult(id));
+    public Result<VerificationResultDTO> verifyResult(@PathVariable("id") Long id,
+                                                      HttpServletRequest request) {
+        Long caller = authEnabled ? resolveUserId(request, null) : null;
+        return Result.success(sportRecordService.getVerifyResult(id, caller));
     }
 
     /**

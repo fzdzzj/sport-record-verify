@@ -121,16 +121,41 @@ class RecordControllerTest {
         assertEquals(7L, out.getData().getRecordId());
     }
 
-    /** 查询判定结果 */
+    /** 查询判定结果（auth 关）→ caller=null 透传（降级态，行为与今日持平） */
     @Test
     void verifyResult_delegates() {
         VerificationResultDTO v = new VerificationResultDTO();
-        when(sportRecordService.getVerifyResult(3L)).thenReturn(v);
+        when(sportRecordService.getVerifyResult(3L, null)).thenReturn(v);
 
-        VerificationResultDTO out = controller.verifyResult(3L).getData();
+        VerificationResultDTO out = controller.verifyResult(3L, request).getData();
 
         assertEquals(v, out);
-        verify(sportRecordService).getVerifyResult(3L);
+        verify(sportRecordService).getVerifyResult(3L, null);
+    }
+
+    /** 查询判定结果（auth 开）→ 以 X-User-Id 为 caller透传（读取面授权，R3） */
+    @Test
+    void verifyResult_authEnabled_resolvesCallerFromHeader() {
+        ReflectionTestUtils.setField(controller, "authEnabled", true);
+        when(request.getHeader("X-User-Id")).thenReturn("200");
+        VerificationResultDTO v = new VerificationResultDTO();
+        when(sportRecordService.getVerifyResult(3L, 200L)).thenReturn(v);
+
+        VerificationResultDTO out = controller.verifyResult(3L, request).getData();
+
+        assertEquals(v, out);
+        verify(sportRecordService).getVerifyResult(3L, 200L);
+    }
+
+    /** 查询判定结果（auth 开，缺网关头）→ 1001 缺少 X-User-Id（读取面门不让陌生人静默过） */
+    @Test
+    void verifyResult_authEnabled_missingHeader_throwsUnauthorized() {
+        ReflectionTestUtils.setField(controller, "authEnabled", true);
+        when(request.getHeader("X-User-Id")).thenReturn(null);
+
+        BizException e = assertThrows(BizException.class,
+                () -> controller.verifyResult(3L, request));
+        assertEquals(ResultCode.UNAUTHORIZED.getCode(), e.getCode());
     }
 
     /** 提交申诉（auth 关）→ 关键 caller 为 null 透传 */

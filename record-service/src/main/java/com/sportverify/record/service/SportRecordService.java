@@ -4,6 +4,7 @@ import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.toolkit.IdWorker;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.sportverify.api.record.RecordStatus;
+import com.sportverify.api.record.RecordVisibility;
 import com.sportverify.api.record.SportType;
 import com.sportverify.api.record.dto.MyStreakDTO;
 import com.sportverify.api.record.dto.RecordSubmitDTO;
@@ -13,6 +14,7 @@ import com.sportverify.api.record.dto.RecordWithPointsDTO;
 import com.sportverify.api.record.dto.SportRecordDTO;
 import com.sportverify.api.record.dto.StatusCallbackDTO;
 import com.sportverify.api.record.dto.TrackPointDTO;
+import com.sportverify.api.user.UserApi;
 import com.sportverify.api.verify.VerifyApi;
 import com.sportverify.api.verify.dto.AppealCreateDTO;
 import com.sportverify.api.verify.dto.AppealDTO;
@@ -66,6 +68,8 @@ public class SportRecordService {
     private final RecordEventProducer recordEventProducer;
     private final VerifyApi verifyApi;
     private final VerifyDegradeService verifyDegradeService;
+    /** user-service Feign（好友域）：FRIENDS 可见记录读取面逐对好友判断（TASK-221）。 */
+    private final UserApi userApi;
 
     /** 提交事务分段计时开关（TASK-139 插桩，默认关闭；true 时日志周期打 SUBMIT_TX_TIMING snapshot） */
     @Value("${record.submit.tx-timing-enabled:false}")
@@ -118,6 +122,8 @@ public class SportRecordService {
 
         // 1.1 运动类型解析：缺省回退 RUNNING（历史默认）；枚举外取值拒绝（规范「未知类型拒绝」）
         Integer sportType = resolveSportType(dto.getSportType());
+        // 1.2 可见性解析：缺省（null）回退 PUBLIC（历史 & 新记录默认公开）；枚举外取值拒绝（TASK-221）
+        Integer visibility = resolveVisibility(dto.getVisibility());
 
         // 2. 落 sport_record 主表（单表）：首次提交直接 INSERT status=VERIFYING / version=0，
         //    不再先 INSERT SUBMITTED 再在同一事务里 UPDATE——那条 UPDATE 只写了其他连接
@@ -132,6 +138,7 @@ public class SportRecordService {
         record.setDistance(dto.getDistance());
         record.setDuration(dto.getDuration());
         record.setStatus(RecordStatus.VERIFYING.getCode());
+        record.setVisibility(visibility);
         record.setVersion(0);
         record.setCreatedAt(LocalDateTime.now());
         long tInsert = System.nanoTime();
@@ -285,12 +292,17 @@ public class SportRecordService {
 
     /**
      * 查询判定结果（数据在 verify_db，经 verify-api Feign 拉取，规范「校验状态机」）。
+     *
+     * <p>读取面授权（TASK-221）：调用者 {@code caller} 经 {@link #assertCanView} 门判断
+     * 是否可读——caller=null（鉴权关闭降级）恒放行、归属人恒放行、PRIVATE 非归属人 403、
+     * FRIENDS 需互为好友、PUBLIC 恒放行。关闭了此前「任何人可读任意判定」的开放暴露。</p>
      */
-    public VerificationResultDTO getVerifyResult(Long recordId) {
+    public VerificationResultDTO getVerifyResult(Long recordId, Long caller) {
         SportRecord record = sportRecordMapper.selectById(recordId);
         if (record == null) {
             throw new BizException(ResultCode.RECORD_NOT_FOUND);
         }
+        assertCanView(record, caller);
         return verifyApi.getVerificationResult(recordId).getData();
     }
 
@@ -339,11 +351,10 @@ public class SportRecordService {
         if (record == null) {
             throw new BizException(ResultCode.RECORD_NOT_FOUND);
         }
-        // 归属校验（TASK-204）：caller 非空且不等于记录归属人 → 403 越权。
-        // 仅 app.auth.enabled=true 时 caller 非空；false 时恒 null → 零改动降级旧行为。
-        if (caller != null && !caller.equals(record.getUserId())) {
-            throw new BizException(ResultCode.FORBIDDEN);
-        }
+        // 读取面授权（TASK-221）：以 assertCanView 门判断——caller=null（鉴权关闭降级）恒放行、
+        // 归属人恒放行、PRIVATE 非归属人 403、FRIENDS 需互为好友、PUBLIC 恒放行。
+        // 取代了此前的「caller==归属人」断言：PUBLIC/FRIENDS 记录因此对相应读取者可读（预期产品变更）。
+        assertCanView(record, caller);
         Page<TrackPoint> result;
         if (Objects.equals(record.getArchived(), 1)) {
             Page<TrackPointArchive> archPage = trackPointArchiveMapper.selectPage(new Page<>(page, size),
@@ -438,13 +449,14 @@ public class SportRecordService {
     /** 个人统计单次拉取每页上限（前端 size=500 全量聚合的契约上限）。 */
     private static final int MAX_MY_RECORDS_SIZE = 500;
 
-    /** 实体 → 记录概要 DTO（字段：id/sportType/distance/status/createdAt）。 */
+    /** 实体 → 记录概要 DTO（字段：id/sportType/distance/status/visibility/createdAt）。 */
     private RecordSummaryDTO toSummary(SportRecord record) {
         RecordSummaryDTO dto = new RecordSummaryDTO();
         dto.setId(record.getId());
         dto.setSportType(record.getSportType());
         dto.setDistance(record.getDistance());
         dto.setStatus(record.getStatus());
+        dto.setVisibility(record.getVisibility());
         dto.setCreatedAt(record.getCreatedAt());
         return dto;
     }
@@ -464,6 +476,71 @@ public class SportRecordService {
             throw new BizException(ResultCode.SPORT_TYPE_INVALID, "未知运动类型：" + code);
         }
         return type.getCode();
+    }
+
+    /**
+     * 解析提交的可见性：缺省（null）回退 PUBLIC（0，历史 & 新记录默认公开，向后兼容），
+     * 枚举外取值抛 3007 拒绝（resolveSportType 同款先例，TASK-221）。
+     */
+    private Integer resolveVisibility(Integer code) {
+        if (code == null) {
+            return RecordVisibility.PUBLIC.getCode();
+        }
+        RecordVisibility visibility = RecordVisibility.fromCode(code);
+        if (visibility == null) {
+            throw new BizException(ResultCode.SPORT_TYPE_INVALID, "未知可见性：" + code);
+        }
+        return visibility.getCode();
+    }
+
+    /**
+     * 记录读取面授权门（add-record-visibility，TASK-221 核心判别式）。
+     *
+     * <p>对「读取者 caller」作逐记录裁决，读取路径统一收敛（pagePoints / getVerifyResult /
+     * 点赞三端点经 RecordLikeService 复用本方法）。门矩阵：</p>
+     * <ul>
+     *   <li>caller == null（鉴权关闭降级态，TASK-204 先例）→ 放行（生产严格 auth.enabled=true，
+     *       见 TASK-191 严格链接，降级态仅本地基准可达）；</li>
+     *   <li>caller.equals(record.getUserId())（归属人）→ 放行（owner×{PUBLIC,FRIENDS,PRIVATE} 均放行）；</li>
+     *   <li>PRIVATE → 任何非归属人 403；</li>
+     *   <li>FRIENDS → {@code userApi.areFriends(owner, caller)} 互为好友才放行，否则 403；</li>
+     *   <li>PUBLIC 或 visibility 为 null（存量行 / 新装测试上下文）→ 任何登录读取者放行。</li>
+     * </ul>
+     *
+     * <p>UserApi 异常/软降级 false（fail-safe 隐私，UserApiFallback 先例）→ 按「非好友」= 403。
+     * 归属人短路在 null 判定之后、PRIVATE/FRIENDS 检查之前，归属人读自己任何可见性都放行。</p>
+     *
+     * @param record 目标记录（须已加载，含 userId 与 visibility）
+     * @param caller 读取者（可能为 null，降级态）
+     * @throws BizException 非归属人读 PRIVATE，或非好友读 FRIENDS 时 FORBIDDEN(1002)
+     */
+    public void assertCanView(SportRecord record, Long caller) {
+        if (caller == null) {
+            return;
+        }
+        if (record.getUserId() != null && caller.equals(record.getUserId())) {
+            return;
+        }
+        RecordVisibility visibility = RecordVisibility.fromCode(record.getVisibility());
+        // null（存量行/新装上下文未回填）视为 PUBLIC，向后兼容
+        if (visibility == null || visibility == RecordVisibility.PUBLIC) {
+            return;
+        }
+        if (visibility == RecordVisibility.PRIVATE) {
+            throw new BizException(ResultCode.FORBIDDEN);
+        }
+        // FRIENDS：互为好友才放行；UserApi 异常/软降级 false → 403（失败安全）
+        boolean friends;
+        try {
+            friends = Boolean.TRUE.equals(
+                    userApi.areFriends(record.getUserId(), caller).getData());
+        } catch (Exception e) {
+            log.warn("好友判断异常，按非好友拒绝（fail-safe）：recordId={}, caller={}", record.getId(), caller, e);
+            friends = false;
+        }
+        if (!friends) {
+            throw new BizException(ResultCode.FORBIDDEN);
+        }
     }
 
     /** 轨迹批量写入开关（ADR-0002 已验证优化路径；缺省 true 与 application.properties 一致，复现基线显式 false） */

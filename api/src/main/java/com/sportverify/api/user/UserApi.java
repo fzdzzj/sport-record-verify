@@ -70,4 +70,17 @@ public interface UserApi {
      */
     @GetMapping("/users")
     Result<List<UserDTO>> listUsersByIds(@RequestParam("ids") List<Long> ids);
+
+    /**
+     * 两点是否互为好友（{@code userId} 与 {@code otherUserId} 之间已结成 ACCEPTED 关系，
+     * 提供逐对判断，避免引入好友榜分页那样过重的逐对循环）。
+     *
+     * <p>读路径授权用（add-record-visibility，TASK-221）：record-service 在 {@code FRIENDS}
+     * 可见记录上判断「读取者是否记录归属人的好友」。{@code isFriends} 名称避免与
+     * 写路径动作动词（create/accept/reject）混淆；语义 = {@code friendship} 表中以
+     * {@code user_low<user_high} 规范化存储的关系存在（规范差异「好友关系规范化存储」）。</p>
+     */
+    @GetMapping("/friends/exists")
+    Result<Boolean> areFriends(@RequestParam("userId") Long userId,
+                               @RequestParam("otherUserId") Long otherUserId);
 }

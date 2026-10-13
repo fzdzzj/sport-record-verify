@@ -54,4 +54,15 @@ public class InternalFriendController {
                                               @RequestParam(defaultValue = "20") long size) {
         return Result.success(friendService.listFriends(userId, page, size));
     }
+
+    /**
+     * 两点是否互为好友（add-record-visibility，TASK-221）：供 record-service 在 FRIENDS
+     * 可见记录上逐对判断读取者与归属人关系。纯委托 {@link FriendService#areFriends}，
+     * Feign 契约见 {@link com.sportverify.api.user.UserApi#areFriends}。
+     */
+    @GetMapping("/exists")
+    public Result<Boolean> exists(@RequestParam("userId") Long userId,
+                                  @RequestParam("otherUserId") Long otherUserId) {
+        return Result.success(friendService.areFriends(userId, otherUserId));
+    }
 }

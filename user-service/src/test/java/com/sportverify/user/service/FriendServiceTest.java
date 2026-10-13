@@ -1,5 +1,6 @@
 package com.sportverify.user.service;
 
+import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.sportverify.api.common.PageResult;
 import com.sportverify.api.user.dto.FriendDTO;
@@ -26,6 +27,7 @@ import java.util.List;
 import java.util.concurrent.TimeUnit;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
@@ -39,6 +41,7 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.mockito.Mockito.inOrder;
@@ -378,6 +381,59 @@ class FriendServiceTest {
     @Test
     void listFriends_nullUserId() {
         assertThrows(IllegalArgumentException.class, () -> service.listFriends(null, 1, 20));
+    }
+
+    // ==================== areFriends（TASK-221 好友对判断） ====================
+
+    /** 绿：两点互为好友（规范化 user_low<user_high selectCount>0）→ true，且共享既有 normalized 查询 */
+    @Test
+    @SuppressWarnings("unchecked")
+    void areFriends_friendshipExists_returnsTrue() {
+        when(friendshipMapper.selectCount(any())).thenReturn(1L);
+
+        assertTrue(service.areFriends(1001L, 1002L));
+
+        ArgumentCaptor<LambdaQueryWrapper> wrapper = ArgumentCaptor.forClass(LambdaQueryWrapper.class);
+        verify(friendshipMapper).selectCount(wrapper.capture());
+        String segment = wrapper.getValue().getSqlSegment();
+        // 规范化存储：无论调用方向，查询都必须按 user_low=min / user_high=max 组织
+        assertTrue(segment.contains("user_low =") && segment.contains("user_high ="),
+                "areFriends 查询必须按 user_low/user_high 规范化过滤：" + segment);
+        assertTrue(wrapper.getValue().getParamNameValuePairs().containsValue(1001L),
+                "低端应为 min(1001,1002)=1001");
+        assertTrue(wrapper.getValue().getParamNameValuePairs().containsValue(1002L),
+                "高端应为 max(1001,1002)=1002");
+    }
+
+    /** 绿：方向不影响 —— 反向调用（1002→1001）查询同一 normalized 键 → true */
+    @Test
+    void areFriends_reverseDirection_normalizesToSamePair() {
+        when(friendshipMapper.selectCount(any())).thenReturn(1L);
+
+        assertTrue(service.areFriends(1002L, 1001L));
+    }
+
+    /** 红：无关系（selectCount=0）→ false */
+    @Test
+    void areFriends_noFriendship_returnsFalse() {
+        when(friendshipMapper.selectCount(any())).thenReturn(0L);
+
+        assertFalse(service.areFriends(1001L, 1002L));
+    }
+
+    /** 红：任一参数 null → false（不抛错，读取面把它当「非好友」，fail-safe 契约） */
+    @Test
+    void areFriends_nullArg_returnsFalse() {
+        assertFalse(service.areFriends(null, 1002L));
+        assertFalse(service.areFriends(1001L, null));
+        verifyNoInteractions(friendshipMapper);
+    }
+
+    /** 绿：两点相同 → true（契约独立成立；record-service 归属短路不会走到） */
+    @Test
+    void areFriends_sameUser_returnsTrue() {
+        assertTrue(service.areFriends(1001L, 1001L));
+        verifyNoInteractions(friendshipMapper);
     }
 
     // ==================== 锁键归一 ====================

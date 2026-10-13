@@ -72,6 +72,7 @@ class SportRecordServiceTest {
     private RecordEventProducer recordEventProducer;
     private VerifyApi verifyApi;
     private VerifyDegradeService verifyDegradeService;
+    private com.sportverify.api.user.UserApi userApi;
     private SportRecordService service;
 
     @BeforeEach
@@ -82,8 +83,9 @@ class SportRecordServiceTest {
         recordEventProducer = mock(RecordEventProducer.class);
         verifyApi = mock(VerifyApi.class);
         verifyDegradeService = mock(VerifyDegradeService.class);
+        userApi = mock(com.sportverify.api.user.UserApi.class);
         service = new SportRecordService(sportRecordMapper, trackPointMapper, trackPointArchiveMapper,
-                recordEventProducer, verifyApi, verifyDegradeService);
+                recordEventProducer, verifyApi, verifyDegradeService, userApi);
         // 无 Spring：@Value 不生效；setField 模拟产品默认 true（与 properties/@Value 缺省一致）
         ReflectionTestUtils.setField(service, "batchInsertEnabled", true);
     }
@@ -356,6 +358,62 @@ class SportRecordServiceTest {
         verify(sportRecordMapper, never()).insert(any(SportRecord.class));
     }
 
+    // ==================== 提交可见性（TASK-221，R4） ====================
+
+    /** null visibility → 落库 PUBLIC(0)：新记录/旧客户端缺省默认公开（向后兼容） */
+    @Test
+    @SuppressWarnings("unchecked")
+    void submit_visibilityNull_persistsPublic() {
+        when(sportRecordMapper.selectByRequestId("req-1")).thenReturn(null);
+        stubInsertReturnsId();
+        stubPublishSuccess();
+
+        inTx(() -> assertEquals(RecordStatus.VERIFYING.getCode(), service.submit(dto(1, 1)).getStatus()), true);
+
+        ArgumentCaptor<SportRecord> captor = ArgumentCaptor.forClass(SportRecord.class);
+        verify(sportRecordMapper).insert(captor.capture());
+        assertEquals(Integer.valueOf(0), captor.getValue().getVisibility(), "null visibility 必须落库 PUBLIC(0)");
+    }
+
+    /** 显式 1（FRIENDS）/ 2（PRIVATE）→ 原样落库（独立 mapper 逐值断言） */
+    @Test
+    void submit_visibilityExplicit_persistsExactly() {
+        for (int vis : new int[]{1, 2}) {
+            SportRecordMapper localMapper = mock(SportRecordMapper.class);
+            when(localMapper.selectByRequestId("req-1")).thenReturn(null);
+            doAnswer(inv -> {
+                SportRecord r = inv.getArgument(0);
+                r.setId(100L);
+                return 1;
+            }).when(localMapper).insert(any(SportRecord.class));
+            SportRecordService localService = new SportRecordService(localMapper,
+                    trackPointMapper, trackPointArchiveMapper, recordEventProducer,
+                    verifyApi, verifyDegradeService, userApi);
+            ReflectionTestUtils.setField(localService, "batchInsertEnabled", true);
+
+            RecordSubmitDTO req = dto(1, 1);
+            req.setVisibility(vis);
+            inTx(() -> localService.submit(req), true);
+
+            ArgumentCaptor<SportRecord> captor = ArgumentCaptor.forClass(SportRecord.class);
+            verify(localMapper).insert(captor.capture());
+            assertEquals(Integer.valueOf(vis), captor.getValue().getVisibility(),
+                    "显式 visibility=" + vis + " 必须原样落库");
+        }
+    }
+
+    /** 枚举外可见性 → 3007 拒绝，不落库（与未知运动类型同款 resolveSportType 先例） */
+    @Test
+    void submit_visibilityOutOfRange_rejected() {
+        when(sportRecordMapper.selectByRequestId("req-1")).thenReturn(null);
+        RecordSubmitDTO req = dto(1, 1);
+        req.setVisibility(99);
+
+        BizException e = assertThrows(BizException.class, () -> service.submit(req));
+        assertEquals(ResultCode.SPORT_TYPE_INVALID.getCode(), e.getCode());
+        verify(sportRecordMapper, never()).insert(any(SportRecord.class));
+    }
+
     // ==================== 提交后事件降级（afterCommit） ====================
 
     /** MQ 发布失败 → Feign 直调触发校验（verify 正常，不转人工） */
@@ -602,16 +660,18 @@ class SportRecordServiceTest {
         assertEquals(ResultCode.RECORD_STATUS_INVALID.getCode(), e.getCode());
     }
 
-    /** 查询判定结果：记录存在 → 透传 verify-api 结果 */
+    /** 查询判定结果：记录存在 → 经可见性门（owner 放行）透传 verify-api 结果 */
     @Test
     void getVerifyResult_delegatesToVerifyApi() {
         SportRecord record = new SportRecord();
         record.setId(1L);
+        record.setUserId(100L);
+        record.setVisibility(0); // PUBLIC
         when(sportRecordMapper.selectById(1L)).thenReturn(record);
         VerificationResultDTO v = new VerificationResultDTO();
         when(verifyApi.getVerificationResult(1L)).thenReturn(com.sportverify.common.result.Result.success(v));
 
-        VerificationResultDTO out = service.getVerifyResult(1L);
+        VerificationResultDTO out = service.getVerifyResult(1L, 100L);
 
         assertEquals(v, out);
         verify(verifyApi).getVerificationResult(1L);
@@ -622,8 +682,59 @@ class SportRecordServiceTest {
     void getVerifyResult_recordNotFound_throws() {
         when(sportRecordMapper.selectById(1L)).thenReturn(null);
 
-        BizException e = assertThrows(BizException.class, () -> service.getVerifyResult(1L));
+        BizException e = assertThrows(BizException.class, () -> service.getVerifyResult(1L, null));
         assertEquals(ResultCode.RECORD_NOT_FOUND.getCode(), e.getCode());
+    }
+
+    // ==================== 读取面可见性门（TASK-221，R2/R3） ====================
+
+    /** 红：PRIVATE 记录非归属人读取判定 → 403（FORBIDDEN），不透传 verify-api */
+    @Test
+    void getVerifyResult_privateRecord_stranger_throwsForbidden() {
+        SportRecord record = new SportRecord();
+        record.setId(1L);
+        record.setUserId(100L);
+        record.setVisibility(2); // PRIVATE
+        when(sportRecordMapper.selectById(1L)).thenReturn(record);
+
+        BizException e = assertThrows(BizException.class, () -> service.getVerifyResult(1L, 999L));
+        assertEquals(ResultCode.FORBIDDEN.getCode(), e.getCode());
+        verifyNoInteractions(userApi);
+        verify(verifyApi, never()).getVerificationResult(anyLong());
+    }
+
+    /** 绿：PRIVATE 记录归属人读取判定 → 200，透传 verify-api 结果 */
+    @Test
+    void getVerifyResult_privateRecord_owner_passes() {
+        SportRecord record = new SportRecord();
+        record.setId(1L);
+        record.setUserId(100L);
+        record.setVisibility(2); // PRIVATE
+        when(sportRecordMapper.selectById(1L)).thenReturn(record);
+        VerificationResultDTO v = new VerificationResultDTO();
+        when(verifyApi.getVerificationResult(1L)).thenReturn(com.sportverify.common.result.Result.success(v));
+
+        VerificationResultDTO out = service.getVerifyResult(1L, 100L);
+
+        assertEquals(v, out);
+        verify(verifyApi).getVerificationResult(1L);
+    }
+
+    /** 绿：caller=null（鉴权关闭降级态）读取判定 → 放行，行为与今日持平（R3 降级态） */
+    @Test
+    void getVerifyResult_callerNull_degradeAllowed() {
+        SportRecord record = new SportRecord();
+        record.setId(1L);
+        record.setUserId(100L);
+        record.setVisibility(2); // PRIVATE 也不拦降级态
+        when(sportRecordMapper.selectById(1L)).thenReturn(record);
+        VerificationResultDTO v = new VerificationResultDTO();
+        when(verifyApi.getVerificationResult(1L)).thenReturn(com.sportverify.common.result.Result.success(v));
+
+        VerificationResultDTO out = service.getVerifyResult(1L, null);
+
+        assertEquals(v, out);
+        verify(verifyApi).getVerificationResult(1L);
     }
 
     /** 拉取全部轨迹点：记录存在 → 按分片键路由 + 序号升序 */
@@ -707,15 +818,125 @@ class SportRecordServiceTest {
         assertEquals(0, out.getRecords().size());
     }
 
-    // ==================== 归属校验（TASK-204） ====================
+    // ==================== 归属校验（TASK-204，语义被 TASK-221 可见性门细化） ====================
 
-    /** 红 R1a：caller 非空且非记录归属人 → 403（FORBIDDEN），拒绝读取他人轨迹 */
+    /** 红 R1a：PRIVATE 记录 caller 非归属人 → 403（FORBIDDEN），拒绝读取他人轨迹 */
     @Test
     void pagePoints_callerMismatch_throwsForbidden() {
         SportRecord record = new SportRecord();
         record.setId(1L);
         record.setUserId(100L);
+        record.setVisibility(2); // PRIVATE（非归属人才 403；PUBLIC/FRIENDS 见下方门测试）
         when(sportRecordMapper.selectById(1L)).thenReturn(record);
+
+        BizException e = assertThrows(BizException.class,
+                () -> service.pagePoints(1L, 999L, 1, 20));
+        assertEquals(ResultCode.FORBIDDEN.getCode(), e.getCode());
+        verify(trackPointMapper, never()).selectPage(any(Page.class), any());
+    }
+
+    // ==================== 读取面可见性门（TASK-221，R2 门矩阵核心） ====================
+
+    /** 绿：owner × PRIVATE → 放行（归属人读自己任何人可见性） */
+    @Test
+    void pagePoints_owner_privateRecord_passes() {
+        SportRecord record = new SportRecord();
+        record.setId(1L);
+        record.setUserId(100L);
+        record.setVisibility(2);
+        when(sportRecordMapper.selectById(1L)).thenReturn(record);
+        when(trackPointMapper.selectPage(any(com.baomidou.mybatisplus.extension.plugins.pagination.Page.class),
+                any())).thenReturn(new com.baomidou.mybatisplus.extension.plugins.pagination.Page<>(1, 20));
+
+        var out = service.pagePoints(1L, 100L, 1, 20);
+
+        assertEquals(0, out.getRecords().size());
+        verifyNoInteractions(userApi);
+    }
+
+    /** 绿：stranger × PUBLIC → 放行（premigration null 亦同，向后兼容）；不触 userService */
+    @Test
+    void pagePoints_stranger_publicRecord_passes() {
+        for (Integer vis : new Integer[]{0, null}) {
+            SportRecord record = new SportRecord();
+            record.setId(1L);
+            record.setUserId(100L);
+            record.setVisibility(vis);
+            when(sportRecordMapper.selectById(1L)).thenReturn(record);
+            when(trackPointMapper.selectPage(any(com.baomidou.mybatisplus.extension.plugins.pagination.Page.class),
+                    any())).thenReturn(new com.baomidou.mybatisplus.extension.plugins.pagination.Page<>(1, 20));
+
+            var out = service.pagePoints(1L, 999L, 1, 20);
+
+            assertEquals(0, out.getRecords().size());
+        }
+        verifyNoInteractions(userApi);
+    }
+
+    /** 绿：friend × FRIENDS → 放行（userApi.areFriends(owner, caller)=true） */
+    @Test
+    void pagePoints_friend_friendsRecord_passes() {
+        SportRecord record = new SportRecord();
+        record.setId(1L);
+        record.setUserId(100L);
+        record.setVisibility(1); // FRIENDS
+        when(sportRecordMapper.selectById(1L)).thenReturn(record);
+        when(userApi.areFriends(100L, 999L))
+                .thenReturn(com.sportverify.common.result.Result.success(true));
+        when(trackPointMapper.selectPage(any(com.baomidou.mybatisplus.extension.plugins.pagination.Page.class),
+                any())).thenReturn(new com.baomidou.mybatisplus.extension.plugins.pagination.Page<>(1, 20));
+
+        var out = service.pagePoints(1L, 999L, 1, 20);
+
+        assertEquals(0, out.getRecords().size());
+        verify(userApi).areFriends(100L, 999L);
+    }
+
+    /** 红：stranger × FRIENDS → 403（userApi.areFriends=false） */
+    @Test
+    void pagePoints_stranger_friendsRecord_throwsForbidden() {
+        SportRecord record = new SportRecord();
+        record.setId(1L);
+        record.setUserId(100L);
+        record.setVisibility(1); // FRIENDS
+        when(sportRecordMapper.selectById(1L)).thenReturn(record);
+        when(userApi.areFriends(100L, 999L))
+                .thenReturn(com.sportverify.common.result.Result.success(false));
+
+        BizException e = assertThrows(BizException.class,
+                () -> service.pagePoints(1L, 999L, 1, 20));
+        assertEquals(ResultCode.FORBIDDEN.getCode(), e.getCode());
+        verify(trackPointMapper, never()).selectPage(any(Page.class), any());
+        verify(userApi).areFriends(100L, 999L);
+    }
+
+    /** 红：userApi 抛异常 → FRIENDS 按非好友 403（fail-safe 隐私） */
+    @Test
+    void pagePoints_friendsRecord_userApiThrows_throwsForbidden() {
+        SportRecord record = new SportRecord();
+        record.setId(1L);
+        record.setUserId(100L);
+        record.setVisibility(1); // FRIENDS
+        when(sportRecordMapper.selectById(1L)).thenReturn(record);
+        when(userApi.areFriends(100L, 999L))
+                .thenThrow(new RuntimeException("user-service 熔断"));
+
+        BizException e = assertThrows(BizException.class,
+                () -> service.pagePoints(1L, 999L, 1, 20));
+        assertEquals(ResultCode.FORBIDDEN.getCode(), e.getCode());
+        verify(trackPointMapper, never()).selectPage(any(Page.class), any());
+    }
+
+    /** 红：userApi 软降级返回非成功 Result（data=null）→ FRIENDS 按非好友 403（fail-safe 隐私） */
+    @Test
+    void pagePoints_friendsRecord_userApiDegrade_throwsForbidden() {
+        SportRecord record = new SportRecord();
+        record.setId(1L);
+        record.setUserId(100L);
+        record.setVisibility(1); // FRIENDS
+        when(sportRecordMapper.selectById(1L)).thenReturn(record);
+        when(userApi.areFriends(100L, 999L))
+                .thenReturn(new com.sportverify.common.result.Result<>(4006, "不可用", null));
 
         BizException e = assertThrows(BizException.class,
                 () -> service.pagePoints(1L, 999L, 1, 20));

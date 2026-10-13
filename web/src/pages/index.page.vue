@@ -69,6 +69,9 @@
             <template #bodyCell="{ column, record }">
               <span v-if="column.key === 'sportType'">{{ sportTypeLabel(record.sportType) }}</span>
               <span v-else-if="column.key === 'status'">{{ statusLabel(record.status) }}</span>
+              <a-tag v-else-if="column.key === 'visibility' && record.visibility === 2" color="red">仅自己</a-tag>
+              <a-tag v-else-if="column.key === 'visibility' && record.visibility === 1" color="blue">好友可见</a-tag>
+              <span v-else-if="column.key === 'visibility'">公开</span>
               <a v-else-if="column.key === 'actions'" @click="goTrack(record.id)">查看轨迹</a>
               <span v-else>{{ record[column.dataIndex] }}</span>
             </template>
@@ -117,6 +120,7 @@ const recentColumns = [
   { title: 'id', dataIndex: 'id', key: 'id' },
   { title: '运动类型', dataIndex: 'sportType', key: 'sportType' },
   { title: '距离(km)', dataIndex: 'distance', key: 'distance' },
+  { title: '可见性', dataIndex: 'visibility', key: 'visibility' },
   { title: '状态', dataIndex: 'status', key: 'status' },
   { title: '创建时间', dataIndex: 'createdAt', key: 'createdAt' },
   { title: '操作', key: 'actions' },

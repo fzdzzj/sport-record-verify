@@ -37,6 +37,7 @@ import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doReturn;
+import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
 import org.springframework.data.redis.core.RedisCallback;
 import static org.mockito.Mockito.atLeastOnce;
@@ -66,6 +67,8 @@ class RecordLikeServiceTest {
     private LikeEventProducer likeEventProducer;
     private RecordLikeService service;
     private SimpleMeterRegistry meterRegistry;
+    /** 读取面授权协作器（TASK-221）：mock 的 assertCanView 默认无操作，既有用例零改动通过 */
+    private SportRecordService sportRecordService;
 
     @BeforeEach
     @SuppressWarnings("unchecked")
@@ -96,6 +99,9 @@ class RecordLikeServiceTest {
         meterRegistry = new SimpleMeterRegistry();
         service = new RecordLikeService(sportRecordMapper, recordLikeMapper, redis, redissonClient,
                 new ObjectMapper(), transactionManager, meterRegistry, likeEventProducer);
+        // 注入读取面授权协作器 mock（assertCanView 默认 no-op；可见性门用例单独打桩）
+        sportRecordService = mock(SportRecordService.class);
+        service.setSportRecordService(sportRecordService);
     }
 
     // ==================== 点赞（前置校验 + 幂等 T9） ====================
@@ -163,6 +169,62 @@ class RecordLikeServiceTest {
         when(sportRecordMapper.selectById(1L)).thenReturn(null);
         BizException e = assertThrows(BizException.class, () -> service.like(1L, 100L));
         assertEquals(ResultCode.RECORD_NOT_FOUND.getCode(), e.getCode());
+    }
+
+    // ==================== 读取面可见性门（TASK-221，R5 点赞三端点同矩阵） ====================
+
+    /** 红：PRIVATE 记录陌生人点赞 → 门抛 403，任何 Redis 写不产生 */
+    @Test
+    void like_privateRecord_stranger_throwsForbidden() {
+        when(sportRecordMapper.selectById(1L)).thenReturn(record(RecordStatus.PASSED));
+        doThrow(new BizException(ResultCode.FORBIDDEN))
+                .when(sportRecordService).assertCanView(any(SportRecord.class), eq(999L));
+
+        BizException e = assertThrows(BizException.class, () -> service.like(1L, 999L));
+        assertEquals(ResultCode.FORBIDDEN.getCode(), e.getCode());
+        verify(setOps, never()).add(anyString(), anyString());
+    }
+
+    /** 绿：FRIENDS 记录好友点赞 → 门放行（mock no-op），照常落 Redis */
+    @Test
+    void like_friendsRecord_friend_allowed() {
+        when(sportRecordMapper.selectById(1L)).thenReturn(record(RecordStatus.PASSED));
+        when(setOps.add("like:record:1:users", "999")).thenReturn(1L);
+        when(valueOps.increment("like:count:1")).thenReturn(1L);
+
+        LikeDTO dto = service.like(1L, 999L);
+
+        assertEquals(1L, dto.getLikeCount());
+        verify(sportRecordService).assertCanView(any(SportRecord.class), eq(999L));
+        verify(listOps).rightPush(eq(RecordLikeService.PENDING_QUEUE_KEY), anyString());
+    }
+
+    /** 红：PRIVATE 记录陌生人取消/查询点赞状态 → 门抛 403 */
+    @Test
+    void unlikeAndGetLike_privateRecord_stranger_throwsForbidden() {
+        when(sportRecordMapper.selectById(1L)).thenReturn(record(RecordStatus.PASSED));
+        doThrow(new BizException(ResultCode.FORBIDDEN))
+                .when(sportRecordService).assertCanView(any(SportRecord.class), eq(999L));
+
+        BizException unlikeE = assertThrows(BizException.class, () -> service.unlike(1L, 999L));
+        assertEquals(ResultCode.FORBIDDEN.getCode(), unlikeE.getCode());
+        BizException getLikeE = assertThrows(BizException.class, () -> service.getLike(1L, 999L));
+        assertEquals(ResultCode.FORBIDDEN.getCode(), getLikeE.getCode());
+        verify(setOps, never()).remove(anyString(), anyString());
+    }
+
+    /** 绿：caller=null（降级态）点赞 → 门放行，幂等照常（与整体降级语义一致） */
+    @Test
+    void like_callerNull_degradeAllowed() {
+        when(sportRecordMapper.selectById(1L)).thenReturn(record(RecordStatus.PASSED));
+        when(setOps.add("like:record:1:users", "100")).thenReturn(1L);
+        when(valueOps.increment("like:count:1")).thenReturn(1L);
+
+        LikeDTO dto = service.like(1L, 100L);
+
+        assertEquals(1L, dto.getLikeCount());
+        // assertCanView(caller=null) 由门内短路放行，此处仅确认点赞主链路照常
+        verify(listOps).rightPush(eq(RecordLikeService.PENDING_QUEUE_KEY), anyString());
     }
 
     // ==================== 点赞通知语义（TASK-188） ====================

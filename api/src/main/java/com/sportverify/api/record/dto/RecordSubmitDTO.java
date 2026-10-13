@@ -21,6 +21,7 @@ import java.util.List;
  * <p>客户端提交记录 + 轨迹点数组；{@code id / userId} 等字段由服务端填充，
  * 轨迹点按 {@code user_id % 16} 分片落库（规范「轨迹分片存储」）。
  * 入参校验：requestId/sportType 必填，sportType 取值 1-3（与 {@link com.sportverify.api.record.SportType} 对齐），
+ * visibility 可选、取值 0-2（与 {@link com.sportverify.api.record.RecordVisibility} 对齐，缺省回退 PUBLIC），
  * 轨迹点列表必填且上限 20000 个（防超大请求体）。</p>
  */
 @Data
@@ -41,6 +42,11 @@ public class RecordSubmitDTO implements Serializable {
     @Min(value = 1, message = "运动类型非法")
     @Max(value = 3, message = "运动类型非法")
     private Integer sportType;
+
+    /** 可见性（RecordVisibility.code：0 公开/默认，1 好友可见，2 仅自己；可选，缺省由服务层回退 PUBLIC，枚举外取值拒绝 400） */
+    @Min(value = 0, message = "可见性非法")
+    @Max(value = 2, message = "可见性非法")
+    private Integer visibility;
 
     /** 开始时间 */
     private LocalDateTime startTime;

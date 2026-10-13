@@ -30,6 +30,9 @@ public class RecordSummaryDTO implements Serializable {
     /** 审核状态（RecordStatus.code，状态机见 §5.1） */
     private Integer status;
 
+    /** 可见性（RecordVisibility.code：0 公开/默认，1 好友可见，2 仅自己；前端据此渲染可见性徽标） */
+    private Integer visibility;
+
     /** 创建时间（落库时间，按此字段倒序分页） */
     private LocalDateTime createdAt;
 }

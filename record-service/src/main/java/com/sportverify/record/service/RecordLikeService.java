@@ -76,6 +76,10 @@ public class RecordLikeService {
     /** 点赞通知事件生产者（TASK-188）. */
     private final LikeEventProducer likeEventProducer;
 
+    /** 记录读取面授权协作器（add-record-visibility，TASK-221）：复用 {@link SportRecordService#assertCanView}，
+     *  保证点赞三端点与 pagePoints/getVerifyResult 门矩阵测试等价。Spring 经 setter 注入。 */
+    private SportRecordService sportRecordService;
+
     /** pending 队列堆积量 Gauge 载体（like.pending.queue.size） */
     private final AtomicLong pendingQueueSize = new AtomicLong(-1);
     /** pending 队头消费延迟 Gauge 载体（like.pending.head.age.ms；-1 表示旧格式无时间戳） */
@@ -124,6 +128,15 @@ public class RecordLikeService {
             final MeterRegistry inMeterRegistry) {
         this(inRecordMapper, inLikeMapper, inRedisTemplate, inRedissonClient,
                 inObjectMapper, inTxManager, inMeterRegistry, null);
+    }
+
+    /**
+     * 注入记录读取面授权协作器（TASK-221）。点赞三端点读同一 {@code assertCanView} 门，
+     * 使门矩阵与 pagePoints/getVerifyResult 测试等价（蓝队测试经 setter 注入 mock）。
+     */
+    @Autowired
+    public void setSportRecordService(SportRecordService sportRecordService) {
+        this.sportRecordService = sportRecordService;
     }
 
     // ==================== Redis 键与常量 ====================
@@ -210,6 +223,9 @@ public class RecordLikeService {
             // 规范差异「未通过校验被拒」：不产生点赞与计数变化
             throw new BizException(ResultCode.RECORD_NOT_PASSED, "记录未通过校验，不可点赞");
         }
+        // 读取面授权（TASK-221）：点赞者（acting user）经 assertCanView 门——PRIVATE 非归属人 403、
+        // FRIENDS 需互为好友、PUBLIC 放行；与取消/计数查询同矩阵（R5）。
+        sportRecordService.assertCanView(record, userId);
 
         // —— 幂等闸门：SADD 原子判重（并发同人同赞只有一个赢家，返回 1 者负责计数）
         Long added = stringRedisTemplate.opsForSet().add(usersKey(recordId), String.valueOf(userId));
@@ -246,7 +262,9 @@ public class RecordLikeService {
         if (userId == null) {
             throw new IllegalArgumentException("userId 不能为空");
         }
-        requireRecord(recordId);
+        SportRecord record = requireRecord(recordId);
+        // 读取面授权（TASK-221）：与点赞同矩阵——PRIVATE 非归属人 403、FRIENDS 需互为好友、PUBLIC 放行。
+        sportRecordService.assertCanView(record, userId);
 
         Long removed = stringRedisTemplate.opsForSet().remove(usersKey(recordId), String.valueOf(userId));
         boolean hadLiked = removed != null && removed == 1L;
@@ -271,7 +289,9 @@ public class RecordLikeService {
      * 兜底 DB COUNT(*) 并回填，避免 Redis 冷启动后读到 0 的假象。
      */
     public LikeDTO getLike(Long recordId, Long userId) {
-        requireRecord(recordId);
+        SportRecord record = requireRecord(recordId);
+        // 读取面授权（TASK-221）：与点赞/取消同矩阵——PRIVATE 非归属人 403、FRIENDS 需互为好友、PUBLIC 放行。
+        sportRecordService.assertCanView(record, userId);
         boolean liked = Boolean.TRUE.equals(
                 stringRedisTemplate.opsForSet().isMember(usersKey(recordId), String.valueOf(userId)));
         long count = readCount(recordId);

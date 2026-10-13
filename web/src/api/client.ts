@@ -22,6 +22,8 @@ export interface RecordSubmitDTO {
   requestId: string
   sportType: number
   points: TrackPointDTO[]
+  // 可见性（RecordVisibility.code：0 公开/默认，1 好友可见，2 仅自己；可选，缺省服务端回退 PUBLIC）
+  visibility?: number
   // userId omitted when auth (gateway injects)
 }
 
@@ -202,6 +204,8 @@ export interface RecordSummaryDTO {
   sportType: number
   distance: number
   status: number
+  // 可见性（0 公开，1 好友可见，2 仅自己）；前端据此渲染列表徽标（TASK-221）
+  visibility?: number
   // 落库时间；列表/统计按此字段聚合（近30天每日里程、最近记录排序）
   createdAt?: string
 }

@@ -20,6 +20,7 @@ CREATE TABLE IF NOT EXISTS `sport_record` (
     `distance`   DECIMAL(8, 2) DEFAULT NULL COMMENT '距离（公里）',
     `duration`   INT          DEFAULT NULL COMMENT '时长（秒）',
     `status`     TINYINT      NOT NULL COMMENT '审核状态（状态机见 §5.1）',
+    `visibility` TINYINT      NOT NULL DEFAULT 0 COMMENT '可见性：0 公开（默认）/1 好友可见/2 仅自己（TASK-221）',
     `version`    INT          NOT NULL DEFAULT 0 COMMENT '乐观锁版本号',
     `created_at` DATETIME     DEFAULT NULL COMMENT '创建时间',
     PRIMARY KEY (`id`),
