@@ -2580,3 +2580,17 @@ run `35802403723`（head `eba0108`，2026-09-23 00:31 UTC）——**web/build �
 | 偏差 | D1 台账笔自指哈希（沿先例）；D2 本机 .env 换行损坏本地修复（未入库）；D3 原生 Redis 服务占 6379 → 临时覆盖 `!override` 重映射 16379（未入库、验证后删）；D4 六服务镜像陈旧（构建于 2026-10-10，早于 TASK-198/200/201/205 修复）→ 按原始命令 `--build` 重建，重建后暴露既有 logback `logs/` 目录缺陷（非本课题、修它越白名单，实测期以 tmpfs 脚手架，缺陷登记非阻断）；D5 MySQL 数据卷口令漂移 → `ALTER USER` 对齐 .env（非破坏）。明细见 handoff.md §8 |
 | 状态 | TASK-216 全链路闭环，**外部终验待推送后外部门槛 CI 绿**；E11 抓取 target 容器化对齐落地；既有镜像 logback `logs/` 缺陷建议单独立项 |
 - 补记（指导侧封盘笔，2026-10-13）：推送 45f347d..1e63ab5（4 笔=TASK-215 封盘笔+TASK-216 派发/C-01/C-02）后第 55 次 CI（run 38359111158，head=1e63ab5）conclusion=success 全 job 绿（web/build）——offline、镜像、Trivy、词面门、compose config、web type-check/test/build 全过。MEDIUM 档三环节终裁全过（指导亲核 PASS：git 链恰 6 文件全等+R1 diff 恰六 target 行+注释块 13−/14+ 逐行核对零夹带+R2 diff 恰监控段 2−/3+ ADR-0003 链接与生产告警口径逐字未动+compose/alert-rules/grafana/六服务 src 零 diff；回传 vs 实况零矛盾；CI success 外部终验），TASK-216 封盘（E11 观测链路对齐课题收官）。课题终态：Prometheus 抓取六 target 由宿主机进程口径（host.docker.internal:808x）切换为容器化权威口径（compose 服务名 DNS 直达，F20 对齐），Linux 宿主机下五后端抓取断裂的既有隐患消除；R3 全栈 14 服务实测三断言全绿（六 targets up/up query 六序列值 1/Grafana 200）；告警规则与仪表盘按 job 名匹配零影响。指导侧偏差裁决：D2-D5 本机环境修复（.env 换行/Redis 6379 重映射/镜像重建/MySQL 卷口令对齐/tmpfs 脚手架）均未入库用完即删，属获取 R3 实证之合理本地操作非越界。新课题候选 E18 登记：既有镜像缺陷——TASK-198 logback 以相对路径 logs/<svc>.log 写盘而镜像未建可写 logs/ 目录且非 root 运行，六服务容器化裸引导全败（本课题以 tmpfs 脚手架绕过），需修 Dockerfile（mkdir logs+chown）或 logback 路径参数化，建议单独立项。offline 基线 698 逐位不变，token 2030 持平。C-01 721ae46（2 文件+17/−15）/C-02 1e63ab5。 |
+
+## 验收记录：`TASK-217`（2026-10-13，镜像可写日志目录与非 root 引导修复（E18），MEDIUM 档）
+
+| 项 | 内容 |
+| --- | --- |
+| 开工基线 | 派发笔 `e408e0c`（提案三件套 + 任务书）；工作树干净；offline 基线 698=52/50/165/166/159/80/26；token 29 项开工账单参照 SUM=2030（rev-aware 实测基线 2034，见偏差 D3） |
+| C-01 实施笔 | `4ce4df8` `fix(build): 镜像可写日志目录与非root引导修复（TASK-217）`，恰 6 文件 = §4 白名单（gateway/user/record/verify/leaderboard/mapmatch 六 Dockerfile），+7／−7 |
+| C-02 台账笔 | 本笔 `docs(mailbox): 登记TASK-217镜像日志目录修复验收与台账闭环（TASK-217）`，恰 4 文件（tasks.json 勾选 / spec.md §7 / handoff.md / PLAN.md），自指哈希沿 D1 先例 |
+| 判别式红绿 | R1 绿（五服务各恰 1 行 RUN 扩展 mkdir/chown /app/logs，其余逐字节未动）；R2 绿（gateway 恰 2 行 = RUN 扩展 sentinel 目录 + ENTRYPOINT 加 -Dcsp.sentinel.log.dir）；R3 绿（零脚手架全栈：六容器 healthy、六池 up、六 job up=1、Grafana /login=200、/app/logs/<svc>.log JSON 行、gateway sentinel 目录在）；G1/G2/G3 绿。明细见 handoff.md §4 |
+| 本机门禁 | offline 逐位 **698=52/50/165/166/159/80/26** BUILD SUCCESS rc=0（零 Java 改动与基线逐位不变）；契约门双态 rc=0（在途 --open TASK-217 --baseline=e408e0c 于 C-01 窗口亲跑 + 收口无参）；token 29 项 post-C01 2034 / close 2034（只增不减）；词面门改动集 CI-exact ZERO_HIT + 全仓 CI-exact ZERO_HIT + 探针阳性对照 HIT；`git diff --check` rc=0；行尾五文件 w/lf、leaderboard w/crlf 各保基线 |
+| 是否到达外部门槛 | **未到达**：两笔均未 push、未建 PR、无 CI run；MEDIUM 档外部终验（指导亲核 + CI 镜像构建门外部终验收口）待指导侧推动推送后补记 |
+| 未覆盖 | `--mode=online`、CI 全流程、CI 镜像构建门、日志轮转/收集（Loki 等）与长时稳定性；R3 为全栈零脚手架裸引导直接通过（非脚手架绕行） |
+| 偏差 | D1 台账笔自指哈希（沿先例）；D2 原生 Redis 占 6379 → 临时 gitignored 覆盖重映射 16379（未入库、验证后删）；D3 token 参照 2030 vs 实测基线 2034（基线漂移，单向门满足）；D4 契约门 Dockerfile 无扩展名提取盲区（README 已知盲区）致落盘后基线比对假性红，故在途门于 C-01 窗口亲跑；D5 MySQL 数据卷口令此前已对齐（复用既有卷）。明细见 handoff.md §8 |
+| 状态 | TASK-217 全链路闭环，**外部终验待推送后外部门槛 CI 绿**；E18 镜像可写日志目录缺陷修复落地，六服务容器化零脚手架裸引导恢复 |

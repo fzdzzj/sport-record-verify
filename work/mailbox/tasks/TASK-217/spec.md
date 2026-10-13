@@ -43,7 +43,7 @@ gateway-service/Dockerfile, user-service/Dockerfile, record-service/Dockerfile, 
 - C-01 fix(build): ... (TASK-217); C-02 docs(mailbox): ... (TASK-217) ledger 4 files. No push, no PR.
 
 ## S7 backfill (after C-02)
-- commit hashes: C-01 = TBD; C-02 = self-referencing hash (precedent)
-- live verification evidence / offline / token final: TBD
-- discriminant results: TBD
-- deviations: TBD
+- commit hashes: C-01 = `4ce4df8` (fix(build): 镜像可写日志目录与非root引导修复（TASK-217）, exactly 6 Dockerfiles, +7/-7); C-02 = self-referencing hash (precedent).
+- live verification evidence / offline / token final: R3 zero-scaffold full stack (docker compose -f docker-compose.yml -f docker-compose.services.yml up -d --build) — six service containers healthy, six Prometheus scrape pools health=="up" (service-name URLs), query=up returns six series value=1, Grafana /login HTTP 200, plus in-container evidence: head of /app/logs/user-service.log shows JSON log lines and gateway /app/logs + /app/logs/sentinel both exist (sentinel-record.log present). No tmpfs/override log scaffold of any kind. offline rc=0 per-digit 698 = 52/50/165/166/159/80/26; token 29 items SUM=2034 baseline and close (only-increase; ≥ historical 2030 reference).
+- discriminant results: R1/R2/R3/G1/G2/G3 all green (detail in handoff.md).
+- deviations: D1 self-referencing C-02 hash; D2 local env remedy (native Redis holds 6379 -> gitignored transient override remaps host port 16379, deleted after use; not in repo); D3 token SUM reference 2030 vs measured baseline 2034 (only-increase, drift already present at e408e0c); D4 contract extract_claims has no extension whitelist entry for `Dockerfile` (README S163 known blind spot) so any post-handoff `--baseline=e408e0c` run is false-red by construction — open-state gate run in the C-01 in-transit window per TASK-215/216 precedent. See handoff.md S8.
