@@ -71,9 +71,18 @@
               <span v-else-if="column.key === 'status'">{{ statusLabel(record.status) }}</span>
               <a-tag v-else-if="column.key === 'visibility' && record.visibility === 2" color="red">仅自己</a-tag>
               <a-tag v-else-if="column.key === 'visibility' && record.visibility === 1" color="blue">好友可见</a-tag>
-              <span v-else-if="column.key === 'visibility'">公开</span>
-              <a v-else-if="column.key === 'actions'" @click="goTrack(record.id)">查看轨迹</a>
-              <span v-else>{{ record[column.dataIndex] }}</span>
+              <template v-else-if="column.key === 'actions'">
+                <a @click="goTrack(record.id)">查看轨迹</a>
+                <a-divider type="vertical" />
+                <a-popconfirm
+                  title="确认删除该运动记录？此操作将永久删除。"
+                  ok-text="确认"
+                  cancel-text="取消"
+                  @confirm="handleDelete(record.id)"
+                >
+                  <a class="text-red-500">删除</a>
+                </a-popconfirm>
+              </template>
             </template>
           </a-table>
           <div v-else class="text-gray-500 py-2">暂无运动记录。</div>
@@ -92,7 +101,8 @@
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue'
 import { useRouter } from 'vue-router/auto'
-import { getMyRecords, getMyStreak, type MyStreakDTO, type RecordSummaryDTO } from '@/api/client'
+import { delRecord, getMyRecords, getMyStreak, type MyStreakDTO, type RecordSummaryDTO } from '@/api/client'
+import { message } from 'ant-design-vue'
 import { hasAccessToken } from '@/utils/token'
 
 const router = useRouter()
@@ -200,7 +210,7 @@ function statusLabel(code: number): string {
   return m[code] || `UNKNOWN(${code})`
 }
 
-onMounted(async () => {
+async function loadData() {
   if (!authed.value) return
   loading.value = true
   loadError.value = ''
@@ -225,5 +235,20 @@ onMounted(async () => {
   } catch {
     streak.value = null
   }
+}
+
+/** 删除记录并刷新列表与统计（TASK-223） */
+async function handleDelete(id: number) {
+  try {
+    await delRecord(id)
+    message.success('记录删除成功')
+    await loadData()
+  } catch (e: any) {
+    message.error(e.code ? `[${e.code}] ${e.message}` : (e.message || '删除失败'))
+  }
+}
+
+onMounted(async () => {
+  await loadData()
 })
 </script>

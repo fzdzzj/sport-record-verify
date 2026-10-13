@@ -18,6 +18,8 @@ import com.sportverify.record.mapper.SportRecordMapper;
 import com.sportverify.record.mapper.TrackPointArchiveMapper;
 import com.sportverify.record.mapper.TrackPointMapper;
 import com.sportverify.record.mq.RecordEventProducer;
+import com.sportverify.record.mapper.RecordLikeMapper;
+import com.sportverify.record.service.RecordLikeService;
 import com.baomidou.mybatisplus.core.MybatisConfiguration;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.metadata.TableInfoHelper;
@@ -75,6 +77,8 @@ class SportRecordServiceTest {
     private VerifyApi verifyApi;
     private VerifyDegradeService verifyDegradeService;
     private com.sportverify.api.user.UserApi userApi;
+    private RecordLikeMapper recordLikeMapper;
+    private RecordLikeService recordLikeService;
     private SportRecordService service;
 
     @BeforeEach
@@ -86,8 +90,12 @@ class SportRecordServiceTest {
         verifyApi = mock(VerifyApi.class);
         verifyDegradeService = mock(VerifyDegradeService.class);
         userApi = mock(com.sportverify.api.user.UserApi.class);
+        recordLikeMapper = mock(RecordLikeMapper.class);
+        recordLikeService = mock(RecordLikeService.class);
         service = new SportRecordService(sportRecordMapper, trackPointMapper, trackPointArchiveMapper,
                 recordEventProducer, verifyApi, verifyDegradeService, userApi);
+        service.setRecordLikeMapper(recordLikeMapper);
+        service.setRecordLikeService(recordLikeService);
         // 无 Spring：@Value 不生效；setField 模拟产品默认 true（与 properties/@Value 缺省一致）
         ReflectionTestUtils.setField(service, "batchInsertEnabled", true);
     }
@@ -1430,5 +1438,110 @@ class SportRecordServiceTest {
         assertEquals(new java.util.HashSet<>(java.util.Arrays.asList(200L,
                         RecordStatus.PASSED.getCode(), RecordStatus.RE_PASSED.getCode())),
                 paramValues, "status 过滤参数值必须恰为 {PASSED, RE_PASSED}，不得混入其他状态");
+    }
+
+    // ==================== 记录删除级联与缓存清理（TASK-223） ====================
+
+    /** R2/R3: 级联恰四表 + afterCommit 清理缓存 */
+    @Test
+    @SuppressWarnings("unchecked")
+    void deleteRecord_cascadesAllFourTablesAndCleansCacheAfterCommit() {
+        TableInfoHelper.initTableInfo(
+                new MapperBuilderAssistant(new MybatisConfiguration(), ""), SportRecord.class);
+        TableInfoHelper.initTableInfo(
+                new MapperBuilderAssistant(new MybatisConfiguration(), ""), TrackPoint.class);
+        TableInfoHelper.initTableInfo(
+                new MapperBuilderAssistant(new MybatisConfiguration(), ""), TrackPointArchive.class);
+
+        SportRecord record = new SportRecord();
+        record.setId(100L);
+        record.setUserId(200L);
+        when(sportRecordMapper.selectById(100L)).thenReturn(record);
+
+        inTx(() -> service.deleteRecord(200L, 100L), true);
+
+        // 1. track_point 条件删除
+        ArgumentCaptor<LambdaQueryWrapper<TrackPoint>> tpCaptor = ArgumentCaptor.forClass(LambdaQueryWrapper.class);
+        verify(trackPointMapper).delete(tpCaptor.capture());
+        assertTrue(tpCaptor.getValue().getSqlSegment().contains("record_id ="));
+        assertTrue(tpCaptor.getValue().getSqlSegment().contains("user_id ="));
+
+        // 2. track_point_archive 条件删除
+        ArgumentCaptor<LambdaQueryWrapper<TrackPointArchive>> tpaCaptor = ArgumentCaptor.forClass(LambdaQueryWrapper.class);
+        verify(trackPointArchiveMapper).delete(tpaCaptor.capture());
+        assertTrue(tpaCaptor.getValue().getSqlSegment().contains("record_id ="));
+        assertTrue(tpaCaptor.getValue().getSqlSegment().contains("user_id ="));
+
+        // 3. record_like DB 行删除
+        verify(recordLikeMapper).deleteByRecordId(100L);
+
+        // 4. sport_record 条件删除
+        ArgumentCaptor<LambdaQueryWrapper<SportRecord>> srCaptor = ArgumentCaptor.forClass(LambdaQueryWrapper.class);
+        verify(sportRecordMapper).delete(srCaptor.capture());
+        assertTrue(srCaptor.getValue().getSqlSegment().contains("id ="));
+        assertTrue(srCaptor.getValue().getSqlSegment().contains("user_id ="));
+
+        // 5. Redis 缓存清理
+        verify(recordLikeService).cleanupCache(100L);
+    }
+
+    /** R1: 非 owner 删除抛 1002 FORBIDDEN，零 DB 删除 */
+    @Test
+    void deleteRecord_forbiddenWhenCallerNotOwner() {
+        SportRecord record = new SportRecord();
+        record.setId(100L);
+        record.setUserId(200L);
+        when(sportRecordMapper.selectById(100L)).thenReturn(record);
+
+        BizException e = assertThrows(BizException.class,
+                () -> service.deleteRecord(999L, 100L));
+        assertEquals(ResultCode.FORBIDDEN.getCode(), e.getCode());
+
+        verify(sportRecordMapper, never()).delete(any());
+        verify(trackPointMapper, never()).delete(any());
+        verify(trackPointArchiveMapper, never()).delete(any());
+        verify(recordLikeMapper, never()).deleteByRecordId(anyLong());
+        verify(recordLikeService, never()).cleanupCache(anyLong());
+    }
+
+    /** R1: 不存在抛 3001 RECORD_NOT_FOUND，零 DB 删除 */
+    @Test
+    void deleteRecord_notFoundWhenRecordDoesNotExist() {
+        when(sportRecordMapper.selectById(100L)).thenReturn(null);
+
+        BizException e = assertThrows(BizException.class,
+                () -> service.deleteRecord(200L, 100L));
+        assertEquals(ResultCode.RECORD_NOT_FOUND.getCode(), e.getCode());
+
+        verify(sportRecordMapper, never()).delete(any());
+        verify(trackPointMapper, never()).delete(any());
+        verify(trackPointArchiveMapper, never()).delete(any());
+        verify(recordLikeMapper, never()).deleteByRecordId(anyLong());
+        verify(recordLikeService, never()).cleanupCache(anyLong());
+    }
+
+    /** R3: Redis 缓存清理抛异常时，不阻断删除、不抛出异常 */
+    @Test
+    void deleteRecord_toleratesRedisCleanupFailure() {
+        TableInfoHelper.initTableInfo(
+                new MapperBuilderAssistant(new MybatisConfiguration(), ""), SportRecord.class);
+        TableInfoHelper.initTableInfo(
+                new MapperBuilderAssistant(new MybatisConfiguration(), ""), TrackPoint.class);
+        TableInfoHelper.initTableInfo(
+                new MapperBuilderAssistant(new MybatisConfiguration(), ""), TrackPointArchive.class);
+
+        SportRecord record = new SportRecord();
+        record.setId(100L);
+        record.setUserId(200L);
+        when(sportRecordMapper.selectById(100L)).thenReturn(record);
+        org.mockito.Mockito.doThrow(new RuntimeException("Redis connection error"))
+                .when(recordLikeService).cleanupCache(100L);
+
+        // afterCommit 中抛出异常被吞并留证，正常完成
+        inTx(() -> service.deleteRecord(200L, 100L), true);
+
+        verify(sportRecordMapper).delete(any());
+        verify(recordLikeMapper).deleteByRecordId(100L);
+        verify(recordLikeService).cleanupCache(100L);
     }
 }

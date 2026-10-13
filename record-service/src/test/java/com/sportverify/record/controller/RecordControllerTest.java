@@ -371,4 +371,50 @@ class RecordControllerTest {
         assertEquals(dto, out.getData());
         verify(sportRecordService).myStreak(88L);
     }
+
+    // ==================== 记录删除（TASK-223） ====================
+
+    /** R1 绿（auth 开）：X-User-Id 解析为调用者 → 成功调用 deleteRecord(caller, id) */
+    @Test
+    void deleteRecord_authEnabled_success() {
+        ReflectionTestUtils.setField(controller, "authEnabled", true);
+        when(request.getHeader("X-User-Id")).thenReturn("200");
+
+        Result<Void> out = controller.deleteRecord(100L, null, request);
+
+        assertEquals(0, out.getCode());
+        verify(sportRecordService).deleteRecord(200L, 100L);
+    }
+
+    /** R1 红（auth 开，缺网关头）→ 1001 UNAUTHORIZED */
+    @Test
+    void deleteRecord_authEnabled_missingHeader_throwsUnauthorized() {
+        ReflectionTestUtils.setField(controller, "authEnabled", true);
+        when(request.getHeader("X-User-Id")).thenReturn(null);
+
+        BizException e = assertThrows(BizException.class,
+                () -> controller.deleteRecord(100L, null, request));
+        assertEquals(ResultCode.UNAUTHORIZED.getCode(), e.getCode());
+    }
+
+    /** R1 红（auth 关，缺显式 userId）→ 400 非法参数 */
+    @Test
+    void deleteRecord_authDisabled_missingUserId_throwsIllegalArgument() {
+        ReflectionTestUtils.setField(controller, "authEnabled", false);
+
+        IllegalArgumentException e = assertThrows(IllegalArgumentException.class,
+                () -> controller.deleteRecord(100L, null, request));
+        assertEquals("缺少必须的 userId 查询参数", e.getMessage());
+    }
+
+    /** R1 绿（auth 关，显式 userId）→ 透传调用者 */
+    @Test
+    void deleteRecord_authDisabled_explicitUserId_delegates() {
+        ReflectionTestUtils.setField(controller, "authEnabled", false);
+
+        Result<Void> out = controller.deleteRecord(100L, 88L, request);
+
+        assertEquals(0, out.getCode());
+        verify(sportRecordService).deleteRecord(88L, 100L);
+    }
 }

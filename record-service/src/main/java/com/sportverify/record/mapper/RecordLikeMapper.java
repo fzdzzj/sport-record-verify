@@ -82,4 +82,13 @@ public interface RecordLikeMapper extends BaseMapper<RecordLike> {
      */
     @Select("SELECT record_id, user_id FROM record_like")
     List<RecordLike> selectRecordLikePairs();
+
+    /**
+     * 删除记录关联的所有点赞行（记录删除级联清理，TASK-223）。
+     *
+     * @param recordId 记录 id
+     * @return 影响行数
+     */
+    @Delete("DELETE FROM record_like WHERE record_id = #{recordId}")
+    int deleteByRecordId(@Param("recordId") Long recordId);
 }

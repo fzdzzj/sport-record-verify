@@ -642,6 +642,29 @@ class RecordLikeServiceTest {
         verify(listOps).trim(RecordLikeService.PENDING_QUEUE_KEY, 1, -1);
     }
 
+    // ==================== 记录删除缓存清理（TASK-223） ====================
+
+    @Test
+    void cleanupCache_deletesCountAndUsersKeys() {
+        service.cleanupCache(100L);
+        verify(redis).delete(List.of("like:count:100", "like:record:100:users"));
+    }
+
+    @Test
+    void cleanupCache_swallowsRedisException() {
+        when(redis.delete(List.of("like:count:100", "like:record:100:users")))
+                .thenThrow(new RuntimeException("Redis connection refused"));
+        // 异常吞并，不抛出任何异常
+        service.cleanupCache(100L);
+        verify(redis).delete(List.of("like:count:100", "like:record:100:users"));
+    }
+
+    @Test
+    void cleanupCache_nullRecordId_noop() {
+        service.cleanupCache(null);
+        verify(redis, never()).delete(any(List.class));
+    }
+
     // ==================== 工具 ====================
 
     private SportRecord record(RecordStatus status) {

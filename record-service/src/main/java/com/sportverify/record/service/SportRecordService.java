@@ -27,13 +27,14 @@ import com.sportverify.common.result.ResultCode;
 import com.sportverify.record.entity.SportRecord;
 import com.sportverify.record.entity.TrackPoint;
 import com.sportverify.record.entity.TrackPointArchive;
+import com.sportverify.record.mapper.RecordLikeMapper;
 import com.sportverify.record.mapper.SportRecordMapper;
 import com.sportverify.record.mapper.TrackPointArchiveMapper;
 import com.sportverify.record.mapper.TrackPointMapper;
 import com.sportverify.record.mq.RecordEventProducer;
-import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.BeanUtils;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.dao.DuplicateKeyException;
 import org.springframework.stereotype.Service;
@@ -62,7 +63,6 @@ import java.util.Objects;
  */
 @Slf4j
 @Service
-@RequiredArgsConstructor
 public class SportRecordService {
 
     private final SportRecordMapper sportRecordMapper;
@@ -73,6 +73,39 @@ public class SportRecordService {
     private final VerifyDegradeService verifyDegradeService;
     /** user-service Feign（好友域）：FRIENDS 可见记录读取面逐对好友判断（TASK-221）。 */
     private final UserApi userApi;
+    /** 点赞 DB 级联清理（TASK-223，经 setter 注入避免构造参数超 8）。 */
+    private RecordLikeMapper recordLikeMapper;
+    /** 点赞 Redis 缓存清理（TASK-223，经 setter 注入避免构造参数超 8）。 */
+    private RecordLikeService recordLikeService;
+
+    @Autowired
+    public SportRecordService(SportRecordMapper sportRecordMapper,
+                              TrackPointMapper trackPointMapper,
+                              TrackPointArchiveMapper trackPointArchiveMapper,
+                              RecordEventProducer recordEventProducer,
+                              VerifyApi verifyApi,
+                              VerifyDegradeService verifyDegradeService,
+                              UserApi userApi) {
+        this.sportRecordMapper = sportRecordMapper;
+        this.trackPointMapper = trackPointMapper;
+        this.trackPointArchiveMapper = trackPointArchiveMapper;
+        this.recordEventProducer = recordEventProducer;
+        this.verifyApi = verifyApi;
+        this.verifyDegradeService = verifyDegradeService;
+        this.userApi = userApi;
+    }
+
+    /** 注入点赞 Mapper（TASK-223 级联删除 DB 行）。 */
+    @Autowired
+    public void setRecordLikeMapper(RecordLikeMapper recordLikeMapper) {
+        this.recordLikeMapper = recordLikeMapper;
+    }
+
+    /** 注入点赞 Service（TASK-223 缓存清理）。 */
+    @Autowired
+    public void setRecordLikeService(RecordLikeService recordLikeService) {
+        this.recordLikeService = recordLikeService;
+    }
 
     /** 提交事务分段计时开关（TASK-139 插桩，默认关闭；true 时日志周期打 SUBMIT_TX_TIMING snapshot） */
     @Value("${record.submit.tx-timing-enabled:false}")
@@ -291,6 +324,71 @@ public class SportRecordService {
             log.info("申诉已由并发请求完成：recordId={}", recordId);
         }
         return appeal;
+    }
+
+    /**
+     * 删除运动记录（TASK-223，硬删除级联恰四表 + Redis 缓存清理）。
+     *
+     * <p>本地事务边界（ADR-0009）：{@code @Transactional} 覆盖主记录与关联表；
+     * 单事务内级联删除 track_point、track_point_archive、record_like 行及 sport_record
+     * （恰四表，轨迹分片表携带 user_id 路由单分片）。</p>
+     * <p>缓存清理：事务提交后（{@code afterCommit}）best-effort 清除 Redis 点赞计数键与
+     * 成员集键，Redis 失败不阻断删除、不回滚 DB（对账机制兜底收敛）。</p>
+     *
+     * @param caller 调用者 userId（鉴权开启时为网关注入，关闭时为显式参数；非空时必须匹配归属人）
+     * @param recordId 运动记录 id
+     */
+    @Transactional(rollbackFor = Exception.class)
+    public void deleteRecord(Long caller, Long recordId) {
+        SportRecord record = recordId == null ? null : sportRecordMapper.selectById(recordId);
+        if (record == null) {
+            throw new BizException(ResultCode.RECORD_NOT_FOUND);
+        }
+        // 归属校验：caller 非空且不等于记录归属人 → 403 越权
+        if (caller != null && !caller.equals(record.getUserId())) {
+            throw new BizException(ResultCode.FORBIDDEN);
+        }
+
+        // 1. 级联删除轨迹点（携带 user_id 分片键路由单分片，避免广播）
+        trackPointMapper.delete(new LambdaQueryWrapper<TrackPoint>()
+                .eq(TrackPoint::getRecordId, recordId)
+                .eq(TrackPoint::getUserId, record.getUserId()));
+        trackPointArchiveMapper.delete(new LambdaQueryWrapper<TrackPointArchive>()
+                .eq(TrackPointArchive::getRecordId, recordId)
+                .eq(TrackPointArchive::getUserId, record.getUserId()));
+
+        // 2. 级联删除点赞 DB 行
+        if (recordLikeMapper != null) {
+            recordLikeMapper.deleteByRecordId(recordId);
+        }
+
+        // 3. 删除主记录（按 id + userId 条件删除）
+        sportRecordMapper.delete(new LambdaQueryWrapper<SportRecord>()
+                .eq(SportRecord::getId, recordId)
+                .eq(SportRecord::getUserId, record.getUserId()));
+
+        // 4. 事务提交后 best-effort 清理 Redis 缓存（异常吞并留证，不阻断主链路）
+        if (recordLikeService != null) {
+            if (TransactionSynchronizationManager.isSynchronizationActive()) {
+                TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+                    @Override
+                    public void afterCommit() {
+                        try {
+                            recordLikeService.cleanupCache(recordId);
+                        } catch (Exception e) {
+                            log.warn("Redis 点赞缓存清理异常（best-effort 留证）：recordId={}", recordId, e);
+                        }
+                    }
+                });
+            } else {
+                try {
+                    recordLikeService.cleanupCache(recordId);
+                } catch (Exception e) {
+                    log.warn("Redis 点赞缓存清理异常（best-effort 留证）：recordId={}", recordId, e);
+                }
+            }
+        }
+        log.info("运动记录删除成功：recordId={}, userId={}", recordId, record.getUserId());
     }
 
     /**

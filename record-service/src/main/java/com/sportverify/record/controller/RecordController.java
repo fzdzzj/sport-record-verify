@@ -21,6 +21,7 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpStatus;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -172,6 +173,26 @@ public class RecordController {
                                               HttpServletRequest request) {
         Long caller = authEnabled ? resolveUserId(request, null) : null;
         return Result.success(sportRecordService.pagePoints(id, caller, page, size));
+    }
+
+    /**
+     * 删除运动记录（TASK-223，硬删除级联恰四表 + Redis 缓存清理）。
+     *
+     * <p>身份语义与归属门（R1，与 /my 同构）：
+     * {@code app.auth.enabled=true} 时从网关注入的 {@code X-User-Id} 读取调用者
+     * （缺失或空白 → 1001 / HTTP 401）；false 时降级为显式 {@code userId} 查询参数
+     * （缺失 → 400 PARAM）。服务层严格断言调用者为记录归属人，非本人删除 → 1002 / HTTP 403。</p>
+     */
+    @DeleteMapping("/{id}")
+    public Result<Void> deleteRecord(@PathVariable("id") Long id,
+                                     @RequestParam(value = "userId", required = false) Long userId,
+                                     HttpServletRequest request) {
+        Long caller = authEnabled ? resolveUserId(request, null) : userId;
+        if (!authEnabled && caller == null) {
+            throw new IllegalArgumentException("缺少必须的 userId 查询参数");
+        }
+        sportRecordService.deleteRecord(caller, id);
+        return Result.success();
     }
 
     /**

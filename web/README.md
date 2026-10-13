@@ -194,3 +194,9 @@ curl -X POST http://127.0.0.1:8080/internal/auth/grant-admin \
 ## 好友动态 feed（TASK-222）
 
 - 新增 `/feed` 路由页与顶部导航「动态」入口：调用 `GET /record/api/records/feed` 分页拉取好友动态——本人任意可见性记录 + 好友 PUBLIC/FRIENDS 记录按创建时间倒序；卡片展示作者昵称（缺失回退 authorUserId）+ 可见性徽标 + 运动类型/距离/状态 + 相对时间，卡片链接到详情页；`client.ts` 新增 `FeedItemDTO` 类型与 `getFeed` 封装。auth 关闭降级态为 PUBLIC 全站时间线；陌生人不入 feed。
+
+## 记录删除与撤回（TASK-223）
+
+- 首页「最近记录」列表操作列新增「删除」操作：Popconfirm 二次确认弹窗（防误触）；
+- 点击确认后调用 `DELETE /record/api/records/{id}`（`client.ts` 封装 `delRecord`，网关注入 `X-User-Id` 归属门拦截越权），删除成功后刷新个人记录列表与连续打卡统计；
+- 仅归属人本人在「我的记录」中展示删除操作，feed 动态流卡片不放删除按钮；后端单事务级联清理恰四表（主记录 + 轨迹热表 + 轨迹归档表 + 点赞行）并 best-effort 清理 Redis 缓存。

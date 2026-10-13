@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { AxiosError, type AxiosResponse } from 'axios'
 import api from '@/api/client'
 import { getAccessToken, setAuthFailHandler, setTokens } from '@/utils/token'
-import { getFeed } from '@/api/client'
+import { delRecord, getFeed } from '@/api/client'
 
 // adapter 注入范式：替换 api.defaults.adapter 为 vi.fn 模拟传输层，
 // 请求/响应两段拦截器链全真实执行（不 mock axios 自身）。
@@ -182,5 +182,22 @@ describe('client.ts feed（TASK-222）', () => {
     const call = adapter.mock.calls[0][0] as { url: string; params?: Record<string, number> }
     expect(call.url).toBe('/record/api/records/feed')
     expect(call.params).toEqual({ page: 3, size: 50 })
+  })
+})
+
+// ===== 记录删除（TASK-223 add-record-deletion） =====
+describe('client.ts delRecord（TASK-223）', () => {
+  // R1：delRecord 请求打 DELETE /record/api/records/{id}
+  it('R1 delRecord hits DELETE /record/api/records/{id}', async () => {
+    const okBody = { code: 0, message: 'ok', data: null }
+    adapter.mockImplementationOnce((config: unknown) => Promise.resolve(ok(config, okBody)))
+
+    const res = await delRecord(123)
+
+    expect(res).toEqual(okBody)
+    expect(adapter).toHaveBeenCalledTimes(1)
+    const call = adapter.mock.calls[0][0] as { url: string; method?: string }
+    expect(call.url).toBe('/record/api/records/123')
+    expect(call.method?.toLowerCase()).toBe('delete')
   })
 })

@@ -198,6 +198,11 @@ export async function getRecordPoints(recordId: number | string, page = 1, size 
   return api.get(`/record/api/records/${recordId}/points`, { params: { page, size } })
 }
 
+/** 删除运动记录（DELETE /record/api/records/{id}，TASK-223）；auth 会话下 caller 由网关注入。 */
+export async function delRecord(recordId: number | string): Promise<Result<void>> {
+  return api.delete(`/record/api/records/${recordId}`)
+}
+
 // ===== My-records (add-personal-stats TASK-211) =====
 export interface RecordSummaryDTO {
   id: number

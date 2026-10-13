@@ -656,4 +656,21 @@ public class RecordLikeService {
             lock.unlock();
         }
     }
+
+    /**
+     * 清理指定记录的点赞缓存键（删除记录时的 best-effort 清理，TASK-223）。
+     * 异常吞并记日志，不阻断主链路；对账任务天然容忍。
+     *
+     * @param recordId 记录 id
+     */
+    public void cleanupCache(final Long recordId) {
+        if (recordId == null) {
+            return;
+        }
+        try {
+            stringRedisTemplate.delete(List.of(countKey(recordId), usersKey(recordId)));
+        } catch (Exception e) {
+            log.warn("Redis 点赞缓存清理失败（best-effort，对账兜底）：recordId={}", recordId, e);
+        }
+    }
 }
