@@ -66,6 +66,10 @@
         <span v-if="points.length >= 500">单次拉取上限 500 点，超出部分轨迹未显示（已知限制）。</span>
         坐标经 min-max 归一化投影，固定留边，非真实地理底图。
       </p>
+
+      <div v-if="points.length" class="mt-2">
+        <a-button size="small" @click="exportGpx">导出 GPX</a-button>
+      </div>
     </a-card>
   </div>
 </template>
@@ -79,6 +83,7 @@ import {
   type TrackPointDTO,
   type VerificationResultDTO,
 } from '@/api/client'
+import { generateGpx } from '@/utils/gpx'
 
 const route = useRoute()
 
@@ -172,6 +177,19 @@ async function load() {
   } finally {
     loading.value = false
   }
+}
+
+// 纯前端导出：generateGpx → Blob(application/gpx+xml) → objectURL → a[download] 点击 → revoke。
+// 按钮已按 points.length 门控；真实浏览器下载点击不跑（type-check + build + 单测承载，TASK-213 口径）。
+function exportGpx() {
+  const xml = generateGpx(points.value, { name: `record-${recordId.value}` })
+  const blob = new Blob([xml], { type: 'application/gpx+xml' })
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = `record-${recordId.value}.gpx`
+  a.click()
+  URL.revokeObjectURL(url)
 }
 
 onMounted(() => {

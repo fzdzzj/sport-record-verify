@@ -176,3 +176,8 @@ curl -X POST http://127.0.0.1:8080/internal/auth/grant-admin \
 - 仅 web/ 管理页与菜单、README ADMIN 说明、tasks.json。
 
 **口径自检**：按 proposal 实现；tasks.json 打勾；最多 1 次修复；未改 Java；未改 proposal。
+
+## 轨迹查看与 GPX 导出（add-gpx-export）
+
+- 记录轨迹页 `/record-detail`（TASK-213）：单次拉取 points（size=500），SVG 归一化投影示意形状。
+- 有轨迹点时可点击「导出 GPX」：纯前端生成 GPX 1.1（`web/src/utils/gpx.ts`，trkpt lat/lon 固定 6 位小数、`<time>` ISO8601、name XML 转义、空数组抛错），经 Blob(application/gpx+xml) + a[download] 下载为 `record-{id}.gpx`；零后端、零新依赖。
