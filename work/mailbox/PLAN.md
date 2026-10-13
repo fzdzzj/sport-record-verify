@@ -2652,4 +2652,9 @@ run `35802403723`（head `eba0108`，2026-09-23 00:31 UTC）——**web/build �
 | 是否到达外部门槛 | **未达到**：两笔均未 push、未建 PR、无 CI run；FULL 档独立 review 复核待指导侧派发 |
 | 未覆盖/跳过 | --mode=online、CI 全流程、真实浏览器可见性表单/徽标交互（沿 TASK-213/220 口径）、真实 MySQL/Redis/RocketMQ 跨服务好友判断联调（--it 未执行）、PRIVATE/FRIENDS 存量行视觉回归 |
 | 偏差 | D1 C-02 自指哈希；D2 词面门/token/迁移验证临时件落 gitignored .trae/tmp；D3 --static=user-service/api 模块未声明三件套插件、通用配置下存在基线违规（未触碰端点/字段），静态门以 record-service 为准且 rc=0；D4/D5 offline 噪音与 build chunk 告警为既有；D6 独立复核发现 §2 缩写路径致契约门判据 B 失配 + 在途证据时点失实，已展开全路径重建 C-02 修复、双态实测 rc=0。明细见 handoff.md §8 |
-| 状态 | TASK-221 本地闭环：记录可见性三态（PUBLIC/FRIENDS/PRIVATE）schema + 跨服务好友判断 + 读取面访问门，外部门槛与独立 review 待指导
+| 状态 | TASK-221 本地闭环：记录可见性三态（PUBLIC/FRIENDS/PRIVATE）schema + 跨服务好友判断 + 读取面访问门，外部门槛与独立 review 待指导侧终裁与推送后补记 |
+
+## 方向候选与待办（指导侧常备）
+
+- 2026-10-13 建档：work/mailbox/BACKLOG.md 为方向候选与待办常备清单（指导侧维护，随立项/封盘更新状态）。首批评审：F1 好友动态流（首推）/F2 记录删除撤回/F3 周月运动目标/F4 我的记录筛选 + H1 E2E 真实浏览器验证批/H2 E5 生产部署姿态演练/H3 LIGHT 清理批；推荐序 F1 → H3 → 其余按需，近期上生产则 H2 提前。
+- 本笔顺带修正 TASK-221 状态行历史断尾（补「侧终裁与推送后补记」闭行管道符）。
