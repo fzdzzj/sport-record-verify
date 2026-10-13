@@ -2625,3 +2625,17 @@ run `35802403723`（head `eba0108`，2026-09-23 00:31 UTC）——**web/build �
 | 偏差 | D1 台账笔自指哈希（沿先例）；D2 词面门/token 模式文件落 gitignored .trae/tmp 不入库；D3 offline 后台任务包装器报 exit 1 属采集伪影（同构管道 $LASTEXITCODE 验证 0，Maven log BUILD SUCCESS 为权威）；D4 offline Nacos 连接噪音对计数零影响。明细见 handoff.md §8 |
 | 状态 | TASK-219 本地闭环：P2 配速趋势分析落地（纯前端零后端零依赖，vitest 4 套 24 测），外部终验待推送后补记 |
 - 补记（指导侧封盘笔，2026-10-13）：推送 2e5cbf3..96e9777（4 笔=TASK-218 封盘笔+TASK-219 派发/C-01/C-02）后第 58 次 CI（run 38380170462，head=96e9777）conclusion=success 全 job 绿（web/build）——**pace 新测试套件在 CI web job 真实通过**（4 套 24 测），offline、镜像、Trivy、词面门、compose config、web type-check/build 全过。MEDIUM 档三环节终裁全过（指导亲核 PASS：pace.ts 全文审读（haversine 标准公式 R=6371/累计距离单调非递减首点 0/pace=1000÷speed/null 归一含 undefined/formatPace 先整体取整再拆分避免 60 秒进位边界/isDrawablePace 规则与预注册一致）+页面 diff 抽查（Y 倒置 fy=(max−pace)/range 快在上+退化 pRange=0 取 0.5 沿 TASK-213 先例+停顿点 null 断线锚分段+悬停 dist/pace/ts+区块门控 points>1 且 ≥1 可绘点）；回传 vs 实况零矛盾），TASK-219 封盘（P2 配速趋势分析课题收官）。课题终态：记录详情页分析能力补全——haversine 累计距离+配速换算+停顿断线的纯函数三件套 6 单测锁定，vitest 基建第二次承接新功能课题复利（4 套 24 测）；轨迹页从「看轨迹」进阶「读配速」。已知限制（非阻断）：真实浏览器配速区块交互未跑（TASK-213/218 口径）、>500 点部分轨迹沿页内已知限制。C-01 15e1e19（4 文件+263）/C-02 96e9777。 |
+
+## 验收记录：TASK-220（连续打卡聚合端点与个人仪表盘卡片，P1，MEDIUM 档，2026-10-13）
+
+| 项 | 内容 |
+| --- | --- |
+| 开工基线 | 派发笔 `db1542d`（提案三件套 + 任务书）；工作树干净；offline 基线 698=52/50/165/166/159/80/26；token 29 项基线 2034 |
+| C-01 实施笔 | `8853079` `feat(record): 连续打卡聚合端点与个人仪表盘卡片（TASK-220）`，恰 10 文件 = §4 白名单（MyStreakDTO 新 / StreakCalculator 新 / StreakCalculatorTest 新 / SportRecordService / RecordController / SportRecordServiceTest / RecordControllerTest / client.ts / index.page.vue / README.md），+357/−2 |
+| C-02 台账笔 | 本笔 `docs(mailbox): 登记TASK-220连续打卡验收与台账闭环（TASK-220）`，恰 4 文件（tasks.json 勾选 / spec.md §7 回填 / handoff.md 新建 / PLAN.md 纯追加）；C-02 自指哈希沿 D1 先例 |
+| 判别式红绿 | R1a 绿（MyStreakDTO 语义）/ R1b 绿（StreakCalculator 7 场景全过）；R2 绿（status 过滤恰 {PASSED,RE_PASSED} captor 参数值集精确断言 + createdAt 映射自然日去重 + 输出断言）；R3 绿（/my/streak 归属/包装/错误语义与 /my 全同，四测）；R4 绿（streak 卡当前/最长渲染，type-check+build+代码审查承载，真实浏览器未覆盖）；R5 绿；G1/G2/G3 绿。明细见 handoff.md §4 |
+| 本机门禁 | offline 逐位 **52/50/165/178/159/80/26** BUILD SUCCESS rc=0（record 166→178 恰 +12 = StreakCalculatorTest 7 + SportRecordServiceTest 1 + RecordControllerTest 4，六模块逐位不变）；web `pnpm test` rc=0（4 套 24 测不变，TMP 重定向 .trae/tmp）、type-check rc=0、build 成功（3283 modules）、typed-router diff rc=0；契约门双态 rc=0（在途 --open TASK-220 --baseline=db1542d + 收口无参）；token 29 项两点 2034/2034 只增不减；词面门改动集 CI-exact ZERO_HIT rc=1 + 探针阳性对照 HIT rc=0；git diff --check rc=0；行尾三新文件纯 LF+末尾换行无 BOM、改文件保持基线行尾 |
+| 是否到达外部门槛 | **未达到**：两笔均未 push、未建 PR、无 CI run；MEDIUM 档外部终验（指导亲核 + CI 外部终验收口）待指导侧推动推送后补记 |
+| 未覆盖/跳过 | `--mode=online`、CI 全流程、真实浏览器连续打卡卡交互（沿 TASK-213/218/219 口径登记未覆盖）、与第三方健身 App streak 口径对照验证 |
+| 偏差 | D1 台账笔自指哈希（沿先例）；D2 词面门/token 模式文件落 gitignored .trae/tmp 不入库；D3 offline Nacos 连接噪音对计数零影响；D4 web build chunk 体积告警为既有非阻断 advisory。明细见 handoff.md §8 |
+| 状态 | TASK-220 本地闭环：P1 连续打卡聚合端点与仪表盘卡落地（后端只读聚合 + 前端卡，零新依赖零新表零新 SQL 形态），外部终验待推送后补记 |

@@ -4,22 +4,22 @@
     "category": "Implementation",
     "task": "Streak (pure calculator + service endpoint + controller + web card)",
     "steps": [
-      { "step": "api: MyStreakDTO (current/longest)", "completed": false },
-      { "step": "record-service: StreakCalculator pure static + myStreak service (PASSED/RE_PASSED distinct dates) + GET /my/streak controller", "completed": false },
-      { "step": "tests: StreakCalculatorTest + SportRecordServiceTest/RecordControllerTest additions", "completed": false },
-      { "step": "web: client.getMyStreak + index dashboard streak card + README", "completed": false },
-      { "step": "Discriminants R1-R4, G1-G3 evidence", "completed": false }
+      { "step": "api: MyStreakDTO (current/longest)", "completed": true },
+      { "step": "record-service: StreakCalculator pure static + myStreak service (PASSED/RE_PASSED distinct dates) + GET /my/streak controller", "completed": true },
+      { "step": "tests: StreakCalculatorTest + SportRecordServiceTest/RecordControllerTest additions", "completed": true },
+      { "step": "web: client.getMyStreak + index dashboard streak card + README", "completed": true },
+      { "step": "Discriminants R1-R4, G1-G3 evidence", "completed": true }
     ],
-    "passes": false
+    "passes": true
   },
   {
     "number": 2,
     "category": "Acceptance",
     "task": "Gates + commits (MEDIUM tier: no independent review)",
     "steps": [
-      { "step": "offline record net-add only, other six modules per-digit unchanged; web test/type-check/build; contract dual-state; token 2034; word-check; diff --check; line endings", "completed": false },
-      { "step": "C-01 feat + C-02 ledger (4 files), no push no PR", "completed": false }
+      { "step": "offline record net-add only, other six modules per-digit unchanged; web test/type-check/build; contract dual-state; token 2034; word-check; diff --check; line endings", "completed": true },
+      { "step": "C-01 feat + C-02 ledger (4 files), no push no PR", "completed": true }
     ],
-    "passes": false
+    "passes": true
   }
 ]

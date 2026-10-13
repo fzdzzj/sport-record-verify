@@ -63,7 +63,7 @@ web/README.md.
 - C-01 feat(record): 连续打卡聚合端点与个人仪表盘卡片（TASK-220）; C-02 docs(mailbox): ... ledger 4 files. No push, no PR.
 
 ## S7 backfill (after C-02)
-- commit hashes: C-01 = TBD; C-02 = self-referencing hash (precedent)
-- offline / web / token final: TBD
-- discriminant results: TBD
-- deviations: TBD
+- commit hashes: C-01 = `8853079`（`feat(record): 连续打卡聚合端点与个人仪表盘卡片（TASK-220）`，恰 10 文件 = S4 白名单全等）；C-02 = 本笔 `docs(mailbox): 登记TASK-220连续打卡验收与台账闭环（TASK-220）`，自指哈希沿先例（实际以 `git log` 为准）
+- offline / web / token final: offline 逐位 **52/50/165/178/159/80/26**（record 166→178 恰 +12 = StreakCalculatorTest 7 + SportRecordServiceTest 1 + RecordControllerTest 4；六模块逐位不变）BUILD SUCCESS rc=0；web `pnpm test` rc=0（4 套 24 测不变）、type-check rc=0、build 成功（3283 modules）、typed-router diff rc=0；token 29 项两点 2034/2034 只增不减
+- discriminant results: R1a/b 绿（MyStreakDTO 有效打卡语义；StreakCalculator 7 场景全过）；R2 绿（status 过滤恰 {PASSED, RE_PASSED}——captor 参数值集精确断言 + createdAt 映射自然日去重 + 输出断言）；R3 绿（/my/streak 归属/Result 包装/错误语义与 /my 全同，controller 四测）；R4 绿（streak 卡渲染当前/最长，type-check+build+代码审查承载，真实浏览器交互未覆盖）；R5 绿；G1 绿（offline 逐位）；G2 绿（改动集恰白名单 10+4 文件）；G3 绿（契约双态 rc=0、token 2034、词面门 ZERO_HIT+探针、diff --check、行尾合规）
+- deviations: D1 台账笔自指哈希（沿先例）；D2 词面门/探针/token 模式文件落 gitignored `.trae/tmp` 不入库（命令行零中文）；D3 offline Nacos 连接噪音对计数零影响；D4 web build chunk 体积告警为既有非阻断 advisory（与课题正交）。明细见 handoff.md §8
