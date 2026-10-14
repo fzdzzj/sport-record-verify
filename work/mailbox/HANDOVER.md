@@ -10,8 +10,8 @@
 
 - **当前分支与 HEAD**：`main` 分支，HEAD 对应最新封盘提交（可通过 `git log -1 --oneline` 确认）。
 - **外部 CI 门槛状态**：GitHub Actions run `38586443704`（`web` ✓31s / `build` ✓11m46s 全绿）。
-- **工作树状态**：干净（除本治理笔外，无悬挂在途改动）。
-- **当前在途任务数**：`0` 个在途（历史任务至 TASK-228 全部已闭环收口）。
+- **工作树状态**：TASK-229 本地闭环，在途文件已完成台账归档。
+- **当前在途任务数**：`0` 个在途（历史任务至 TASK-229 全部已闭环收口）。
 
 ---
 
@@ -19,10 +19,13 @@
 
 - **刚闭环事项**：
   1. 完成了全仓 Markdown 资产治理与主子 Agent 协作机制重构；
-  2. `work/mailbox/PLAN.md` 完成瘦身（由 2767 行 / 683 KB 压缩至约 276 行 / 79 KB），历史 100+ 笔记录完整归档至 `work/mailbox/archive/PLAN-history-001-210.md`；
-  3. `docs/internal/` 历史 20 份交接/提示词归档，确立了唯一的指导标准 `docs/internal/AGENTS.md`；
-  4. 隔离了 `docs/` 根目录下历史旧 Keep 原型文档，消除上下文污染。
-- **上一业务批次（TASK-226 ~ TASK-228）**：
+  2. `work/mailbox/PLAN.md` 完成瘦身并就地滚动维护，历史记录完整归档至 `work/mailbox/archive/PLAN-history-001-210.md`；
+  3. `docs/internal/AGENTS.md` 确立唯一长效指导标准；
+  4. 落地 **TASK-229**（web 交互面修整批，MEDIUM 档）：
+     - 精确化 Vite proxy 前缀并增加 `text/html` bypass，解决直接在地址栏直载 `/record-submit`、`/record-detail`、`/admin*` 等深链时误代理到网关的缺陷；
+     - 将 `record-submit.page.vue` 的 `a-alert` 详情内容包覆于 `<template #description>`，解决 antdv 4.2.6 下详情未落屏问题；
+     - 本地全绿（type-check / 31 test / build 3317 modules / typed-router 零 diff / 契约无参 rc=0）。
+- **历史业务批次（TASK-226 ~ TASK-228）**：
   - TASK-228：修复 Web 启动级路由缺陷（`createRouter` 显式注入 routes）；
   - TASK-227：E2E 真实浏览器验证批全绿（12 用例 route-mock 达成）；
   - TASK-226：LIGHT 清理批落地。
@@ -35,15 +38,14 @@
 2. **契约校验口径**：运行 `scripts/verify/mailbox-contract.sh` 必须在 Git Bash（`D:\git\Git\bin\bash.exe`）下执行。
 3. **挂账候选事项**：
    - `H2` 生产部署姿态演练（CORS 真实注入/跨域 cookie/TLS 终止协同）；
-   - `H4` web 交互面修整批（vite proxy 前缀在 preview 直载时的拦截行为优化）；
    - `F5` 榜单贡献回撤（TASK-223 D1 挂账）。
 
 ---
 
 ## 4. 下一个主 Agent 的唯一推荐动作
 
-- **推荐动作**：从 [`work/mailbox/BACKLOG.md`](BACKLOG.md) 取下一个优先级任务进行立项（当前候选首位为 **H4 web 交互面修整批** 或 **H2 部署姿态演练**）。
-- **开工准备**：向用户确认是否启动 H4 或其他候选任务；确认后按 `docs/internal/AGENTS.md` 的「极简任务派发包模板」为子 Agent 派发。
+- **推荐动作**：从 [`work/mailbox/BACKLOG.md`](BACKLOG.md) 取下一个优先级任务进行立项（当前候选首位为 **H2 部署姿态演练** 或 **F5 榜单贡献回撤**）。
+- **开工准备**：向用户确认是否启动 H2 或 F5 候选任务；确认后按 `docs/internal/AGENTS.md` 的「极简任务派发包模板」开工执行。
 
 ---
 

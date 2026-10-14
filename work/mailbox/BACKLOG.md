@@ -13,7 +13,7 @@
 | F4 | 我的记录筛选 | 我的记录列表已有分页，无类型/时间/状态过滤 | 小体量体验补全 | MEDIUM 小 | **已封盘 TASK-224（2026-10-14，CI run 38511006257 绿，分级政策首用）** |
 | H1 | E2E 真实浏览器验证批 | TASK-213/218/219/220/221 五课题连续登记「真实浏览器交互未跑」 | 前端体验债集中偿还；Playwright 选型需重议（TASK-215 曾裁定不引入） | MEDIUM | **已封盘 TASK-227（2026-10-14，CI run 38586443704 绿；首轮 S3.3 停止发现 P0 启动级路由缺陷→TASK-228 同批修复后续批达成）** |
 | H2 | E5 生产部署姿态演练 | TASK-205 后置议题长期在册（CORS 真实注入/跨域 cookie/TLS 终止协同） | 上生产前必做 | MEDIUM 零代码 | 候选 |
-| H4 | web 交互面修整批 | TASK-227 附带发现：vite proxy 前缀误伤 preview 直载（/record-submit 等）+ record-submit a-alert 插槽 antdv 4.2.6 不落屏 | 上生产前与 H2 一并处置 | MEDIUM 小 | 候选 |
+| H4 | web 交互面修整批 | TASK-227 附带发现：vite proxy 前缀误伤 preview 直载（/record-submit 等）+ record-submit a-alert 插槽 antdv 4.2.6 不落屏 | 上生产前与 H2 一并处置 | MEDIUM 小 | **已封盘 TASK-229（2026-10-15，本地全绿待推）** |
 | H3 | LIGHT 清理批 | TASK-221 留痕-1（测试文件行尾）+ README 旧表述 + 静态基线偏差登记 | 台账卫生（沿 TASK-212 先例） | LIGHT | **已封盘 TASK-226（2026-10-14，CI run 38586443704 绿）** |
 
-推荐序：F 系与 H1/H3 已清空（F1→TASK-222、F2→TASK-223、F3→TASK-225、F4→TASK-224、H1→TASK-227、H3→TASK-226 均已封盘）；剩余候选 H2（E5 生产部署姿态演练，若近期上生产则提前）、H4（web 交互面修整批，上生产前与 H2 一并处置）、F5（拟）榜单贡献回撤（TASK-223 D1 挂账）。
+推荐序：F 系与 H1/H3/H4 已清空（F1→TASK-222、F2→TASK-223、F3→TASK-225、F4→TASK-224、H1→TASK-227、H3→TASK-226、H4→TASK-229 均已封盘）；剩余候选 H2（E5 生产部署姿态演练，若近期上生产则提前）、F5（拟）榜单贡献回撤（TASK-223 D1 挂账）。

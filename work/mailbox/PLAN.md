@@ -2,7 +2,7 @@
 
 ## 当前进度与外部基线
 
-- **最新代码基线与分支**：`main` 分支，最新已封盘至 **TASK-228**（HEAD `aee5ca0`）。
+- **最新代码基线与分支**：`main` 分支，最新已封盘至 **TASK-229**（本地已闭环收口）。
 - **会话无缝交接看板**：新主 Agent 接手状态与下一步动作见 [HANDOVER.md](HANDOVER.md)（原地滚动更新，免建新交接文档）。
 - **CI 外部门槛状态**：GitHub Actions run `38586443704`（HEAD `aee5ca0`，web ✓31s / build ✓11m46s 全 job 绿）。包含全模块 clean verify、Checkstyle/SpotBugs/PMD 静态门、Docker 镜像构建与 Trivy 依赖扫描。
 - **历史记录归档索引**：早期 100+ 笔验收记录（TASK-001 至 TASK-210）已完整归档至 [PLAN-history-001-210.md](archive/PLAN-history-001-210.md)。各任务的原始契约与回传留存见 `work/mailbox/tasks/TASK-xxx/`。
@@ -275,3 +275,15 @@
 | 状态 | TASK-227 本地闭环：E2E 真实浏览器批从保留件恢复并按 S2.5 判别式复跑达成（8 spec / 12 用例 route-mock 全绿、零真实网络请求、后端零 diff、web 四件套不回归），首轮 S3.3 停止史与停止笔链如实登记；指导亲核后随批推送 |
 复核后证据链订正笔（`docs(mailbox)`，2026-10-14，TASK-226/227/228 批，恰 5 文件、纯台账+文档、零代码、未 push）：BLOCKER-1＝证据面时点失实——TASK-228 handoff §5.3 与 TASK-227 handoff §14-D2/D3 所记在途契约门 `rc=0` 系 `beabc6f` 落地前的时点读数；HEAD=`fd6b299` 干净工作树（独立 worktree）复算：`--open TASK-228 --baseline=4596df2` rc=1、`--open TASK-227 --baseline=4596df2` rc=1、`--open TASK-227 --baseline=69602b0` rc=1（三者同为**串批累积集语义**——判据 B 以单一累积改动集对每个在途回传全量比对，两课题互判「改动集未声明」，非清单违规）、`--open TASK-227 --baseline=138ec97` rc=1（`web/.gitignore` dotfile 不可表达）、`--diff-file` 21 项口径 rc=0 属时点快照；替代契约口径＝本课题相对开工基线改动集全等（TASK-228 6 文件 / TASK-227 22 文件）+ 收口无参 rc=0（HEAD 干净工作树 rc=0）；M1/M2（`web/README.md`：`*.spec.ts`→`*.e2e.ts`、`pnpm e2e` 订正为实际脚本形态含 `--config e2e/playwright.config.ts` 并补 webServer `--host 127.0.0.1`）、M3（`t227r-gates.log` 第 9 行 ZERO_TOUCH_VIOLATION 成因＝出证脚本误用 `4596df2` 而非本课题开工基线 `138ec97`，文本结论「相对 `138ec97` 零 diff」正确）、M6（TASK-228 spec.md §S6 契约基线口径 `69602b0`→`4596df2`，两口径 HEAD 复算皆 rc=1）同笔订正；M4-M6/L1-L3 留痕登记。
 补记（指导侧封盘笔，2026-10-14，TASK-226/227/228 批）：批次推送 `5954cad..aee5ca0`（12 笔）后 run `38586443704`（head=`aee5ca0`）conclusion=success——三课题外部终验一次达成（web 31s：修复后路由的首次 CI 真实构建通过；build 11m46s：全模块测试/静态门/词面门/6 服务镜像/Trivy 全过）。TASK-226（LIGHT 档免复核，指导亲核 7 文件全等、offline record 250 逐位不变）：C-01 `839d4cc` / C-02 `890f397`。TASK-228（MEDIUM 小档，复核技术面通过，BLOCKER-1 证据面时点失实由订正笔 `aee5ca0` 如实化处置，契约证据以「相对 `4596df2` 六文件清单全等 + 收口无参 rc=0」承载）：C-01 `05bcae4` / C-02 `138ec97`。TASK-227（MEDIUM 档，首轮 S3.3 停止发现 P0 启动级路由缺陷→TASK-228 修复后续批达成，复核技术面通过，D7/D8 随订正笔登记）：C-01 `beabc6f` / C-02 `fd6b299`。三课题封盘；本封盘笔随下一课题批次推送。
+
+## 验收记录：TASK-229（web 交互面修整批，H4 候选，MEDIUM 档，2026-10-15）
+
+| 项 | 内容 |
+| --- | --- |
+| 开工基线 | `2829f34`（main 分支，工作树干净） |
+| 任务内容与白名单 | 恰 2 个实施文件（`web/vite.config.ts` + `web/src/pages/record-submit.page.vue`）+ 台账 2 文件（`work/mailbox/tasks/TASK-229/spec.md` + `work/mailbox/tasks/TASK-229/handoff.md`）；零后端改动、零依赖包改动 |
+| 关键修复 | ① Vite 代理配置解耦：将前缀精确到斜杠（`/record/`、`/admin/`）并增加 `bypass: (req) => (req.headers.accept?.includes('text/html') ? req.url : undefined)`，消除了地址栏直载 `/record-submit`、`/record-detail`、`/admin*` 等深链时被误代理到网关端口的缺陷；② `record-submit.page.vue` 的 `a-alert` 详情内容用 `<template #description>` 具名插槽包裹，对齐 `ant-design-vue` 4.2.6 组件规范，解决提交结果详情未落屏问题 |
+| 本机门禁 | `pnpm --dir web type-check` rc=0；`pnpm --dir web test` 4 套 31 测全绿 rc=0；`pnpm --dir web build` 3317 modules 产出成功 rc=0；`git diff --exit-code -- web/src/typed-router.d.ts` 零 diff rc=0；契约门无参 `scripts/verify/mailbox-contract.sh` rc=0（判据 A 两件套齐 + 判据 B 清单一致）；PowerShell 静态结构断言全通过 |
+| 是否到达外部门槛 | **未到达**：本地闭环，尚未执行 git commit / push，无新 CI run |
+| 状态 | TASK-229 本地闭环，待指导侧统一提交并推进推送 |
+
