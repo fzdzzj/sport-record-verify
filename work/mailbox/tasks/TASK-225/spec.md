@@ -69,3 +69,4 @@ offline 全量逐位（sql 触碰不收窄）+ scratch 迁移二跑证明 + 新�
 - **偏差**：D1（C-02 台账笔自指哈希沿先例）；D2（token/词面门/scratch 验证等临时件落 gitignored `.trae/tmp`）；D3（Checkstyle JavadocPackage 规约适配，新建 dto 包补充 package-info.java）；D4/D5（offline 噪音与 build chunk 告警为既有非阻断）。明细见 `handoff.md §8`。
 - **未覆盖清单**：真实浏览器目标卡片交互/弹窗联动（沿 TASK-213/220/221/222/223/224 口径登记未覆盖）、真实 MySQL/Redis 跨服务目标与记录聚合联调（--it 未执行）、--mode=online 与外部 CI。均沿先例口径登记，见 `handoff.md §10`。
 - **停止条件**：S3 §1-§5 无一按字面触发（核对见 `handoff.md §8`）。
+- 指导侧封盘补记（2026-10-14）：run 38525589652（head=5954cad）conclusion=success——外部终验一次达成，TASK-225 封盘。复核矛盾点×3（information_schema 表述/spec S2 3001 文本口径/+14·13 计数口径）裁留痕随 PLAN.md 补记登记。
