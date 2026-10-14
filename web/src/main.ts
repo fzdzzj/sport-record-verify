@@ -1,6 +1,7 @@
 import { createApp } from 'vue'
 import App from './App.vue'
-import { createRouter } from 'vue-router/auto'
+import { createRouter } from 'vue-router'
+import { routes } from 'vue-router/auto-routes'
 import { createWebHistory } from 'vue-router'
 import { VueQueryPlugin } from '@tanstack/vue-query'
 import Antd from 'ant-design-vue'
@@ -10,6 +11,7 @@ import { hasAccessToken, setAuthFailHandler } from '@/utils/token'
 
 const router = createRouter({
   history: createWebHistory(),
+  routes,
 })
 
 // 路由守卫：无 access 不能进控制台；已登录访问登录页去控制台
