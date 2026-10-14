@@ -48,3 +48,14 @@
 - §3.1（Playwright 安装/chromium 下载被网络阻断且无镜像）：**未触发**——安装与二进制下载均成功。
 - §3.2（route-mock 无法承载某交互需真实后端）：**部分相关但非主因**——两前缀 route-mock 实际可承载全部 8 条交互（12 条用例实测全绿），仅「榜单」页交互按两前缀边界未覆盖（`/leaderboard/api/*` 不在 mock 范围，登记未覆盖，不引入后端）。
 - §3.3（需改 vite.config/路由/后端才能跑通）：**已触发——即本次停止原因**（应用启动级路由缺陷，修复面越出 S0/S4 白名单）。
+
+## 7. 补记（完整修复候选已实测，仍待授权入库）
+
+停止后继续把「修复要多大」坐实，结论是**恰 2 文件**且全部门槛转绿（补记不改本课题停止结论，改动仍未入库）：
+
+- **修复内容**（`web/src/main.ts` + `web/src/vue-router-auto-shim.d.ts`）：
+  1. `main.ts`：`createRouter` 改自 `vue-router` 取，新增 `import { routes } from 'vue-router/auto-routes'`，并以 `createRouter({ history: createWebHistory(), routes })` 传入路由表。
+  2. 垫片：`declare module 'vue-router/auto'` 只保留 `export * from 'vue-router'`（App.vue 与各页面仍从该子路径取 `useRouter` 的类型），**删除会掩盖该缺陷的 `createRouter(options: Omit<RouterOptions,'routes'>)` 声明**；另新增 `declare module 'vue-router/auto-routes' { export const routes: RouteRecordRaw[] }`（生成的 `typed-router.d.ts` 只声明 `RouteNamedMap` 等类型、无 `routes` 值导出——这正是「只改 main.ts」朴素修法 `pnpm type-check` 报 TS2305 的原因）。
+- **实测（本机，2026-10-14）**：`pnpm type-check` **rc=0**；`pnpm test` **rc=0**（4 套 31 测）；`pnpm build` **rc=0**（3317 modules，基线 3283）；`git diff --exit-code -- web/src/typed-router.d.ts` **rc=0**；`pnpm e2e` **12 passed rc=0**（本停止报告所附套件同一份，未改一行为绿）。
+- **保留件**：`.trae/tmp/t227-preserved/full-fix-candidate.patch`（恰 2 文件 diff）、`FIX-CANDIDATE.md`（修复说明）、`fullfix-gates.log`、`e2e-12of12-green-under-fullfix.log`；恢复套件见同目录 `e2e/`、`tracked-changes.patch`、`web.gitignore`。
+- **判定**：该修复落在 `web/src`（S0/S4 白名单外），故仍按 §3.3 停止上报，**不由本课题入库**；授权后可作为独立修复课题一次成形（套件与补丁均已就绪）。
