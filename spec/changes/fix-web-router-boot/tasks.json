@@ -1,0 +1,13 @@
+[
+  {
+    "number": 1,
+    "category": "Implementation",
+    "task": "Fix app-boot router crash (2 files)",
+    "steps": [
+      { "step": "Restore from .trae/tmp/t227-preserved/full-fix-candidate.patch; verify root cause against unplugin-vue-router@0.19.2 exports", "completed": false },
+      { "step": "Apply main.ts routes + shim rewrite; web four-piece + typed-router zero diff + gates", "completed": false },
+      { "step": "C-01 fix(web) + C-02 ledger, no push", "completed": false }
+    ],
+    "passes": false
+  }
+]

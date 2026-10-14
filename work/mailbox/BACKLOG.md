@@ -13,6 +13,7 @@
 | F4 | 我的记录筛选 | 我的记录列表已有分页，无类型/时间/状态过滤 | 小体量体验补全 | MEDIUM 小 | **已封盘 TASK-224（2026-10-14，CI run 38511006257 绿，分级政策首用）** |
 | H1 | E2E 真实浏览器验证批 | TASK-213/218/219/220/221 五课题连续登记「真实浏览器交互未跑」 | 前端体验债集中偿还；Playwright 选型需重议（TASK-215 曾裁定不引入） | MEDIUM | **已立项 TASK-227（2026-10-14，重议通过：route-mock 模式 web-only）** |
 | H2 | E5 生产部署姿态演练 | TASK-205 后置议题长期在册（CORS 真实注入/跨域 cookie/TLS 终止协同） | 上生产前必做 | MEDIUM 零代码 | 候选 |
+| H4 | web 交互面修整批 | TASK-227 附带发现：vite proxy 前缀误伤 preview 直载（/record-submit 等）+ record-submit a-alert 插槽 antdv 4.2.6 不落屏 | 上生产前与 H2 一并处置 | MEDIUM 小 | 候选 |
 | H3 | LIGHT 清理批 | TASK-221 留痕-1（测试文件行尾）+ README 旧表述 + 静态基线偏差登记 | 台账卫生（沿 TASK-212 先例） | LIGHT | **已立项 TASK-226（2026-10-14）** |
 
 推荐序：F 系已清空（F1→TASK-222、F2→TASK-223、F3→TASK-225、F4→TASK-224 均已封盘）；在途 H3（TASK-226 LIGHT 清理批）与 H1（TASK-227 E2E 验证批）完成后，候选 H2（E5 生产部署姿态演练）；若近期上生产，H2 提前。
