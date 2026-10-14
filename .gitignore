@@ -52,6 +52,7 @@ scripts/mapmatch/data/
 .tmp_doc_style/
 
 # ===== 运动健康助手旧材料（改造前历史，非本项目，不入库） =====
+docs/archive/
 docs/运动健康助手*.docx
 docs/运动健康助手*.pdf
 docs/运动健康助手*.md
