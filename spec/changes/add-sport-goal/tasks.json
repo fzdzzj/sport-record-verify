@@ -1,0 +1,27 @@
+[
+  {
+    "number": 1,
+    "category": "Implementation",
+    "task": "Weekly/monthly sport goals: table + CRUD + pull-on-read progress + web card",
+    "steps": [
+      { "step": "S1 recon: 02-record-db.sql idempotent pattern & TASK-221 append precedent, stats panel surface for card placement, PASSED-records aggregation shape", "completed": false },
+      { "step": "sql: sport_goal idempotent append to 02-record-db.sql + scratch two-run proof", "completed": false },
+      { "step": "record-service: Goal entity/Mapper + GoalService (upsert + progress window SUM/COUNT) + GoalController /my/goals GET/POST/DELETE + tests", "completed": false },
+      { "step": "web: goals card (progress bars + dialog + delete confirm) + client.ts + tests", "completed": false },
+      { "step": "Discriminants R1-R6, G1-G3 evidence", "completed": false }
+    ],
+    "passes": false
+  },
+  {
+    "number": 2,
+    "category": "Acceptance",
+    "task": "FULL gates (sql touched → full offline) + commits + independent review + external CI",
+    "steps": [
+      { "step": "offline full digit-exact (record net-add only, others unchanged); scratch migration two-run proof; static record-service; web four-piece; contract dual-state; token SUM; word-check; diff --check; endings; new test classes isolated -Dtest runs", "completed": false },
+      { "step": "C-01 feat + C-02 ledger, no push no PR", "completed": false },
+      { "step": "Independent review subagent, zero-write", "completed": false },
+      { "step": "Supervisor push + external CI green", "completed": false }
+    ],
+    "passes": false
+  }
+]
