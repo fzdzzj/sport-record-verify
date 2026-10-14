@@ -50,9 +50,9 @@ git diff --exit-code -- src/typed-router.d.ts   # 非 0 = 提交的生成物与�
   `src/api/__tests__/client.test.ts`（拦截器链：Bearer 注入有无、code=0 透传、code!=0 抛出、
   401 单次 refresh 重试含 `withCredentials`、`/api/auth/*` 401 零 refresh、refresh 失败触发 auth-fail）。
 - 传输层以 axios adapter 注入（替换 `api.defaults.adapter`）模拟，不引入 axios-mock-adapter / msw；
-  仅新增 devDeps `vitest` + `happy-dom`，无 @vue/test-utils、无 Playwright。
-- 组件 / E2E 后置理由：页面为路由 / axios / query 重度耦合，无轻量可挂载组件（组件测试另立变更）；
-  E2E 与 TASK-206 HTTP 级真链路验证范式重叠且 CI 成本高（设计性非目标）。
+  仅新增 devDeps `vitest` + `happy-dom`，无 @vue/test-utils；E2E 自 TASK-227 起由 Playwright 承载（见下文「E2E 真实浏览器验证」小节）。
+- 组件测试后置理由：页面为路由 / axios / query 重度耦合，无轻量可挂载组件（组件测试另立变更）；
+  E2E 采用 route-mock 模式本地执行、不入 CI（TASK-227 重议引入，见下文）。
 
 ## 认证会话（add-web-auth-session）
 
@@ -80,7 +80,7 @@ Axios 统一响应处理：`code === 0` 成功，否则抛出 `message`。
 - 控制台已承载多业务功能（记录提交/判定申诉点赞/好友/榜单/我的记录与统计/轨迹查看/动态/删除/筛选/运动目标/通知等，见下方各变更小节）；认证会话与路由守卫为基础层。
 - 后端网关需运行在 8080 端口以测试代理。
 - 包管理：pnpm。
-- 不包含 Vuex / ECharts / OpenAPI 生成 / Playwright。
+- 不包含 Vuex / ECharts / OpenAPI 生成。
 - 参考技术栈选型来自同类工程，但代理与响应码严格按本仓规范（无 rewrite、code=0）。
 
 **口径自检**：已按 spec-delta 实现；未改 Java app.auth.enabled 默认；token 分别存储；仅 Bearer；README 强调演示开启鉴权。
@@ -212,3 +212,11 @@ curl -X POST http://127.0.0.1:8080/internal/auth/grant-admin \
 - 目标交互：右上角「设置目标」按钮弹出新建对话框，支持设置周期类型（周/月）、指标（距离/次数）与目标值；已创建目标支持行内「编辑」（调整目标值）与「删除」（Popconfirm 二次确认）；
 - 数据链路：调用 `getMyGoals()`（GET /record/api/records/my/goals，后端 pull-on-read 计算当前周/月窗口内 PASSED 终态记录的实时聚合进度）、`upsertGoal(payload)`（POST /record/api/records/my/goals，基于 user_id + period_type + metric 联合唯一键的 upsert 语义）、`deleteGoal(id)`（DELETE /record/api/records/my/goals/{id}，owner 归属校验）；
 - 记录删除（TASK-223）联动：删除记录后自动刷新目标进度，删除后该记录自然退出目标聚合范围。
+
+## E2E 真实浏览器验证（TASK-227）
+
+- 引入 **Playwright**（devDependency `@playwright/test` **1.64.0** 版本锁定；chromium 单浏览器，浏览器二进制落系统用户缓存 `%LOCALAPPDATA%\ms-playwright`，不入库）。重议背景：TASK-215 曾裁定不引入（当时前端债小），现 9 课题连续登记「真实浏览器交互未跑」且交互面扩大至 feed/删除/筛选/目标，重议通过。
+- 运行：`cd web && pnpm e2e`（即 `playwright test`）。**webServer 自动执行 `pnpm build && pnpm preview --port 4179`**（生产构建产物），测试命中本地预览服务；证据（运行输出）与 trace 落 gitignored `.trae/tmp/e2e-results`。
+- **route-mock 模式**：`page.route` 拦截 `/record/api/*` 与 `/user/api/*` 两个前缀返回固定夹具（`web/e2e/fixtures/`），并断言两前缀之外的 API 请求为零（`helpers.ts` 请求监视器）——零后端依赖、零全栈起服务、零真实网络请求。
+- 8 条 spec（`web/e2e/*.spec.ts`）：① 登录跳转（守卫）② 记录列表渲染 ③ 提交表单校验与提交 ④ 筛选联动+重置页码 ⑤ 删除确认与刷新 ⑥ feed 卡片与分页 ⑦ 目标卡片与对话框 ⑧ 顶栏导航。
+- **范围声明**：E2E 仅本地执行、**不入 CI**（ci.yml 零触碰）；「榜单」页交互未覆盖（`/leaderboard/api/*` 不在两前缀 mock 范围，避免真实网络请求，候选后续扩展）；真实后端全栈联调（--it 层）与多浏览器未覆盖，均登记 handoff。

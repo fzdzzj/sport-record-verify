@@ -1,0 +1,5 @@
+# Playwright 运行产物（E2E 证据统一落仓库根 gitignored .trae/tmp，见 web/README「E2E 真实浏览器验证」；
+# 若以默认配置运行则可能落在本目录，一并忽略，避免生成物入库）
+test-results/
+playwright-report/
+blob-report/
