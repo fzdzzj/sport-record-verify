@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { AxiosError, type AxiosResponse } from 'axios'
 import api from '@/api/client'
 import { getAccessToken, setAuthFailHandler, setTokens } from '@/utils/token'
-import { deleteGoal, delRecord, getFeed, getMyGoals, getMyRecords, upsertGoal } from '@/api/client'
+import { deleteGoal, delRecord, getFeed, getMyGoals, getMyRecords, getMyStats, upsertGoal } from '@/api/client'
 
 
 // adapter 注入范式：替换 api.defaults.adapter 为 vi.fn 模拟传输层，
@@ -340,5 +340,38 @@ describe('client.ts 运动目标三方法（TASK-225）', () => {
     const call = adapter.mock.calls[0][0] as { url: string; method?: string }
     expect(call.url).toBe('/record/api/records/my/goals/456')
     expect(call.method?.toLowerCase()).toBe('delete')
+  })
+})
+
+// ===== 个人核心统计（TASK-231 add-my-stats-endpoint） =====
+describe('client.ts getMyStats（TASK-231）', () => {
+  // R1：getMyStats 打 GET /record/api/records/my/stats，无 query 参数（归属由网关注入）
+  it('R1 getMyStats hits GET /record/api/records/my/stats without params', async () => {
+    const statsBody = {
+      code: 0,
+      message: 'ok',
+      data: {
+        totalCount: 7,
+        totalDistance: 22.0,
+        passCount: 5,
+        passRate: '71.4%',
+        dailyDistances: {
+          '2026-10-01': 3.5,
+          '2026-10-02': 0,
+        },
+      },
+    }
+    adapter.mockImplementationOnce((config: unknown) => Promise.resolve(ok(config, statsBody)))
+
+    const res = await getMyStats()
+
+    expect(res.data.totalCount).toBe(7)
+    expect(res.data.passRate).toBe('71.4%')
+    expect(res.data.dailyDistances['2026-10-01']).toBe(3.5)
+    expect(adapter).toHaveBeenCalledTimes(1)
+    const call = adapter.mock.calls[0][0] as { url: string; method?: string; params?: unknown }
+    expect(call.url).toBe('/record/api/records/my/stats')
+    expect(call.method?.toLowerCase() || 'get').toBe('get')
+    expect(call.params).toBeUndefined()
   })
 })

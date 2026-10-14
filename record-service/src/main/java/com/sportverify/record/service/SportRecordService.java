@@ -7,6 +7,7 @@ import com.sportverify.api.leaderboard.LeaderboardApi;
 import com.sportverify.api.record.RecordStatus;
 import com.sportverify.api.record.RecordVisibility;
 import com.sportverify.api.record.SportType;
+import com.sportverify.api.record.dto.MyStatsDTO;
 import com.sportverify.api.record.dto.MyStreakDTO;
 import com.sportverify.api.record.dto.RecordSubmitDTO;
 import com.sportverify.api.record.dto.RecordSubmitResultDTO;
@@ -43,10 +44,13 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.transaction.support.TransactionSynchronization;
 import org.springframework.transaction.support.TransactionSynchronizationManager;
 
+import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.LocalTime;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -539,8 +543,8 @@ public class SportRecordService {
      * 无需逐行归属断言。按创建时间倒序返回记录概要。</p>
      *
      * <p>分页边界：{@code page} 下限 1，{@code size} 夹在 [1, 500]（默认 20 由
-     * 控制器 {@code @RequestParam(defaultValue="20")} 承担）。500 上限即前端统计
-     * 单次拉取上限，超出部分视为已知限制（部分统计），由前端登记。</p>
+     * 控制器 {@code @RequestParam(defaultValue="20")} 承担）。500 上限只约束列表单页容量；
+     * 首页统计卡与每日里程自 TASK-231 起由 {@link #myStats} 全量聚合承担，不受本上限影响。</p>
      *
      * @param userId 归属用户（控制器按身份语义解析，非空）
      * @param page   页码（下限 1）
@@ -747,7 +751,90 @@ public class SportRecordService {
         return dto;
     }
 
-    /** 个人统计单次拉取每页上限（前端 size=500 全量聚合的契约上限）。 */
+    /**
+     * 个人核心统计（TASK-231 服务端聚合端点，归属即身份）。
+     *
+     * <p>与列表彻底解耦：查询条件仅为归属人（{@code WHERE user_id=?}，构造上天然无越权），
+     * <b>不过滤状态、不分页</b>——totalCount / totalDistance / passCount 覆盖该用户全部记录，
+     * 修掉了此前前端「size=500 单次拉取 + 浏览器内存聚合」的截断与翻页耦合两处技术债。</p>
+     *
+     * <p>查询形态：按需投影 {@code select(distance, status, createdAt)}，避免 select * 带出
+     * request_id 等大字段（个人量级单查 + 内存轻量汇总，无额外 count/sum 往返）。</p>
+     *
+     * <p>口径：totalDistance 与 dailyDistances 各值保留两位小数（HALF_UP，null 距离按 0 计）；
+     * passCount 仅计通过终态 PASSED(2) / RE_PASSED(5)（与 {@link #myStreak} 同款入账口径）；
+     * passRate 为 {@code "%.1f%%"} 格式化串，无记录时为 {@code 0%}；dailyDistances 以服务器时钟
+     * {@code LocalDate.now()} 为窗口右端，恒返回 {@link #STATS_DAILY_WINDOW_DAYS} 个自然日
+     * （升序、无记录日补 0），按 createdAt 落入自然日汇总，窗口外的记录只计入总量。</p>
+     *
+     * @param userId 归属用户（控制器按身份语义解析，非空）
+     * @return 个人核心统计（全量口径）
+     */
+    public MyStatsDTO myStats(Long userId) {
+        List<SportRecord> rows = sportRecordMapper.selectList(
+                new LambdaQueryWrapper<SportRecord>()
+                        .select(SportRecord::getDistance, SportRecord::getStatus, SportRecord::getCreatedAt)
+                        .eq(SportRecord::getUserId, userId));
+
+        long totalCount = rows.size();
+        long passCount = 0;
+        BigDecimal totalDistance = BigDecimal.ZERO;
+        // 近 30 天窗口（升序，无记录日补 0）：LinkedHashMap 保证键序即日期序
+        Map<String, BigDecimal> daily = new LinkedHashMap<>();
+        LocalDate windowStart = LocalDate.now().minusDays(STATS_DAILY_WINDOW_DAYS - 1L);
+        for (int i = 0; i < STATS_DAILY_WINDOW_DAYS; i++) {
+            daily.put(windowStart.plusDays(i).toString(), BigDecimal.ZERO);
+        }
+
+        for (SportRecord row : rows) {
+            BigDecimal distance = row.getDistance() == null ? BigDecimal.ZERO : row.getDistance();
+            totalDistance = totalDistance.add(distance);
+            if (isPassedStatus(row.getStatus())) {
+                passCount++;
+            }
+            LocalDateTime createdAt = row.getCreatedAt();
+            if (createdAt == null) {
+                continue;
+            }
+            String dayKey = createdAt.toLocalDate().toString();
+            if (daily.containsKey(dayKey)) {
+                daily.put(dayKey, daily.get(dayKey).add(distance));
+            }
+        }
+
+        Map<String, BigDecimal> dailyDistances = new LinkedHashMap<>();
+        for (Map.Entry<String, BigDecimal> entry : daily.entrySet()) {
+            dailyDistances.put(entry.getKey(), entry.getValue().setScale(2, RoundingMode.HALF_UP));
+        }
+        MyStatsDTO dto = new MyStatsDTO();
+        dto.setTotalCount(totalCount);
+        dto.setTotalDistance(totalDistance.setScale(2, RoundingMode.HALF_UP));
+        dto.setPassCount(passCount);
+        dto.setPassRate(formatPassRate(passCount, totalCount));
+        dto.setDailyDistances(dailyDistances);
+        return dto;
+    }
+
+    /** 通过终态判定（PASSED(2) / RE_PASSED(5)，与 myStreak 入账口径一致）。 */
+    private static boolean isPassedStatus(Integer status) {
+        return status != null
+                && (status == RecordStatus.PASSED.getCode() || status == RecordStatus.RE_PASSED.getCode());
+    }
+
+    /** 通过率格式化（一位小数百分比；无记录返回 0%，与前端历史展示口径一致）。 */
+    private static String formatPassRate(long passCount, long totalCount) {
+        if (totalCount == 0L) {
+            return "0%";
+        }
+        return BigDecimal.valueOf(passCount * 100.0 / totalCount)
+                .setScale(1, RoundingMode.HALF_UP)
+                .toPlainString() + "%";
+    }
+
+    /** 近 30 天每日里程窗口长度（TASK-231 个人统计聚合口径）。 */
+    private static final int STATS_DAILY_WINDOW_DAYS = 30;
+
+    /** 我的记录列表单页上限（pageMyRecords / pageFeed 分页钳制共用）。 */
     private static final int MAX_MY_RECORDS_SIZE = 500;
 
     /** 实体 → 记录概要 DTO（字段：id/sportType/distance/status/visibility/createdAt）。 */

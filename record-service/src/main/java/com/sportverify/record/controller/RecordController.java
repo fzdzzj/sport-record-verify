@@ -1,6 +1,7 @@
 package com.sportverify.record.controller;
 
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
+import com.sportverify.api.record.dto.MyStatsDTO;
 import com.sportverify.api.record.dto.MyStreakDTO;
 import com.sportverify.api.record.dto.RecordSubmitDTO;
 import com.sportverify.api.record.dto.RecordSubmitResultDTO;
@@ -101,9 +102,9 @@ public class RecordController {
      * startDate/endDate（开始日期范围过滤，start<=end 校验）。非法参数抛 400（IllegalArgumentException）。
      * 全部缺省时不过滤，保持向后兼容。</p>
      *
-     * <p>分页：{@code page>=1}，{@code size} 默认 20、上限 500（前端个人统计
-     * 单次拉取即契约上限，超出部分为已知限制）；响应形态对齐 points 端点的
-     * MyBatis-Plus {@code Page} 分页约定。</p>
+     * <p>分页：{@code page>=1}，{@code size} 默认 20、上限 500；响应形态对齐 points 端点的
+     * MyBatis-Plus {@code Page} 分页约定。首页统计卡与近 30 天里程自 TASK-231 起改由
+     * {@code /my/stats} 全量聚合承担，本端点的 500 上限不再影响统计口径。</p>
      */
     @GetMapping("/my")
     public Result<Page<RecordSummaryDTO>> myRecords(
@@ -159,6 +160,29 @@ public class RecordController {
             throw new IllegalArgumentException("缺少必须的 userId 查询参数");
         }
         return Result.success(sportRecordService.myStreak(owner));
+    }
+
+    /**
+     * 个人核心统计（TASK-231 服务端聚合端点，归属即身份；与 /my、/my/streak 同构）。
+     *
+     * <p>身份语义与 {@code /my} 完全一致（见 myRecords javadoc）：true 时从网关注入的
+     * {@code X-User-Id} 读取归属人，缺失或空白 → 1001（HTTP 401）；false 时降级为显式
+     * {@code userId} 查询参数，必填缺失 → 400 PARAM。记录严格按解析出的归属人过滤
+     * （{@code WHERE user_id=?}），过滤即身份，构造上无越权。</p>
+     *
+     * <p>与 {@code /my} 的分页数据面解耦：本端点不接受 page/size/过滤参数，恒基于该用户
+     * 全量记录做服务端聚合，翻页不再污染统计口径。返回口径见
+     * {@link com.sportverify.api.record.dto.MyStatsDTO}。</p>
+     */
+    @GetMapping("/my/stats")
+    public Result<MyStatsDTO> myStats(
+            @RequestParam(value = "userId", required = false) Long userId,
+            HttpServletRequest request) {
+        Long owner = authEnabled ? resolveUserId(request, null) : userId;
+        if (!authEnabled && owner == null) {
+            throw new IllegalArgumentException("缺少必须的 userId 查询参数");
+        }
+        return Result.success(sportRecordService.myStats(owner));
     }
 
     /**

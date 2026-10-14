@@ -12,7 +12,7 @@
         <li>记录轨迹查看（纯前端 SVG 投影，最近记录行「查看轨迹」入口）</li>
       </ul>
       <p class="mt-4">使用顶部导航进入各页。需先 <a @click="goLogin">登录</a>（依赖 auth 会话）后可见下方个人统计。</p>
-      <p class="mt-2 text-sm text-gray-600">本会话 recordId 存 sessionStorage；刷新或换浏览器不会从服务端恢复（诚实无列表 API）。</p>
+      <p class="mt-2 text-sm text-gray-600">登录后可在下方查看服务端持久化的「我的记录」列表（GET /record/api/records/my，支持过滤与分页）；提交页的 sessionStorage 仅是本会话内的快捷入口。</p>
       <a-alert class="mt-4" type="info" show-icon message="自助改密（TASK-208）：修改密码后全量吊销该账号 refresh，需重新登录（入口见下）。" />
       <div class="mt-4">
         <a-button type="primary" @click="go('/record-submit')">开始：提交样例轨迹</a-button>
@@ -22,7 +22,7 @@
     </a-card>
 
     <template v-if="authed">
-      <!-- 登录态个人统计仪表盘（TASK-211）：统计自单次 size=500 拉取 -->
+      <!-- 登录态个人统计仪表盘（TASK-211；统计卡与每日里程 TASK-231 改由 /my/stats 全量聚合，与列表翻页解耦） -->
       <a-card title="我的记录 / 个人统计" class="mt-4">
         <div v-if="loading" class="py-4 text-gray-500">加载中…</div>
         <a-alert v-else-if="loadError" type="error" :message="loadError" />
@@ -187,7 +187,7 @@
           </div>
 
           <p class="mt-3 text-xs text-gray-400">
-            分页与过滤基于 GET /record/api/records/my；通过率口径 = PASSED(2) + RE_PASSED(5)。
+            分页与过滤基于 GET /record/api/records/my；统计卡与近 30 天里程来自 GET /record/api/records/my/stats（服务端全量聚合，翻页不影响统计）。通过率口径 = PASSED(2) + RE_PASSED(5)。
           </p>
         </template>
       </a-card>
@@ -240,10 +240,12 @@ import {
   deleteGoal,
   getMyGoals,
   getMyRecords,
+  getMyStats,
   getMyStreak,
   upsertGoal,
   type GoalDTO,
   type MyRecordsFilterParams,
+  type MyStatsDTO,
   type MyStreakDTO,
   type RecordSummaryDTO,
 } from '@/api/client'
@@ -263,6 +265,12 @@ const authed = ref(hasAccessToken())
 const records = ref<RecordSummaryDTO[]>([])
 const loading = ref(false)
 const loadError = ref('')
+
+/**
+ * 个人核心统计（TASK-231）：来自 GET /record/api/records/my/stats 的服务端全量聚合。
+ * 统计卡与每日里程只读此对象，不再从当前页 records 做浏览器端聚合——翻页/过滤不改变统计口径。
+ */
+const stats = ref<MyStatsDTO | null>(null)
 
 /** 连续打卡（TASK-220）：current 当前连续天数 / longest 历史最长；未加载或失败显示 — */
 const streak = ref<MyStreakDTO | null>(null)
@@ -355,10 +363,10 @@ const recentColumns = [
   { title: '操作', key: 'actions' },
 ]
 
-/** 通过口径：isPassed 语义 = PASSED(2) 或 RE_PASSED(5)（终端态可入榜/可赞） */
-function isPassed(status: number): boolean {
-  return status === 2 || status === 5
-}
+/**
+ * 通过口径：PASSED(2) / RE_PASSED(5)（终端态可入榜/可赞）——TASK-231 起由服务端
+ * /my/stats 统一裁决（passCount/passRate），前端不再自行判定。
+ */
 
 /** 分页与过滤状态（TASK-224） */
 const page = ref(1)
@@ -386,41 +394,33 @@ function onPageChange(p: number) {
   loadData()
 }
 
-const totalCount = computed(() => total.value)
+/** 统计卡（TASK-231）：直接读服务端全量聚合，未加载/失败时显示零值兜底 */
+const totalCount = computed(() => stats.value?.totalCount ?? 0)
 
-const totalDistance = computed(() =>
-  records.value.reduce((sum, r) => sum + (Number(r.distance) || 0), 0).toFixed(2),
-)
+const totalDistance = computed(() => Number(stats.value?.totalDistance ?? 0).toFixed(2))
 
-const passCount = computed(() => records.value.filter((r) => isPassed(r.status)).length)
+const passRate = computed(() => stats.value?.passRate ?? '0%')
 
-const passRate = computed(() => {
-  const n = records.value.length
-  if (n === 0) return '0%'
-  return `${((passCount.value / n) * 100).toFixed(1)}%`
-})
-
-/** 近 30 天每日里程条（纯 CSS 高度比例，无图表依赖）；key 取 createdAt 日期部分 YYYY-MM-DD */
+/**
+ * 近 30 天每日里程条（纯 CSS 高度比例，无图表依赖）：
+ * 数据源为 /my/stats 的 dailyDistances（服务端按自然日聚合，与列表分页无关）；
+ * 前端只做「日期窗口对齐 + 最大值为 100% 的高度归一化」，不再遍历 records 聚合。
+ */
 const dailyBars = computed(() => {
+  const byDay = stats.value?.dailyDistances || {}
   const days: { iso: string; label: string; distance: number; pct: number }[] = []
   const now = new Date()
   const today = new Date(now.getFullYear(), now.getMonth(), now.getDate())
   for (let i = 29; i >= 0; i--) {
     const d = new Date(today)
     d.setDate(today.getDate() - i)
-    days.push({ iso: iso(d), label: `${d.getMonth() + 1}/${d.getDate()}`, distance: 0, pct: 0 })
-  }
-  const byDay = new Map<string, number>()
-  for (const r of records.value) {
-    if (typeof r.createdAt !== 'string') continue
-    const k = r.createdAt.slice(0, 10)
-    if (!byDay.has(k)) byDay.set(k, 0)
-    byDay.set(k, (byDay.get(k) as number) + (Number(r.distance) || 0))
+    const key = iso(d)
+    const raw = Number(byDay[key])
+    const distance = Number.isFinite(raw) ? +raw.toFixed(2) : 0
+    days.push({ iso: key, label: `${d.getMonth() + 1}/${d.getDate()}`, distance, pct: 0 })
   }
   let max = 0
   for (const d of days) {
-    const v = byDay.get(d.iso) || 0
-    d.distance = +v.toFixed(2)
     if (d.distance > max) max = d.distance
   }
   for (const d of days) d.pct = max > 0 ? Math.round((d.distance / max) * 100) : 0
@@ -474,9 +474,17 @@ async function loadData() {
     loadError.value = e.code ? `[${e.code}] ${e.message}` : (e.message || '加载个人记录失败')
     records.value = []
     total.value = 0
-  } finally {
-    loading.value = false
   }
+
+  // 个人核心统计（TASK-231）：独立拉取服务端全量聚合端点，与列表分页/过滤彻底解耦；
+  // 失败时统计卡回退零值兜底，不影响列表与其余区块渲染
+  try {
+    const statsRes = await getMyStats()
+    stats.value = statsRes.data || null
+  } catch {
+    stats.value = null
+  }
+  loading.value = false
 
   // 连续打卡（TASK-220）：独立拉取，失败不拖垮统计卡区（卡内显示 —）
   try {

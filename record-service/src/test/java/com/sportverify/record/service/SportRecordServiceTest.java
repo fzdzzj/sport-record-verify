@@ -2,6 +2,7 @@ package com.sportverify.record.service;
 
 import com.sportverify.api.leaderboard.LeaderboardApi;
 import com.sportverify.api.record.RecordStatus;
+import com.sportverify.api.record.dto.MyStatsDTO;
 import com.sportverify.api.record.dto.MyStreakDTO;
 import com.sportverify.api.record.dto.RecordSubmitDTO;
 import com.sportverify.api.record.dto.RecordSubmitResultDTO;
@@ -1541,6 +1542,93 @@ class SportRecordServiceTest {
         assertEquals(new java.util.HashSet<>(java.util.Arrays.asList(200L,
                         RecordStatus.PASSED.getCode(), RecordStatus.RE_PASSED.getCode())),
                 paramValues, "status 过滤参数值必须恰为 {PASSED, RE_PASSED}，不得混入其他状态");
+    }
+
+    // ==================== 个人核心统计 my/stats（TASK-231） ====================
+
+    /** 统计聚合用行（归属人固定 200；distance/status/createdAt 为统计口径三要素） */
+    private SportRecord statsRow(Integer status, String distance, LocalDateTime createdAt) {
+        SportRecord row = new SportRecord();
+        row.setUserId(200L);
+        row.setStatus(status);
+        row.setDistance(distance == null ? null : new BigDecimal(distance));
+        row.setCreatedAt(createdAt);
+        return row;
+    }
+
+    /**
+     * R1/R2 判别式：myStats 单查全量投影（distance, status, createdAt）——
+     * (a) 归属过滤 user_id=200 且<b>不带状态过滤</b>（统计覆盖全部状态，与列表过滤解耦）；
+     * (b) 投影列恰为三列，不 select *；
+     * (c) totalCount/totalDistance/passCount/passRate 为全量口径（含窗口外记录）；
+     * (d) dailyDistances 恒 30 键且升序，窗口内按自然日汇总（同日多条累加）、无记录日补 0，
+     *     窗口外记录只计入总量。
+     */
+    @Test
+    @SuppressWarnings("unchecked")
+    void myStats_aggregatesAllRecordsAndDailyWindow() {
+        TableInfoHelper.initTableInfo(
+                new MapperBuilderAssistant(new MybatisConfiguration(), ""), SportRecord.class);
+        LocalDate today = LocalDate.now();
+        SportRecord passedToday = statsRow(RecordStatus.PASSED.getCode(), "3.5", today.atTime(7, 0));
+        SportRecord rePassedToday = statsRow(RecordStatus.RE_PASSED.getCode(), "1.5", today.atTime(20, 0));
+        SportRecord rejectedToday = statsRow(RecordStatus.REJECTED.getCode(), "2.0", today.atTime(9, 0));
+        SportRecord passedYesterday = statsRow(RecordStatus.PASSED.getCode(), "4.0", today.minusDays(1).atTime(8, 0));
+        SportRecord windowEdge = statsRow(RecordStatus.PASSED.getCode(), "5.0", today.minusDays(29).atTime(8, 0));
+        SportRecord outOfWindow = statsRow(RecordStatus.PASSED.getCode(), "6.0", today.minusDays(30).atTime(8, 0));
+        SportRecord nullDistance = statsRow(RecordStatus.VERIFYING.getCode(), null, today.atTime(10, 0));
+        when(sportRecordMapper.selectList(any()))
+                .thenReturn(List.of(passedToday, rePassedToday, rejectedToday, passedYesterday,
+                        windowEdge, outOfWindow, nullDistance));
+
+        MyStatsDTO out = service.myStats(200L);
+
+        assertEquals(7L, out.getTotalCount(), "totalCount 覆盖全量记录（含窗口外）");
+        assertEquals(new BigDecimal("22.00"), out.getTotalDistance(), "3.5+1.5+2+4+5+6+null(0)");
+        assertEquals(5L, out.getPassCount(), "仅 PASSED×4 + RE_PASSED×1 计入通过");
+        assertEquals("71.4%", out.getPassRate(), "5/7 = 71.428… → 一位小数 71.4%");
+
+        java.util.Map<String, BigDecimal> daily = out.getDailyDistances();
+        assertEquals(30, daily.size(), "近 30 天窗口恒 30 键");
+        assertEquals(today.minusDays(29).toString(), daily.keySet().iterator().next(), "键按日期升序");
+        assertEquals(today.toString(), new java.util.ArrayList<>(daily.keySet()).get(29), "窗口右端为今日");
+        assertEquals(new BigDecimal("7.00"), daily.get(today.toString()),
+                "同日多条累加：3.5+1.5+2.0=7.00（日粒度覆盖全部状态，含 REJECTED）");
+        assertEquals(new BigDecimal("4.00"), daily.get(today.minusDays(1).toString()));
+        assertEquals(new BigDecimal("5.00"), daily.get(today.minusDays(29).toString()));
+        assertEquals(new BigDecimal("0.00"), daily.get(today.minusDays(2).toString()), "无记录日补 0");
+        assertNull(daily.get(today.minusDays(30).toString()), "窗口外记录不进日粒度（仍计入总量）");
+
+        ArgumentCaptor<LambdaQueryWrapper> wrapper = ArgumentCaptor.forClass(LambdaQueryWrapper.class);
+        verify(sportRecordMapper).selectList(wrapper.capture());
+        String segment = wrapper.getValue().getSqlSegment();
+        assertTrue(segment.contains("user_id ="), "归属即身份：查询必须带 user_id 过滤：" + segment);
+        assertFalse(segment.contains("status"), "统计必须覆盖全部状态，不得带状态过滤：" + segment);
+        assertEquals(java.util.Set.of(200L),
+                new java.util.HashSet<>(wrapper.getValue().getParamNameValuePairs().values()),
+                "唯一查询条件必须是归属人 user_id=200");
+        String select = wrapper.getValue().getSqlSelect();
+        assertTrue(select.contains("distance") && select.contains("status"),
+                "投影必须含 distance/status/createdAt，不得 select *：" + select);
+        assertTrue(select.toLowerCase().contains("createdat") || select.toLowerCase().contains("created_at"),
+                "投影必须含 createdAt：" + select);
+    }
+
+    /** R2 空态：无记录 → totalCount/passCount 为 0、总里程 0.00、passRate="0%"、日粒度仍 30 键全 0 */
+    @Test
+    void myStats_emptyReturnsZeroStatsWithFullDailyWindow() {
+        when(sportRecordMapper.selectList(any())).thenReturn(List.of());
+
+        MyStatsDTO out = service.myStats(200L);
+
+        assertEquals(0L, out.getTotalCount());
+        assertEquals(new BigDecimal("0.00"), out.getTotalDistance());
+        assertEquals(0L, out.getPassCount());
+        assertEquals("0%", out.getPassRate(), "无记录时通过率为 0%（非 0.0%）");
+        assertEquals(30, out.getDailyDistances().size());
+        assertTrue(out.getDailyDistances().values().stream()
+                        .allMatch(v -> v.compareTo(BigDecimal.ZERO) == 0),
+                "无记录时窗口内每日里程全为 0.00");
     }
 
     // ==================== 记录删除级联与缓存清理（TASK-223） ====================

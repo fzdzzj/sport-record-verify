@@ -1,6 +1,7 @@
 package com.sportverify.record.controller;
 
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
+import com.sportverify.api.record.dto.MyStatsDTO;
 import com.sportverify.api.record.dto.MyStreakDTO;
 import com.sportverify.api.record.dto.RecordSubmitDTO;
 import com.sportverify.api.record.dto.RecordSubmitResultDTO;
@@ -412,6 +413,61 @@ class RecordControllerTest {
         assertEquals(0, out.getCode());
         assertEquals(dto, out.getData());
         verify(sportRecordService).myStreak(88L);
+    }
+
+    // ==================== 个人核心统计 my/stats（TASK-231） ====================
+
+    /** R1 绿（auth 开）：X-User-Id 解析为归属人 → Result SUCCESS 携 service 统计 DTO（沿 /my 先例） */
+    @Test
+    void myStats_authEnabled_resolvesOwnerFromHeader() {
+        ReflectionTestUtils.setField(controller, "authEnabled", true);
+        when(request.getHeader("X-User-Id")).thenReturn("200");
+        MyStatsDTO dto = new MyStatsDTO();
+        dto.setTotalCount(7L);
+        dto.setPassRate("71.4%");
+        when(sportRecordService.myStats(200L)).thenReturn(dto);
+
+        Result<MyStatsDTO> out = controller.myStats(null, request);
+
+        assertEquals(0, out.getCode());
+        assertEquals(7L, out.getData().getTotalCount());
+        assertEquals("71.4%", out.getData().getPassRate());
+        verify(sportRecordService).myStats(200L);
+    }
+
+    /** R1 红（auth 开，缺网关头）→ 1001 缺少 X-User-Id（沿 /my 缺头先例） */
+    @Test
+    void myStats_authEnabled_missingHeader_throwsUnauthorized() {
+        ReflectionTestUtils.setField(controller, "authEnabled", true);
+        when(request.getHeader("X-User-Id")).thenReturn("  ");
+
+        BizException e = assertThrows(BizException.class, () -> controller.myStats(null, request));
+
+        assertEquals(ResultCode.UNAUTHORIZED.getCode(), e.getCode());
+        verify(sportRecordService, never()).myStats(any());
+    }
+
+    /** R1 红（auth 关，缺显式 userId）→ 400 非法参数（沿 /my 先例） */
+    @Test
+    void myStats_authDisabled_missingUserId_throwsIllegalArgument() {
+        IllegalArgumentException e = assertThrows(IllegalArgumentException.class,
+                () -> controller.myStats(null, request));
+
+        assertEquals("缺少必须的 userId 查询参数", e.getMessage());
+        verify(sportRecordService, never()).myStats(any());
+    }
+
+    /** R1 绿（auth 关，显式 userId）→ 以此 userId 透传服务层 */
+    @Test
+    void myStats_authDisabled_explicitUserId_delegates() {
+        MyStatsDTO dto = new MyStatsDTO();
+        when(sportRecordService.myStats(88L)).thenReturn(dto);
+
+        Result<MyStatsDTO> out = controller.myStats(88L, request);
+
+        assertEquals(0, out.getCode());
+        assertEquals(dto, out.getData());
+        verify(sportRecordService).myStats(88L);
     }
 
     // ==================== 记录删除（TASK-223） ====================

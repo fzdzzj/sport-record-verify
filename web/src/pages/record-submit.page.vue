@@ -53,7 +53,7 @@
       <a-alert v-if="submitError" type="error" :message="submitError" class="mt-4" />
     </a-card>
 
-    <a-card title="本会话记录 (sessionStorage，仅本次浏览器会话；刷新/换浏览器丢失，无服务端「我的记录」列表)" class="mb-4">
+    <a-card title="本会话记录 (sessionStorage 快捷入口；服务端持久化列表见首页「我的记录」)" class="mb-4">
       <div v-if="sessionRecords.length === 0" class="text-gray-500">暂无。提交后点击「保存到本会话」。</div>
       <a-list v-else :data-source="sessionRecords" size="small">
         <template #renderItem="{ item }">
@@ -65,7 +65,7 @@
           </a-list-item>
         </template>
       </a-list>
-      <div class="mt-2 text-xs text-gray-500">说明：无后端列表 API，本变更诚实使用 sessionStorage 记本会话提交的 id。详见 README。</div>
+      <div class="mt-2 text-xs text-gray-500">说明：本卡片仅是本会话内的提交快捷入口（sessionStorage）。服务端已提供持久化「我的记录」列表与个人统计：GET /record/api/records/my（过滤+分页，TASK-211/224）与 GET /record/api/records/my/stats（TASK-231），入口见首页「我的记录 / 个人统计」。</div>
     </a-card>
 
     <a-card title="我的 userId (从轨迹点提取)" v-if="myUserId">

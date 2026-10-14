@@ -271,6 +271,23 @@ export async function getMyStreak(): Promise<Result<MyStreakDTO>> {
   return api.get('/record/api/records/my/streak')
 }
 
+// ===== My stats (TASK-231 add-my-stats-endpoint) =====
+// 服务端全量聚合口径（与 /my 列表分页彻底解耦）：totalCount/totalDistance/passCount 覆盖全部记录；
+// dailyDistances 为近 30 天每日里程（key=YYYY-MM-DD 升序，无记录日补 0，恒 30 键）；无记录时 passRate='0%'。
+export interface MyStatsDTO {
+  totalCount: number
+  totalDistance: number
+  passCount: number
+  /** 服务端格式化通过率（如 '75.0%'；无记录为 '0%'） */
+  passRate: string
+  dailyDistances: Record<string, number>
+}
+
+/** 个人核心统计（GET /record/api/records/my/stats，TASK-231）；auth 会话下 userId 由网关注入，前端不传。 */
+export async function getMyStats(): Promise<Result<MyStatsDTO>> {
+  return api.get('/record/api/records/my/stats')
+}
+
 // ===== Sport goals (TASK-225 add-sport-goal) =====
 export interface GoalDTO {
   id: number
