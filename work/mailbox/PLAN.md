@@ -2732,3 +2732,18 @@ run `35802403723`（head `eba0108`，2026-09-23 00:31 UTC）——**web/build �
 | 未覆盖/跳过 | --mode=online、CI 全流程（未 push）；user-service/api 静态违规修复（红线：仅登记）；record-submit 页「无服务端我的记录列表」旧口径文本订正（web src 白名单外，登记候选）；RecordControllerTest 留痕-1 清偿为中途提交既有事实的核验登记，非本课题新动作 |
 | 偏差 | D1 留痕-1 预注册项实况偏差（已由 TASK-224 中途清偿，零 diff 登记清偿事实）；D2 静态台账为通用规则集基线违规、非声明模块；D3 record-submit 页旧口径文本白名单外未改；D4 临时件落 gitignored .trae/tmp；D5 C-02 自指哈希沿先例。明细见 handoff.md §8 |
 | 状态 | TASK-226 本地闭环：LIGHT 清理批落地（留痕-1 清偿核验登记 + README 订正 7 处 + 静态偏差台账化 + BACKLOG 刷新，零功能变更、offline record 250 逐位不变），指导亲核后随 TASK-227 批次推送 |
+
+## 验收记录：TASK-228（web 启动级路由缺陷修复，P0 发现，MEDIUM 小档，2026-10-14）
+
+| 项 | 内容 |
+| --- | --- |
+| 开工基线 | 派发笔 `4596df2`（TASK-228 任务书注册笔；其下 `69602b0` 为 TASK-227 停止补记笔、`e1610de` 为停止上报笔，勿动）；工作树干净；本地领先 origin 7 笔随批推送；token 29 项基线持平 |
+| C-01 实施笔 | 本课题 C-01 `fix(web)` 笔，恰 2 文件 = `web/src/main.ts` + `web/src/vue-router-auto-shim.d.ts`（`createRouter` 显式注入 `vue-router/auto-routes` 的 `routes`；垫片删除掩盖性 `Omit<RouterOptions,'routes'>` 声明、补 `auto-routes` 值导出类型），哈希以 `git log` 为准 |
+| C-02 台账笔 | 本笔 `docs(mailbox)`，恰 4 文件（`spec/changes/fix-web-router-boot/tasks.json` 勾选 / `work/mailbox/tasks/TASK-228/spec.md` §7 回填 / `work/mailbox/tasks/TASK-228/handoff.md` 新建 / `work/mailbox/PLAN.md` 纯追加）；C-02 自指哈希沿先例 |
+| 根因（独立复核） | `unplugin-vue-router@0.19.2` 的 `package.json#exports` 逐键列举无 `./auto`、无 `./auto-routes`，产物只提供 `MODULE_ROUTES_PATH = "vue-router/auto-routes"`；`vue-router@4.6.4` 的 `./auto` 落到 36 字节纯类型占位（单行注释 `// augmented by unplugin-vue-router`）。故 `main.ts` 以 `routes === undefined` 进入 `createRouterMatcher(routes, ...)`，在 `routes.forEach` 抛 `Cannot read properties of undefined (reading 'forEach')`。预存在性：`git diff 11364af -- web/src vite.config.ts tsconfig.app.json` 为空 |
+| 判别式红绿 | R1 绿（修复前 dev 真 chromium 复现红：`#app` 子节点 0 / pageerror 2 条均为 `forEach` 抛错 / `MOUNTED=false`；修复后 dev 与 preview 双形态 PASS：守卫改写登录页 / `#app` 子节点 1 / input 2 / button 11 / pageerror 0）；R2 绿（`pnpm test` 4 文件 31 测 rc=0、`pnpm type-check` rc=0、`pnpm build` 3317 modules rc=0、`typed-router.d.ts` 零 diff rc=0）；R3 绿（恰 2 + 4 文件全等，零扩散）；R4 绿（token 两点持平 / 词面门改动集 ZERO_HIT + 探针正控 HIT / 契约双态 rc=0 / `git diff --check` 双查 rc=0 / 行尾保基线） |
+| 本机门禁 | web 四件套全绿（test 31 / type-check / build 3317 modules / typed-router 零 diff）；双形态挂载证据三份（修复前 dev 红 + 修复后 dev 绿 + preview 绿）；契约门双态 rc=0（在途 `--open TASK-228 --baseline=4596df2` + 收口无参）；token 29 项两点持平；词面门改动集 CI-exact ZERO_HIT rc=1 + 探针阳性对照 HIT rc=0；`git diff --check` 工作树与暂存区 rc=0；行尾核对（两 .ts 保持 CRLF 形态 / blob LF / 末尾 0x0A / 无 BOM，`git diff` 工作树 vs 索引为空）；零依赖零配置变更 |
+| 是否到达外部门槛 | **未达到**：两笔均未 push、未建 PR、无 CI run；MEDIUM 小档待指导侧亲核后随批推送 |
+| 未覆盖/跳过 | CI 全流程；`--mode=online`；真实浏览器功能交互面 12 用例（由同批 TASK-227 E2E 承载）；多浏览器/移动视口/可访问性；dev HMR 路由热更新；零 Maven（web-only 政策档，后端零改动） |
+| 偏差 | D1 宿主 `%TEMP%` 下 esbuild 清理临时文件被拒致 `pnpm build` 偶发 rc=1（环境面，TMP/TEMP 重定向 gitignored `.trae/tmp/esbtmp` 后 rc=0）；D2 词面门探针正控形态订正（`git grep` 不搜索未跟踪文件，TASK-226 旧形态为假阴性）；D3 挂载探针消费上一轮 TASK-227 尝试遗留的本机 Playwright，探针不入库；D4 临时件落 gitignored `.trae/tmp`；D5 C-02 自指哈希沿先例。明细见 `handoff.md §8` |
+| 状态 | TASK-228 本地闭环：启动级路由缺陷已定位并修复（恰 2 文件、零依赖零配置变更），双形态真 chromium 挂载通过、web 四件套全绿、门禁全过；指导侧亲核后与同批 TASK-227 E2E 一批推送 |
