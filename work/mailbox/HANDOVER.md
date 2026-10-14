@@ -8,23 +8,24 @@
 
 ## 1. 当前代码基线与外部状态
 
-- **当前分支与 HEAD**：`main` 分支，HEAD 对应最新封盘提交（可通过 `git log -1 --oneline` 确认）。
+- **当前分支与 HEAD**：`main` 分支，实施提交为 `4bae3fe`，对应台账封盘提交可通过 `git log -1 --oneline` 确认。
 - **外部 CI 门槛状态**：GitHub Actions run `38586443704`（`web` ✓31s / `build` ✓11m46s 全绿）。
-- **工作树状态**：TASK-229 本地闭环，在途文件已完成台账归档。
-- **当前在途任务数**：`0` 个在途（历史任务至 TASK-229 全部已闭环收口）。
+- **工作树状态**：TASK-230 本地闭环，在途文件已完成台账归档。
+- **当前在途任务数**：`0` 个在途（历史任务至 TASK-230 全部已闭环收口）。
 
 ---
 
 ## 2. 上一会话交付成果
 
 - **刚闭环事项**：
-  1. 完成了全仓 Markdown 资产治理与主子 Agent 协作机制重构；
-  2. `work/mailbox/PLAN.md` 完成瘦身并就地滚动维护，历史记录完整归档至 `work/mailbox/archive/PLAN-history-001-210.md`；
-  3. `docs/internal/AGENTS.md` 确立唯一长效指导标准；
-  4. 落地 **TASK-229**（web 交互面修整批，MEDIUM 档）：
-     - 精确化 Vite proxy 前缀并增加 `text/html` bypass，解决直接在地址栏直载 `/record-submit`、`/record-detail`、`/admin*` 等深链时误代理到网关的缺陷；
-     - 将 `record-submit.page.vue` 的 `a-alert` 详情内容包覆于 `<template #description>`，解决 antdv 4.2.6 下详情未落屏问题；
-     - 本地全绿（type-check / 31 test / build 3317 modules / typed-router 零 diff / 契约无参 rc=0）。
+  1. 落地 **TASK-230**（删除记录联动回撤榜单里程贡献，F5 候选，TASK-223 D1 挂账，MEDIUM 档）：
+     - 契约打通：`LeaderboardApi` 新增 `POST /internal/leaderboard/records/{recordId}/rollback` 内部端点，写路径 fallback 显式抛 4008 拒绝静默；
+     - 服务端复用：`InternalLeaderboardController` 承接既有 `leaderboardService.rollbackOnRejected`，复用其分布式锁与乐观锁状态机；
+     - 记录端协同：`SportRecordService` 经 setter 注入 `LeaderboardApi`（构造方法维持 7 参符合 Checkstyle 家法），在 `deleteRecord` 事务 `afterCommit` 内 best-effort 调用，异常吞并留证，坚守最终一致性（ADR-0009）；
+     - 独立复核通过：offline 单元测试全绿（common 52 / record 255 / leaderboard 85 全通过），Checkstyle 0 违规，契约门无参退出码 0。
+  2. 落地 **TASK-229**（web 交互面修整批，MEDIUM 档）：
+     - 精确化 Vite proxy 前缀并增加 `text/html` bypass，解耦地址栏直载 SPA 路由被误代理问题；
+     - `record-submit.page.vue` 的 `a-alert` 详情内容包覆于 `<template #description>`，解决 antdv 4.2.6 下详情未落屏问题。
 - **历史业务批次（TASK-226 ~ TASK-228）**：
   - TASK-228：修复 Web 启动级路由缺陷（`createRouter` 显式注入 routes）；
   - TASK-227：E2E 真实浏览器验证批全绿（12 用例 route-mock 达成）；
@@ -38,14 +39,14 @@
 2. **契约校验口径**：运行 `scripts/verify/mailbox-contract.sh` 必须在 Git Bash（`D:\git\Git\bin\bash.exe`）下执行。
 3. **挂账候选事项**：
    - `H2` 生产部署姿态演练（CORS 真实注入/跨域 cookie/TLS 终止协同）；
-   - `F5` 榜单贡献回撤（TASK-223 D1 挂账）。
+   - TASK-230 遗留提示：删除已提交后若 Feign 调用或锁失败，锚点可能残留 ACTIVE，依赖 WARN 日志人工排查（后续可安排离线对账补齐）。
 
 ---
 
 ## 4. 下一个主 Agent 的唯一推荐动作
 
-- **推荐动作**：从 [`work/mailbox/BACKLOG.md`](BACKLOG.md) 取下一个优先级任务进行立项（当前候选首位为 **H2 部署姿态演练** 或 **F5 榜单贡献回撤**）。
-- **开工准备**：向用户确认是否启动 H2 或 F5 候选任务；确认后按 `docs/internal/AGENTS.md` 的「极简任务派发包模板」开工执行。
+- **推荐动作**：从 [`work/mailbox/BACKLOG.md`](BACKLOG.md) 取下一个优先级任务进行立项（当前候选首位为 **H2 部署姿态演练**）。
+- **开工准备**：向用户确认是否启动 H2 候选任务；确认后按 `docs/internal/AGENTS.md` 的「极简任务派发包模板」为子 Agent 派发。
 
 ---
 

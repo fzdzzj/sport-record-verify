@@ -2,7 +2,7 @@
 
 ## 当前进度与外部基线
 
-- **最新代码基线与分支**：`main` 分支，最新已封盘至 **TASK-229**（本地已闭环收口）。
+- **最新代码基线与分支**：`main` 分支，最新已封盘至 **TASK-230**（HEAD `4bae3fe`）。
 - **会话无缝交接看板**：新主 Agent 接手状态与下一步动作见 [HANDOVER.md](HANDOVER.md)（原地滚动更新，免建新交接文档）。
 - **CI 外部门槛状态**：GitHub Actions run `38586443704`（HEAD `aee5ca0`，web ✓31s / build ✓11m46s 全 job 绿）。包含全模块 clean verify、Checkstyle/SpotBugs/PMD 静态门、Docker 镜像构建与 Trivy 依赖扫描。
 - **历史记录归档索引**：早期 100+ 笔验收记录（TASK-001 至 TASK-210）已完整归档至 [PLAN-history-001-210.md](archive/PLAN-history-001-210.md)。各任务的原始契约与回传留存见 `work/mailbox/tasks/TASK-xxx/`。
@@ -286,4 +286,17 @@
 | 本机门禁 | `pnpm --dir web type-check` rc=0；`pnpm --dir web test` 4 套 31 测全绿 rc=0；`pnpm --dir web build` 3317 modules 产出成功 rc=0；`git diff --exit-code -- web/src/typed-router.d.ts` 零 diff rc=0；契约门无参 `scripts/verify/mailbox-contract.sh` rc=0（判据 A 两件套齐 + 判据 B 清单一致）；PowerShell 静态结构断言全通过 |
 | 是否到达外部门槛 | **未到达**：本地闭环，尚未执行 git commit / push，无新 CI run |
 | 状态 | TASK-229 本地闭环，待指导侧统一提交并推进推送 |
+
+## 验收记录：TASK-230（删除记录联动回撤榜单里程贡献，F5 候选，TASK-223 D1 挂账，MEDIUM 档，2026-10-15）
+
+| 项 | 内容 |
+| --- | --- |
+| 开工基线 | `cb865be`（main 分支，工作树干净） |
+| C-01 实施笔 | `4bae3fe` `feat(leaderboard): 删除记录联动回撤榜单里程贡献（TASK-223 D1）`（恰 6 文件，+307/−8） |
+| 任务内容与白名单 | 恰 6 个实施文件（`LeaderboardApi.java` / `LeaderboardApiFallback.java` / `InternalLeaderboardController.java` / `SportRecordService.java` / `InternalLeaderboardControllerTest.java` / `SportRecordServiceTest.java`）+ 台账 5 文件；零依赖包变动、零架构状态机破坏 |
+| 核心实现 | ① `LeaderboardApi` 新增 `POST /internal/leaderboard/records/{recordId}/rollback` 契约，fallback 显式抛 4008 拒绝静默；② `InternalLeaderboardController` 承接既有 `leaderboardService.rollbackOnRejected`，复用其分布式互斥锁与乐观锁状态机；③ `SportRecordService` 经 setter 注入 `LeaderboardApi`（构造方法维持 7 参符合 Checkstyle 8 参家法），在删除事务 `afterCommit` 回调内 best-effort 调用，异常吞并留证，坚守最终一致性（ADR-0009） |
+| 本机门禁 | offline 单测重跑 `mvn clean test -pl leaderboard-service,record-service` 全绿（common 52 / record 255 / leaderboard 85，Failures 0 Errors 0，exit code 0）；静态检查 `--static=leaderboard-service` 与 `--static=record-service` 均 0 Checkstyle 违规 BUILD SUCCESS；契约门无参 `scripts/verify/mailbox-contract.sh` rc=0 |
+| 是否到达外部门槛 | **未到达**：C-01 已提交，待指导侧统一提交台账 C-02 并推送触发 CI 外部终验 |
+| 状态 | TASK-230 本地闭环，指导主 Agent 独立复核通过，TASK-223 D1 挂账彻底清偿 |
+
 
