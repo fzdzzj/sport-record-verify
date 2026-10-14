@@ -207,3 +207,10 @@ curl -X POST http://127.0.0.1:8080/internal/auth/grant-admin \
 - 任一筛选条件变更或重置自动重置页码为第 1 页；
 - 调用扩展后的 `getMyRecords(page, size, filters)`（`web/src/api/client.ts`），后端在 `LambdaQueryWrapper` 中对 `sport_type`、`status`、`start_time` 进行 null-safe 动态组合（保留 `user_id` 归属隔离与 `created_at DESC` 排序）；
 - 零 schema 变更、零新索引、api 模块零触碰。
+
+## 周/月运动目标（TASK-225）
+
+- 首页个人统计区新增「运动目标与进度」卡片：每项目标展示周期标签（周目标/月目标）、指标与达成情况（距离 km / 次数）、完成态徽标（已达成）及进度条（`a-progress`，0..100 整数百分比封顶）；
+- 目标交互：右上角「设置目标」按钮弹出新建对话框，支持设置周期类型（周/月）、指标（距离/次数）与目标值；已创建目标支持行内「编辑」（调整目标值）与「删除」（Popconfirm 二次确认）；
+- 数据链路：调用 `getMyGoals()`（GET /record/api/records/my/goals，后端 pull-on-read 计算当前周/月窗口内 PASSED 终态记录的实时聚合进度）、`upsertGoal(payload)`（POST /record/api/records/my/goals，基于 user_id + period_type + metric 联合唯一键的 upsert 语义）、`deleteGoal(id)`（DELETE /record/api/records/my/goals/{id}，owner 归属校验）；
+- 记录删除（TASK-223）联动：删除记录后自动刷新目标进度，删除后该记录自然退出目标聚合范围。

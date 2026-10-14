@@ -57,6 +57,54 @@
             ></div>
           </div>
 
+          <!-- 运动目标与进度（TASK-225） -->
+          <div class="mb-4 p-4 rounded border border-gray-200 bg-gray-50/50">
+            <div class="flex items-center justify-between mb-3">
+              <span class="text-sm font-semibold text-gray-700">运动目标与进度</span>
+              <a-button size="small" type="primary" @click="openCreateGoalModal">设置目标</a-button>
+            </div>
+            <div v-if="goalsLoading" class="py-2 text-gray-400 text-sm">加载目标进度中…</div>
+            <div v-else-if="goals.length === 0" class="py-2 text-gray-400 text-sm">
+              暂无运动目标，点击「设置目标」制定周/月运动计划。
+            </div>
+            <div v-else class="space-y-3">
+              <div
+                v-for="g in goals"
+                :key="g.id"
+                class="bg-white p-3 rounded border border-gray-100 shadow-xs"
+              >
+                <div class="flex items-center justify-between text-sm mb-1">
+                  <div class="flex items-center gap-2">
+                    <a-tag :color="g.periodType === 0 ? 'blue' : 'purple'">
+                      {{ g.periodType === 0 ? '周目标' : '月目标' }}
+                    </a-tag>
+                    <span class="font-medium text-gray-800">
+                      {{ g.metric === 0 ? '距离' : '次数' }}：{{ g.achievedValue }} / {{ g.targetValue }} {{ g.metric === 0 ? 'km' : '次' }}
+                    </span>
+                    <a-tag v-if="g.percent >= 100" color="green">已达成</a-tag>
+                  </div>
+                  <div class="space-x-2 text-xs">
+                    <a @click="openEditGoalModal(g)">编辑</a>
+                    <a-divider type="vertical" />
+                    <a-popconfirm
+                      title="确认删除该运动目标？"
+                      ok-text="确认"
+                      cancel-text="取消"
+                      @confirm="handleDeleteGoal(g.id)"
+                    >
+                      <a class="text-red-500">删除</a>
+                    </a-popconfirm>
+                  </div>
+                </div>
+                <a-progress
+                  :percent="g.percent"
+                  :status="g.percent >= 100 ? 'success' : 'active'"
+                  size="small"
+                />
+              </div>
+            </div>
+          </div>
+
           <div class="mb-3 flex flex-wrap items-center gap-2">
             <span class="text-sm text-gray-600 font-medium">筛选：</span>
             <a-select
@@ -146,13 +194,60 @@
     </template>
 
     <a-alert type="info" class="mt-4" message="演示要求：网关+服务 app.auth.enabled=true ；前端始终带 Bearer；不伪造 userId。" />
+
+    <!-- 运动目标设置/编辑对话框（TASK-225） -->
+    <a-modal
+      v-model:open="goalModalVisible"
+      :title="editingGoalId ? '编辑运动目标' : '设置运动目标'"
+      ok-text="保存"
+      cancel-text="取消"
+      :confirm-loading="goalSaving"
+      @ok="handleSaveGoal"
+    >
+      <a-form layout="vertical" class="mt-4">
+        <a-form-item label="周期类型">
+          <a-select v-model:value="goalForm.periodType" :disabled="!!editingGoalId">
+            <a-select-option :value="0">周目标（周一至周日）</a-select-option>
+            <a-select-option :value="1">月目标（自然月）</a-select-option>
+          </a-select>
+        </a-form-item>
+        <a-form-item label="指标类型">
+          <a-select v-model:value="goalForm.metric" :disabled="!!editingGoalId">
+            <a-select-option :value="0">距离 (km)</a-select-option>
+            <a-select-option :value="1">次数 (次)</a-select-option>
+          </a-select>
+        </a-form-item>
+        <a-form-item label="目标值">
+          <a-input-number
+            v-model:value="goalForm.targetValue"
+            :min="0.1"
+            :step="goalForm.metric === 0 ? 1 : 1"
+            style="width: 100%"
+            placeholder="请输入目标值"
+          />
+        </a-form-item>
+      </a-form>
+    </a-modal>
   </div>
 </template>
+
 
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue'
 import { useRouter } from 'vue-router/auto'
-import { delRecord, getMyRecords, getMyStreak, type MyRecordsFilterParams, type MyStreakDTO, type RecordSummaryDTO } from '@/api/client'
+import {
+  delRecord,
+  deleteGoal,
+  getMyGoals,
+  getMyRecords,
+  getMyStreak,
+  upsertGoal,
+  type GoalDTO,
+  type MyRecordsFilterParams,
+  type MyStreakDTO,
+  type RecordSummaryDTO,
+} from '@/api/client'
+
 import { message } from 'ant-design-vue'
 import { hasAccessToken } from '@/utils/token'
 
@@ -176,6 +271,79 @@ const streakText = computed(() => {
   if (!streak.value) return '—'
   return `当前 ${streak.value.current} 天 · 最长 ${streak.value.longest} 天`
 })
+
+/** 运动目标（TASK-225） */
+const goals = ref<GoalDTO[]>([])
+const goalsLoading = ref(false)
+const goalModalVisible = ref(false)
+const goalSaving = ref(false)
+const editingGoalId = ref<number | null>(null)
+const goalForm = ref({
+  periodType: 0,
+  metric: 0,
+  targetValue: 10,
+})
+
+async function loadGoals() {
+  if (!authed.value) return
+  goalsLoading.value = true
+  try {
+    const res = await getMyGoals()
+    goals.value = res.data || []
+  } catch {
+    goals.value = []
+  } finally {
+    goalsLoading.value = false
+  }
+}
+
+function openCreateGoalModal() {
+  editingGoalId.value = null
+  goalForm.value = { periodType: 0, metric: 0, targetValue: 10 }
+  goalModalVisible.value = true
+}
+
+function openEditGoalModal(g: GoalDTO) {
+  editingGoalId.value = g.id
+  goalForm.value = {
+    periodType: g.periodType,
+    metric: g.metric,
+    targetValue: g.targetValue,
+  }
+  goalModalVisible.value = true
+}
+
+async function handleSaveGoal() {
+  if (goalForm.value.targetValue == null || goalForm.value.targetValue <= 0) {
+    message.warning('目标值必须大于0')
+    return
+  }
+  goalSaving.value = true
+  try {
+    await upsertGoal({
+      periodType: goalForm.value.periodType,
+      metric: goalForm.value.metric,
+      targetValue: goalForm.value.targetValue,
+    })
+    message.success('运动目标设置成功')
+    goalModalVisible.value = false
+    await loadGoals()
+  } catch (e: any) {
+    message.error(e.code ? `[${e.code}] ${e.message}` : (e.message || '保存失败'))
+  } finally {
+    goalSaving.value = false
+  }
+}
+
+async function handleDeleteGoal(id: number) {
+  try {
+    await deleteGoal(id)
+    message.success('运动目标已删除')
+    await loadGoals()
+  } catch (e: any) {
+    message.error(e.code ? `[${e.code}] ${e.message}` : (e.message || '删除失败'))
+  }
+}
 
 const recentColumns = [
   { title: 'id', dataIndex: 'id', key: 'id' },
@@ -317,6 +485,9 @@ async function loadData() {
   } catch {
     streak.value = null
   }
+
+  // 运动目标（TASK-225）：独立拉取
+  await loadGoals()
 }
 
 /** 删除记录并刷新列表与统计（TASK-223） */

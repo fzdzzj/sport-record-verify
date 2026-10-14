@@ -2,7 +2,8 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { AxiosError, type AxiosResponse } from 'axios'
 import api from '@/api/client'
 import { getAccessToken, setAuthFailHandler, setTokens } from '@/utils/token'
-import { delRecord, getFeed, getMyRecords } from '@/api/client'
+import { deleteGoal, delRecord, getFeed, getMyGoals, getMyRecords, upsertGoal } from '@/api/client'
+
 
 // adapter 注入范式：替换 api.defaults.adapter 为 vi.fn 模拟传输层，
 // 请求/响应两段拦截器链全真实执行（不 mock axios 自身）。
@@ -268,5 +269,76 @@ describe('client.ts getMyRecords（TASK-224）', () => {
       startDate: '2026-10-01',
       endDate: '2026-10-05',
     })
+  })
+})
+
+// ===== 运动目标（TASK-225 add-sport-goal） =====
+describe('client.ts 运动目标三方法（TASK-225）', () => {
+  it('R1 getMyGoals hits GET /record/api/records/my/goals', async () => {
+    const goalsBody = {
+      code: 0,
+      message: 'ok',
+      data: [
+        {
+          id: 1,
+          userId: 100,
+          periodType: 0,
+          metric: 0,
+          targetValue: 20.0,
+          achievedValue: 14.0,
+          percent: 70,
+        },
+      ],
+    }
+    adapter.mockImplementationOnce((config: unknown) => Promise.resolve(ok(config, goalsBody)))
+
+    const res = await getMyGoals()
+
+    expect(res.data).toHaveLength(1)
+    expect(res.data[0].percent).toBe(70)
+    expect(adapter).toHaveBeenCalledTimes(1)
+    const call = adapter.mock.calls[0][0] as { url: string; method?: string }
+    expect(call.url).toBe('/record/api/records/my/goals')
+    expect(call.method?.toLowerCase() || 'get').toBe('get')
+  })
+
+  it('R2 upsertGoal hits POST /record/api/records/my/goals with payload', async () => {
+    const goalBody = {
+      code: 0,
+      message: 'ok',
+      data: {
+        id: 2,
+        userId: 100,
+        periodType: 1,
+        metric: 1,
+        targetValue: 10,
+        achievedValue: 0,
+        percent: 0,
+      },
+    }
+    adapter.mockImplementationOnce((config: unknown) => Promise.resolve(ok(config, goalBody)))
+
+    const payload = { periodType: 1, metric: 1, targetValue: 10 }
+    const res = await upsertGoal(payload)
+
+    expect(res.data.id).toBe(2)
+    expect(adapter).toHaveBeenCalledTimes(1)
+    const call = adapter.mock.calls[0][0] as { url: string; method?: string; data?: string }
+    expect(call.url).toBe('/record/api/records/my/goals')
+    expect(call.method?.toLowerCase()).toBe('post')
+    expect(JSON.parse(call.data || '{}')).toEqual(payload)
+  })
+
+  it('R3 deleteGoal hits DELETE /record/api/records/my/goals/{id}', async () => {
+    const okBody = { code: 0, message: 'ok', data: null }
+    adapter.mockImplementationOnce((config: unknown) => Promise.resolve(ok(config, okBody)))
+
+    const res = await deleteGoal(456)
+
+    expect(res).toEqual(okBody)
+    expect(adapter).toHaveBeenCalledTimes(1)
+    const call = adapter.mock.calls[0][0] as { url: string; method?: string }
+    expect(call.url).toBe('/record/api/records/my/goals/456')
+    expect(call.method?.toLowerCase()).toBe('delete')
   })
 })

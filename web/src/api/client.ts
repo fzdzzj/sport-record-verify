@@ -271,6 +271,40 @@ export async function getMyStreak(): Promise<Result<MyStreakDTO>> {
   return api.get('/record/api/records/my/streak')
 }
 
+// ===== Sport goals (TASK-225 add-sport-goal) =====
+export interface GoalDTO {
+  id: number
+  userId: number
+  periodType: number // 0=周, 1=月
+  metric: number     // 0=距离(km), 1=次数
+  targetValue: number
+  achievedValue: number
+  percent: number    // 0..100
+  createdAt?: string
+}
+
+export interface GoalUpsertPayload {
+  periodType: number
+  metric: number
+  targetValue: number
+}
+
+/** 我的运动目标与进度列表（GET /record/api/records/my/goals，TASK-225）；auth 会话下 userId 由网关注入。 */
+export async function getMyGoals(): Promise<Result<GoalDTO[]>> {
+  return api.get('/record/api/records/my/goals')
+}
+
+/** 创建或更新运动目标（POST /record/api/records/my/goals，TASK-225）；upsert 语义。 */
+export async function upsertGoal(payload: GoalUpsertPayload): Promise<Result<GoalDTO>> {
+  return api.post('/record/api/records/my/goals', payload)
+}
+
+/** 删除运动目标（DELETE /record/api/records/my/goals/{id}，TASK-225）。 */
+export async function deleteGoal(id: number | string): Promise<Result<void>> {
+  return api.delete(`/record/api/records/my/goals/${id}`)
+}
+
+
 // Friends
 export async function createFriendRequest(targetUserId: number): Promise<Result<FriendRequestDTO>> {
   return api.post('/user/api/friends/requests', { targetUserId })

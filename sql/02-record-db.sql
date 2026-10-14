@@ -79,3 +79,16 @@ CREATE TABLE IF NOT EXISTS `leaderboard_daily_summary` (
     KEY `idx_date_score` (`stat_date`, `total_distance` DESC)
 ) ENGINE = InnoDB
   DEFAULT CHARSET = utf8mb4 COMMENT ='榜单每日快照表（每轮结算幂等 upsert）';
+
+-- 运动目标表（周/月运动目标，TASK-225）
+CREATE TABLE IF NOT EXISTS `sport_goal` (
+    `id`           BIGINT         NOT NULL AUTO_INCREMENT COMMENT '目标ID',
+    `user_id`      BIGINT         NOT NULL COMMENT '所属用户',
+    `period_type`  TINYINT        NOT NULL COMMENT '周期类型：0 周，1 月',
+    `metric`       TINYINT        NOT NULL COMMENT '指标类型：0 距离(km)，1 次数',
+    `target_value` DECIMAL(10, 2) NOT NULL COMMENT '目标值',
+    `created_at`   DATETIME       DEFAULT NULL COMMENT '创建时间',
+    PRIMARY KEY (`id`),
+    UNIQUE KEY `uk_user_period_metric` (`user_id`, `period_type`, `metric`)
+) ENGINE = InnoDB
+  DEFAULT CHARSET = utf8mb4 COMMENT ='运动目标表';
