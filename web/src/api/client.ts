@@ -215,9 +215,33 @@ export interface RecordSummaryDTO {
   createdAt?: string
 }
 
-/** 我的记录分页（GET /record/api/records/my）；auth 会话下 userId 由网关注入，前端不传。 */
-export async function getMyRecords(page = 1, size = 20): Promise<Result<PageResult<RecordSummaryDTO>>> {
-  return api.get('/record/api/records/my', { params: { page, size } })
+export interface MyRecordsFilterParams {
+  sportType?: number
+  status?: number
+  startDate?: string
+  endDate?: string
+}
+
+/** 我的记录分页（GET /record/api/records/my）；auth 会话下 userId 由网关注入，前端不传。支持可选过滤参数（TASK-224）。 */
+export async function getMyRecords(
+  page = 1,
+  size = 20,
+  filters?: MyRecordsFilterParams,
+): Promise<Result<PageResult<RecordSummaryDTO>>> {
+  const params: Record<string, unknown> = { page, size }
+  if (filters?.sportType != null) {
+    params.sportType = filters.sportType
+  }
+  if (filters?.status != null) {
+    params.status = filters.status
+  }
+  if (filters?.startDate) {
+    params.startDate = filters.startDate
+  }
+  if (filters?.endDate) {
+    params.endDate = filters.endDate
+  }
+  return api.get('/record/api/records/my', { params })
 }
 
 // ===== Friend activity feed (TASK-222 add-friend-feed) =====

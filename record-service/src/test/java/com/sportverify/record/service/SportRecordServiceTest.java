@@ -40,6 +40,7 @@ import org.springframework.transaction.support.TransactionSynchronizationManager
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.time.LocalTime;
 import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -1071,6 +1072,103 @@ class SportRecordServiceTest {
 
         assertEquals(0L, out.getTotal());
         assertEquals(0, out.getRecords().size());
+    }
+
+    /** TASK-224 R2：全量过滤参数（sportType/status/startDate/endDate）组合生效，wrapper 条件与参数对齐 */
+    @Test
+    @SuppressWarnings("unchecked")
+    void pageMyRecords_withAllFilters_buildsCorrectWrapper() {
+        TableInfoHelper.initTableInfo(
+                new MapperBuilderAssistant(new MybatisConfiguration(), ""), SportRecord.class);
+        Page<SportRecord> mpPage = new Page<>(1, 20, 0);
+        when(sportRecordMapper.selectPage(any(Page.class), any())).thenReturn(mpPage);
+
+        LocalDate start = LocalDate.of(2026, 10, 1);
+        LocalDate end = LocalDate.of(2026, 10, 5);
+        Page<RecordSummaryDTO> out = service.pageMyRecords(200L, 1, 20, 1, 2, start, end);
+
+        assertEquals(0, out.getRecords().size());
+        ArgumentCaptor<LambdaQueryWrapper> wrapper = ArgumentCaptor.forClass(LambdaQueryWrapper.class);
+        verify(sportRecordMapper).selectPage(any(Page.class), wrapper.capture());
+        String sql = wrapper.getValue().getSqlSegment();
+        assertTrue(sql.contains("user_id ="), "必须含 user_id 过滤");
+        assertTrue(sql.contains("sport_type ="), "必须含 sport_type 过滤");
+        assertTrue(sql.contains("status ="), "必须含 status 过滤");
+        assertTrue(sql.contains("start_time >="), "必须含 start_time >= 过滤");
+        assertTrue(sql.contains("start_time <="), "必须含 start_time <= 过滤");
+        assertTrue(sql.contains("ORDER BY created_at DESC"), "必须保持 createdAt 倒序");
+        assertTrue(wrapper.getValue().getParamNameValuePairs().containsValue(200L));
+        assertTrue(wrapper.getValue().getParamNameValuePairs().containsValue(1));
+        assertTrue(wrapper.getValue().getParamNameValuePairs().containsValue(2));
+        assertTrue(wrapper.getValue().getParamNameValuePairs().containsValue(start.atStartOfDay()));
+        assertTrue(wrapper.getValue().getParamNameValuePairs().containsValue(end.atTime(LocalTime.MAX)));
+    }
+
+    /** TASK-224 R2：单维度过滤启用时，其余条件为 null 跳过（空条件不污染 wrapper） */
+    @Test
+    @SuppressWarnings("unchecked")
+    void pageMyRecords_individualFilters_buildsCorrectWrapper() {
+        TableInfoHelper.initTableInfo(
+                new MapperBuilderAssistant(new MybatisConfiguration(), ""), SportRecord.class);
+        Page<SportRecord> mpPage = new Page<>(1, 20, 0);
+        when(sportRecordMapper.selectPage(any(Page.class), any())).thenReturn(mpPage);
+
+        // 仅 sportType
+        service.pageMyRecords(200L, 1, 20, 2, null, null, null);
+        ArgumentCaptor<LambdaQueryWrapper> captor1 = ArgumentCaptor.forClass(LambdaQueryWrapper.class);
+        verify(sportRecordMapper).selectPage(any(Page.class), captor1.capture());
+        assertTrue(captor1.getValue().getSqlSegment().contains("sport_type ="));
+        assertFalse(captor1.getValue().getSqlSegment().contains("status ="));
+        assertFalse(captor1.getValue().getSqlSegment().contains("start_time"));
+
+        // 仅 status
+        service.pageMyRecords(200L, 1, 20, null, 3, null, null);
+        ArgumentCaptor<LambdaQueryWrapper> captor2 = ArgumentCaptor.forClass(LambdaQueryWrapper.class);
+        verify(sportRecordMapper, times(2)).selectPage(any(Page.class), captor2.capture());
+        assertTrue(captor2.getValue().getSqlSegment().contains("status ="));
+        assertFalse(captor2.getValue().getSqlSegment().contains("sport_type ="));
+
+        // 仅 startDate
+        LocalDate start = LocalDate.of(2026, 10, 1);
+        service.pageMyRecords(200L, 1, 20, null, null, start, null);
+        ArgumentCaptor<LambdaQueryWrapper> captor3 = ArgumentCaptor.forClass(LambdaQueryWrapper.class);
+        verify(sportRecordMapper, times(3)).selectPage(any(Page.class), captor3.capture());
+        assertTrue(captor3.getValue().getSqlSegment().contains("start_time >="));
+        assertFalse(captor3.getValue().getSqlSegment().contains("start_time <="));
+
+        // 仅 endDate
+        LocalDate end = LocalDate.of(2026, 10, 5);
+        service.pageMyRecords(200L, 1, 20, null, null, null, end);
+        ArgumentCaptor<LambdaQueryWrapper> captor4 = ArgumentCaptor.forClass(LambdaQueryWrapper.class);
+        verify(sportRecordMapper, times(4)).selectPage(any(Page.class), captor4.capture());
+        assertTrue(captor4.getValue().getSqlSegment().contains("start_time <="));
+        assertFalse(captor4.getValue().getSqlSegment().contains("start_time >="));
+    }
+
+    /** TASK-224 R3：服务层非法 sportType → 抛 400（IllegalArgumentException） */
+    @Test
+    void pageMyRecords_illegalSportType_throwsIllegalArgument() {
+        IllegalArgumentException e = assertThrows(IllegalArgumentException.class,
+                () -> service.pageMyRecords(200L, 1, 20, 99, null, null, null));
+        assertEquals("非法运动类型：99", e.getMessage());
+    }
+
+    /** TASK-224 R3：服务层非法 status → 抛 400（IllegalArgumentException） */
+    @Test
+    void pageMyRecords_illegalStatus_throwsIllegalArgument() {
+        IllegalArgumentException e = assertThrows(IllegalArgumentException.class,
+                () -> service.pageMyRecords(200L, 1, 20, null, 99, null, null));
+        assertEquals("非法记录状态：99", e.getMessage());
+    }
+
+    /** TASK-224 R3：服务层 startDate > endDate → 抛 400（IllegalArgumentException） */
+    @Test
+    void pageMyRecords_startDateAfterEndDate_throwsIllegalArgument() {
+        LocalDate start = LocalDate.of(2026, 10, 10);
+        LocalDate end = LocalDate.of(2026, 10, 1);
+        IllegalArgumentException e = assertThrows(IllegalArgumentException.class,
+                () -> service.pageMyRecords(200L, 1, 20, null, null, start, end));
+        assertEquals("开始日期不能晚于结束日期", e.getMessage());
     }
 
     // ==================== 好友动态 feed（TASK-222 add-friend-feed） ====================

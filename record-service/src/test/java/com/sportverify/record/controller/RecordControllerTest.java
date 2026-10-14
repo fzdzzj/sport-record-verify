@@ -20,6 +20,8 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.test.util.ReflectionTestUtils;
 
+import java.time.LocalDate;
+
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
@@ -195,24 +197,24 @@ class RecordControllerTest {
         ReflectionTestUtils.setField(controller, "authEnabled", true);
         when(request.getHeader("X-User-Id")).thenReturn("200");
         Page<RecordSummaryDTO> page = new Page<>();
-        when(sportRecordService.pageMyRecords(200L, 1, 20)).thenReturn(page);
+        when(sportRecordService.pageMyRecords(200L, 1, 20, null, null, null, null)).thenReturn(page);
 
-        Page<RecordSummaryDTO> out = controller.myRecords(null, 1, 20, request).getData();
+        Page<RecordSummaryDTO> out = controller.myRecords(null, 1, 20, null, null, null, null, request).getData();
 
         assertEquals(page, out);
-        verify(sportRecordService).pageMyRecords(200L, 1, 20);
+        verify(sportRecordService).pageMyRecords(200L, 1, 20, null, null, null, null);
     }
 
     /** R1b 绿：page/size 原样透传服务层（边界夹取在服务层，见 ServiceTest） */
     @Test
     void myRecords_delegatesPageSize() {
         Page<RecordSummaryDTO> page = new Page<>();
-        when(sportRecordService.pageMyRecords(100L, 3, 50)).thenReturn(page);
+        when(sportRecordService.pageMyRecords(100L, 3, 50, null, null, null, null)).thenReturn(page);
 
-        Page<RecordSummaryDTO> out = controller.myRecords(100L, 3, 50, request).getData();
+        Page<RecordSummaryDTO> out = controller.myRecords(100L, 3, 50, null, null, null, null, request).getData();
 
         assertEquals(page, out);
-        verify(sportRecordService).pageMyRecords(100L, 3, 50);
+        verify(sportRecordService).pageMyRecords(100L, 3, 50, null, null, null, null);
     }
 
     /** R1c 红（auth 开，缺网关头）→ 1001 缺少 X-User-Id */
@@ -222,7 +224,7 @@ class RecordControllerTest {
         when(request.getHeader("X-User-Id")).thenReturn(null);
 
         BizException e = assertThrows(BizException.class,
-                () -> controller.myRecords(null, 1, 20, request));
+                () -> controller.myRecords(null, 1, 20, null, null, null, null, request));
         assertEquals(ResultCode.UNAUTHORIZED.getCode(), e.getCode());
     }
 
@@ -230,7 +232,7 @@ class RecordControllerTest {
     @Test
     void myRecords_authDisabled_missingUserId_throwsIllegalArgument() {
         IllegalArgumentException e = assertThrows(IllegalArgumentException.class,
-                () -> controller.myRecords(null, 1, 20, request));
+                () -> controller.myRecords(null, 1, 20, null, null, null, null, request));
         assertEquals("缺少必须的 userId 查询参数", e.getMessage());
     }
 
@@ -238,12 +240,52 @@ class RecordControllerTest {
     @Test
     void myRecords_authDisabled_explicitUserId_delegates() {
         Page<RecordSummaryDTO> page = new Page<>();
-        when(sportRecordService.pageMyRecords(88L, 1, 20)).thenReturn(page);
+        when(sportRecordService.pageMyRecords(88L, 1, 20, null, null, null, null)).thenReturn(page);
 
-        Page<RecordSummaryDTO> out = controller.myRecords(88L, 1, 20, request).getData();
+        Page<RecordSummaryDTO> out = controller.myRecords(88L, 1, 20, null, null, null, null, request).getData();
 
         assertEquals(page, out);
-        verify(sportRecordService).pageMyRecords(88L, 1, 20);
+        verify(sportRecordService).pageMyRecords(88L, 1, 20, null, null, null, null);
+    }
+
+    /** TASK-224 R2：携带过滤参数（sportType/status/startDate/endDate）原样透传服务层 */
+    @Test
+    void myRecords_withFilters_delegatesAllFilters() {
+        Page<RecordSummaryDTO> page = new Page<>();
+        LocalDate start = LocalDate.of(2026, 10, 1);
+        LocalDate end = LocalDate.of(2026, 10, 5);
+        when(sportRecordService.pageMyRecords(100L, 2, 30, 1, 2, start, end)).thenReturn(page);
+
+        Page<RecordSummaryDTO> out = controller.myRecords(100L, 2, 30, 1, 2, start, end, request).getData();
+
+        assertEquals(page, out);
+        verify(sportRecordService).pageMyRecords(100L, 2, 30, 1, 2, start, end);
+    }
+
+    /** TASK-224 R3：非法 sportType 枚举外取值 → 抛 400（IllegalArgumentException） */
+    @Test
+    void myRecords_illegalSportType_throwsIllegalArgument() {
+        IllegalArgumentException e = assertThrows(IllegalArgumentException.class,
+                () -> controller.myRecords(100L, 1, 20, 99, null, null, null, request));
+        assertEquals("非法运动类型：99", e.getMessage());
+    }
+
+    /** TASK-224 R3：非法 status 状态域外取值 → 抛 400（IllegalArgumentException） */
+    @Test
+    void myRecords_illegalStatus_throwsIllegalArgument() {
+        IllegalArgumentException e = assertThrows(IllegalArgumentException.class,
+                () -> controller.myRecords(100L, 1, 20, null, 99, null, null, request));
+        assertEquals("非法记录状态：99", e.getMessage());
+    }
+
+    /** TASK-224 R3：startDate > endDate → 抛 400（IllegalArgumentException） */
+    @Test
+    void myRecords_startDateAfterEndDate_throwsIllegalArgument() {
+        LocalDate start = LocalDate.of(2026, 10, 10);
+        LocalDate end = LocalDate.of(2026, 10, 1);
+        IllegalArgumentException e = assertThrows(IllegalArgumentException.class,
+                () -> controller.myRecords(100L, 1, 20, null, null, start, end, request));
+        assertEquals("开始日期不能晚于结束日期", e.getMessage());
     }
 
     // ==================== 好友动态 feed（TASK-222 add-friend-feed） ====================

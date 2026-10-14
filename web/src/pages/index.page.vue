@@ -57,10 +57,51 @@
             ></div>
           </div>
 
-          <div class="mb-1 text-sm text-gray-600">最近记录（前 10 条，同一批数据）</div>
+          <div class="mb-3 flex flex-wrap items-center gap-2">
+            <span class="text-sm text-gray-600 font-medium">筛选：</span>
+            <a-select
+              v-model:value="filterSportType"
+              placeholder="运动类型"
+              allow-clear
+              style="width: 120px"
+              @change="onFilterChange"
+            >
+              <a-select-option :value="1">跑步</a-select-option>
+              <a-select-option :value="2">骑行</a-select-option>
+              <a-select-option :value="3">步行</a-select-option>
+            </a-select>
+
+            <a-select
+              v-model:value="filterStatus"
+              placeholder="审核状态"
+              allow-clear
+              style="width: 120px"
+              @change="onFilterChange"
+            >
+              <a-select-option :value="0">已提交</a-select-option>
+              <a-select-option :value="1">校验中</a-select-option>
+              <a-select-option :value="2">通过</a-select-option>
+              <a-select-option :value="3">拒绝</a-select-option>
+              <a-select-option :value="4">申诉中</a-select-option>
+              <a-select-option :value="5">复审通过</a-select-option>
+              <a-select-option :value="6">维持拒绝</a-select-option>
+              <a-select-option :value="7">人工审核</a-select-option>
+            </a-select>
+
+            <a-range-picker
+              v-model:value="dateRange"
+              value-format="YYYY-MM-DD"
+              :placeholder="['开始日期', '结束日期']"
+              @change="onFilterChange"
+            />
+
+            <a-button @click="resetFilters">重置</a-button>
+          </div>
+
+          <div class="mb-1 text-sm text-gray-600">运动记录列表</div>
           <a-table
-            v-if="recent.length"
-            :data-source="recent"
+            v-if="records.length"
+            :data-source="records"
             :columns="recentColumns"
             :pagination="false"
             size="small"
@@ -87,8 +128,18 @@
           </a-table>
           <div v-else class="text-gray-500 py-2">暂无运动记录。</div>
 
+          <div v-if="total > size" class="mt-3 flex justify-end">
+            <a-pagination
+              :current="page"
+              :page-size="size"
+              :total="total"
+              size="small"
+              @change="onPageChange"
+            />
+          </div>
+
           <p class="mt-3 text-xs text-gray-400">
-            统计基于单次 size=500 拉取；本人记录超过 500 条时为部分统计（已知限制）。通过率口径 = PASSED(2) + RE_PASSED(5)。
+            分页与过滤基于 GET /record/api/records/my；通过率口径 = PASSED(2) + RE_PASSED(5)。
           </p>
         </template>
       </a-card>
@@ -101,7 +152,7 @@
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue'
 import { useRouter } from 'vue-router/auto'
-import { delRecord, getMyRecords, getMyStreak, type MyStreakDTO, type RecordSummaryDTO } from '@/api/client'
+import { delRecord, getMyRecords, getMyStreak, type MyRecordsFilterParams, type MyStreakDTO, type RecordSummaryDTO } from '@/api/client'
 import { message } from 'ant-design-vue'
 import { hasAccessToken } from '@/utils/token'
 
@@ -141,7 +192,33 @@ function isPassed(status: number): boolean {
   return status === 2 || status === 5
 }
 
-const totalCount = computed(() => records.value.length)
+/** 分页与过滤状态（TASK-224） */
+const page = ref(1)
+const size = ref(20)
+const total = ref(0)
+const filterSportType = ref<number | undefined>(undefined)
+const filterStatus = ref<number | undefined>(undefined)
+const dateRange = ref<[string, string] | null>(null)
+
+function onFilterChange() {
+  page.value = 1
+  loadData()
+}
+
+function resetFilters() {
+  filterSportType.value = undefined
+  filterStatus.value = undefined
+  dateRange.value = null
+  page.value = 1
+  loadData()
+}
+
+function onPageChange(p: number) {
+  page.value = p
+  loadData()
+}
+
+const totalCount = computed(() => total.value)
 
 const totalDistance = computed(() =>
   records.value.reduce((sum, r) => sum + (Number(r.distance) || 0), 0).toFixed(2),
@@ -188,9 +265,6 @@ function iso(date: Date): string {
   return `${date.getFullYear()}-${mm}-${dd}`
 }
 
-/** 最近记录：同批数据按后端已排序（createdAt 倒序）取前 10 */
-const recent = computed(() => records.value.slice(0, 10))
-
 function sportTypeLabel(code: number): string {
   const m: Record<number, string> = { 1: 'RUNNING', 2: 'CYCLING', 3: 'WALKING' }
   return m[code] || `UNKNOWN(${code})`
@@ -215,8 +289,15 @@ async function loadData() {
   loading.value = true
   loadError.value = ''
   try {
-    const res = await getMyRecords(1, 500)
+    const filters: MyRecordsFilterParams = {}
+    if (filterSportType.value != null) filters.sportType = filterSportType.value
+    if (filterStatus.value != null) filters.status = filterStatus.value
+    if (dateRange.value && dateRange.value[0]) filters.startDate = dateRange.value[0]
+    if (dateRange.value && dateRange.value[1]) filters.endDate = dateRange.value[1]
+
+    const res = await getMyRecords(page.value, size.value, filters)
     records.value = (res.data && res.data.records) || []
+    total.value = (res.data && res.data.total) || 0
     // 最近记录由后端 createdAt 倒序返回；若前端发现未排序则按 createdAt 降序兜底
     records.value = [...records.value].sort((a, b) =>
       String(b.createdAt).localeCompare(String(a.createdAt)),
@@ -224,6 +305,7 @@ async function loadData() {
   } catch (e: any) {
     loadError.value = e.code ? `[${e.code}] ${e.message}` : (e.message || '加载个人记录失败')
     records.value = []
+    total.value = 0
   } finally {
     loading.value = false
   }

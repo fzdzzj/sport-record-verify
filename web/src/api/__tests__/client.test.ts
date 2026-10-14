@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { AxiosError, type AxiosResponse } from 'axios'
 import api from '@/api/client'
 import { getAccessToken, setAuthFailHandler, setTokens } from '@/utils/token'
-import { delRecord, getFeed } from '@/api/client'
+import { delRecord, getFeed, getMyRecords } from '@/api/client'
 
 // adapter 注入范式：替换 api.defaults.adapter 为 vi.fn 模拟传输层，
 // 请求/响应两段拦截器链全真实执行（不 mock axios 自身）。
@@ -199,5 +199,74 @@ describe('client.ts delRecord（TASK-223）', () => {
     const call = adapter.mock.calls[0][0] as { url: string; method?: string }
     expect(call.url).toBe('/record/api/records/123')
     expect(call.method?.toLowerCase()).toBe('delete')
+  })
+})
+
+// ===== 我的记录筛选（TASK-224 add-my-records-filter） =====
+describe('client.ts getMyRecords（TASK-224）', () => {
+  // R1：无过滤参数时仅透传 page 与 size
+  it('R1 getMyRecords without filters sends page and size only', async () => {
+    const pageBody = {
+      code: 0,
+      message: 'ok',
+      data: {
+        current: 1,
+        size: 20,
+        total: 0,
+        records: [],
+      },
+    }
+    adapter.mockImplementationOnce((config: unknown) => Promise.resolve(ok(config, pageBody)))
+
+    const res = await getMyRecords(1, 20)
+
+    expect(res.data.current).toBe(1)
+    expect(adapter).toHaveBeenCalledTimes(1)
+    const call = adapter.mock.calls[0][0] as { url: string; params?: Record<string, unknown> }
+    expect(call.url).toBe('/record/api/records/my')
+    expect(call.params).toEqual({ page: 1, size: 20 })
+  })
+
+  // R2：携带过滤参数时透传 sportType/status/startDate/endDate
+  it('R2 getMyRecords with filters passes sportType, status, startDate, endDate', async () => {
+    const pageBody = {
+      code: 0,
+      message: 'ok',
+      data: {
+        current: 2,
+        size: 50,
+        total: 1,
+        records: [
+          {
+            id: 10,
+            sportType: 1,
+            distance: 5.0,
+            status: 2,
+            createdAt: '2026-10-02T10:00:00',
+          },
+        ],
+      },
+    }
+    adapter.mockImplementationOnce((config: unknown) => Promise.resolve(ok(config, pageBody)))
+
+    const res = await getMyRecords(2, 50, {
+      sportType: 1,
+      status: 2,
+      startDate: '2026-10-01',
+      endDate: '2026-10-05',
+    })
+
+    expect(res.data.total).toBe(1)
+    expect(adapter).toHaveBeenCalledTimes(1)
+    const call = adapter.mock.calls[0][0] as { url: string; params?: Record<string, unknown> }
+    expect(call.url).toBe('/record/api/records/my')
+    expect(call.params).toEqual({
+      page: 2,
+      size: 50,
+      sportType: 1,
+      status: 2,
+      startDate: '2026-10-01',
+      endDate: '2026-10-05',
+    })
   })
 })

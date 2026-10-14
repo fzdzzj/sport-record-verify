@@ -200,3 +200,10 @@ curl -X POST http://127.0.0.1:8080/internal/auth/grant-admin \
 - 首页「最近记录」列表操作列新增「删除」操作：Popconfirm 二次确认弹窗（防误触）；
 - 点击确认后调用 `DELETE /record/api/records/{id}`（`client.ts` 封装 `delRecord`，网关注入 `X-User-Id` 归属门拦截越权），删除成功后刷新个人记录列表与连续打卡统计；
 - 仅归属人本人在「我的记录」中展示删除操作，feed 动态流卡片不放删除按钮；后端单事务级联清理恰四表（主记录 + 轨迹热表 + 轨迹归档表 + 点赞行）并 best-effort 清理 Redis 缓存。
+
+## 我的记录筛选（TASK-224）
+
+- 首页「我的记录」区块新增过滤条：运动类型下拉（跑步/骑行/步行）、审核状态下拉（8 态）、开始日期区间（DateRangePicker）；
+- 任一筛选条件变更或重置自动重置页码为第 1 页；
+- 调用扩展后的 `getMyRecords(page, size, filters)`（`web/src/api/client.ts`），后端在 `LambdaQueryWrapper` 中对 `sport_type`、`status`、`start_time` 进行 null-safe 动态组合（保留 `user_id` 归属隔离与 `created_at DESC` 排序）；
+- 零 schema 变更、零新索引、api 模块零触碰。

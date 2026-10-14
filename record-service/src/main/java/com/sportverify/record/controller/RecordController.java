@@ -10,6 +10,8 @@ import com.sportverify.api.record.dto.TrackPointDTO;
 import com.sportverify.api.verify.dto.AppealCreateDTO;
 import com.sportverify.api.verify.dto.AppealDTO;
 import com.sportverify.api.verify.dto.VerificationResultDTO;
+import com.sportverify.api.record.RecordStatus;
+import com.sportverify.api.record.SportType;
 import com.sportverify.common.exception.BizException;
 import com.sportverify.common.result.Result;
 import com.sportverify.common.result.ResultCode;
@@ -20,7 +22,10 @@ import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.http.HttpStatus;
+
+import java.time.LocalDate;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -92,6 +97,9 @@ public class RecordController {
      * 缺失或空白 → 1001（HTTP 401）；false 时降级为显式 {@code userId} 查询参数，
      * 必填缺失 → 400 PARAM。记录严格按解析出的归属人过滤
      * （{@code WHERE user_id=?}），过滤即身份，构造上无越权。</p>
+     * <p>可选过滤（TASK-224）：sportType（运动类型枚举域校验）、status（校验状态域校验）、
+     * startDate/endDate（开始日期范围过滤，start<=end 校验）。非法参数抛 400（IllegalArgumentException）。
+     * 全部缺省时不过滤，保持向后兼容。</p>
      *
      * <p>分页：{@code page>=1}，{@code size} 默认 20、上限 500（前端个人统计
      * 单次拉取即契约上限，超出部分为已知限制）；响应形态对齐 points 端点的
@@ -102,12 +110,17 @@ public class RecordController {
             @RequestParam(value = "userId", required = false) Long userId,
             @RequestParam(defaultValue = "1") long page,
             @RequestParam(defaultValue = "20") long size,
+            @RequestParam(value = "sportType", required = false) Integer sportType,
+            @RequestParam(value = "status", required = false) Integer status,
+            @RequestParam(value = "startDate", required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate startDate,
+            @RequestParam(value = "endDate", required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate endDate,
             HttpServletRequest request) {
         Long owner = authEnabled ? resolveUserId(request, null) : userId;
         if (!authEnabled && owner == null) {
             throw new IllegalArgumentException("缺少必须的 userId 查询参数");
         }
-        return Result.success(sportRecordService.pageMyRecords(owner, page, size));
+        validateFilterParams(sportType, status, startDate, endDate);
+        return Result.success(sportRecordService.pageMyRecords(owner, page, size, sportType, status, startDate, endDate));
     }
 
     /**
@@ -193,6 +206,33 @@ public class RecordController {
         }
         sportRecordService.deleteRecord(caller, id);
         return Result.success();
+    }
+
+    /**
+     * 校验我的记录过滤参数（TASK-224）：sportType 枚举外、status 状态域外、start>end 抛 400（IllegalArgumentException）。
+     */
+    private void validateFilterParams(Integer sportType, Integer status, LocalDate startDate, LocalDate endDate) {
+        if (sportType != null && SportType.fromCode(sportType) == null) {
+            throw new IllegalArgumentException("非法运动类型：" + sportType);
+        }
+        if (status != null && !isValidStatus(status)) {
+            throw new IllegalArgumentException("非法记录状态：" + status);
+        }
+        if (startDate != null && endDate != null && startDate.isAfter(endDate)) {
+            throw new IllegalArgumentException("开始日期不能晚于结束日期");
+        }
+    }
+
+    private static boolean isValidStatus(Integer status) {
+        if (status == null) {
+            return false;
+        }
+        for (RecordStatus s : RecordStatus.values()) {
+            if (s.getCode() == status) {
+                return true;
+            }
+        }
+        return false;
     }
 
     /**

@@ -44,6 +44,7 @@ import org.springframework.transaction.support.TransactionSynchronizationManager
 
 import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.time.LocalTime;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -489,7 +490,7 @@ public class SportRecordService {
     }
 
     /**
-     * 我的记录分页查询（TASK-211 个人统计面板数据面）。
+     * 我的记录分页查询（TASK-211 个人统计面板数据面，缺省无过滤重载）。
      *
      * <p>归属过滤即身份：以控制器解析出的 {@code userId} 作为唯一查询条件
      * （{@code WHERE user_id=?}），构造上天然无越权——用户只能拿到自己的记录，
@@ -505,12 +506,56 @@ public class SportRecordService {
      * @return 分页结果（{@code Page<RecordSummaryDTO>}），元素按 createdAt 倒序
      */
     public Page<RecordSummaryDTO> pageMyRecords(Long userId, long page, long size) {
+        return pageMyRecords(userId, page, size, null, null, null, null);
+    }
+
+    /**
+     * 我的记录可选条件分页查询（TASK-224 add-my-records-filter）。
+     *
+     * <p>归属过滤即身份：以控制器解析出的 {@code userId} 作为核心查询条件
+     * （{@code WHERE user_id=?}），构造上天然无越权。动态过滤参数全可选（null 跳过），
+     * 保持与既有 user_id + orderByDesc(createdAt) + 钳制合成；不新增排序维度。</p>
+     *
+     * @param userId    归属用户（控制器按身份语义解析，非空）
+     * @param page      页码（下限 1）
+     * @param size      每页条数（1..500）
+     * @param sportType 运动类型（可选枚举，1=RUNNING, 2=CYCLING, 3=WALKING；非法值抛 IllegalArgumentException）
+     * @param status    审核状态（可选状态码 0..7；非法值抛 IllegalArgumentException）
+     * @param startDate 开始日期下界（可选，按 start_time >= startDate 00:00:00 过滤）
+     * @param endDate   开始日期上界（可选，按 start_time <= endDate 23:59:59.999999999 过滤；start>end 抛 IllegalArgumentException）
+     * @return 分页结果（{@code Page<RecordSummaryDTO>}），元素按 createdAt 倒序
+     */
+    public Page<RecordSummaryDTO> pageMyRecords(Long userId, long page, long size,
+                                                Integer sportType, Integer status,
+                                                LocalDate startDate, LocalDate endDate) {
+        if (sportType != null && SportType.fromCode(sportType) == null) {
+            throw new IllegalArgumentException("非法运动类型：" + sportType);
+        }
+        if (status != null && !isValidStatus(status)) {
+            throw new IllegalArgumentException("非法记录状态：" + status);
+        }
+        if (startDate != null && endDate != null && startDate.isAfter(endDate)) {
+            throw new IllegalArgumentException("开始日期不能晚于结束日期");
+        }
         long safePage = Math.max(page, 1L);
         long safeSize = Math.min(Math.max(size, 1L), MAX_MY_RECORDS_SIZE);
-        Page<SportRecord> result = sportRecordMapper.selectPage(new Page<>(safePage, safeSize),
-                new LambdaQueryWrapper<SportRecord>()
-                        .eq(SportRecord::getUserId, userId)
-                        .orderByDesc(SportRecord::getCreatedAt));
+        LambdaQueryWrapper<SportRecord> wrapper = new LambdaQueryWrapper<SportRecord>()
+                .eq(SportRecord::getUserId, userId);
+        if (sportType != null) {
+            wrapper.eq(SportRecord::getSportType, sportType);
+        }
+        if (status != null) {
+            wrapper.eq(SportRecord::getStatus, status);
+        }
+        if (startDate != null) {
+            wrapper.ge(SportRecord::getStartTime, startDate.atStartOfDay());
+        }
+        if (endDate != null) {
+            wrapper.le(SportRecord::getStartTime, endDate.atTime(LocalTime.MAX));
+        }
+        wrapper.orderByDesc(SportRecord::getCreatedAt);
+
+        Page<SportRecord> result = sportRecordMapper.selectPage(new Page<>(safePage, safeSize), wrapper);
         Page<RecordSummaryDTO> dtoPage = new Page<>(result.getCurrent(), result.getSize(), result.getTotal());
         dtoPage.setRecords(result.getRecords().stream().map(this::toSummary).toList());
         return dtoPage;
@@ -673,6 +718,21 @@ public class SportRecordService {
         dto.setVisibility(record.getVisibility());
         dto.setCreatedAt(record.getCreatedAt());
         return dto;
+    }
+
+    /**
+     * 校验记录状态合法性（0..7，RecordStatus 枚举域）。
+     */
+    private static boolean isValidStatus(Integer status) {
+        if (status == null) {
+            return false;
+        }
+        for (RecordStatus s : RecordStatus.values()) {
+            if (s.getCode() == status) {
+                return true;
+            }
+        }
+        return false;
     }
 
     // ==================== 内部工具 ====================
