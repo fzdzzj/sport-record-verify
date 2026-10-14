@@ -33,31 +33,37 @@ export default defineConfig({
       '/api': {
         target: 'http://127.0.0.1:8080',
         changeOrigin: true,
-        // NO rewrite: forward /api/auth/** as-is
+        bypass: (req) => (req.headers.accept?.includes('text/html') ? req.url : undefined),
       },
       '/user': {
         target: 'http://127.0.0.1:8080',
         changeOrigin: true,
+        bypass: (req) => (req.headers.accept?.includes('text/html') ? req.url : undefined),
       },
-      '/record': {
+      '/record/': {
         target: 'http://127.0.0.1:8080',
         changeOrigin: true,
+        bypass: (req) => (req.headers.accept?.includes('text/html') ? req.url : undefined),
       },
       '/leaderboard': {
         target: 'http://127.0.0.1:8080',
         changeOrigin: true,
+        bypass: (req) => (req.headers.accept?.includes('text/html') ? req.url : undefined),
       },
       '/verify': {
         target: 'http://127.0.0.1:8080',
         changeOrigin: true,
+        bypass: (req) => (req.headers.accept?.includes('text/html') ? req.url : undefined),
       },
-      '/admin': {
+      '/admin/': {
         target: 'http://127.0.0.1:8080',
         changeOrigin: true,
+        bypass: (req) => (req.headers.accept?.includes('text/html') ? req.url : undefined),
       },
       '/mapmatch': {
         target: 'http://127.0.0.1:8080',
         changeOrigin: true,
+        bypass: (req) => (req.headers.accept?.includes('text/html') ? req.url : undefined),
       },
     },
   },

@@ -40,12 +40,14 @@
 
       <a-alert v-if="submitResult" :type="submitResult.duplicated ? 'warning' : 'success'" class="mt-4">
         <template #message>提交结果 (code=0)</template>
-        <div>recordId: <b>{{ submitResult.recordId }}</b></div>
-        <div>status: {{ submitResult.status }} (0=SUBMITTED,1=VERIFYING,...)</div>
-        <div>duplicated: {{ submitResult.duplicated }}</div>
-        <div v-if="submitResult.message">{{ submitResult.message }}</div>
-        <a-button size="small" class="mt-2" @click="saveToSession(submitResult.recordId)">保存到本会话 (sessionStorage)</a-button>
-        <a-button size="small" class="mt-2 ml-2" @click="goToVerdict(submitResult.recordId)">去判定页</a-button>
+        <template #description>
+          <div>recordId: <b>{{ submitResult.recordId }}</b></div>
+          <div>status: {{ submitResult.status }} (0=SUBMITTED,1=VERIFYING,...)</div>
+          <div>duplicated: {{ submitResult.duplicated }}</div>
+          <div v-if="submitResult.message">{{ submitResult.message }}</div>
+          <a-button size="small" class="mt-2" @click="saveToSession(submitResult.recordId)">保存到本会话 (sessionStorage)</a-button>
+          <a-button size="small" class="mt-2 ml-2" @click="goToVerdict(submitResult.recordId)">去判定页</a-button>
+        </template>
       </a-alert>
 
       <a-alert v-if="submitError" type="error" :message="submitError" class="mt-4" />
