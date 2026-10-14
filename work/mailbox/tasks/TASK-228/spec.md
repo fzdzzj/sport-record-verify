@@ -32,3 +32,4 @@ web 四件套 + 双形态挂载证据 + 契约双态（--open TASK-228 --baselin
 - **偏差**：D1（宿主 `%TEMP%` 下 esbuild 清理临时文件被拒致 `pnpm build` 偶发 rc=1，环境面；TMP/TEMP 重定向至 gitignored `.trae/tmp/esbtmp` 后 rc=0，本课题构建读数均在该重定向下取得）；D2（词面门探针正控形态订正——`git grep` 不搜索未跟踪文件，TASK-226 脚本内以 `.trae/tmp` 探针文件作正控为假阴性，改用同 pattern 的 `[regex]::IsMatch` 断言）；D3（挂载探针依赖上一轮 TASK-227 尝试遗留的本机 `@playwright/test` 与 chromium，探针不入库，本课题零依赖新增）；D4（临时件落 gitignored `.trae/tmp`）；D5（C-02 自指哈希沿先例）。明细见 `handoff.md §8`。
 - **停止条件**：S3 两条均**未按字面触发**——修复恰 2 文件零扩散（无页面/路由/组件/后端变更）；双形态挂载未改动任何依赖或配置（`package.json`/lock/`vite.config.ts`/`tsconfig.app.json` 全零 diff）。
 - **未覆盖清单**：CI 全流程（两笔未 push、无 run）；`--mode=online`；真实浏览器**功能交互面** 12 用例（由同批 TASK-227 E2E 承载，本课题只证启动级挂载）；多浏览器/移动视口/可访问性；dev HMR 路由热更新。见 `handoff.md §10`。
+- 指导侧封盘补记（2026-10-14）：run `38586443704`（head=`aee5ca0`）conclusion=success——外部终验一次达成，TASK-228 封盘（C-01 `05bcae4` / C-02 `138ec97`）。复核 BLOCKER-1（在途契约门读数时点失实）由订正笔 `aee5ca0` 如实化处置，契约证据以「相对 `4596df2` 六文件清单全等 + 收口无参 rc=0」承载（§S6 订正注明同笔）。

@@ -33,3 +33,4 @@ offline --pl record-service（单模块收窄合法：仅测试文件行尾+文�
 - **偏差**：D1（留痕-1 预注册项实况偏差——已由 TASK-224 中途清偿，零 diff 登记清偿事实）；D2（静态台账为通用规则集基线违规、非声明模块，登记不修码）；D3（record-submit 页源码旧口径文本属白名单外未改，登记候选）；D4（临时件落 gitignored `.trae/tmp`）；D5（C-02 自指哈希沿先例）。明细见 `handoff.md §8`。
 - **停止条件**：S3 §1-§3 无一按字面触发（静态违规仅登记不修码 / README 订正不涉行为承诺变更 / offline 250 逐位不变）。
 - **未覆盖清单**：--mode=online 与外部 CI（未 push）；user-service/api 静态违规修复（红线内仅登记）；record-submit 页旧口径文本订正（白名单外）。见 `handoff.md §10`。
+- 指导侧封盘补记（2026-10-14）：run `38586443704`（head=`aee5ca0`）conclusion=success——随 TASK-227/228 批推送后外部终验一次达成，TASK-226 封盘（C-01 `839d4cc` / C-02 `890f397`）。
