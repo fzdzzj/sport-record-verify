@@ -216,7 +216,7 @@ curl -X POST http://127.0.0.1:8080/internal/auth/grant-admin \
 ## E2E 真实浏览器验证（TASK-227）
 
 - 引入 **Playwright**（devDependency `@playwright/test` **1.64.0** 版本锁定；chromium 单浏览器，浏览器二进制落系统用户缓存 `%LOCALAPPDATA%\ms-playwright`，不入库）。重议背景：TASK-215 曾裁定不引入（当时前端债小），现 9 课题连续登记「真实浏览器交互未跑」且交互面扩大至 feed/删除/筛选/目标，重议通过。
-- 运行：`cd web && pnpm e2e`（即 `playwright test`）。**webServer 自动执行 `pnpm build && pnpm preview --port 4179`**（生产构建产物），测试命中本地预览服务；证据（运行输出）与 trace 落 gitignored `.trae/tmp/e2e-results`。
+- 运行：`cd web && pnpm e2e`（即 `playwright test --config e2e/playwright.config.ts`）。**webServer 自动执行 `pnpm build && pnpm preview --port 4179 --host 127.0.0.1`**（生产构建产物），测试命中本地预览服务；证据（运行输出）与 trace 落 gitignored `.trae/tmp/e2e-results`。
 - **route-mock 模式**：`page.route` 拦截 `/record/api/*` 与 `/user/api/*` 两个前缀返回固定夹具（`web/e2e/fixtures/`），并断言两前缀之外的 API 请求为零（`helpers.ts` 请求监视器）——零后端依赖、零全栈起服务、零真实网络请求。
-- 8 条 spec（`web/e2e/*.spec.ts`）：① 登录跳转（守卫）② 记录列表渲染 ③ 提交表单校验与提交 ④ 筛选联动+重置页码 ⑤ 删除确认与刷新 ⑥ feed 卡片与分页 ⑦ 目标卡片与对话框 ⑧ 顶栏导航。
+- 8 条 spec（`web/e2e/*.e2e.ts`）：① 登录跳转（守卫）② 记录列表渲染 ③ 提交表单校验与提交 ④ 筛选联动+重置页码 ⑤ 删除确认与刷新 ⑥ feed 卡片与分页 ⑦ 目标卡片与对话框 ⑧ 顶栏导航。
 - **范围声明**：E2E 仅本地执行、**不入 CI**（ci.yml 零触碰）；「榜单」页交互未覆盖（`/leaderboard/api/*` 不在两前缀 mock 范围，避免真实网络请求，候选后续扩展）；真实后端全栈联调（--it 层）与多浏览器未覆盖，均登记 handoff。

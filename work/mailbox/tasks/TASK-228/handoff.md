@@ -35,7 +35,7 @@ C-02（docs(mailbox) 台账笔，本 handoff 所在提交，恰 4 文件）：
 **R1 绿（根因复现 + 修复后双形态可挂载）**
 
 - 根因证据（静态、可复现，命令行 `node -e` 断言）：
-  - `web/node_modules/unplugin-vue-router/package.json` `version=0.19.2`，`exports` 键共 16 个：`.` `/vite` `/webpack` `/rolldown` `/rollup` `/esbuild` `/options` `/runtime` `/types` `/data-loaders` `/data-loaders/basic` `/data-loaders/pinia-colada` `/volar/sfc-route-blocks` `/volar/sfc-typed-router` `/client` —— **`./auto` 与 `./auto-routes` 均不存在**（`hasOwnProperty` 双断言皆 false）。
+  - `web/node_modules/unplugin-vue-router/package.json` `version=0.19.2`，`exports` 键共 15 个：`.` `/vite` `/webpack` `/rolldown` `/rollup` `/esbuild` `/options` `/runtime` `/types` `/data-loaders` `/data-loaders/basic` `/data-loaders/pinia-colada` `/volar/sfc-route-blocks` `/volar/sfc-typed-router` `/client` —— **`./auto` 与 `./auto-routes` 均不存在**（`hasOwnProperty` 双断言皆 false）。
   - `web/node_modules/vue-router/package.json` `version=4.6.4`，`exports` 含 `./auto` 与 `./auto-routes`；`./auto` 落到 `node_modules/vue-router/vue-router-auto.d.ts`，全文 36 字节、单行注释 `// augmented by unplugin-vue-router` —— 纯类型占位、零运行时，注释里的“augmented”在 0.19.2 已不成立。
   - 插件产物内 `const MODULE_ROUTES_PATH = \`vue-router/auto-routes\`;` —— 证明 0.19.2 只提供 `auto-routes` 模块，不再改写 `vue-router/auto` 的 `createRouter`。
   - 抛错点：`node_modules/vue-router/dist/vue-router.mjs` L617 `function createRouterMatcher(routes, globalOptions)` → L747 `routes.forEach((route) => addRoute(route))`；`routes === undefined` 时即抛 `Cannot read properties of undefined (reading 'forEach')`。
@@ -99,3 +99,11 @@ C-02（docs(mailbox) 台账笔，本 handoff 所在提交，恰 4 文件）：
 - **未覆盖**：真实浏览器**功能交互面**（12 用例）不在本课题范围——由同批 TASK-227 E2E 承载；多浏览器（仅 chromium）、移动视口、可访问性未覆盖；dev HMR 下的路由热更新未单独验证。
 - **不得推出**：不得据本课题得出“E2E 已通过”的结论（TASK-228 只证明启动级挂载与路由表存在）；不得据 3317 modules 得出体积/性能结论；不得据本机双形态 PASS 得出跨平台（Linux/CI）结论。
 - 后端零改动，未跑任何 Maven（web-only 政策档）。
+
+## 11. 复核后补记（订正笔，2026-10-14）
+
+独立复核发现本笔三处证据面表述需如实化。原文一律保留、不追溯改写，订正只做「改字 + 登记」，以免抹去时点差本身：
+
+- **① 在途契约门读数的时点边界**：§5.3 与 §9 所记在途 `--open TASK-228 --baseline=4596df2` **rc=0**，系 `beabc6f`（TASK-227 C-01 E2E 批）落地**之前**的时点读数，非恒常结论。在 HEAD=`fd6b299` **干净工作树**（独立 worktree，`git status` 零改动）复算该命令**恒 rc=1**；`--baseline=69602b0`（§S6 原记口径）同为 **rc=1**。归因＝契约门判据 B 以**单一累积改动集**对**每个**在途回传做全量比对，而这两个基线之上 TASK-228 与 TASK-227 两课题**串批**，两回传互将对方文件判为「改动集未声明」（对 TASK-227 回传列 6 项、对 TASK-228 回传列 22 项）——**非清单违规、非契约违反**，是工具全局比对语义与跨课题基线的冲突（TASK-227 handoff §14-D7 同型登记）。本课题契约证据改由两处承载：**相对开工基线 `4596df2` 的 6 文件改动集全等**（§2 逐字符声明）+ **收口无参 rc=0**（工作树干净、全台账两件套齐，见 §9）。复算读数落 `.trae/tmp/wt-head-readings.log`、`.trae/tmp/wt-head-open228.log`、`.trae/tmp/wt-head-open228-69602b0.log`。
+- **② `exports` 键数订正（16 → 15，枚举项不变）**：§4 R1 原文「`exports` 键共 16 个」为误记，正文已改字为 **15 个**；其下逐键枚举的 15 个子路径（`.` `/vite` `/webpack` `/rolldown` `/rollup` `/esbuild` `/options` `/runtime` `/types` `/data-loaders` `/data-loaders/basic` `/data-loaders/pinia-colada` `/volar/sfc-route-blocks` `/volar/sfc-typed-router` `/client`）**一字未动**，`./auto` 与 `./auto-routes` 均不存在的根因结论不变。`spec.md` §7 回填内的同一误记数字不在本笔授权改动面内，此处仅登记，未改其正文。
+- **③ 重复件删除（避免双跑互证误读）**：删除 `.trae/tmp/t228-contract-open-substantive.log` —— 其 SHA256 与 `.trae/tmp/t228-contract-open.log` **逐位相同**（`BE2383A52C88637BC6D7EBE9B37D4927AAF4D1225FDBE93D8D29B47983DDD938`），系同一读数的重复落盘件；两份并存会被误读为「两次独立复跑互证」，故收尾删除，只留单份原读数。两文件均落 gitignored `.trae/tmp`，零 tracked 影响。
