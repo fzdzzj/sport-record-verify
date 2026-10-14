@@ -3,6 +3,7 @@ package com.sportverify.record.service;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.toolkit.IdWorker;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
+import com.sportverify.api.leaderboard.LeaderboardApi;
 import com.sportverify.api.record.RecordStatus;
 import com.sportverify.api.record.RecordVisibility;
 import com.sportverify.api.record.SportType;
@@ -78,6 +79,8 @@ public class SportRecordService {
     private RecordLikeMapper recordLikeMapper;
     /** 点赞 Redis 缓存清理（TASK-223，经 setter 注入避免构造参数超 8）。 */
     private RecordLikeService recordLikeService;
+    /** leaderboard-service Feign（TASK-223 D1 删除后回撤榜单里程贡献，经 setter 注入避免构造参数超 8）。 */
+    private LeaderboardApi leaderboardApi;
 
     @Autowired
     public SportRecordService(SportRecordMapper sportRecordMapper,
@@ -106,6 +109,12 @@ public class SportRecordService {
     @Autowired
     public void setRecordLikeService(RecordLikeService recordLikeService) {
         this.recordLikeService = recordLikeService;
+    }
+
+    /** 注入榜单 Feign 契约（TASK-223 D1 删除后回撤榜单里程贡献）。 */
+    @Autowired
+    public void setLeaderboardApi(LeaderboardApi leaderboardApi) {
+        this.leaderboardApi = leaderboardApi;
     }
 
     /** 提交事务分段计时开关（TASK-139 插桩，默认关闭；true 时日志周期打 SUBMIT_TX_TIMING snapshot） */
@@ -335,6 +344,9 @@ public class SportRecordService {
      * （恰四表，轨迹分片表携带 user_id 路由单分片）。</p>
      * <p>缓存清理：事务提交后（{@code afterCommit}）best-effort 清除 Redis 点赞计数键与
      * 成员集键，Redis 失败不阻断删除、不回滚 DB（对账机制兜底收敛）。</p>
+     * <p>榜单贡献回撤（TASK-223 D1）：同一 {@code afterCommit} 内 best-effort 经 leaderboard-api
+     * 通知 leaderboard-service 把该记录的里程贡献 {@code ACTIVE → ROLLED_BACK} 并扣回 ZSet
+     * （无贡献/已回滚幂等）；失败只告警留证，不回滚删除、不阻断主链路。</p>
      *
      * @param caller 调用者 userId（鉴权开启时为网关注入，关闭时为显式参数；非空时必须匹配归属人）
      * @param recordId 运动记录 id
@@ -389,7 +401,37 @@ public class SportRecordService {
                 }
             }
         }
+        // 5. 事务提交后 best-effort 回撤榜单里程贡献（TASK-223 D1）：删除已提交才可通知，
+        //    失败只告警留证（不回滚删除、不阻断主链路），跨服务最终一致（ADR-0009）
+        if (leaderboardApi != null) {
+            if (TransactionSynchronizationManager.isSynchronizationActive()) {
+                TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+                    @Override
+                    public void afterCommit() {
+                        rollbackLeaderboardContribution(recordId);
+                    }
+                });
+            } else {
+                rollbackLeaderboardContribution(recordId);
+            }
+        }
         log.info("运动记录删除成功：recordId={}, userId={}", recordId, record.getUserId());
+    }
+
+    /**
+     * 回撤该记录的榜单里程贡献（best-effort，TASK-223 D1）。
+     *
+     * <p>经 leaderboard-api 通知 leaderboard-service 把贡献锚点 ACTIVE → ROLLED_BACK 并扣回 ZSet
+     * （服务侧对「无锚点」「已回滚」幂等，不产生负里程）。跨服务无强一致（ADR-0009）：
+     * 任何异常（Feign 降级 4008 / 锁竞争超时 / 网络故障）只 WARN 留证并返回，
+     * 不抛出、不回滚已提交的删除；残留 ACTIVE 锚点由对账/人工收敛。</p>
+     */
+    void rollbackLeaderboardContribution(Long recordId) {
+        try {
+            leaderboardApi.rollbackContribution(recordId);
+        } catch (Exception e) {
+            log.warn("榜单贡献回撤失败（best-effort 留证，锚点可能残留 ACTIVE 待收敛）：recordId={}", recordId, e);
+        }
     }
 
     /**

@@ -1,5 +1,6 @@
 package com.sportverify.record.service;
 
+import com.sportverify.api.leaderboard.LeaderboardApi;
 import com.sportverify.api.record.RecordStatus;
 import com.sportverify.api.record.dto.MyStreakDTO;
 import com.sportverify.api.record.dto.RecordSubmitDTO;
@@ -53,6 +54,7 @@ import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.anyInt;
 import static org.mockito.Mockito.doAnswer;
+import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
@@ -80,6 +82,7 @@ class SportRecordServiceTest {
     private com.sportverify.api.user.UserApi userApi;
     private RecordLikeMapper recordLikeMapper;
     private RecordLikeService recordLikeService;
+    private LeaderboardApi leaderboardApi;
     private SportRecordService service;
 
     @BeforeEach
@@ -93,10 +96,12 @@ class SportRecordServiceTest {
         userApi = mock(com.sportverify.api.user.UserApi.class);
         recordLikeMapper = mock(RecordLikeMapper.class);
         recordLikeService = mock(RecordLikeService.class);
+        leaderboardApi = mock(LeaderboardApi.class);
         service = new SportRecordService(sportRecordMapper, trackPointMapper, trackPointArchiveMapper,
                 recordEventProducer, verifyApi, verifyDegradeService, userApi);
         service.setRecordLikeMapper(recordLikeMapper);
         service.setRecordLikeService(recordLikeService);
+        service.setLeaderboardApi(leaderboardApi);
         // 无 Spring：@Value 不生效；setField 模拟产品默认 true（与 properties/@Value 缺省一致）
         ReflectionTestUtils.setField(service, "batchInsertEnabled", true);
     }
@@ -1600,6 +1605,7 @@ class SportRecordServiceTest {
         verify(trackPointArchiveMapper, never()).delete(any());
         verify(recordLikeMapper, never()).deleteByRecordId(anyLong());
         verify(recordLikeService, never()).cleanupCache(anyLong());
+        verifyNoInteractions(leaderboardApi);
     }
 
     /** R1: 不存在抛 3001 RECORD_NOT_FOUND，零 DB 删除 */
@@ -1616,6 +1622,7 @@ class SportRecordServiceTest {
         verify(trackPointArchiveMapper, never()).delete(any());
         verify(recordLikeMapper, never()).deleteByRecordId(anyLong());
         verify(recordLikeService, never()).cleanupCache(anyLong());
+        verifyNoInteractions(leaderboardApi);
     }
 
     /** R3: Redis 缓存清理抛异常时，不阻断删除、不抛出异常 */
@@ -1641,5 +1648,96 @@ class SportRecordServiceTest {
         verify(sportRecordMapper).delete(any());
         verify(recordLikeMapper).deleteByRecordId(100L);
         verify(recordLikeService).cleanupCache(100L);
+    }
+
+    // ==================== 删除后榜单贡献回撤（TASK-223 D1） ====================
+
+    /** D1: 回撤只在事务提交后触发——事务内（afterCommit 前）零调用，通知的是已提交的删除 */
+    @Test
+    void deleteRecord_doesNotRollbackLeaderboardBeforeCommit() {
+        initDeleteTableInfo();
+        SportRecord record = new SportRecord();
+        record.setId(100L);
+        record.setUserId(200L);
+        when(sportRecordMapper.selectById(100L)).thenReturn(record);
+
+        inTx(() -> service.deleteRecord(200L, 100L), false);
+
+        verify(leaderboardApi, never()).rollbackContribution(anyLong());
+    }
+
+    /** D1: afterCommit 内 best-effort 通知 leaderboard-service 回撤该记录里程贡献 */
+    @Test
+    void deleteRecord_rollsBackLeaderboardContributionAfterCommit() {
+        initDeleteTableInfo();
+        SportRecord record = new SportRecord();
+        record.setId(100L);
+        record.setUserId(200L);
+        when(sportRecordMapper.selectById(100L)).thenReturn(record);
+
+        inTx(() -> service.deleteRecord(200L, 100L), true);
+
+        verify(leaderboardApi).rollbackContribution(100L);
+        // 删除本身仍已完成（回撤不改变本地删除语义）
+        verify(sportRecordMapper).delete(any());
+    }
+
+    /** D1: 回撤失败（leaderboard 熔断降级 4008 / 锁竞争超时）被吞并留证，不回滚删除、不抛出 */
+    @Test
+    void deleteRecord_toleratesLeaderboardRollbackFailure() {
+        initDeleteTableInfo();
+        SportRecord record = new SportRecord();
+        record.setId(100L);
+        record.setUserId(200L);
+        when(sportRecordMapper.selectById(100L)).thenReturn(record);
+        doThrow(new BizException(ResultCode.LEADERBOARD_SERVICE_UNAVAILABLE, "榜单服务不可用：rollbackContribution"))
+                .when(leaderboardApi).rollbackContribution(100L);
+
+        // afterCommit 中异常被吞并留证，正常完成
+        inTx(() -> service.deleteRecord(200L, 100L), true);
+
+        verify(leaderboardApi).rollbackContribution(100L);
+        verify(sportRecordMapper).delete(any());
+        verify(recordLikeMapper).deleteByRecordId(100L);
+    }
+
+    /** D1: 回撤抛运行时异常（网络/序列化故障）同样不阻断删除 */
+    @Test
+    void deleteRecord_toleratesLeaderboardRollbackRuntimeFailure() {
+        initDeleteTableInfo();
+        SportRecord record = new SportRecord();
+        record.setId(100L);
+        record.setUserId(200L);
+        when(sportRecordMapper.selectById(100L)).thenReturn(record);
+        doThrow(new RuntimeException("connection reset")).when(leaderboardApi).rollbackContribution(100L);
+
+        inTx(() -> service.deleteRecord(200L, 100L), true);
+
+        verify(leaderboardApi).rollbackContribution(100L);
+        verify(sportRecordMapper).delete(any());
+    }
+
+    /** D1: 无事务同步上下文（直接调用）时立即回撤，镜像缓存清理的 else 分支 */
+    @Test
+    void deleteRecord_rollsBackLeaderboardWithoutTransactionSynchronization() {
+        initDeleteTableInfo();
+        SportRecord record = new SportRecord();
+        record.setId(100L);
+        record.setUserId(200L);
+        when(sportRecordMapper.selectById(100L)).thenReturn(record);
+
+        service.deleteRecord(200L, 100L);
+
+        verify(leaderboardApi).rollbackContribution(100L);
+    }
+
+    /** 删除路径所需的 MyBatis-Plus 表信息（LambdaQueryWrapper 列名解析） */
+    private void initDeleteTableInfo() {
+        TableInfoHelper.initTableInfo(
+                new MapperBuilderAssistant(new MybatisConfiguration(), ""), SportRecord.class);
+        TableInfoHelper.initTableInfo(
+                new MapperBuilderAssistant(new MybatisConfiguration(), ""), TrackPoint.class);
+        TableInfoHelper.initTableInfo(
+                new MapperBuilderAssistant(new MybatisConfiguration(), ""), TrackPointArchive.class);
     }
 }
