@@ -4,10 +4,10 @@
     "category": "Implementation",
     "task": "LIGHT cleanup: trailing newline + README refresh + static-deviation ledger",
     "steps": [
-      { "step": "recon: README stale statement list + static violation inventory (user-service/api)", "completed": false },
-      { "step": "RecordControllerTest trailing newline (keep CRLF); README fixes; BACKLOG refresh", "completed": false },
-      { "step": "LIGHT gates: offline --pl record-service, diff --check, token, word-check, contract", "completed": false }
+      { "step": "recon: README stale statement list + static violation inventory (user-service/api)", "completed": true },
+      { "step": "RecordControllerTest trailing newline (keep CRLF); README fixes; BACKLOG refresh", "completed": true },
+      { "step": "LIGHT gates: offline --pl record-service, diff --check, token, word-check, contract", "completed": true }
     ],
-    "passes": false
+    "passes": true
   }
 ]

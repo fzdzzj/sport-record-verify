@@ -26,3 +26,10 @@
 ## S6 门禁（LIGHT）
 
 offline --pl record-service（单模块收窄合法：仅测试文件行尾+文档，零 api）期望逐位 250 不变；diff --check rc=0；token 2036 持平；词面门 ZERO_HIT；契约门收口无参 rc=0；行尾核对（RecordControllerTest 仍 CRLF + 末尾 0x0A）。LIGHT 档免独立复核（沿 TASK-212 先例），指导亲核后随 TASK-227 批次推送。
+
+### 回填（2026-10-14，C-02 台账笔）
+
+- **判别式红绿**：R1 绿（留痕-1 清偿核验：TASK-224 编辑时已补入末尾 0x0A，HEAD 字节级实测 20113 字节/纯 LF/末 4 字节 `7D 0A 7D 0A`，本课题对 RecordControllerTest.java 零 diff）；R2 绿（README 订正 7 处逐处留对照，含模块职责行补新功能与两处旧口径订正）；R3 绿（user-service 1023 / api 487 项通用 checkstyle sun_checks 基线违规台账化登记，不修码）；R4 绿（BACKLOG 推荐序行刷新，F 系已清空）；G1 绿（offline `--pl record-service` 250 逐位不变 rc=0）；G2 绿（改动集恰 C-01 3 + C-02 4 = 7 文件，越界面 diff 全空）；G3 绿（token 2036 持平/词面门 ZERO_HIT+探针正控/diff --check/行尾）。详细证据见 `handoff.md §4-§5`。
+- **偏差**：D1（留痕-1 预注册项实况偏差——已由 TASK-224 中途清偿，零 diff 登记清偿事实）；D2（静态台账为通用规则集基线违规、非声明模块，登记不修码）；D3（record-submit 页源码旧口径文本属白名单外未改，登记候选）；D4（临时件落 gitignored `.trae/tmp`）；D5（C-02 自指哈希沿先例）。明细见 `handoff.md §8`。
+- **停止条件**：S3 §1-§3 无一按字面触发（静态违规仅登记不修码 / README 订正不涉行为承诺变更 / offline 250 逐位不变）。
+- **未覆盖清单**：--mode=online 与外部 CI（未 push）；user-service/api 静态违规修复（红线内仅登记）；record-submit 页旧口径文本订正（白名单外）。见 `handoff.md §10`。

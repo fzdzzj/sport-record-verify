@@ -2718,3 +2718,17 @@ run `35802403723`（head `eba0108`，2026-09-23 00:31 UTC）——**web/build �
 | 偏差 | D1 台账笔自指哈希沿先例；D2 token/词面门/scratch 迁移等临时脚本落 gitignored .trae/tmp；D3 Checkstyle JavadocPackage 规约适配（新建 dto 包补充 package-info.java）；D4/D5 offline 噪音与 build chunk 告警为既有。明细见 handoff.md §8 |
 | 状态 | TASK-225 本地闭环：周月运动目标落地（sport_goal 幂等建表 + pull-on-read 实时进度聚合 + web 目标卡片与 CRUD 对话框，全量 offline 实测 record 净增 24 测，零 api 触碰/零 MQ/零跨服务写/零缓存反范式/既有面源码零 diff），外部终验待推送后补记 |
 - 补记（指导侧封盘笔，2026-10-14）：MEDIUM 档三环节终裁全过（指导亲核 PASS：18 文件全等/红线面 diff=0/02 恰 +14 行幂等块/GoalService 窗口与状态过滤与预注册一致，亲核留痕 createdAt 窗口锚定经复核对照与 /my/streak 一致不登记；独立复核四块全 PASS 零阻断——scratch 真机二跑由复核侧独立复跑实证，矛盾点×3 均文档/计数口径层面裁留痕：information_schema 表述偏差、spec S2「1001」应为 3001 文本口径、+14/13 计数口径）。批次推送 9ed803f..5954cad（4 笔=TASK-224 封盘笔+TASK-225 派发笔/C-01/C-02）后 run 38525589652（head=5954cad）conclusion=success——外部终验一次达成。TASK-225 封盘。C-01 b7f3029 / C-02 5954cad。
+
+## 验收记录：TASK-226（LIGHT 清理批，H3，LIGHT 档，2026-10-14）
+
+| 项 | 内容 |
+| --- | --- |
+| 开工基线 | 派发笔 `11364af`（TASK-226/227 派发笔，其下 bc84594 为 TASK-225 封盘笔勿动）；工作树干净；offline 基线 52/50/173/250/159/80/26；token 29 项基线 2036 |
+| C-01 实施笔 | 本课题 C-01 `docs` 笔（README 订正 7 处 + BACKLOG 推荐序刷新，恰 3 文件 = README.md / web/README.md / work/mailbox/BACKLOG.md，哈希以 git log 为准） |
+| C-02 台账笔 | 本笔 `docs(mailbox): 登记TASK-226清理批验收与台账闭环（TASK-226）`，恰 4 文件（tasks.json 勾选 / spec.md §7 回填 / handoff.md 新建 / PLAN.md 纯追加）；C-02 自指哈希沿 D1 先例 |
+| 判别式红绿 | R1 绿（留痕-1 清偿核验：ff80635→9db644a→40ce0d3 均缺末尾换行，fabeb60（TASK-224）编辑时补入末尾 0x0A；HEAD 字节级实测 20113 字节/纯 LF/末 4 字节 7D 0A 7D 0A，本课题对该文件零 diff，清偿事实登记）；R2 绿（README 订正 7 处逐处留对照：user-service/record-service 模块职责行补新功能、web「仅脚手架」与「无服务端我的记录列表」两处旧口径订正、快速开始与目录约定措辞）；R3 绿（user-service 1023 / api 487 项通用 checkstyle sun_checks 基线违规台账化登记，不修码，候选修复沿 TASK-018 先例）；R4 绿（BACKLOG 推荐序行刷新，F 系已清空）；G1 绿（offline --pl record-service 250 逐位不变 0/0/0 rc=0）；G2 绿（改动集恰 C-01 3 + C-02 4 = 7 文件，越界面 diff 全空）；G3 绿（token 2036/2036 持平、词面门 CI-exact ZERO_HIT + 探针正控 HIT、diff --check rc=0、改动文件保持基线行尾：README.md 工作树 CRLF 为 autocrlf checkout 形态 blob LF，web/README.md 与 BACKLOG 纯 LF）。明细见 handoff.md §4 |
+| 本机门禁 | offline `--pl record-service` 逐位 **250** 不变（Failures: 0, Errors: 0, Skipped: 0，rc=0，BUILD SUCCESS）；`git diff --check` rc=0（工作树与暂存区双查）；token 29 项两点 2036/2036 持平且 ≥2034，改动集 7 文件 token 扫描 ZERO_HIT；词面门改动集 CI-exact ZERO_HIT rc=1 + 探针阳性对照 HIT rc=0；契约门双态 rc=0（在途 --open TASK-226 --baseline=11364af 判据 A 两件套 + 判据 B 一致，收口无参）；行尾核对（RecordControllerTest 纯 LF + 末尾 0x0A + 无 BOM 零 diff；改动文件保持基线行尾） |
+| 是否到达外部门槛 | **未达到**：两笔均未 push、未建 PR、无 CI run；LIGHT 档免独立复核，指导亲核后随 TASK-227 批次推送 |
+| 未覆盖/跳过 | --mode=online、CI 全流程（未 push）；user-service/api 静态违规修复（红线：仅登记）；record-submit 页「无服务端我的记录列表」旧口径文本订正（web src 白名单外，登记候选）；RecordControllerTest 留痕-1 清偿为中途提交既有事实的核验登记，非本课题新动作 |
+| 偏差 | D1 留痕-1 预注册项实况偏差（已由 TASK-224 中途清偿，零 diff 登记清偿事实）；D2 静态台账为通用规则集基线违规、非声明模块；D3 record-submit 页旧口径文本白名单外未改；D4 临时件落 gitignored .trae/tmp；D5 C-02 自指哈希沿先例。明细见 handoff.md §8 |
+| 状态 | TASK-226 本地闭环：LIGHT 清理批落地（留痕-1 清偿核验登记 + README 订正 7 处 + 静态偏差台账化 + BACKLOG 刷新，零功能变更、offline record 250 逐位不变），指导亲核后随 TASK-227 批次推送 |
