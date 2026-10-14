@@ -1,0 +1,26 @@
+[
+  {
+    "number": 1,
+    "category": "Implementation",
+    "task": "Optional filters on my-records read path + web filter bar",
+    "steps": [
+      { "step": "S1 recon: current /my signature & binding style, SportType/status legal domains, web list state shape", "completed": false },
+      { "step": "record-service: pageMy optional filters (null-safe wrapper composition + validation 400s) + controller params + tests", "completed": false },
+      { "step": "web: filter bar (type/status/date) + page reset on change + client.ts params + tests", "completed": false },
+      { "step": "Discriminants R1-R5, G1-G3 evidence", "completed": false }
+    ],
+    "passes": false
+  },
+  {
+    "number": 2,
+    "category": "Acceptance",
+    "task": "Tiered gates (policy first use) + commits + independent review + external CI",
+    "steps": [
+      { "step": "Tiered offline gate: --pl record-service measured digit-exact, other modules via green-baseline + zero-diff-outside-whitelist argument; web four-piece; contract dual-state; token SUM; word-check; diff --check; endings; new test classes isolated -Dtest runs", "completed": false },
+      { "step": "C-01 feat + C-02 ledger, no push no PR", "completed": false },
+      { "step": "Independent review subagent, zero-write", "completed": false },
+      { "step": "Supervisor push + external CI green", "completed": false }
+    ],
+    "passes": false
+  }
+]
