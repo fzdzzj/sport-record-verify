@@ -32,8 +32,8 @@
 | `common` | 统一 `Result<T>`、错误码枚举、`BizException`、全局异常处理器 |
 | `api` | 服务间 Feign 契约（record-api / verify-api / user-api / leaderboard-api / mapmatch-api / auth-api），接口与实现分离 |
 | `gateway-service` | 统一入口，路由 `/api/auth/**` `/user/**` `/record/**` `/verify/**` `/leaderboard/**` `/mapmatch/**` 到对应服务；鉴权 GlobalFilter（校验 Bearer → 注入 X-User-Id/`X-Role` 透传下游，`/admin/**` 与规则版本接口要求 ADMIN 角色，见 ADR-0007） |
-| `user-service` | 好友申请/同意/拒绝/列表（user_db 三表 + Redisson 锁防并发互加）+ **认证域**（注册/登录/刷新，BCrypt + HS256 双 token，refresh 轮换存 Redis；最小角色模型 USER/ADMIN + 内部授予接口，见 ADR-0007） |
-| `record-service` | 记录提交/查询/申诉 + 点赞/取消/计数（record_db 分片存储 + Redis 计数；榜单职责已拆出，见 ADR-0005） |
+| `user-service` | 好友申请/同意/拒绝/列表（user_db 三表 + Redisson 锁防并发互加）+ **认证域**（注册/登录/刷新/登出/自助改密，BCrypt + HS256 双 token，refresh 轮换存 Redis 并经 HttpOnly cookie 下发；最小角色模型 USER/ADMIN + 内部授予接口，见 ADR-0007）+ **通知中心**（列表/未读/已读/偏好 + WebSocket 实时推送，消费点赞等事件落库）+ 封禁（user.status=0 拒登录/续签） |
+| `record-service` | 记录提交/查询/申诉/删除 + 点赞/取消/计数 + **我的记录**（分页/筛选/统计，TASK-211/224）+ 连续打卡（TASK-220）+ 好友动态 feed（TASK-222）+ 记录可见性三态（TASK-221）+ 周月运动目标（TASK-225）（record_db 分片存储 + Redis 计数；榜单职责已拆出，见 ADR-0005） |
 | `verify-service` | 校验引擎/申诉（判定/终判 + 规则灰度发布 + verify_db + RocketMQ 事件发布）；R5 离路规则远程调 mapmatch 做空间真实性判定（见 ADR-0006） |
 | `leaderboard-service` | 榜单读热 + 事件沉淀：总榜/好友榜（Redis ZSet 秒级）+ VERIFIED/REJECTED 消费入榜/回滚 + 定时快照结算防重（复用 record_db 贡献表，见 ADR-0005） |
 | `mapmatch-service` | 道路拓扑匹配（服务数 5→6，见 ADR-0006）：真实 OSM 路网预载 PostGIS + 最近边投影匹配算法，`POST /match` 返回偏离路网指标 |
@@ -74,7 +74,7 @@ java $JAVA_OPTS -jar verify-service/target/sport-verify-verify-service-0.1.0-SNA
 java $JAVA_OPTS -jar leaderboard-service/target/sport-verify-leaderboard-service-0.1.0-SNAPSHOT.jar
 java $JAVA_OPTS -jar mapmatch-service/target/sport-verify-mapmatch-service-0.1.0-SNAPSHOT.jar
 
-# 5. （可选）前端控制台脚手架
+# 5. （可选）前端控制台
 cd web
 pnpm install && pnpm dev   # 默认 5173，Vite 代理原样转发网关 8080
 # pnpm dev 走 Vite 代理（默认 5173 反向代理 8080），浏览器请求同源，不触发 CORS 预检。
@@ -370,7 +370,7 @@ sql/            各库幂等建表脚本（docker-entrypoint-initdb.d 首次自�
 rocketmq/       Broker 本地配置
 prometheus/     抓取配置（prometheus.yml，六服务 job）与告警规则（alert-rules.yml）
 grafana/        数据源/面板 provider 预置（provisioning/）与预置面板 JSON（dashboards/）
-web/            # 前端控制台脚手架（Vue3 + Vite + TS + Antd + Tailwind + Axios + Vue Query）
+web/            # 前端控制台（Vue3 + Vite + TS + Antd + Tailwind + Axios + Vue Query）
 ```
 
 ## 变更交付
