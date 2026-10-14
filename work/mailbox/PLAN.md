@@ -2689,3 +2689,16 @@ run `35802403723`（head `eba0108`，2026-09-23 00:31 UTC）——**web/build �
 | 未覆盖/跳过 | --mode=online、CI 全流程、真实浏览器我的记录删除行内二次确认/列表刷新交互（沿 TASK-213/220/221/222 口径）、真实 MySQL 分片删除/Redis 键清理跨中间件联调（--it 未执行） |
 | 偏差 | D1 榜单数据源定稿为自有聚合持久表，贡献不实时回撤，登记为偏差与已知限制，不引入 MQ 补偿写；D2 Checkstyle ParameterNumber 8 参家法下采用 setter 注入；D3 token/词面门/契约临时件落 gitignored .trae/tmp；D4/D5 offline 噪音与 build chunk 告警为既有。明细见 handoff.md §8 |
 | 状态 | TASK-223 本地闭环：记录删除与撤回落地（单事务级联四表 + Redis best-effort 清理 + web Popconfirm 二次确认，零 schema/零新状态值/零 MQ/零跨服务写），外部门槛与独立 review 待指导侧终裁与推送后补记 |
+## 验收记录：TASK-224（我的记录筛选与前端过滤条联动，P5，MEDIUM 小档，2026-10-14）
+
+| 项 | 内容 |
+| --- | --- |
+| 开工基线 | 派发笔 `cdaa8b3`；工作树干净；offline 基线 52/50/173/217/159/80/26；token 29 项基线 2036 |
+| C-01 实施笔 | `fabeb60` `feat(record): 我的记录筛选与前端过滤条联动（TASK-224）`，恰 8 文件 = §4 白名单，+454/−32 |
+| C-02 台账笔 | 本笔 `docs(mailbox): 登记TASK-224我的记录筛选验收与台账闭环（TASK-224）`，恰 4 文件（tasks.json 勾选 / spec.md §7 回填 / handoff.md 新建 / PLAN.md 纯追加）；C-02 自指哈希沿 D1 先例 |
+| 判别式红绿 | R1 绿（向后兼容：全参数缺省时 wrapper 与基线等价，既有用例零改全绿）；R2 绿（各过滤维单启用与组合启用语义正确，测试精确断言 wrapper 条件）；R3 绿（非法枚举/越界/start>end 返回 400，缺头 1001 与 auth 关缺参 400 身份门不变）；R4 绿（web 过滤条变更重置 page=1、参数入 query、空态/结果缩减渲染，四件套承载）；R5 绿（api 模块零 diff、零 schema、零新端点、零新路由）；G1/G2/G3 绿。明细见 handoff.md §4 |
+| 本机门禁 | offline 首用分级收窄政策：`mvn-verify.sh --mode=offline --pl record-service test` 实测 `record-service` 217→**226**（净增 9 测 = Controller 4 + Service 5，Failures: 0, Errors: 0, Skipped: 0，rc=0），其余六模块按绿基线与零 diff 登记为 **52/50/173/226/159/80/26** BUILD SUCCESS；两承载新断言的测试类隔离单跑全绿（RecordControllerTest 33 / SportRecordServiceTest 72）；record-service 静态 rc=0（0 Checkstyle violations/SpotBugs 0 错误/PMD BUILD SUCCESS）；web pnpm test rc=0（4 套 28 测，净增 2 测）、type-check rc=0、build 成功（3283 modules）、typed-router diff rc=0；契约门双态 rc=0（在途 --open TASK-224 --baseline=cdaa8b3 判据 A 待办放行 + 判据 B 一致，收口无参）；token 29 项两点 2036/2036 持平且 ≥2034，改动集 token 扫描 ZERO_HIT；词面门改动集 CI-exact ZERO_HIT rc=1 + 探针阳性对照 HIT rc=0；git diff --check rc=0；改动文件保持基线 LF 行尾无 BOM |
+| 是否到达外部门槛 | **未达到**：两笔均未 push、未建 PR、无 CI run；MEDIUM 档外部终验待指导侧推动推送后补记 |
+| 未覆盖/跳过 | --mode=online、CI 全流程、真实浏览器我的记录过滤条交互/列表联动（沿 TASK-213/220/221/222/223 口径）、真实 MySQL 大数据量过滤性能（--it 未执行） |
+| 偏差 | D1 台账笔自指哈希沿先例；D2 token/词面门/临时脚本落 gitignored .trae/tmp；D3 Checkstyle ParameterNumber 8 参家法规约适配（Controller 保持恰 8 参，Service 保持恰 7 参）；D4/D5 offline 噪音与 build chunk 告警为既有。明细见 handoff.md §8 |
+| 状态 | TASK-224 本地闭环：我的记录筛选落地（四维可选过滤 + 校验 400 + web 过滤条与重置页码，分级政策首用实测 record 净增 9 测，零 api 触碰/零 schema/零新端点/零新路由），外部终验待推送后补记 |

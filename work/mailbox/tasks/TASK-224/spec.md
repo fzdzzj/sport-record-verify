@@ -51,3 +51,19 @@ record-service：RecordController、SportRecordService（或专用查询对象�
 ## S7 backfill（C-02 后）
 
 判别式红绿、门禁留证（含政策首用口径）、偏差 D1-Dn、未覆盖清单沿先例（真实浏览器过滤交互/真实 DB 过滤联调/--it/online）。
+
+### 回填（2026-10-14，C-02 台账笔）
+
+- **判别式红绿**：R1-R5 / G1-G3 逐条实证全绿，详细证据见 `handoff.md §4`。
+- **门禁留证**：
+  - offline 分级收窄门禁（政策首用，2026-10-14 常备政策）：`mvn-verify.sh --mode=offline --pl record-service test` 实测 `record-service` 由基线 217 增至 **226**（净增 9 测，0 Failures/Errors/Skipped，rc=0）；其余六模块按绿基线（origin CI 38497654651 全绿 + 白名单外零 diff 论证）登记为 `52/50/173/226/159/80/26`。
+  - 新增单测隔离单跑：`RecordControllerTest`（33 测 rc=0，净增 4 测）、`SportRecordServiceTest`（72 测 rc=0，净增 5 测）。
+  - 静态门禁：`--static=record-service` rc=0（0 Checkstyle violations / SpotBugs 0 错误 / PMD BUILD SUCCESS）。
+  - web 四件套：`pnpm test` 4 套 28 测 rc=0（净增 2 测，TMP 重定向 `.trae/tmp`）、`pnpm type-check` 0 错误 rc=0、`pnpm build` 成功（3283 modules）rc=0、`git diff --exit-code -- web/src/typed-router.d.ts` 零 diff rc=0。
+  - 契约门双态：在途 `--open TASK-224 --baseline=cdaa8b3` rc=0；收口无参 rc=0。
+  - token 29 项：两点 2036/2036 持平（≥2034）。
+  - 词面门：CI-exact ZERO_HIT（rc=1）+ 探针阳性对照 HIT（rc=0）。
+  - 格式与行尾：`git diff --check` rc=0；改动文件保持基线 LF 与末尾换行无 BOM。
+- **偏差**：D1（C-02 台账笔自指哈希沿先例）；D2（token/词面门/构建脚本等临时件落 gitignored `.trae/tmp`）；D3（Checkstyle ParameterNumber 8 参家法规约适配，Controller 保持恰好 8 参、Service 保持恰好 7 参）；D4/D5（offline 噪音与 build chunk 告警为既有非阻断）。明细见 `handoff.md §8`。
+- **未覆盖清单**：真实浏览器过滤条交互与结果列表联动（沿 TASK-213/220/221/222/223 口径登记未覆盖）、真实 MySQL/Redis 跨服务过滤联调（--it 未执行）、--mode=online 与外部 CI。均沿先例口径登记，见 `handoff.md §10`。
+- **停止条件**：S3 §1-§5 无一按字面触发（核对见 `handoff.md §8`）。
