@@ -2703,3 +2703,4 @@ run `35802403723`（head `eba0108`，2026-09-23 00:31 UTC）——**web/build �
 | 未覆盖/跳过 | --mode=online、CI 全流程、真实浏览器我的记录过滤条交互/列表联动（沿 TASK-213/220/221/222/223 口径）、真实 MySQL 大数据量过滤性能（--it 未执行） |
 | 偏差 | D1 台账笔自指哈希沿先例；D2 token/词面门/临时脚本落 gitignored .trae/tmp；D3 Checkstyle ParameterNumber 8 参家法规约适配（Controller 保持恰 8 参，Service 保持恰 7 参）；D4/D5 offline 噪音与 build chunk 告警为既有。明细见 handoff.md §8 |
 | 状态 | TASK-224 本地闭环：我的记录筛选落地（四维可选过滤 + 校验 400 + web 过滤条与重置页码，分级政策首用实测 record 净增 9 测，零 api 触碰/零 schema/零新端点/零新路由），外部终验待推送后补记 |
+- 补记（指导侧封盘笔，2026-10-14）：MEDIUM 小档三环节终裁全过（指导亲核 PASS：12 文件全等/api 红线 diff=0/四参可选绑定+validateFilterParams 与预注册一致；独立复核四块全 PASS 零阻断，提示×3 裁决合理——HEAD 拓扑含 TASK-223 封盘笔属预期、契约门在途 --diff-file 口径、handoff 方法名表述差异）。分级门禁政策首用成功（record 收窄实测 217→226 +9，其余沿绿基线论证，政策省时兑现）。批次推送 765b366..9ed803f（4 笔=TASK-223 封盘笔+TASK-224 派发笔/C-01/C-02）后 run 38511006257（head=9ed803f）conclusion=success——外部终验一次达成。TASK-224 封盘。C-01 fabeb60 / C-02 65aad17。

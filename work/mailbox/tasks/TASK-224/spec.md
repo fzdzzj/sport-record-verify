@@ -67,3 +67,4 @@ record-service：RecordController、SportRecordService（或专用查询对象�
 - **偏差**：D1（C-02 台账笔自指哈希沿先例）；D2（token/词面门/构建脚本等临时件落 gitignored `.trae/tmp`）；D3（Checkstyle ParameterNumber 8 参家法规约适配，Controller 保持恰好 8 参、Service 保持恰好 7 参）；D4/D5（offline 噪音与 build chunk 告警为既有非阻断）。明细见 `handoff.md §8`。
 - **未覆盖清单**：真实浏览器过滤条交互与结果列表联动（沿 TASK-213/220/221/222/223 口径登记未覆盖）、真实 MySQL/Redis 跨服务过滤联调（--it 未执行）、--mode=online 与外部 CI。均沿先例口径登记，见 `handoff.md §10`。
 - **停止条件**：S3 §1-§5 无一按字面触发（核对见 `handoff.md §8`）。
+- 指导侧封盘补记（2026-10-14）：run 38511006257（head=9ed803f）conclusion=success——外部终验一次达成，TASK-224 封盘（分级门禁政策首用成功，record 收窄 217→226）。复核提示×3 裁决随 PLAN.md 补记登记。
