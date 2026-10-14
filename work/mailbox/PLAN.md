@@ -2747,3 +2747,18 @@ run `35802403723`（head `eba0108`，2026-09-23 00:31 UTC）——**web/build �
 | 未覆盖/跳过 | CI 全流程；`--mode=online`；真实浏览器功能交互面 12 用例（由同批 TASK-227 E2E 承载）；多浏览器/移动视口/可访问性；dev HMR 路由热更新；零 Maven（web-only 政策档，后端零改动） |
 | 偏差 | D1 宿主 `%TEMP%` 下 esbuild 清理临时文件被拒致 `pnpm build` 偶发 rc=1（环境面，TMP/TEMP 重定向 gitignored `.trae/tmp/esbtmp` 后 rc=0）；D2 词面门探针正控形态订正（`git grep` 不搜索未跟踪文件，TASK-226 旧形态为假阴性）；D3 挂载探针消费上一轮 TASK-227 尝试遗留的本机 Playwright，探针不入库；D4 临时件落 gitignored `.trae/tmp`；D5 C-02 自指哈希沿先例。明细见 `handoff.md §8` |
 | 状态 | TASK-228 本地闭环：启动级路由缺陷已定位并修复（恰 2 文件、零依赖零配置变更），双形态真 chromium 挂载通过、web 四件套全绿、门禁全过；指导侧亲核后与同批 TASK-227 E2E 一批推送 |
+
+## 验收记录：TASK-227（E2E 真实浏览器验证批，H1，P6，MEDIUM，2026-10-14）
+
+| 项 | 内容 |
+| --- | --- |
+| 开工基线 | 本课题**续批**开工基线 `138ec97`（TASK-228 C-02 台账笔；其下 `05bcae4` 为 TASK-228 C-01 启动级路由修复笔，未修则 E2E 全数阻断，故 227 必须在 228 之后）；首轮派发基线为 `69602b0` 之上（首轮于 S3.3 停止上报，零提交） |
+| 首轮停止史 | 首轮 E2E 无法在真实浏览器跑通，S3.3 停止上报，根因=**应用启动级路由缺陷**（`unplugin-vue-router@0.19.2` 不再注入 `vue-router/auto` 文件路由表，`routes` 为 `undefined` 时 `createRouterMatcher` 在 `routes.forEach` 抛错）；停止笔链 `e1610de`（停止上报）→ `69602b0`（停止报告补记，附带「完整修复候选=恰 2 文件」实测全绿）；缺陷另立 TASK-228 并已先落地 |
+| C-01 实施笔 | 本课题 C-01 `feat(e2e)` 笔，恰 18 文件 = S4 白名单全等（`web/package.json` devDependency `@playwright/test` 精确锁版 + `scripts.e2e` / `web/pnpm-lock.yaml` / `web/.gitignore` 新增 / `web/README.md` E2E 小节与旧口径订正 / `web/e2e/**` 14 文件 = config + helpers + 8 spec + 4 fixtures），哈希以 `git log` 为准 |
+| C-02 台账笔 | 本笔 `docs(mailbox)`，恰 4 文件（`spec/changes/e2e-browser-batch/tasks.json` 勾选 / `work/mailbox/tasks/TASK-227/spec.md` §7 回填 / `work/mailbox/tasks/TASK-227/handoff.md` 续批回传追加（首轮停止报告原样保留）/ `work/mailbox/PLAN.md` 纯追加）；C-02 自指哈希沿先例 |
+| 判别式红绿 | R1 绿（`pnpm install --frozen-lockfile` rc=0 且 `Lockfile is up to date`、安装后 lock 零 diff、1.64.0 精确锁定）；R2 绿（8 spec / 12 用例真 chromium 全绿 rc=0，逐条断言核心交互）；R3 绿（`page.route` 拦截两前缀 + `page.on('request')` 后端前缀监视，两前缀外记 `unhandled` 并断言为空，12 用例共 20 处调用、零真实网络请求）；R4 绿（test 31 / type-check / build / typed-router 零 diff）；R5 绿（运行输出 + 12 用例目录与 12 份 trace 落 gitignored `.trae/tmp/e2e-results`）；R6 绿（后端与 ci.yml、`web/vite.config.ts`、`web/src/**` 相对开工基线零 diff） |
+| 本机门禁 | web 四件套全绿（test 4 文件 31 测 / type-check 零错 / build 3317 modules / typed-router 零 diff）；E2E `pnpm e2e` rc=0（12 passed，8 文件）且 `--list` 交叉一致 `Total: 12 tests in 8 files`；契约门双态 rc=0（在途以真实开工时点 `138ec97` 为基线 + `--diff-file` 21 项可表达改动集；收口无参）；token 29 项两点持平且新增 15 个未跟踪文件固定串零命中；词面门改动集 CI-exact ZERO_HIT rc=1 + 新增文件显式扫描零命中 + 探针阳性对照 HIT rc=0；`git diff --check` 工作树与暂存区 rc=0；行尾 bad=0（新增 15 文件纯 LF 无 BOM，改动文件保基线形态）；零 Maven（web-only 政策档） |
+| 是否到达外部门槛 | **未达到**：C-01/C-02 两笔均未 push、未建 PR、无 CI run；指导亲核后与同批 TASK-228 一批推送，CI 绿为收口前提 |
+| 未覆盖/跳过 | 真实后端全栈联调（`--it` 层，仍留 H2/后续）；CI 集成（E2E 明列不入 CI，`ci.yml` 零触碰）；多浏览器（仅 chromium）与移动视口、可访问性；榜单页交互（`/leaderboard/api/*` 不在两前缀 mock 范围，避免真实网络请求，候选后续扩展）；WebSocket 推送路径；`--mode=online` |
+| 偏差 | D1 保留件 `scripts.e2e` 为 `playwright test`，实测在本仓 cwd 下无法发现 `e2e/` 子目录配置（误扫 vitest 单测并报 `No tests found` rc=1），据 S2 意图补 `--config e2e/playwright.config.ts` 一行（白名单内，不涉 vite.config/路由/后端）；D2 契约门基线口径——用户指定的 `4596df2` 跨 TASK-228 时判据 B 全局比对必红，改以真实开工时点 `138ec97` 复跑并两版登记；D3 判据 B 提取器扩展名白名单不含无扩展名 dotfile，`web/.gitignore` 不可表达，另以 `--diff-file` 21 项复跑；D4 临时件落 gitignored `.trae/tmp`；D5 R4 的 build 期望值 3283 为 TASK-228 修复前读数，正确读数 3317；D6 C-02 自指哈希沿先例。明细见 `handoff.md §14` |
+| 状态 | TASK-227 本地闭环：E2E 真实浏览器批从保留件恢复并按 S2.5 判别式复跑达成（8 spec / 12 用例 route-mock 全绿、零真实网络请求、后端零 diff、web 四件套不回归），首轮 S3.3 停止史与停止笔链如实登记；指导亲核后随批推送 |

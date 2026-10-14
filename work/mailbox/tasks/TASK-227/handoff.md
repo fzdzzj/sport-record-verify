@@ -59,3 +59,106 @@
 - **实测（本机，2026-10-14）**：`pnpm type-check` **rc=0**；`pnpm test` **rc=0**（4 套 31 测）；`pnpm build` **rc=0**（3317 modules，基线 3283）；`git diff --exit-code -- web/src/typed-router.d.ts` **rc=0**；`pnpm e2e` **12 passed rc=0**（本停止报告所附套件同一份，未改一行为绿）。
 - **保留件**：`.trae/tmp/t227-preserved/full-fix-candidate.patch`（恰 2 文件 diff）、`FIX-CANDIDATE.md`（修复说明）、`fullfix-gates.log`、`e2e-12of12-green-under-fullfix.log`；恢复套件见同目录 `e2e/`、`tracked-changes.patch`、`web.gitignore`。
 - **判定**：该修复落在 `web/src`（S0/S4 白名单外），故仍按 §3.3 停止上报，**不由本课题入库**；授权后可作为独立修复课题一次成形（套件与补丁均已就绪）。
+
+---
+
+# TASK-227 续批回传（重启后完成，C-02 台账笔，2026-10-14）
+
+## 8. 只改清单（续批，相对开工基线 138ec97，恰 22 文件 = C-01 18 + C-02 4，逐字符声明）
+
+C-01（feat(e2e) 实施笔，恰 18 文件 = S4 白名单全等）：
+
+- web/.gitignore
+- web/README.md
+- web/package.json
+- web/pnpm-lock.yaml
+- web/e2e/playwright.config.ts
+- web/e2e/helpers.ts
+- web/e2e/delete-record.e2e.ts
+- web/e2e/feed.e2e.ts
+- web/e2e/filter-pagination.e2e.ts
+- web/e2e/goal-card.e2e.ts
+- web/e2e/login-redirect.e2e.ts
+- web/e2e/record-list.e2e.ts
+- web/e2e/record-submit.e2e.ts
+- web/e2e/top-nav.e2e.ts
+- web/e2e/fixtures/feed.ts
+- web/e2e/fixtures/goals.ts
+- web/e2e/fixtures/notifications.ts
+- web/e2e/fixtures/records.ts
+
+C-02（docs(mailbox) 台账笔，本 handoff 所在提交，恰 4 文件）：
+
+- spec/changes/e2e-browser-batch/tasks.json
+- work/mailbox/tasks/TASK-227/spec.md
+- work/mailbox/tasks/TASK-227/handoff.md
+- work/mailbox/PLAN.md
+
+> 下列载体零触碰（R6 证据见 §11）：`.github/workflows/ci.yml`、`web/vite.config.ts`、`web/tsconfig.app.json`、`web/src/**`（含 `typed-router.d.ts`，零新路由故零 diff）、一切后端 Java/sql/pom、`scripts/`、`docker-compose*`。E2E 明列不入 CI；证据与 trace 落 gitignored `.trae/tmp`，不入库、不计入改动集。
+> 本续批开工基线 `138ec97` = TASK-228 C-02 台账笔（启动级路由缺陷修复 `05bcae4` + 台账 `138ec97`），缺陷未修则 12 用例全数阻断，故 227 必须在 228 之后。
+
+## 9. 续批结论
+
+首轮 S3.3 停止的根因（应用启动级路由缺陷）已由 TASK-228 修复；本续批从保留件恢复 e2e 套件、依赖与忽略规则后，8 条 route-mock spec / 12 用例在真 chromium（生产构建产物 + `vite preview`）下 **12 passed、rc=0**；两 API 前缀之外零真实网络请求（`assertNoUnhandled` 断言 12 用例全覆盖）；web 四件套不回归（单测 31 持平、type-check 零错、build 成功、typed-router 零 diff）；后端与 CI/vite 配置零 diff。E2E 仅本地执行，不入 CI。
+
+## 10. 续批判别式 R1-R6
+
+- **R1 绿（依赖落地与版本锁定）**：`pnpm install --frozen-lockfile` rc=0，输出 `Lockfile is up to date, resolution step is skipped`（`.trae/tmp/t227-install.log`）；安装后 `pnpm-lock.yaml` 零 diff；`web/package.json` devDependencies 为 `"@playwright/test": "1.64.0"`（精确版本、无范围符号），lock 内 importer specifier 与包版本同为 1.64.0；浏览器二进制落系统用户缓存，不入库。
+- **R2 绿（12 用例全绿，逐条断言核心交互）**：`pnpm e2e` rc=0，`Running 12 tests using 1 worker` → `12 passed`（`.trae/tmp/t227-e2e-run.log`）。逐条见 §11。
+- **R3 绿（route-mock 零真实网络请求）**：`web/e2e/helpers.ts` 内 `installRouteMocks` 以 `page.route('**/record/api/**')` 与 `page.route('**/user/api/**')` 返回固定夹具；同时 `page.on('request')` 按后端前缀白名单 `/^\/(api|record|user|leaderboard|verify|admin|mapmatch)\//` 记录全部 API 请求，**两前缀之外一律记入 `unhandled`**，`assertNoUnhandled` 以 `expect(ctx.unhandled).toEqual([])` 断言为空——12 用例共 20 处调用，实测零命中；两前缀自身由 mock 响应，故对后端零真实请求。
+- **R4 绿（web 四件套不回归）**：`pnpm test` rc=0（4 文件 31 测全过，与基线持平）／`pnpm type-check` rc=0／`pnpm build` rc=0（3317 modules transformed / built）／`git diff --exit-code -- web/src/typed-router.d.ts` rc=0（零 diff）。数值口径订正见 §14-D5。
+- **R5 绿（证据留痕）**：运行输出落 `.trae/tmp/t227-e2e-run.log`；`web/e2e/playwright.config.ts` 将 `outputDir` 指向 gitignored `.trae/tmp/e2e-results`，本批实测 **12 个用例目录 + 12 份 trace `.zip`**（config `trace: 'on'`，每用例必产），登记于 §11 与本节。
+- **R6 绿（后端与配置零 diff）**：相对开工基线 `138ec97` 的改动集全部位于 `web/` 且限于 §8 所列 22 文件；`git diff --name-only 4596df2 -- '*.java' '*.sql' 'pom.xml' '*/pom.xml' '.github/workflows/ci.yml' 'scripts/' 'docker-compose*' 'web/vite.config.ts' 'web/tsconfig.app.json'` 为空。
+
+## 11. 12 用例逐条清单与门禁留证（S6）
+
+逐条（`pnpm e2e` 实测，chromium 单浏览器，`vite preview` 生产产物，baseURL 127.0.0.1:4179）：
+
+1. login-redirect：未登录访问控制台 → 守卫跳转登录页 ✓
+2. login-redirect：已登录访问 `/login` → 自动跳转首页并渲染记录列表 ✓
+3. record-list：统计卡与表格渲染（记录数/总里程/通过率/连续打卡/可见性列）✓
+4. record-submit：清空后提交按钮禁用（校验门），重新加载样例后恢复 ✓
+5. record-submit：选择骑行类型提交 → 结果卡片渲染（recordId/status/duplicated）✓
+6. filter-pagination：翻页 → 筛选跑步 → page 重置为 1 且列表缩减 → 重置恢复 20 行 ✓
+7. delete-record：取消不发删除请求；确认后删除并刷新列表 ✓
+8. feed：第 1 页卡片渲染，翻页显示第 2 页条目 ✓
+9. goal-card：目标卡片渲染（周/月标签、进度条、已达成徽标）✓
+10. goal-card：设置目标弹窗 upsert 新目标并刷新列表 ✓
+11. goal-card：编辑弹窗更新目标值；删除 Popconfirm 移除目标 ✓
+12. top-nav：导航到各业务页并断言内容，退出清会话 ✓
+
+门禁逐项（读数落 `.trae/tmp/t227r-gates.log` 与 `t227-*.log`）：
+
+1. **web 四件套**：`pnpm test` rc=0（31/31）／`pnpm type-check` rc=0／`pnpm build` rc=0（3317 modules）／typed-router 零 diff rc=0。
+2. **E2E 套件**：`pnpm e2e` rc=0（12 passed，8 文件）；`--list` 交叉核对 `Total: 12 tests in 8 files` rc=0。
+3. **零触碰**：后端/ci.yml/vite.config/tsconfig.app/web/src 相对开工基线零 diff（见 R6）。
+4. **token 门**：29 项字面量在 `4596df2` 与工作树的 tracked 计数和逐位持平；另对 15 个新增未跟踪文件逐项固定串扫描 **0 命中**（tracked 之外的补充口径，读数见日志）。
+5. **词面门**：改动集（20 文件）`git grep -iE -f pattern` **ZERO_HIT rc=1**；新增未跟踪文件显式扫描 0 命中；探针阳性对照 **HIT rc=0**。
+6. **`git diff --check`**：工作树 rc=0 且暂存区 rc=0。
+7. **行尾**：改动集 20 文件逐文件核对 **bad=0**——新增 15 文件（`web/.gitignore` + 14 个 `web/e2e/**`）纯 LF、末尾 0x0A、无 BOM；改动 4 个既有文件（`web/README.md`/`web/package.json`/`web/pnpm-lock.yaml`，及 TASK-228 的 `web/src/*.ts`）保持基线 autocrlf CRLF 工作树形态、blob LF、末尾 0x0A、无 BOM。
+8. **契约门双态**：见 §14-D2/D3 的口径登记与读数。
+
+## 12. token 时点读数
+
+29 项字面量：`4596df2` 与工作树 tracked 计数和持平、逐项未变；新增未跟踪文件 0 命中。字面量清单与数值按硬约束不写入本 handoff、不入任何 tracked 文件；读数见 `.trae/tmp/t227r-gates.log`。
+
+## 13. 首轮停止史与停止笔链（如实登记）
+
+- 首轮本课题在 S3.3 停止上报：E2E 无法在真实浏览器跑通，根因定位为**应用启动级路由缺陷**（`unplugin-vue-router@0.19.2` 不再向 `vue-router/auto` 注入文件路由表，`main.ts` 的 `createRouter({history})` 使 `routes` 为 `undefined`，`createRouterMatcher` 在 `routes.forEach` 抛错，应用挂载失败）——即 E2E 批的**头号价值发现**。
+- 停止笔链：`e1610de`（停止上报）→ `69602b0`（停止报告补记；补记同时给出「完整修复候选 = 恰 2 文件」并实测全绿）。两笔为纯文档笔，本续批未改写、未 revert。
+- 缺陷另立 TASK-228（`4596df2` 派发），已先于本续批落地（`05bcae4` + `138ec97`），本续批基线 `138ec97`。
+- 保留件：`.trae/tmp/t227-preserved/`（`full-fix-candidate.patch` / `e2e/` 套件 14 文件 / `tracked-changes.patch`（README + package.json + pnpm-lock）/ `web.gitignore` / `FIX-CANDIDATE.md` / 两份全绿日志）与 `.trae/tmp/e2e-results/`（首轮 12 份 trace，已于续批前整体另存 `.trae/tmp/t227-preserved/e2e-results-round1/`，本轮 trace 覆盖写回原目录）。
+
+## 14. 异常与偏差
+
+- **D1（保留件缺口：e2e 脚本无法自洽发现配置）**：保留件的 `web/package.json` 写 `"e2e": "playwright test"`，README 亦记「`cd web && pnpm e2e`」；但 Playwright 只在**当前目录**寻找 `playwright.config.ts`，而配置在 `web/e2e/` 子目录下，故原样执行时配置未被发现——默认 `testDir` 退回 `web/`，误扫 `web/src/**/__tests__/*.test.ts`（vitest 单测），报 4 条 `Vitest failed to access its internal state.` + `No tests found`，rc=1（`.trae/tmp/t227-e2e-run.log` 首跑记录）。据 S2「`scripts.e2e`」意图补 `--config e2e/playwright.config.ts` 一行（白名单内 `web/package.json`），改后 `pnpm e2e` rc=0 且与 `--list` 的 12 用例交叉一致，README 所述运行方式成立。旁证：首轮全绿日志只含 `[WebServer]` 输出、无 `pnpm e2e` 包脚本横幅，说明首轮并非以保留件所记脚本形态运行；首轮若存在根级配置则未被保留，该调用形态无法复原。本偏差不涉 `vite.config.ts`/路由/后端，非 S3.3 停止条件。
+- **D2（契约门基线口径）**：用户指定 `--open TASK-227 --baseline=4596df2`。实测该基线**必然为红**：判据 B 用**单一**改动集对**每个**在途回传做全量比对，而 `4596df2` 跨越 TASK-228 的 6 文件，已收口的 TASK-228 handoff（只声明自身 6 文件）会被判「改动集未声明」若干项——这是跨课题基线与工具全局比对语义的冲突，非契约违反。故沿 TASK-224/225/226 先例，以本课题**真实开工时点** `138ec97`（TASK-228 C-02）为基线复跑；两版读数均如实登记于 `.trae/tmp/t227-contract-*.log`。
+- **D3（契约门提取器扩展名白名单）**：判据 B 的清单提取器只承认固定扩展名集合（`md|json|ya?ml|ts|vue|java|sql|...`），**不含无扩展名 dotfile**，故 `web/.gitignore` 无法被表达为清单 token，默认基线复跑将多出 1 项「改动集未声明：web/.gitignore」。该文件在 S4 白名单内（`web/.gitignore（如需）`）且已逐字符登记于 §8；为得到可解释的判据 B 读数，另以 `--diff-file` 显式给出由**真实改动集减去该不可表达项**（21 项）构成的清单复跑，得 rc=0。两版读数均登记。
+- **D4（临时件）**：挂载/门禁脚本、日志、trace、契约读数均落 gitignored `.trae/tmp`，不入库。
+- **D5（R4 数值口径订正）**：S2.5 预注册的 build 期望值 3283 系 TASK-228 修复**之前**的读数。TASK-228 使 `vue-router/auto-routes` 模块首次被真正引用并打入产物，本续批正确读数为 3317 modules（TASK-228 handoff 已登记同一事实）。R4 的**内容面**不回归结论不变（31 测持平 / type-check 零错 / typed-router 零 diff / build 成功）。
+- **D6**：C-02 自指哈希沿先例（§1 内的 C-01/C-02 哈希以 `git log` 为准）。
+
+## 15. 未覆盖与不得推出的结论
+
+- **未覆盖**：真实后端全栈联调（`--it` 层，仍留 H2/后续）；CI 集成（E2E 明列不入 CI，`ci.yml` 零触碰）；多浏览器（仅 chromium，未跑 firefox/webkit）与移动视口、可访问性；榜单页交互（`/leaderboard/api/*` 不在两前缀 mock 范围，避免真实网络请求，候选后续扩展）；WebSocket（`/user/ws-notifications`）推送路径；`--mode=online` 依赖解析。
+- **不得推出**：不得据 12 用例绿得出「后端链路正确」的结论（全为 route-mock 夹具，后端零参与）；不得得出「跨浏览器兼容」结论（单浏览器）；不得得出「可入 CI」结论（未接 CI，且明列不入）；不得据本机单次运行得出稳定性/性能结论（`retries: 0`、`workers: 1`、单次跑）。

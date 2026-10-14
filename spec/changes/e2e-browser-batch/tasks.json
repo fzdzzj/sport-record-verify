@@ -4,18 +4,18 @@
     "category": "Implementation",
     "task": "Playwright route-mock E2E smoke suite (web-only)",
     "steps": [
-      { "step": "S1 recon: existing pages/routes/inventory + Playwright version pin + fixture shape", "completed": false },
-      { "step": "Install Playwright devDependency; add e2e/ dir with 8 route-mock specs + fixtures + config", "completed": false },
-      { "step": "Run suite locally, archive evidence to .trae/tmp; web four-piece + typed-router zero diff", "completed": false }
+      { "step": "S1 recon: existing pages/routes/inventory + Playwright version pin + fixture shape", "completed": true },
+      { "step": "Install Playwright devDependency; add e2e/ dir with 8 route-mock specs + fixtures + config", "completed": true },
+      { "step": "Run suite locally, archive evidence to .trae/tmp; web four-piece + typed-router zero diff", "completed": true }
     ],
-    "passes": false
+    "passes": true
   },
   {
     "number": 2,
     "category": "Acceptance",
     "task": "Gates + commits + external CI",
     "steps": [
-      { "step": "C-01 feat(e2e) + C-02 ledger, no push", "completed": false },
+      { "step": "C-01 feat(e2e) + C-02 ledger, no push", "completed": true },
       { "step": "Independent review subagent, zero-write", "completed": false },
       { "step": "Supervisor push + external CI green", "completed": false }
     ],
