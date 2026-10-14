@@ -2689,6 +2689,7 @@ run `35802403723`（head `eba0108`，2026-09-23 00:31 UTC）——**web/build �
 | 未覆盖/跳过 | --mode=online、CI 全流程、真实浏览器我的记录删除行内二次确认/列表刷新交互（沿 TASK-213/220/221/222 口径）、真实 MySQL 分片删除/Redis 键清理跨中间件联调（--it 未执行） |
 | 偏差 | D1 榜单数据源定稿为自有聚合持久表，贡献不实时回撤，登记为偏差与已知限制，不引入 MQ 补偿写；D2 Checkstyle ParameterNumber 8 参家法下采用 setter 注入；D3 token/词面门/契约临时件落 gitignored .trae/tmp；D4/D5 offline 噪音与 build chunk 告警为既有。明细见 handoff.md §8 |
 | 状态 | TASK-223 本地闭环：记录删除与撤回落地（单事务级联四表 + Redis best-effort 清理 + web Popconfirm 二次确认，零 schema/零新状态值/零 MQ/零跨服务写），外部门槛与独立 review 待指导侧终裁与推送后补记 |
+- 补记（指导侧封盘笔，2026-10-14）：FULL 档三环节终裁全过（指导亲核 PASS：15 文件全等/红线面 diff=0/deleteRecord 404→403→级联分片路由与预注册一致；独立复核四块全 PASS 零阻断零非阻断，留痕×3：handoff 测试方法名口径简写、复核期间政策笔 765b366 追加不改白名单全等、Windows TMP 重定向必要性）。批次推送 ffc98bd..765b366（5 笔=TASK-222 封盘笔+TASK-223 派发笔/C-01/C-02+分级政策笔）后 run 38497654651（head=765b366）conclusion=success 全 job 绿——外部终验一次达成。TASK-223 封盘。C-01 40ce0d3 / C-02 e5303c4。榜单贡献不回撤为 D1 已知限制，挂账 F5（拟）待业务精确性要求触发。
 ## 验收记录：TASK-224（我的记录筛选与前端过滤条联动，P5，MEDIUM 小档，2026-10-14）
 
 | 项 | 内容 |

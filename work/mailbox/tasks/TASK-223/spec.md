@@ -62,3 +62,4 @@ C-02 回填：判别式红绿、门禁留证、偏差 D1-Dn、未覆盖清单（
 - **偏差**：D1（榜单数据源定稿为自有聚合持久表，贡献不实时回撤，登记为偏差与已知限制，不引入 MQ 补偿写）；D2（Checkstyle ParameterNumber 8 参家法下采用 setter 注入）；D3（token/词面门临时件落 gitignored `.trae/tmp`）；D4/D5（offline 噪音与 build chunk 告警为既有）。明细见 `handoff.md §8`。
 - **未覆盖清单**：真实浏览器删除与二次确认交互、真实 MySQL 分片删除与 Redis 联调（未起全栈服务，`--it` 未执行）、`--mode=online` 与外部 CI。均沿 TASK-213/220/221/222 口径登记，未写成通过，见 `handoff.md §10`。
 - **停止条件**：S3 §1-§5 无一按字面触发（对账见 `handoff.md §8`）。
+- 指导侧封盘补记（2026-10-14）：run 38497654651（head=765b366）conclusion=success——外部终验一次达成，TASK-223 封盘；复核留痕×3 与 D1 榜单已知限制（挂账 F5 拟）随 PLAN.md 补记登记。
