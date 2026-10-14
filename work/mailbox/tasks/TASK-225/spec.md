@@ -52,3 +52,20 @@ offline 全量逐位（sql 触碰不收窄）+ scratch 迁移二跑证明 + 新�
 ## S7 backfill（C-02 后）
 
 判别式红绿、门禁留证（含 scratch 二跑）、偏差 D1-Dn、未覆盖清单沿先例（真实浏览器 goal 交互/真实 DB 聚合联调/--it/online）。
+
+### 回填（2026-10-14，C-02 台账笔）
+
+- **判别式红绿**：R1-R6 / G1-G3 逐条实证全绿，详细证据见 `handoff.md §4`。
+- **门禁留证**：
+  - offline 全量逐位门禁（sql 触碰不收窄）：`mvn-verify.sh --mode=offline test` 实测全量 7 模块通过，`record-service` 由基线 226 增至 **250**（净增 24 测，0 Failures/Errors/Skipped，rc=0）；其余六模块逐位不变，组合读数为 `52/50/173/250/159/80/26`。
+  - scratch 迁移二跑证明：真 MySQL 8.0 容器二跑留证完成（首跑建表成功，二跑幂等通过跳过分支，uk 冲突保护 1062 报错，upsert 覆盖更新成功）。
+  - 新增单测隔离单跑：`GoalServiceTest`（10 测 rc=0）、`GoalControllerTest`（14 测 rc=0）。
+  - 静态门禁：`--static=record-service` rc=0（0 Checkstyle violations / SpotBugs 0 错误 / PMD BUILD SUCCESS）。
+  - web 四件套：`pnpm test` 4 套 31 测 rc=0（净增 3 测，TMP 重定向 `.trae/tmp`）、`pnpm type-check` 0 错误 rc=0、`pnpm build` 成功（3283 modules）rc=0、`git diff --exit-code -- web/src/typed-router.d.ts` 零 diff rc=0。
+  - 契约门双态：在途 `--open TASK-225 --baseline=06d17f3` rc=0；收口无参 rc=0。
+  - token 29 项：两点 2036/2036 持平（≥2034）。
+  - 词面门：CI-exact ZERO_HIT（rc=1）+ 探针阳性对照 HIT（rc=0）。
+  - 格式与行尾：`git diff --check` rc=0；改动文件保持基线 LF 与末尾换行无 BOM。
+- **偏差**：D1（C-02 台账笔自指哈希沿先例）；D2（token/词面门/scratch 验证等临时件落 gitignored `.trae/tmp`）；D3（Checkstyle JavadocPackage 规约适配，新建 dto 包补充 package-info.java）；D4/D5（offline 噪音与 build chunk 告警为既有非阻断）。明细见 `handoff.md §8`。
+- **未覆盖清单**：真实浏览器目标卡片交互/弹窗联动（沿 TASK-213/220/221/222/223/224 口径登记未覆盖）、真实 MySQL/Redis 跨服务目标与记录聚合联调（--it 未执行）、--mode=online 与外部 CI。均沿先例口径登记，见 `handoff.md §10`。
+- **停止条件**：S3 §1-§5 无一按字面触发（核对见 `handoff.md §8`）。

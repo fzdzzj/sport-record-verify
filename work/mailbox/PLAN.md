@@ -2704,3 +2704,16 @@ run `35802403723`（head `eba0108`，2026-09-23 00:31 UTC）——**web/build �
 | 偏差 | D1 台账笔自指哈希沿先例；D2 token/词面门/临时脚本落 gitignored .trae/tmp；D3 Checkstyle ParameterNumber 8 参家法规约适配（Controller 保持恰 8 参，Service 保持恰 7 参）；D4/D5 offline 噪音与 build chunk 告警为既有。明细见 handoff.md §8 |
 | 状态 | TASK-224 本地闭环：我的记录筛选落地（四维可选过滤 + 校验 400 + web 过滤条与重置页码，分级政策首用实测 record 净增 9 测，零 api 触碰/零 schema/零新端点/零新路由），外部终验待推送后补记 |
 - 补记（指导侧封盘笔，2026-10-14）：MEDIUM 小档三环节终裁全过（指导亲核 PASS：12 文件全等/api 红线 diff=0/四参可选绑定+validateFilterParams 与预注册一致；独立复核四块全 PASS 零阻断，提示×3 裁决合理——HEAD 拓扑含 TASK-223 封盘笔属预期、契约门在途 --diff-file 口径、handoff 方法名表述差异）。分级门禁政策首用成功（record 收窄实测 217→226 +9，其余沿绿基线论证，政策省时兑现）。批次推送 765b366..9ed803f（4 笔=TASK-223 封盘笔+TASK-224 派发笔/C-01/C-02）后 run 38511006257（head=9ed803f）conclusion=success——外部终验一次达成。TASK-224 封盘。C-01 fabeb60 / C-02 65aad17。
+## 验收记录：TASK-225（周月运动目标与前端目标卡片，P5，MEDIUM 档，2026-10-14）
+
+| 项 | 内容 |
+| --- | --- |
+| 开工基线 | 派发笔 `06d17f3`；工作树干净；offline 基线 52/50/173/226/159/80/26；token 29 项基线 2036 |
+| C-01 实施笔 | `b7f3029` `feat(record): 周月运动目标与前端目标卡片（TASK-225）`，恰 14 文件 = §4 白名单，+1302/−2 |
+| C-02 台账笔 | 本笔 `docs(mailbox): 登记TASK-225周月运动目标验收与台账闭环（TASK-225）`，恰 4 文件（tasks.json 勾选 / spec.md §7 回填 / handoff.md 新建 / PLAN.md 纯追加）；C-02 自指哈希沿 D1 先例 |
+| 判别式红绿 | R1 绿（02 追加 sport_goal 幂等建表，真 MySQL scratch 二跑命中跳过分支，uk 约束保护与 upsert 覆盖验证）；R2 绿（GET/POST 缺头 1001、auth 关缺参 400，DELETE 非 owner 403 1002、不存在 404 3001）；R3 绿（同维度二次 POST 覆盖更新 target 不增行，域外/非正数返回 400）；R4 绿（周窗口 ISO 周一 00:00 与自然月窗口边界单测，distance 与 count 聚合各自正确，percent 0-100 整数截断与封顶，仅本人 PASSED 计入，已删/非 PASSED 自然剔除与 TASK-223 联动语义留证）；R5 绿（web 目标卡片渲染/进度条/周月周期标签/达成标签/对话框/删除确认 Popconfirm，client.ts 三方法与单测，四件套承载）；R6 绿（既有面 /my/streak/feed/删除/筛选源码零 diff）；G1/G2/G3 绿。明细见 handoff.md §4 |
+| 本机门禁 | offline 全量逐位 **52/50/173/250/159/80/26** BUILD SUCCESS rc=0（sql 触碰按分级政策保守读法全量跑，record 226→250 净增 24 测 = GoalServiceTest 10 + GoalControllerTest 14，其余六模块逐位不变）；scratch 迁移二跑留证完成；两承载新断言的测试类隔离单跑全绿（GoalServiceTest 10 / GoalControllerTest 14）；record-service 静态 rc=0（0 Checkstyle violations/SpotBugs 0 错误/PMD BUILD SUCCESS）；web pnpm test rc=0（4 套 31 测，净增 3 测）、type-check rc=0、build 成功（3283 modules）、typed-router diff rc=0；契约门双态 rc=0（在途 --open TASK-225 --baseline=06d17f3 判据 A 待办放行 + 判据 B 一致，收口无参）；token 29 项两点 2036/2036 持平且 ≥2034，改动集 token 扫描 ZERO_HIT；词面门改动集 CI-exact ZERO_HIT rc=1 + 探针阳性对照 HIT rc=0；git diff --check rc=0；改动文件保持基线 LF 行尾无 BOM |
+| 是否到达外部门槛 | **未达到**：两笔均未 push、未建 PR、无 CI run；MEDIUM 档外部终验待指导侧推动推送后补记 |
+| 未覆盖/跳过 | --mode=online、CI 全流程、真实浏览器目标卡片与对话框交互/列表联动（沿 TASK-213/220/221/222/223/224 口径）、真实 MySQL 大数据量目标与记录聚合联调（--it 未执行） |
+| 偏差 | D1 台账笔自指哈希沿先例；D2 token/词面门/scratch 迁移等临时脚本落 gitignored .trae/tmp；D3 Checkstyle JavadocPackage 规约适配（新建 dto 包补充 package-info.java）；D4/D5 offline 噪音与 build chunk 告警为既有。明细见 handoff.md §8 |
+| 状态 | TASK-225 本地闭环：周月运动目标落地（sport_goal 幂等建表 + pull-on-read 实时进度聚合 + web 目标卡片与 CRUD 对话框，全量 offline 实测 record 净增 24 测，零 api 触碰/零 MQ/零跨服务写/零缓存反范式/既有面源码零 diff），外部终验待推送后补记 |
