@@ -8,10 +8,10 @@
 
 ## 1. 当前代码基线与外部状态
 
-- **当前分支与 HEAD**：`main` 分支，最新实施提交为 `e753b39`（C-01）与 `0c7b7a5`（C-02），封盘笔随本提交闭环。
-- **外部 CI 门槛状态**：GitHub Actions run `38692154084`（`web` ✓30s / `build` ✓12m10s 全绿）。
-- **工作树状态**：TASK-244 独立复核全绿，在途文件已完成台账归档。
-- **当前在途任务数**：`0` 个在途（历史任务至 TASK-244 全部已闭环收口）。
+- **当前分支与 HEAD**：`main` 分支，最新实施提交为 `0cd9db0`（TASK-244 封盘闭环笔），已全量推至 `origin/main`。
+- **外部 CI 门槛状态**：GitHub Actions run `38746969796`（`web` ✓41s / `build` ✓11m57s 全绿通过）。
+- **工作树状态**：TASK-245 方案 D 开工在途，工作树干净。
+- **当前在途任务数**：`1` 个（TASK-245 方案 D 开工在途：前台端到端业务与全功能体验增强闭环——B22 + B25 + B26 + B27 + B28 + B29）。
 
 ---
 
@@ -52,12 +52,16 @@
 
 ---
 
-## 4. 下一个主 Agent 的唯一推荐动作
+## 4. 当前推进与唯一推荐动作
 
-- **推荐动作**：
-  1. 执行 `git push origin main` 批量推送已封盘批次触发 GitHub Actions 远端全量 CI 外部终验（当前本地领先 origin/main 25 笔提交）；
-  2. 或推进 **`H2` 生产部署姿态演练（MEDIUM 零代码）**：CORS 真实注入/跨域 cookie/TLS 终止协同演练。
+- **当前推进**：**方案 D（TASK-245，MEDIUM 档）**
+  - B22 + B29：`RecordController` 新增 `PATCH /api/records/{id}/visibility` 修改端点与 `GET /api/records/{id}` 摘要端点；`record-detail.page.vue` 补全运动指标卡（里程/时长/配速/类型），支持原地修改可见性；SVG 轨迹首点高亮绿色起点（🟢）与末点红色终点（🔴）；
+  - B25：`user-service` 增加 `GET/PUT /api/user/profile` 支持查看与修改用户昵称；好友申请列表回填申请人真实昵称，新增批量同意/全部忽略端点；前端 `settings` 与 `friends` 联动；
+  - B26：`record-service` 新增 `GET /api/records/{id}/appeal`；`verdict.page.vue` 移除跳往管理后台外链，引入 `<a-steps>` 进度条追踪，自动回显理由与复核意见，禁用重复提交；
+  - B27：`feed.page.vue` 卡片增加首字主题彩色头像与中文运动类型徽标（🏃跑步/🚴骑行），空态提供去加好友/去跑步引导卡片；
+  - B28：`gpx.ts` 补齐 `parseGpx`，`record-submit.page.vue` 增加「导入 GPX 文件」支持拖拽/选择 GPX 自动解析填入。
 - **开工准备**：按 `docs/internal/AGENTS.md` 的「极简任务派发包模板」为子 Agent 派发。
+
 
 
 ---
