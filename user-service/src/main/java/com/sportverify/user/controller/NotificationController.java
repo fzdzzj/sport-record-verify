@@ -17,6 +17,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.ExceptionHandler;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -156,6 +157,27 @@ public class NotificationController {
                 : List.of());
     }
 
+
+    /**
+     * 清空本人已读通知（B21，DELETE /api/notifications/read）：仅删除当前登录用户
+     * （X-User-Id 认定，见 ADR-0007）已读的行，未读通知不受影响；返回实际删除条数。
+     */
+    @DeleteMapping("/read")
+    public Result<Integer> clearMyReadNotifications(HttpServletRequest request) {
+        Long resolved = resolveUserId(request, null);
+        return Result.success(notificationService.cleanMyReadNotifications(resolved));
+    }
+
+    /**
+     * 清理过期已读通知（B21 治理面，DELETE /api/notifications/expired?days=90）：
+     * 以「已读 + created_at &lt; now-days」为界分批物理删除历史已读通知；返回本批实际删除条数。
+     */
+    @DeleteMapping("/expired")
+    public Result<Integer> cleanExpiredNotifications(
+            @RequestParam(value = "days", required = false) Integer days) {
+        int thresholdDays = (days == null || days <= 0) ? 90 : days;
+        return Result.success(notificationService.cleanExpiredNotifications(thresholdDays, 200));
+    }
 
     /**
      * 身份认定（数据隔离核心，与 FriendController 逐字同源，见 ADR-0007）：true 时以网关

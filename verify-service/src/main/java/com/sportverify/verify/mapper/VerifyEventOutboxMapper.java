@@ -2,10 +2,12 @@ package com.sportverify.verify.mapper;
 
 import com.baomidou.mybatisplus.core.mapper.BaseMapper;
 import com.sportverify.verify.entity.VerifyEventOutbox;
+import org.apache.ibatis.annotations.Delete;
 import org.apache.ibatis.annotations.Param;
 import org.apache.ibatis.annotations.Select;
 import org.apache.ibatis.annotations.Update;
 
+import java.time.LocalDateTime;
 import java.util.List;
 
 /**
@@ -66,4 +68,35 @@ public interface VerifyEventOutboxMapper extends BaseMapper<VerifyEventOutbox> {
             + "</foreach>"
             + "</script>")
     int markSentBatch(@Param("ids") List<Long> ids);
+
+    /**
+     * B20 毒丸死信列表（管理端查看）：按 id 倒序返回 EXHAUSTED 终态行，供人工重放处置。
+     *
+     * @param limit 拉取上限（调用方已在 controller cap，表中含量可能很大）
+     */
+    @Select("SELECT * FROM verify_event_outbox WHERE status = 'EXHAUSTED' " +
+            "ORDER BY id DESC LIMIT #{limit}")
+    List<VerifyEventOutbox> selectExhausted(@Param("limit") int limit);
+
+    /**
+     * B20 毒丸人工重放：EXHAUSTED 终态行重置为 PENDING 并清空重试计数，重新进入 relay 扫描集。
+     * 条件含 status='EXHAUSTED'：非死信行不做操作（幂等，仅毒丸可重放）。
+     *
+     * @param id 目标事件主键
+     * @return 受影响行数（1 = 重放成功；0 = 不存在或非 EXHAUSTED）
+     */
+    @Update("UPDATE verify_event_outbox SET status = 'PENDING', retry_count = 0 " +
+            "WHERE id = #{id} AND status = 'EXHAUSTED'")
+    int replayExhausted(@Param("id") Long id);
+
+    /**
+     * B20 历史已投递行物理分批清理：仅删除已投递（SENT）且投递时间早于阈值的行，
+     * 逐批上限 {@code limit} 限流单次删除规模（PENDING/EXHAUSTED 行永不触碰）。
+     *
+     * @param before 清理截止时间（仅删除 sent_at &lt; before 的 SENT 行）
+     * @param limit  单批删除行数上限
+     * @return 实际删除行数
+     */
+    @Delete("DELETE FROM verify_event_outbox WHERE status = 'SENT' AND sent_at < #{before} LIMIT #{limit}")
+    int cleanSentEvents(@Param("before") LocalDateTime before, @Param("limit") int limit);
 }

@@ -10,6 +10,14 @@
           批量标记已读{{ selectedIds.length ? ` (${selectedIds.length})` : '' }}
         </a-button>
         <a-button class="ml-2" :loading="markAllLoading" @click="onMarkAll">全部已读</a-button>
+        <a-popconfirm
+          title="确认清空全部已读通知？"
+          ok-text="清空"
+          cancel-text="取消"
+          @confirm="onClearRead"
+        >
+          <a-button class="ml-2" danger :loading="clearReadLoading" :disabled="!loggedIn">清空已读</a-button>
+        </a-popconfirm>
         <a-alert v-if="infoMessage" type="success" :message="infoMessage" class="mt-2" />
         <a-alert v-if="errorMessage" type="error" :message="errorMessage" class="mt-2" />
       </div>
@@ -107,6 +115,7 @@ import {
   markNotificationRead,
   markAllNotificationsRead,
   batchMarkNotificationsAsRead,
+  clearReadNotifications,
   getNotificationPreferences,
   updateNotificationPreferences,
   type NotificationViewDTO,
@@ -155,6 +164,7 @@ const rows = ref<NotificationViewDTO[]>([])
 const loading = ref(false)
 const readingId = ref<number | null>(null)
 const markAllLoading = ref(false)
+const clearReadLoading = ref(false)
 const infoMessage = ref('')
 const errorMessage = ref('')
 
@@ -252,6 +262,25 @@ async function onMarkAll() {
     errorMessage.value = e.code ? `[${e.code}] ${e.message}` : (e.message || '操作失败')
   } finally {
     markAllLoading.value = false
+  }
+}
+
+/** B21 清空本人已读：经 a-popconfirm 确认后 DELETE /user/api/notifications/read，成功后刷新列表与未读数 */
+async function onClearRead() {
+  if (clearReadLoading.value || !loggedIn.value) return
+  clearReadLoading.value = true
+  errorMessage.value = ''
+  infoMessage.value = ''
+  try {
+    const res = await clearReadNotifications()
+    const n = typeof res.data === 'number' ? res.data : 0
+    infoMessage.value = `已清空 ${n} 条已读通知`
+    await loadList()
+    await refreshUnread()
+  } catch (e: any) {
+    errorMessage.value = e.code ? `[${e.code}] ${e.message}` : (e.message || '操作失败')
+  } finally {
+    clearReadLoading.value = false
   }
 }
 

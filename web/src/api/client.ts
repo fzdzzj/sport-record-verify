@@ -488,6 +488,35 @@ export async function fetchPendingAppeals(): Promise<Result<AppealDTO[]>> {
   return api.get('/admin/api/appeals/pending')
 }
 
+// ===== Outbox 消息补偿与死信看板（TASK-246 B20） =====
+export interface OutboxEventDTO {
+  id: number
+  eventId?: string
+  topic?: string
+  tag?: string
+  payload?: string
+  traceId?: string
+  status?: string
+  retryCount?: number
+  createdAt?: string
+  sentAt?: string
+}
+
+/** Outbox 毒丸死信列表（GET /admin/api/outbox/exhausted）：EXHAUSTED 终态行，id 倒序。 */
+export async function fetchExhaustedOutbox(limit = 50): Promise<Result<OutboxEventDTO[]>> {
+  return api.get('/admin/api/outbox/exhausted', { params: { limit } })
+}
+
+/** Outbox 毒丸人工重放（POST /admin/api/outbox/exhausted/{id}/replay）：EXHAUSTED→PENDING，返回重放行数。 */
+export async function replayExhaustedOutbox(id: number | string): Promise<Result<number>> {
+  return api.post(`/admin/api/outbox/exhausted/${id}/replay`)
+}
+
+/** Outbox 历史已投递行清理（DELETE /admin/api/outbox/sent）：仅清理 days 天前已投递(SENT)行，返回清理行数。 */
+export async function cleanSentOutbox(days = 7): Promise<Result<number>> {
+  return api.delete('/admin/api/outbox/sent', { params: { days } })
+}
+
 // ===== Notifications (add-notification-web-bell) — userId omitted when auth (gateway injects) =====
 export interface NotificationViewDTO {
   id: number
@@ -514,6 +543,11 @@ export async function markNotificationRead(id: number): Promise<Result<any>> {
 
 export async function markAllNotificationsRead(): Promise<Result<number>> {
   return api.patch('/user/api/notifications/read-all')
+}
+
+/** 清空本人已读通知（B21，DELETE /user/api/notifications/read）：仅删当前登录用户已读行，返回删除条数。 */
+export async function clearReadNotifications(): Promise<Result<number>> {
+  return api.delete('/user/api/notifications/read')
 }
 
 /** 批量标记已读（B17，PATCH /user/api/notifications/batch-read）：按指定 ID 集合批量置读，返回本次流转条数。 */

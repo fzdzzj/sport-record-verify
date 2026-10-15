@@ -93,6 +93,22 @@ public class LeaderboardService {
     private static final long OVERALL_ZSET_MAX = 10_000;
     /** B18：scan 游标分批遍历批次大小（避免整榜 range(0,-1) 倾倒进 JVM 堆） */
     private static final int OVERALL_ZSET_SCAN_BATCH = 500;
+    /** 好友榜本地缓存 TTL：10~15s 轻量窗口阻断高频刷新穿透（见类 Javadoc /topFriends） */
+    private static final java.time.Duration FRIEND_CACHE_TTL = java.time.Duration.ofSeconds(15);
+    /** 好友榜本地缓存最大条目数（防无界累积；按 userId:size 维度计） */
+    private static final int FRIEND_CACHE_MAX_SIZE = 2000;
+
+    /**
+     * 好友榜本地多级缓存（TASK-246 B23 防穿透）：Key 为 {@code userId + ":" + size}，
+     * 15s TTL + 上限 2000。好友榜当前每次请求均穿透两次 Feign（好友列表 + 用户昵称）
+     * 与 Redis Pipeline，高并发下极易打爆 user-service；本缓存命中即微秒级返回，
+     * 未命中才执行既有拉取并在返回前回填。属单实例本地缓存，多实例各持一份（声明接受）。
+     */
+    private final com.github.benmanes.caffeine.cache.Cache<String, List<LeaderboardDTO>> friendLeaderboardCache =
+            com.github.benmanes.caffeine.cache.Caffeine.newBuilder()
+                    .maximumSize(FRIEND_CACHE_MAX_SIZE)
+                    .expireAfterWrite(FRIEND_CACHE_TTL)
+                    .build();
 
     private final SportRecordMapper sportRecordMapper;
     private final LeaderboardContributionMapper contributionMapper;
@@ -259,6 +275,29 @@ public class LeaderboardService {
      * UserApiFallback 对 listFriends 返回空页，或异常被本方法 catch 后同样空榜。</p>
      */
     public List<LeaderboardDTO> topFriends(Long userId, int size) {
+        // B23 防穿透：入口优先命中本地缓存（userId:size 维度），未命中才穿透拉取并回填
+        String cacheKey = userId + ":" + size;
+        List<LeaderboardDTO> cached = friendLeaderboardCache.getIfPresent(cacheKey);
+        if (cached != null) {
+            return cached;
+        }
+        List<LeaderboardDTO> result = loadTopFriendsWithoutCache(userId, size);
+        if (!result.isEmpty()) {
+            // 空榜不缓存：降级空榜（user-service 不可用等）短暂恢复后应立刻能拉出数据，不背着旧空榜
+            friendLeaderboardCache.put(cacheKey, result);
+        }
+        return result;
+    }
+
+    /**
+     * 好友榜原始拉取（B23 缓存未命中才执行）：按 user-service 分页契约拉齐好友列表 →
+     * Redis Pipeline 单次往返批量点查各好友在总榜的积分（ZSCORE），内存过滤/排序/截断。
+     *
+     * <p>降级口径（产品决策，add-resilience-hardening）：user-service 不可用 → <b>返回空榜</b>，
+     * 不选「不过滤」。不过滤会把总榜非好友泄露进好友榜（隐私/语义错误）；空榜仅短暂降级。
+     * UserApiFallback 对 listFriends 返回空页，或异常被本方法 catch 后同样空榜。</p>
+     */
+    private List<LeaderboardDTO> loadTopFriendsWithoutCache(Long userId, int size) {
         List<Long> friendIds;
         try {
             friendIds = fetchAllFriendIds(userId);

@@ -229,6 +229,40 @@ public class NotificationService {
         }
     }
 
+    /**
+     * B21 过期已读通知物理清理（治理面，DELETE /api/notifications/expired）：
+     * 以「已读 + created_at &lt; now-days」为界，分批物理删除历史已读通知，杜绝无限堆积
+     * 拖累 idx_user_read 分页；每次批次上限 {@code limit} 限流单次删除规模。
+     *
+     * @param days  清理阈值天数（必须 &gt;= 1，保留近 days 天内已读，近七天在途分页数据不触碰）
+     * @param limit 单批删除行数上限（必须 &gt; 0）
+     * @return 本批实际删除行数
+     */
+    public int cleanExpiredNotifications(int days, int limit) {
+        if (days < 1) {
+            throw new IllegalArgumentException("days 必须 >= 1");
+        }
+        if (limit <= 0) {
+            throw new IllegalArgumentException("limit 必须 > 0");
+        }
+        LocalDateTime before = LocalDateTime.now().minusDays(days);
+        return notificationMapper.cleanExpiredReadNotifications(before, limit);
+    }
+
+    /**
+     * B21 清空当前用户全部已读通知（用户端「一键清空已读」，DELETE /api/notifications/read）：
+     * 仅删除收件人本人（X-User-Id 认定）且已读的行，未读通知不受影响。
+     *
+     * @param userId 收件人 userId（X-User-Id 认定）
+     * @return 实际删除行数
+     */
+    public int cleanMyReadNotifications(Long userId) {
+        if (userId == null) {
+            return 0;
+        }
+        return notificationMapper.cleanUserReadNotifications(userId);
+    }
+
     /** 实体 → 视图 DTO（is_read 码不变，读路径不做枚举名转换） */
     private NotificationView toView(Notification n) {
         NotificationView v = new NotificationView();

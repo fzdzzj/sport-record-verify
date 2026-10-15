@@ -385,6 +385,26 @@ class LeaderboardServiceTest {
         assertTrue(service.top("friend", 200L, 10).isEmpty());
     }
 
+    /** B23 防穿透：连续调用 2 次 topFriends 命中本地缓存，第二次 Feign 依赖次数不增 */
+    @Test
+    void topFriend_secondCallHitsLocalCache_friendFeignNotRepeated() {
+        when(userApi.listFriends(200L, 1L, 1000L)).thenReturn(Result.success(
+                new PageResult<>(1, 1000, 2,
+                        List.of(friend(100L), friend(200L)))));
+        when(redis.executePipelined(any(RedisCallback.class)))
+                .thenReturn(Arrays.asList((Object) 42.5, (Object) 88.0));
+
+        List<LeaderboardDTO> first = service.topFriends(200L, 10);
+        List<LeaderboardDTO> second = service.topFriends(200L, 10);
+
+        // 两次都返回完整好友榜
+        assertEquals(List.of(200L, 100L), first.stream().map(LeaderboardDTO::getUserId).toList());
+        assertEquals(List.of(200L, 100L), second.stream().map(LeaderboardDTO::getUserId).toList());
+        // 关键：Feign（listFriends）与 Redis Pipeline 都仅被调用一次——第二次从本地缓存命中
+        verify(userApi).listFriends(200L, 1L, 1000L);
+        verify(redis, org.mockito.Mockito.times(1)).executePipelined(any(RedisCallback.class));
+    }
+
     /** 非法入参：未知 type / friend 缺 userId → 400（IllegalArgumentException） */
     @Test
     void top_invalidParams_rejected() {

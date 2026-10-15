@@ -21,7 +21,9 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 /**
@@ -198,6 +200,44 @@ class NotificationServiceTest {
     void batchMarkRead_nullUserIdOrEmpty_zero() {
         assertEquals(0, service.batchMarkRead(1001L, List.of()));
         assertEquals(0, service.batchMarkRead(null, List.of(1L)));
+    }
+
+    // ==================== B21 历史已读清理 ====================
+
+    /** 过期已读清理：阈值=now-days，透传 mapper 批删，返回本批删除行数 */
+    @Test
+    void cleanExpiredNotifications_delegatesToMapper() {
+        when(mapper.cleanExpiredReadNotifications(any(LocalDateTime.class), eq(200))).thenReturn(15);
+
+        int rows = service.cleanExpiredNotifications(90, 200);
+
+        assertEquals(15, rows);
+        verify(mapper).cleanExpiredReadNotifications(any(LocalDateTime.class), eq(200));
+    }
+
+    /** 过期已读清理入参校验：days < 1 或 limit <= 0 → 非法参数 */
+    @Test
+    void cleanExpiredNotifications_invalidArgs_throw() {
+        assertThrows(IllegalArgumentException.class, () -> service.cleanExpiredNotifications(0, 200));
+        assertThrows(IllegalArgumentException.class, () -> service.cleanExpiredNotifications(90, 0));
+        assertThrows(IllegalArgumentException.class, () -> service.cleanExpiredNotifications(90, -1));
+    }
+
+    /** 清空本人已读：仅删除收件人本人（X-User-Id 认定）且已读的行，返回删除行数 */
+    @Test
+    void cleanMyReadNotifications_delegatesToMapper() {
+        when(mapper.cleanUserReadNotifications(1001L)).thenReturn(8);
+
+        int rows = service.cleanMyReadNotifications(1001L);
+
+        assertEquals(8, rows);
+        verify(mapper).cleanUserReadNotifications(1001L);
+    }
+
+    /** 清空本人已读：userId 缺失 → 0，不触库 */
+    @Test
+    void cleanMyReadNotifications_nullUserId_zero() {
+        assertEquals(0, service.cleanMyReadNotifications(null));
     }
 
     // ==================== 工具 ====================

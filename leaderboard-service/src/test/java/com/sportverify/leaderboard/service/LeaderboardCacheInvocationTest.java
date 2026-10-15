@@ -66,7 +66,7 @@ class LeaderboardCacheInvocationTest {
     }
 
     @Test
-    void friendQueriesBypassOverallCacheAndCallFriendServiceEachTime() {
+    void friendQueriesThroughSpringProxyUseLocalCache_secondCallHitsCache() {
         runner.run(context -> {
             LeaderboardService service = context.getBean(LeaderboardService.class);
             UserApi userApi = context.getBean(UserApi.class);
@@ -84,9 +84,11 @@ class LeaderboardCacheInvocationTest {
             service.top("friend", 7L, 10);
             service.top("friend", 7L, 10);
 
-            verify(userApi, times(2)).listFriends(7L, 1L, 1000L);
-            verify(redis, times(2)).executePipelined(any(RedisCallback.class));
-            // 好友榜每请求都直查 Redis（不经总体榜缓存），且不再触碰 ZSet 操作
+            // TASK-246 B23：好友榜引入 15s 本地 Caffeine 缓存防穿透——第二次命中缓存，
+            // Feign 好友列表与 Redis Pipeline 仅各触发一次（不再每请求穿透 user-service）
+            verify(userApi, times(1)).listFriends(7L, 1L, 1000L);
+            verify(redis, times(1)).executePipelined(any(RedisCallback.class));
+            // 好友榜仍不经"总体榜"Spring @Cacheable（本地缓存独立）；且不触碰 ZSet 操作
             verifyNoInteractions(zSet);
         });
     }

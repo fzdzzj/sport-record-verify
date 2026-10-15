@@ -63,7 +63,8 @@ CREATE TABLE IF NOT EXISTS `notification` (
     PRIMARY KEY (`id`),
     UNIQUE KEY `uk_dedup` (`dedup_key`),
     KEY `idx_user_read` (`user_id`, `is_read`, `id`),
-    KEY `idx_user_id` (`user_id`, `id`)
+    KEY `idx_user_id` (`user_id`, `id`),
+    KEY `idx_read_created` (`is_read`, `created_at`)
 ) ENGINE = InnoDB
   DEFAULT CHARSET = utf8mb4 COMMENT ='通知表';
 

@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { AxiosError, type AxiosResponse } from 'axios'
 import api from '@/api/client'
 import { getAccessToken, setAuthFailHandler, setTokens } from '@/utils/token'
-import { deleteGoal, delRecord, deleteFriend, getFeed, getLikesBatch, getMyGoals, getMyRecords, getMyStats, reviewAppeal, submitAppeal, upsertGoal, fetchPendingAppeals, batchMarkNotificationsAsRead, getRecordDetail, updateRecordVisibility, getRecordAppeal, batchAcceptFriendRequests, batchRejectFriendRequests, getUserProfile, updateUserProfile } from '@/api/client'
+import { deleteGoal, delRecord, deleteFriend, getFeed, getLikesBatch, getMyGoals, getMyRecords, getMyStats, reviewAppeal, submitAppeal, upsertGoal, fetchPendingAppeals, batchMarkNotificationsAsRead, getRecordDetail, updateRecordVisibility, getRecordAppeal, batchAcceptFriendRequests, batchRejectFriendRequests, getUserProfile, updateUserProfile, fetchExhaustedOutbox, replayExhaustedOutbox, cleanSentOutbox, clearReadNotifications } from '@/api/client'
 
 
 // adapter 注入范式：替换 api.defaults.adapter 为 vi.fn 模拟传输层，
@@ -685,5 +685,98 @@ describe('client.ts 好友批量与个人资料（TASK-245 B25）', () => {
     expect(call.url).toBe('/user/api/user/profile')
     expect(call.method?.toLowerCase()).toBe('put')
     expect(JSON.parse(call.data || '{}')).toEqual({ nickname: '新昵称' })
+  })
+})
+
+// ===== Outbox 消息补偿与死信看板（TASK-246 B20） =====
+describe('client.ts outbox 死信/重放/清理（B20）', () => {
+  // R1：fetchExhaustedOutbox 打 GET /admin/api/outbox/exhausted 且 limit 缺省 50
+  it('R1 fetchExhaustedOutbox hits GET /admin/api/outbox/exhausted', async () => {
+    const body = {
+      code: 0,
+      message: 'ok',
+      data: [{ id: 5, eventId: 'evt-5', topic: 'record-verify-events', tag: 'VERIFIED', status: 'EXHAUSTED', retryCount: 5 }],
+    }
+    adapter.mockImplementationOnce((config: unknown) => Promise.resolve(ok(config, body)))
+
+    const res = await fetchExhaustedOutbox()
+
+    expect(res.data).toHaveLength(1)
+    expect(res.data[0].id).toBe(5)
+    expect(adapter).toHaveBeenCalledTimes(1)
+    const call = adapter.mock.calls[0][0] as { url: string; method?: string; params?: Record<string, unknown> }
+    expect(call.url).toBe('/admin/api/outbox/exhausted')
+    expect(call.method?.toLowerCase() || 'get').toBe('get')
+    expect(call.params).toEqual({ limit: 50 })
+  })
+
+  // R2：自定义 limit 透传
+  it('R2 fetchExhaustedOutbox passes custom limit', async () => {
+    adapter.mockImplementationOnce((config: unknown) =>
+      Promise.resolve(ok(config, { code: 0, message: 'ok', data: [] })),
+    )
+
+    await fetchExhaustedOutbox(200)
+
+    const call = adapter.mock.calls[0][0] as { params?: Record<string, unknown> }
+    expect(call.params).toEqual({ limit: 200 })
+  })
+
+  // R3：replayExhaustedOutbox 打 POST /admin/api/outbox/exhausted/{id}/replay
+  it('R3 replayExhaustedOutbox hits POST replay with id', async () => {
+    adapter.mockImplementationOnce((config: unknown) =>
+      Promise.resolve(ok(config, { code: 0, message: 'ok', data: 1 })),
+    )
+
+    const res = await replayExhaustedOutbox(5)
+
+    expect(res.data).toBe(1)
+    const call = adapter.mock.calls[0][0] as { url: string; method?: string }
+    expect(call.url).toBe('/admin/api/outbox/exhausted/5/replay')
+    expect(call.method?.toLowerCase()).toBe('post')
+  })
+
+  // R4：cleanSentOutbox 打 DELETE /admin/api/outbox/sent 且 days 缺省 7
+  it('R4 cleanSentOutbox hits DELETE /admin/api/outbox/sent with days param', async () => {
+    adapter.mockImplementationOnce((config: unknown) =>
+      Promise.resolve(ok(config, { code: 0, message: 'ok', data: 12 })),
+    )
+
+    const res = await cleanSentOutbox()
+
+    expect(res.data).toBe(12)
+    const call = adapter.mock.calls[0][0] as { url: string; method?: string; params?: Record<string, unknown> }
+    expect(call.url).toBe('/admin/api/outbox/sent')
+    expect(call.method?.toLowerCase()).toBe('delete')
+    expect(call.params).toEqual({ days: 7 })
+  })
+
+  // R5：cleanSentOutbox 自定义 days 透传
+  it('R5 cleanSentOutbox passes custom days', async () => {
+    adapter.mockImplementationOnce((config: unknown) =>
+      Promise.resolve(ok(config, { code: 0, message: 'ok', data: 3 })),
+    )
+
+    await cleanSentOutbox(30)
+
+    const call = adapter.mock.calls[0][0] as { params?: Record<string, unknown> }
+    expect(call.params).toEqual({ days: 30 })
+  })
+})
+
+// ===== 清空本人已读通知（TASK-246 B21） =====
+describe('client.ts clearReadNotifications（B21）', () => {
+  // R1：clearReadNotifications 打 DELETE /user/api/notifications/read
+  it('R1 clearReadNotifications hits DELETE /user/api/notifications/read', async () => {
+    adapter.mockImplementationOnce((config: unknown) =>
+      Promise.resolve(ok(config, { code: 0, message: 'ok', data: 8 })),
+    )
+
+    const res = await clearReadNotifications()
+
+    expect(res.data).toBe(8)
+    const call = adapter.mock.calls[0][0] as { url: string; method?: string }
+    expect(call.url).toBe('/user/api/notifications/read')
+    expect(call.method?.toLowerCase()).toBe('delete')
   })
 })
