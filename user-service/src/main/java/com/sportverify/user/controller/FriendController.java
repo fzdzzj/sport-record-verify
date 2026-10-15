@@ -16,6 +16,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.ExceptionHandler;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -110,6 +111,19 @@ public class FriendController {
             @RequestParam(defaultValue = "20") long size,
             HttpServletRequest request) {
         return Result.success(friendService.listFriends(resolveUserId(request, userId), page, size));
+    }
+
+    /**
+     * 解除好友关系（TASK-242 B14 社交闭环）：删除规范化 {@code (user_low,user_high)}
+     * 好友行，幂等成功（关系不存在亦返回成功）。身份认定同 {@link #resolveUserId}
+     * （auth=true 以网关注入 X-User-Id 为准；false 降级显式携带路径参数由服务层自判）。
+     */
+    @DeleteMapping("/{targetUserId}")
+    public Result<Void> deleteFriend(@PathVariable("targetUserId") Long targetUserId,
+                                     HttpServletRequest request) {
+        Long userId = resolveUserId(request, null);
+        friendService.deleteFriend(userId, targetUserId);
+        return Result.success();
     }
 
     /**

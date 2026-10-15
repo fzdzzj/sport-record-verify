@@ -54,7 +54,8 @@ CREATE TABLE IF NOT EXISTS `leaderboard_contribution` (
     `status`     TINYINT       NOT NULL COMMENT '当前贡献状态（回滚/改判依据）',
     `settled_at` DATETIME      DEFAULT NULL COMMENT '结算时间',
     PRIMARY KEY (`record_id`),
-    KEY `idx_user` (`user_id`)
+    KEY `idx_user` (`user_id`),
+    KEY `idx_status_settled` (`status`, `settled_at`)
 ) ENGINE = InnoDB
   DEFAULT CHARSET = utf8mb4 COMMENT ='榜单贡献表';
 

@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { AxiosError, type AxiosResponse } from 'axios'
 import api from '@/api/client'
 import { getAccessToken, setAuthFailHandler, setTokens } from '@/utils/token'
-import { deleteGoal, delRecord, getFeed, getLikesBatch, getMyGoals, getMyRecords, getMyStats, reviewAppeal, submitAppeal, upsertGoal } from '@/api/client'
+import { deleteGoal, delRecord, deleteFriend, getFeed, getLikesBatch, getMyGoals, getMyRecords, getMyStats, reviewAppeal, submitAppeal, upsertGoal } from '@/api/client'
 
 
 // adapter 注入范式：替换 api.defaults.adapter 为 vi.fn 模拟传输层，
@@ -226,6 +226,35 @@ describe('client.ts delRecord（TASK-223）', () => {
     expect(adapter).toHaveBeenCalledTimes(1)
     const call = adapter.mock.calls[0][0] as { url: string; method?: string }
     expect(call.url).toBe('/record/api/records/123')
+    expect(call.method?.toLowerCase()).toBe('delete')
+  })
+})
+
+// ===== 解除好友关系（TASK-242 B14 add-delete-friend） =====
+describe('client.ts deleteFriend（TASK-242）', () => {
+  // R1：deleteFriend 请求打 DELETE /user/api/friends/{targetUserId}（数字 targetUserId）
+  it('R1 deleteFriend hits DELETE /user/api/friends/{targetUserId}', async () => {
+    const okBody = { code: 0, message: 'ok', data: null }
+    adapter.mockImplementationOnce((config: unknown) => Promise.resolve(ok(config, okBody)))
+
+    const res = await deleteFriend(123)
+
+    expect(res).toEqual(okBody)
+    expect(adapter).toHaveBeenCalledTimes(1)
+    const call = adapter.mock.calls[0][0] as { url: string; method?: string }
+    expect(call.url).toBe('/user/api/friends/123')
+    expect(call.method?.toLowerCase()).toBe('delete')
+  })
+
+  // R2：字符串 targetUserId 也被规范化进 URL
+  it('R2 deleteFriend accepts string targetUserId', async () => {
+    const okBody = { code: 0, message: 'ok', data: null }
+    adapter.mockImplementationOnce((config: unknown) => Promise.resolve(ok(config, okBody)))
+
+    await deleteFriend('456')
+
+    const call = adapter.mock.calls[0][0] as { url: string; method?: string }
+    expect(call.url).toBe('/user/api/friends/456')
     expect(call.method?.toLowerCase()).toBe('delete')
   })
 })

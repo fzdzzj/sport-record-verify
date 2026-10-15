@@ -499,6 +499,80 @@ class FriendServiceTest {
         verify(redissonClient, times(2)).getLock("lock:friend:1001_1002");
     }
 
+    // ==================== 解除好友关系（TASK-242 B14） ====================
+
+    /**
+     * 绿 R1（正常解除）：规范化 (user_low,user_high) 删除行，锁键归一 lock:friend:low_high，
+     * 持锁后 unlock；不因方向变化改变归一删除键。
+     */
+    @Test
+    void deleteFriend_success() {
+        service.deleteFriend(1001L, 1002L);
+
+        ArgumentCaptor<LambdaQueryWrapper> wrapper = ArgumentCaptor.forClass(LambdaQueryWrapper.class);
+        verify(friendshipMapper).delete(wrapper.capture());
+        String segment = wrapper.getValue().getSqlSegment();
+        assertTrue(segment.contains("user_low =") && segment.contains("user_high ="),
+                "deleteFriend 必须按 user_low/user_high 规范化过滤：" + segment);
+        assertTrue(wrapper.getValue().getParamNameValuePairs().containsValue(1001L),
+                "低端应为 min(1001,1002)=1001");
+        assertTrue(wrapper.getValue().getParamNameValuePairs().containsValue(1002L),
+                "高端应为 max(1001,1002)=1002");
+        verify(redissonClient).getLock("lock:friend:1001_1002");
+        verify(lock).unlock();
+    }
+
+    /** 绿 R1b（反向解除归一）：1002 解除 1001 仍查同一规范化键（min/max 与正向一致） */
+    @Test
+    void deleteFriend_reverseDirection_normalizesToSamePair() {
+        service.deleteFriend(1002L, 1001L);
+
+        ArgumentCaptor<LambdaQueryWrapper> wrapper = ArgumentCaptor.forClass(LambdaQueryWrapper.class);
+        verify(friendshipMapper).delete(wrapper.capture());
+        // 先渲染 getSqlSegment 以重填参数值（MyBatis-Plus delete 执行后再取参数需经段渲染触发生成）
+        String segment = wrapper.getValue().getSqlSegment();
+        assertTrue(segment.contains("user_low =") && segment.contains("user_high ="),
+                "deleteFriend 必须按 user_low/user_high 规范化过滤：" + segment);
+        assertTrue(wrapper.getValue().getParamNameValuePairs().containsValue(1001L),
+                "低端应为 min(1001,1002)=1001");
+        assertTrue(wrapper.getValue().getParamNameValuePairs().containsValue(1002L),
+                "高端应为 max(1001,1002)=1002");
+        // 删除与申请/同意/拒绝同一把锁：lock:friend:1001_1002
+        verify(redissonClient).getLock("lock:friend:1001_1002");
+    }
+
+    /** 红 R2（自删拦截）：userId == targetUserId → IllegalArgumentException，不触碰 mapper */
+    @Test
+    void deleteFriend_self_throwsException() {
+        IllegalArgumentException e = assertThrows(IllegalArgumentException.class,
+                () -> service.deleteFriend(1001L, 1001L));
+        assertTrue(e.getMessage().contains("自己"));
+        verify(friendshipMapper, never()).delete(any());
+    }
+
+    /** 红 R2b（入参缺失）→ IllegalArgumentException，不触碰 mapper 不取锁 */
+    @Test
+    void deleteFriend_nullParams_throwsException() {
+        assertThrows(IllegalArgumentException.class, () -> service.deleteFriend(null, 1002L));
+        assertThrows(IllegalArgumentException.class, () -> service.deleteFriend(1001L, null));
+        verify(friendshipMapper, never()).delete(any());
+        verifyNoInteractions(redissonClient);
+    }
+
+    /**
+     * 绿 R3（幂等：非好友重复解除安全）：{@link FriendshipMapper#delete} 返回 0（行不存在）
+     * 时 deleteFriend 仍成功返回（不抛异常）——幂等成功，重复解除安全。
+     */
+    @Test
+    void deleteFriend_idempotent_whenNotExist() {
+        when(friendshipMapper.delete(any(LambdaQueryWrapper.class))).thenReturn(0);
+
+        service.deleteFriend(1001L, 1002L); // 不存在该关系也不抛错
+
+        verify(friendshipMapper).delete(any(LambdaQueryWrapper.class));
+        verify(lock).unlock();
+    }
+
     // ==================== 工具 ====================
 
     private User user(Long id, String nickname) {

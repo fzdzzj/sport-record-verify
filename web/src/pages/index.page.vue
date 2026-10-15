@@ -49,7 +49,7 @@
           </div>
 
           <div class="mb-1 text-sm text-gray-600">近 30 天每日里程（km）</div>
-          <div class="flex items-end h-24 gap-0.5 border-b border-gray-200 mb-4" aria-hidden="true">
+          <div v-if="hasDailyActivity" class="flex items-end h-24 gap-0.5 border-b border-gray-200 mb-4" aria-hidden="true">
             <div
               v-for="bar in dailyBars"
               :key="bar.iso"
@@ -58,6 +58,9 @@
               :title="`${bar.iso}: ${bar.distance}`"
             ></div>
           </div>
+          <a-empty v-else class="mb-4" description="近 30 天暂无运动记录，开始记录第一次运动吧！">
+            <a-button type="primary" @click="go('/record-submit')">去提交运动记录 &rarr;</a-button>
+          </a-empty>
 
           <!-- 运动目标与进度（TASK-225） -->
           <div class="mb-4 p-4 rounded border border-gray-200 bg-gray-50/50">
@@ -81,7 +84,7 @@
                       {{ g.periodType === 0 ? '周目标' : '月目标' }}
                     </a-tag>
                     <span class="font-medium text-gray-800">
-                      {{ g.metric === 0 ? '距离' : '次数' }}：{{ g.achievedValue }} / {{ g.targetValue }} {{ g.metric === 0 ? 'km' : '次' }}
+                      {{ g.metric === 0 ? '距离' : '次数' }}：{{ formatGoalValue(g.achievedValue, g.metric) }} / {{ formatGoalValue(g.targetValue, g.metric) }} {{ g.metric === 0 ? 'km' : '次' }}
                     </span>
                     <a-tag v-if="g.percent >= 100" color="green">已达成</a-tag>
                   </div>
@@ -453,6 +456,19 @@ const dailyBars = computed(() => {
   for (const d of days) d.pct = max > 0 ? Math.round((d.distance / max) * 100) : 0
   return days
 })
+
+/** 近 30 天是否有任何运动记录（TASK-242 B19）：累计总里程为 0 → 渲染空态引导代替细线虚框 */
+const hasDailyActivity = computed(() => dailyBars.value.some(b => b.distance > 0))
+
+/**
+ * 运动目标值格式化（TASK-242 B19）：metric === 1（次数）消除无意义的 .00 小数，
+ * 显示整数；距离维度仍保留两位小数（如 12.50 km）。
+ */
+function formatGoalValue(value: number, metric: number): string {
+  const n = Number(value)
+  if (!Number.isFinite(n)) return '0'
+  return metric === 1 ? String(Math.round(n)) : n.toFixed(2)
+}
 
 function iso(date: Date): string {
   const mm = String(date.getMonth() + 1).padStart(2, '0')

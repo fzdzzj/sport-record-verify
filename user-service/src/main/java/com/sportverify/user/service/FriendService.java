@@ -361,6 +361,47 @@ public class FriendService {
         return new PageResult<>(result.getCurrent(), result.getSize(), result.getTotal(), records);
     }
 
+    /**
+     * 解除好友关系（TASK-242 B14 社交闭环）：删除规范化 {@code (user_low,user_high)}
+     * 好友行（friendship 表只承载已接受关系，删除即解除）。
+     *
+     * <p>入参校验：{@code userId}/{@code targetUserId} 均非空，且不能与自己解除关系
+     * （自删属非法参数 → IllegalArgumentException）。锁保护：取
+     * {@code low = min, high = max} 归一后竞争 Redisson 锁 {@code lock:friend:{low}_{high}}
+     * ——与申请建单/同意/拒绝/删除同一把锁，避免「删除」与「并发互加」「同意建关系」
+     * 竞争导致复活幽灵关系。锁内执行规范化删除；幂等：即使不存在该关系也返回成功
+     * （影响 0 行不抛异常，重复解除安全）。</p>
+     *
+     * @param userId       当前操作者（控制器按身份语义解析，非空）
+     * @param targetUserId 待解除关系的好友
+     */
+    public void deleteFriend(Long userId, Long targetUserId) {
+        // —— 入参校验（非空 + 防自删）
+        if (userId == null || targetUserId == null) {
+            throw new IllegalArgumentException("userId 与 targetUserId 不能为空");
+        }
+        if (userId.equals(targetUserId)) {
+            throw new IllegalArgumentException("不能解除自己的好友关系");
+        }
+        // —— 锁键归一：min/max 与 friendship 存储键一致，A→B 与 B→A 竞争同一把锁
+        long low = Math.min(userId, targetUserId);
+        long high = Math.max(userId, targetUserId);
+        RLock lock = redissonClient.getLock("lock:friend:" + low + "_" + high);
+        boolean locked = tryLock(lock);
+        if (!locked) {
+            throw new BizException(ResultCode.SYSTEM_ERROR, "获取好友锁超时，请稍后重试");
+        }
+        try {
+            // —— 规范化删除（幂等：影响 0 行亦成功）
+            friendshipMapper.delete(new LambdaQueryWrapper<Friendship>()
+                    .eq(Friendship::getUserLow, low)
+                    .eq(Friendship::getUserHigh, high));
+            log.info("解除好友关系：{} <-> {}", low, high);
+        } finally {
+            unlock(lock, locked);
+        }
+    }
+
     // ==================== 内部工具 ====================
 
     /** 实体 → DTO（status 由 TINYINT 码转为枚举名下发，见 FriendRequestDTO 注释） */

@@ -27,7 +27,20 @@
 
       <a-card title="我的好友列表 (accepted)" size="small">
         <a-button @click="loadFriends" :loading="friendsLoading">刷新列表</a-button>
-        <a-table v-if="friends.length" :data-source="friends" :columns="friendColumns" size="small" row-key="userId" class="mt-2" />
+        <a-table v-if="friends.length" :data-source="friends" :columns="friendColumns" size="small" row-key="userId" class="mt-2">
+          <template #bodyCell="{ column, record }">
+            <template v-if="column.key === 'actions'">
+              <a-popconfirm
+                title="确定解除该好友关系吗？"
+                ok-text="解除"
+                cancel-text="取消"
+                @confirm="onDeleteFriend(record.userId)"
+              >
+                <a-button danger size="small" :disabled="!!deletingId">解除好友</a-button>
+              </a-popconfirm>
+            </template>
+          </template>
+        </a-table>
         <div v-else class="text-gray-500 mt-2">无好友或未刷新。</div>
         <div class="text-xs text-gray-500 mt-1">好友榜过滤依赖此关系；空列表正常。</div>
       </a-card>
@@ -39,7 +52,8 @@
 
 <script setup lang="ts">
 import { ref, onMounted } from 'vue'
-import { createFriendRequest, acceptFriendRequest, rejectFriendRequest, listFriendRequests, listMyFriends, type FriendDTO, type FriendRequestDTO } from '@/api/client'
+import { createFriendRequest, acceptFriendRequest, rejectFriendRequest, listFriendRequests, listMyFriends, deleteFriend, type FriendDTO, type FriendRequestDTO } from '@/api/client'
+import { message } from 'ant-design-vue'
 
 const targetUserId = ref<number | null>(null)
 const creating = ref(false)
@@ -59,10 +73,12 @@ const requestColumns = [
 
 const friends = ref<FriendDTO[]>([])
 const friendsLoading = ref(false)
+const deletingId = ref<number | null>(null)
 const friendColumns = [
   { title: 'userId', dataIndex: 'userId', key: 'userId' },
   { title: 'nickname', dataIndex: 'nickname', key: 'nickname' },
   { title: 'createdAt', dataIndex: 'createdAt', key: 'createdAt' },
+  { title: '操作', key: 'actions', width: 120 },
 ]
 
 async function onCreateRequest() {
@@ -136,7 +152,23 @@ async function loadFriends() {
   }
 }
 
+/** 解除好友关系（TASK-242 B14）：DELETE /user/api/friends/{targetUserId}，成功后刷新列表 */
+async function onDeleteFriend(targetUserId: number) {
+  if (deletingId.value) return
+  deletingId.value = targetUserId
+  try {
+    await deleteFriend(targetUserId)
+    message.success('已解除好友关系')
+    await loadFriends()
+  } catch (e: any) {
+    message.error(e.code ? `[${e.code}] ${e.message}` : (e.message || '解除好友失败'))
+  } finally {
+    deletingId.value = null
+  }
+}
+
 onMounted(() => {
   loadRequests()
+  loadFriends()
 })
 </script>

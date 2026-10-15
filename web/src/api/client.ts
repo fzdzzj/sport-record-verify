@@ -352,6 +352,11 @@ export async function listMyFriends(page = 1, size = 20): Promise<Result<PageRes
   return api.get('/user/api/friends', { params: { page, size } })
 }
 
+/** 解除好友关系（DELETE /user/api/friends/{targetUserId}，TASK-242 B14）；auth 会话下 userId 由网关注入，幂等成功。 */
+export async function deleteFriend(targetUserId: number | string): Promise<Result<void>> {
+  return api.delete(`/user/api/friends/${targetUserId}`)
+}
+
 // Leaderboard
 export async function getLeaderboard(type: 'overall' | 'friend', size = 10): Promise<Result<LeaderboardDTO[]>> {
   return api.get('/leaderboard/api/leaderboard', { params: { type, size } })
