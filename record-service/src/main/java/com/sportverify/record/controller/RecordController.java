@@ -7,6 +7,7 @@ import com.sportverify.api.record.dto.RecordSubmitDTO;
 import com.sportverify.api.record.dto.RecordSubmitResultDTO;
 import com.sportverify.api.record.dto.RecordSummaryDTO;
 import com.sportverify.api.record.dto.FeedItemDTO;
+import com.sportverify.api.record.dto.SportRecordDTO;
 import com.sportverify.api.record.dto.TrackPointDTO;
 import com.sportverify.api.verify.dto.AppealCreateDTO;
 import com.sportverify.api.verify.dto.AppealDTO;
@@ -30,6 +31,7 @@ import java.time.LocalDate;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
@@ -186,6 +188,36 @@ public class RecordController {
     }
 
     /**
+     * 记录详情基础指标（TASK-245 B22 add-record-detail-metrics）：返回单条记录的
+     * 运动类型/距离/时长/起止时间/状态/可见性，供前端详情页渲染指标卡片与可见性下拉。
+     *
+     * <p>归属校验（与 deleteRecord 同款，见 ADR-0007 / R1）：{@code app.auth.enabled=true} 时以网关注入的
+     * {@code X-User-Id} 为调用者，服务层断言调用者==记录归属人（非本人 → 403/1002 权限错误态）；
+     * false 时 caller=null 降级旧行为。读取面不对 FRIENDS/PUBLIC 陌生人开放（详情卡片供本人使用）。</p>
+     */
+    @GetMapping("/{id}")
+    public Result<SportRecordDTO> recordDetail(@PathVariable("id") Long id,
+                                               HttpServletRequest request) {
+        Long caller = authEnabled ? resolveUserId(request, null) : null;
+        return Result.success(sportRecordService.getRecordDetail(id, caller));
+    }
+
+    /**
+     * 原地修改记录可见性（TASK-245 B22/B29，PATCH /api/records/{id}/visibility）。
+     *
+     * <p>入参 {@code visibility} 经 {@code @RequestParam} 接收，仅限 0(PUBLIC)/1(FRIENDS)/2(PRIVATE)，
+     * 非法值由服务层抛 IllegalArgumentException → 全局 400(BAD_REQUEST)。仅本人可改：
+     * auth enabled=true 时以网关注入 X-User-Id 为调用者，非本人 → 403/1002。</p>
+     */
+    @PatchMapping("/{id}/visibility")
+    public Result<SportRecordDTO> updateVisibility(@PathVariable("id") Long id,
+                                                   @RequestParam("visibility") Integer visibility,
+                                                   HttpServletRequest request) {
+        Long caller = authEnabled ? resolveUserId(request, null) : null;
+        return Result.success(sportRecordService.updateVisibility(caller, id, visibility));
+    }
+
+    /**
      * 提交申诉（仅 REJECTED 记录可申诉，规范「申诉提交」场景）。
      * 归属校验（TASK-204）：true 时以网关 X-User-Id 为调用者，服务层断言调用者==记录归属人；
      * false 时 caller=null 降级旧行为。
@@ -196,6 +228,21 @@ public class RecordController {
                                     HttpServletRequest request) {
         Long caller = authEnabled ? resolveUserId(request, dto.getUserId()) : null;
         return Result.success(sportRecordService.appeal(id, caller, dto.getReason()));
+    }
+
+    /**
+     * 申诉逆向全链路透明追踪（TASK-245 B26，GET /api/records/{id}/appeal）：返回该记录关联的
+     * 申诉进度（存在性 + 处理状态），供 verdict 页渲染 <a-steps> 进度条并禁用重复提交（防 3005）。
+     *
+     * <p>归属校验与 POST /appeal 同款：auth enabled=true 时以网关注入 X-User-Id 为调用者，
+     * 服务层断言调用者==记录归属人（非本人 → 403）。申诉存在性/进度由记录状态推导
+     * （APPEALING=待复核、RE_PASSED=改判通过、RE_CONFIRMED=维持拒绝），无申诉时 status=null。</p>
+     */
+    @GetMapping("/{id}/appeal")
+    public Result<AppealDTO> appealDetail(@PathVariable("id") Long id,
+                                          HttpServletRequest request) {
+        Long caller = authEnabled ? resolveUserId(request, null) : null;
+        return Result.success(sportRecordService.getAppeal(id, caller));
     }
 
     /**

@@ -8,6 +8,7 @@ import com.sportverify.api.record.dto.RecordSubmitDTO;
 import com.sportverify.api.record.dto.RecordSubmitResultDTO;
 import com.sportverify.api.record.dto.RecordSummaryDTO;
 import com.sportverify.api.record.dto.RecordWithPointsDTO;
+import com.sportverify.api.record.dto.SportRecordDTO;
 import com.sportverify.api.record.dto.FeedItemDTO;
 import com.sportverify.api.record.dto.StatusCallbackDTO;
 import com.sportverify.api.record.dto.TrackPointDTO;
@@ -1586,6 +1587,195 @@ class SportRecordServiceTest {
                 BizException.class, () -> service.pagePoints(1L, null, 1, 20)).getCode());
         assertEquals(ResultCode.RECORD_NOT_FOUND.getCode(), assertThrows(
                 BizException.class, () -> service.getDto(1L)).getCode());
+    }
+
+    // ==================== 记录详情与可见性修改（TASK-245 B22/B29） ====================
+
+    /** B22 绿：归属人读详情基础指标 → 200，字段映射完整（含可见性） */
+    @Test
+    void getRecordDetail_owner_passes() {
+        SportRecord record = new SportRecord();
+        record.setId(1L);
+        record.setUserId(100L);
+        record.setSportType(2);
+        record.setDistance(new BigDecimal("12.5"));
+        record.setDuration(1800);
+        record.setVisibility(1);
+        record.setStatus(RecordStatus.PASSED.getCode());
+        when(sportRecordMapper.selectById(1L)).thenReturn(record);
+
+        SportRecordDTO out = service.getRecordDetail(1L, 100L);
+
+        assertEquals(1L, out.getId());
+        assertEquals(2, out.getSportType());
+        assertEquals(new BigDecimal("12.5"), out.getDistance());
+        assertEquals(Integer.valueOf(1800), out.getDuration());
+        assertEquals(Integer.valueOf(1), out.getVisibility(), "详情必须携带可见性字段供前端渲染下拉");
+    }
+
+    /** B22 红：非归属人读详情 → 403（FORBIDDEN），不透出指标 */
+    @Test
+    void getRecordDetail_stranger_throwsForbidden() {
+        SportRecord record = new SportRecord();
+        record.setId(1L);
+        record.setUserId(100L);
+        when(sportRecordMapper.selectById(1L)).thenReturn(record);
+
+        BizException e = assertThrows(BizException.class, () -> service.getRecordDetail(1L, 999L));
+        assertEquals(ResultCode.FORBIDDEN.getCode(), e.getCode());
+    }
+
+    /** B22 绿：caller=null（鉴权关闭降级态）读详情 → 放行 */
+    @Test
+    void getRecordDetail_callerNull_degradeAllowed() {
+        SportRecord record = new SportRecord();
+        record.setId(1L);
+        record.setUserId(100L);
+        when(sportRecordMapper.selectById(1L)).thenReturn(record);
+
+        SportRecordDTO out = service.getRecordDetail(1L, null);
+        assertEquals(1L, out.getId());
+    }
+
+    /** B22 红：记录不存在 → 3001 */
+    @Test
+    void getRecordDetail_notFound_throws() {
+        when(sportRecordMapper.selectById(1L)).thenReturn(null);
+        BizException e = assertThrows(BizException.class, () -> service.getRecordDetail(1L, 100L));
+        assertEquals(ResultCode.RECORD_NOT_FOUND.getCode(), e.getCode());
+    }
+
+    /** B29 绿：本人修改可见性（0/1/2 各一值）→ updateById 持久化并返回详情 */
+    @Test
+    void updateVisibility_owner_persists() {
+        for (Integer vis : new Integer[]{0, 1, 2}) {
+            SportRecordMapper m = mock(SportRecordMapper.class);
+            SportRecord record = new SportRecord();
+            record.setId(1L);
+            record.setUserId(100L);
+            record.setVisibility(0);
+            when(m.selectById(1L)).thenReturn(record);
+            when(m.updateById(any(SportRecord.class))).thenReturn(1);
+            SportRecordService svc = new SportRecordService(m, trackPointMapper, trackPointArchiveMapper,
+                    recordEventProducer, verifyApi, verifyDegradeService, userApi);
+
+            SportRecordDTO out = svc.updateVisibility(100L, 1L, vis);
+
+            assertEquals(Integer.valueOf(vis), out.getVisibility());
+            assertEquals(Integer.valueOf(vis), record.getVisibility());
+            verify(m).updateById(any(SportRecord.class));
+        }
+    }
+
+    /** B29 红：非归属人修改可见性 → 403，不 updateById */
+    @Test
+    void updateVisibility_stranger_throwsForbidden() {
+        SportRecord record = new SportRecord();
+        record.setId(1L);
+        record.setUserId(100L);
+        when(sportRecordMapper.selectById(1L)).thenReturn(record);
+
+        BizException e = assertThrows(BizException.class, () -> service.updateVisibility(999L, 1L, 1));
+        assertEquals(ResultCode.FORBIDDEN.getCode(), e.getCode());
+        verify(sportRecordMapper, never()).updateById(any(SportRecord.class));
+    }
+
+    /** B29 红：非法可见性（非 0/1/2）→ IllegalArgumentException（映射 400），不 updateById */
+    @Test
+    void updateVisibility_outOfRange_throwsIllegalArgument() {
+        for (Integer vis : new Integer[]{null, 3, 99, -1}) {
+            IllegalArgumentException e = assertThrows(IllegalArgumentException.class,
+                    () -> service.updateVisibility(100L, 1L, vis));
+            assertEquals("非法可见性：" + vis, e.getMessage());
+        }
+        verify(sportRecordMapper, never()).updateById(any(SportRecord.class));
+    }
+
+    /** B29 红：记录不存在 → 3001 */
+    @Test
+    void updateVisibility_notFound_throws() {
+        when(sportRecordMapper.selectById(1L)).thenReturn(null);
+        BizException e = assertThrows(BizException.class, () -> service.updateVisibility(100L, 1L, 1));
+        assertEquals(ResultCode.RECORD_NOT_FOUND.getCode(), e.getCode());
+    }
+
+    // ==================== 申诉逆向追踪（TASK-245 B26） ====================
+
+    /** B26 绿：status=APPEALING(4) → 申诉进度 PENDING（已提交待复核） */
+    @Test
+    void getAppeal_appealing_pending() {
+        SportRecord record = new SportRecord();
+        record.setId(5L);
+        record.setUserId(200L);
+        record.setStatus(RecordStatus.APPEALING.getCode());
+        when(sportRecordMapper.selectById(5L)).thenReturn(record);
+
+        AppealDTO out = service.getAppeal(5L, 200L);
+
+        assertEquals(5L, out.getRecordId());
+        assertEquals(200L, out.getUserId());
+        assertEquals(com.sportverify.api.verify.AppealStatus.PENDING.getCode(), out.getStatus());
+    }
+
+    /** B26 绿：status=RE_PASSED(5) → 申诉终判改判通过（RE_PASSED） */
+    @Test
+    void getAppeal_rePassed_passed() {
+        SportRecord record = new SportRecord();
+        record.setId(5L);
+        record.setUserId(200L);
+        record.setStatus(RecordStatus.RE_PASSED.getCode());
+        when(sportRecordMapper.selectById(5L)).thenReturn(record);
+
+        AppealDTO out = service.getAppeal(5L, 200L);
+
+        assertEquals(com.sportverify.api.verify.AppealStatus.RE_PASSED.getCode(), out.getStatus());
+    }
+
+    /** B26 绿：status=RE_CONFIRMED(6) → 申诉终判维持拒绝（RE_CONFIRMED） */
+    @Test
+    void getAppeal_reConfirmed_rejected() {
+        SportRecord record = new SportRecord();
+        record.setId(5L);
+        record.setUserId(200L);
+        record.setStatus(RecordStatus.RE_CONFIRMED.getCode());
+        when(sportRecordMapper.selectById(5L)).thenReturn(record);
+
+        AppealDTO out = service.getAppeal(5L, 200L);
+
+        assertEquals(com.sportverify.api.verify.AppealStatus.RE_CONFIRMED.getCode(), out.getStatus());
+    }
+
+    /** B26 绿：无申诉状态（如 PASSED）→ status=null（「无申诉」信号，前端据此可正常提交） */
+    @Test
+    void getAppeal_noAppeal_nullStatus() {
+        SportRecord record = new SportRecord();
+        record.setId(5L);
+        record.setUserId(200L);
+        record.setStatus(RecordStatus.PASSED.getCode());
+        when(sportRecordMapper.selectById(5L)).thenReturn(record);
+
+        AppealDTO out = service.getAppeal(5L, 200L);
+        assertNull(out.getStatus());
+    }
+
+    /** B26 红：非归属人查申诉 → 403 */
+    @Test
+    void getAppeal_stranger_throwsForbidden() {
+        SportRecord record = new SportRecord();
+        record.setId(5L);
+        record.setUserId(200L);
+        when(sportRecordMapper.selectById(5L)).thenReturn(record);
+
+        BizException e = assertThrows(BizException.class, () -> service.getAppeal(5L, 100L));
+        assertEquals(ResultCode.FORBIDDEN.getCode(), e.getCode());
+    }
+
+    /** B26 红：记录不存在 → 3001 */
+    @Test
+    void getAppeal_notFound_throws() {
+        when(sportRecordMapper.selectById(5L)).thenReturn(null);
+        BizException e = assertThrows(BizException.class, () -> service.getAppeal(5L, 200L));
+        assertEquals(ResultCode.RECORD_NOT_FOUND.getCode(), e.getCode());
     }
 
     // ==================== 冷热路由与申诉防线（TASK-175） ====================

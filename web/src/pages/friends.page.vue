@@ -11,10 +11,39 @@
       </a-card>
 
       <a-card title="收到的好友申请 (pending，TASK-235)" size="small" class="mb-4">
-        <a-button :loading="requestsLoading" @click="loadRequests" class="mb-2">刷新申请列表</a-button>
-        <a-table v-if="pendingRequests.length" :data-source="pendingRequests" :columns="requestColumns" size="small" row-key="id" :pagination="false" class="mt-2">
+        <div class="mb-2 flex items-center gap-2">
+          <a-button :loading="requestsLoading" @click="loadRequests">刷新申请列表</a-button>
+          <a-button
+            type="primary"
+            :disabled="!selectedRequestIds.length || !!handlingId"
+            @click="onBatchAccept"
+          >
+            批量同意 ({{ selectedRequestIds.length }})
+          </a-button>
+          <a-button
+            danger
+            :disabled="!selectedRequestIds.length || !!handlingId"
+            @click="onBatchReject"
+          >
+            全部忽略 ({{ selectedRequestIds.length }})
+          </a-button>
+        </div>
+        <a-table
+          v-if="pendingRequests.length"
+          :data-source="pendingRequests"
+          :columns="requestColumns"
+          size="small"
+          row-key="id"
+          :pagination="false"
+          class="mt-2"
+          :row-selection="{ selectedRowKeys: selectedRequestKeys, onChange: onSelectionChange }"
+        >
           <template #bodyCell="{ column, record }">
-            <template v-if="column.key === 'actions'">
+            <template v-if="column.key === 'applicant'">
+              <span>{{ record.fromNickname || String(record.fromUser) }}</span>
+              <span class="text-xs text-gray-400 ml-1">(#{{ record.fromUser }})</span>
+            </template>
+            <template v-else-if="column.key === 'actions'">
               <a-button type="primary" size="small" :loading="handlingId === record.id" :disabled="!!handlingId" @click="onAcceptRequest(record.id)">同意</a-button>
               <a-button danger size="small" class="ml-2" :loading="handlingId === record.id" :disabled="!!handlingId" @click="onRejectRequest(record.id)">拒绝</a-button>
             </template>
@@ -22,7 +51,7 @@
         </a-table>
         <div v-else class="text-gray-500 mt-2">暂无待处理的好友申请。</div>
         <a-alert v-if="requestError" type="error" :message="requestError" class="mt-2" />
-        <div class="text-xs text-gray-500 mt-1">列表来自 GET /user/api/friends/requests（仅 PENDING，to_user=当前登录用户，createdAt 倒序）；一键同意/拒绝即对该申请 POST accept|reject，无需再手工敲 requestId。</div>
+        <div class="text-xs text-gray-500 mt-1">列表来自 GET /user/api/friends/requests（仅 PENDING，to_user=当前登录用户，createdAt 倒序）；申请人展示真实昵称（TASK-245 B25）。支持表格行多选后「批量同意」/「全部忽略」。</div>
       </a-card>
 
       <a-card title="我的好友列表 (accepted)" size="small">
@@ -52,7 +81,7 @@
 
 <script setup lang="ts">
 import { ref, onMounted } from 'vue'
-import { createFriendRequest, acceptFriendRequest, rejectFriendRequest, listFriendRequests, listMyFriends, deleteFriend, type FriendDTO, type FriendRequestDTO } from '@/api/client'
+import { createFriendRequest, acceptFriendRequest, rejectFriendRequest, listFriendRequests, listMyFriends, deleteFriend, batchAcceptFriendRequests, batchRejectFriendRequests, type FriendDTO, type FriendRequestDTO } from '@/api/client'
 import { message } from 'ant-design-vue'
 
 const targetUserId = ref<number | null>(null)
@@ -66,10 +95,57 @@ const requestError = ref('')
 const handlingId = ref<number | null>(null)
 const requestColumns = [
   { title: '申请ID', dataIndex: 'id', key: 'id', width: 80 },
-  { title: '申请人 (fromUser)', dataIndex: 'fromUser', key: 'fromUser' },
+  // TASK-245 B25：申请人展示真实昵称（fromNickname，缺失回退 fromUser ID）
+  { title: '申请人', key: 'applicant' },
   { title: '申请时间', dataIndex: 'createdAt', key: 'createdAt' },
   { title: '操作', key: 'actions', width: 140 },
 ]
+
+// TASK-245 B25：表格行多选（批量同意 / 全部忽略）
+const selectedRequestKeys = ref<number[]>([])
+const selectedRequestIds = ref<number[]>([])
+
+function onSelectionChange(keys: (number | string)[]) {
+  selectedRequestKeys.value = keys.map(Number)
+  selectedRequestIds.value = selectedRequestKeys.value
+}
+
+/** 批量同意：逐条委托后端 batch-accept（跳过已处理），成功后刷新并清空选择 */
+async function onBatchAccept() {
+  if (!selectedRequestIds.value.length || handlingId.value) return
+  handlingId.value = -1
+  requestError.value = ''
+  try {
+    const res = await batchAcceptFriendRequests(selectedRequestIds.value)
+    message.success(`已批量同意 ${res.data} 个好友申请`)
+    await loadRequests()
+    await loadFriends()
+    selectedRequestIds.value = []
+    selectedRequestKeys.value = []
+  } catch (e: any) {
+    requestError.value = e.code ? `[${e.code}] ${e.message}` : (e.message || '批量同意失败')
+  } finally {
+    handlingId.value = null
+  }
+}
+
+/** 批量忽略：逐条委托后端 batch-reject（跳过已处理），成功后刷新并清空选择 */
+async function onBatchReject() {
+  if (!selectedRequestIds.value.length || handlingId.value) return
+  handlingId.value = -1
+  requestError.value = ''
+  try {
+    const res = await batchRejectFriendRequests(selectedRequestIds.value)
+    message.success(`已忽略 ${res.data} 个好友申请`)
+    await loadRequests()
+    selectedRequestIds.value = []
+    selectedRequestKeys.value = []
+  } catch (e: any) {
+    requestError.value = e.code ? `[${e.code}] ${e.message}` : (e.message || '批量忽略失败')
+  } finally {
+    handlingId.value = null
+  }
+}
 
 const friends = ref<FriendDTO[]>([])
 const friendsLoading = ref(false)

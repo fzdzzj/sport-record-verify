@@ -23,7 +23,15 @@
 
         <a-form-item label="样例轨迹 (内置 10 点)">
           <a-button @click="loadSample" class="mr-2">加载内置样例</a-button>
-          <a-button @click="clearPoints">清空</a-button>
+          <a-button @click="clearPoints" class="mr-2">清空</a-button>
+          <!-- TASK-245 B28：导入本地 .gpx 文件并自动解析填充 -->
+          <a-upload
+            :show-upload-list="false"
+            :before-upload="onImportGpx"
+            accept=".gpx,application/gpx+xml,text/xml"
+          >
+            <a-button>导入 GPX 文件</a-button>
+          </a-upload>
           <div class="mt-2 text-xs text-gray-500">points 数量: {{ points.length }} （必须 ≥1）</div>
           <div v-if="points.length" class="mt-1 text-xs text-gray-500">
             推导字段（TASK-234，随提交一并下发）：startTime={{ startTime }} / endTime={{ endTime }} / duration={{ duration }}s / distance={{ distance }}km
@@ -90,6 +98,8 @@
 import { ref, onMounted } from 'vue'
 import { useRouter } from 'vue-router/auto'
 import { submitRecord, SAMPLE_TRACK_POINTS, getRecordPoints, type RecordSubmitDTO, type RecordSubmitResultDTO, type TrackPointDTO } from '@/api/client'
+import { parseGpx } from '@/utils/gpx'
+import { message } from 'ant-design-vue'
 
 const router = useRouter()
 
@@ -131,6 +141,38 @@ function loadSample() {
 
 function clearPoints() {
   points.value = []
+}
+
+/** TASK-245 B28：导入本地 .gpx 文件 → parseGpx 解析填充 points，并同步推导起止时间/耗时/里程 */
+function onImportGpx(file: File): boolean {
+  if (!file || !/\.gpx$/i.test(file.name)) {
+    message.warning('请选择 .gpx 文件')
+    return false
+  }
+  const reader = new FileReader()
+  reader.onload = () => {
+    const xml = String(reader.result || '')
+    try {
+      const parsed = parseGpx(xml)
+      points.value = parsed
+      if (!requestId.value) genRequestId()
+      // 同步推导字段（与服务端推导口径一致：首末点 UTC 墙钟 + Haversine 距离）
+      const first = parsed[0]
+      const last = parsed[parsed.length - 1]
+      startTime.value = isoFromTs(first.ts)
+      endTime.value = isoFromTs(last.ts)
+      duration.value = Math.floor((last.ts - first.ts) / 1000)
+      distance.value = Math.round(sumHaversineKm(parsed) * 100) / 100
+      message.success(`已从 ${file.name} 导入 ${parsed.length} 个轨迹点`)
+    } catch (e: any) {
+      message.error(`GPX 解析失败：${e?.message || '格式错误'}`)
+      // 解析失败不清空已有轨迹，保留原导入/样例数据
+    }
+  }
+  reader.onerror = () => message.error('读取文件失败')
+  reader.readAsText(file)
+  // 返回 false 阻止 a-upload 默认上传
+  return false
 }
 
 /** 毫秒 ts → "YYYY-MM-DDTHH:mm:ss"（UTC 墙钟，与服务端推导同口径） */

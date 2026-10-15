@@ -69,6 +69,8 @@ export interface FriendRequestDTO {
   status: string
   createdAt?: string
   updatedAt?: string
+  // 申请人真实昵称（TASK-245 B25：待处理申请列表后端批量补齐，前端据此识别对方身份）
+  fromNickname?: string
 }
 
 export interface PageResult<T> {
@@ -209,6 +211,46 @@ export async function getRecordPoints(recordId: number | string, page = 1, size 
 /** 删除运动记录（DELETE /record/api/records/{id}，TASK-223）；auth 会话下 caller 由网关注入。 */
 export async function delRecord(recordId: number | string): Promise<Result<void>> {
   return api.delete(`/record/api/records/${recordId}`)
+}
+
+// ===== 记录详情指标与可见性修改（TASK-245 B22/B29） =====
+/** 记录详情基础指标：sportType/distance/duration/startTime/endTime/status/visibility */
+export interface RecordDetailDTO {
+  id: number
+  sportType: number
+  distance?: number
+  duration?: number
+  startTime?: string
+  endTime?: string
+  status?: number
+  // 可见性（0 公开/1 好友可见/2 仅自己）；详情卡片据此渲染并原地修改
+  visibility?: number
+}
+
+/** 记录详情基础指标（GET /record/api/records/{id}，TASK-245 B22）；归属由服务端校验（本人可查）。 */
+export async function getRecordDetail(recordId: number | string): Promise<Result<RecordDetailDTO>> {
+  return api.get(`/record/api/records/${recordId}`)
+}
+
+/** 原地修改记录可见性（PATCH /record/api/records/{id}/visibility，TASK-245 B22/B29）；仅本人可改，非法值 400。 */
+export async function updateRecordVisibility(recordId: number | string, visibility: number): Promise<Result<RecordDetailDTO>> {
+  return api.patch(`/record/api/records/${recordId}/visibility`, null, { params: { visibility } })
+}
+
+/** 记录申诉逆向追踪（GET /record/api/records/{id}/appeal，TASK-245 B26）：申诉存在性+处理状态（status 为 AppealStatus 码，无申诉时为 null）。 */
+export interface RecordAppealDTO {
+  recordId: number
+  userId: number
+  reason?: string
+  status?: number | null
+  operator?: string
+  recheckResult?: string
+  createdAt?: string
+}
+
+/** 申诉追踪（TASK-245 B26）：GET /record/api/records/{id}/appeal，归属由服务端校验；无申诉时 data.status 为 null。 */
+export async function getRecordAppeal(recordId: number | string): Promise<Result<RecordAppealDTO>> {
+  return api.get(`/record/api/records/${recordId}/appeal`)
 }
 
 // ===== My-records (add-personal-stats TASK-211) =====
@@ -355,6 +397,36 @@ export async function listMyFriends(page = 1, size = 20): Promise<Result<PageRes
 /** 解除好友关系（DELETE /user/api/friends/{targetUserId}，TASK-242 B14）；auth 会话下 userId 由网关注入，幂等成功。 */
 export async function deleteFriend(targetUserId: number | string): Promise<Result<void>> {
   return api.delete(`/user/api/friends/${targetUserId}`)
+}
+
+/** 批量同意好友申请（POST /user/api/friends/requests/batch-accept，TASK-245 B25）：入参申请人请求 id 列表，返回实际同意条数。 */
+export async function batchAcceptFriendRequests(requestIds: number[]): Promise<Result<number>> {
+  return api.post('/user/api/friends/requests/batch-accept', requestIds)
+}
+
+/** 批量拒绝/忽略好友申请（POST /user/api/friends/requests/batch-reject，TASK-245 B25）：入参申请人请求 id 列表，返回实际拒绝条数。 */
+export async function batchRejectFriendRequests(requestIds: number[]): Promise<Result<number>> {
+  return api.post('/user/api/friends/requests/batch-reject', requestIds)
+}
+
+// ===== 个人资料维护（TASK-245 B25） =====
+/** 个人资料（GET /user/api/user/profile）：userId + nickname 等本人概要，auth 会话下身份由网关注入。 */
+export interface UserProfileDTO {
+  id: number
+  phone?: string
+  nickname?: string
+  status?: number
+  createdAt?: string
+}
+
+/** 查看个人资料（GET /user/api/user/profile，TASK-245 B25） */
+export async function getUserProfile(): Promise<Result<UserProfileDTO>> {
+  return api.get('/user/api/user/profile')
+}
+
+/** 修改个人昵称（PUT /user/api/user/profile，TASK-245 B25）：入参 { nickname }，返回更新后的资料。 */
+export async function updateUserProfile(nickname: string): Promise<Result<UserProfileDTO>> {
+  return api.put('/user/api/user/profile', { nickname })
 }
 
 // Leaderboard

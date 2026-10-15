@@ -17,13 +17,21 @@
         <div v-if="rows.length" class="space-y-3">
           <a-card v-for="item in rows" :key="item.id" size="small">
             <div class="flex items-center gap-2 mb-2">
+              <!-- TASK-245 B27：首字主题彩色头像（作者昵称首字 / 回退 userId 首字符） -->
+              <a-avatar :style="{ backgroundColor: avatarColor(item) }" :size="28">
+                {{ avatarChar(item) }}
+              </a-avatar>
               <span class="font-medium">{{ authorName(item) }}</span>
               <a-tag v-if="item.visibility === 2" color="red">仅自己</a-tag>
               <a-tag v-else-if="item.visibility === 1" color="blue">好友可见</a-tag>
               <span v-else class="text-xs text-gray-500">公开</span>
             </div>
             <div class="flex items-center gap-4 text-sm">
-              <span>{{ sportTypeLabel(item.sportType) }}</span>
+              <!-- TASK-245 B27：运动类型中文徽标化（🏃 跑步 / 🚴 骑行 / 🚶 健走） -->
+              <a-tag v-if="sportTypeBadge(item.sportType)" :color="sportTypeColor(item.sportType)">
+                {{ sportTypeBadge(item.sportType) }}
+              </a-tag>
+              <span v-else>{{ sportTypeLabel(item.sportType) }}</span>
               <span>{{ (Number(item.distance) || 0).toFixed(2) }} km</span>
               <span class="text-gray-500">{{ statusLabel(item.status) }}</span>
               <span class="text-gray-400 ml-auto">{{ relativeTime(item.createdAt) }}</span>
@@ -44,8 +52,20 @@
             </div>
           </a-card>
         </div>
-        <div v-else-if="loggedIn && !loading" class="text-gray-500 py-6 text-center">
-          {{ rowsMessage }}
+        <div v-else-if="loggedIn && !loading" class="py-8">
+          <!-- TASK-245 B27：丰富空态引导（冷启动转化） -->
+          <a-result status="404" title="还没有动态">
+            <template #subTitle>
+              <p class="text-gray-500">暂无本人或好友的可见记录。先去添加好友，或记录第一条运动吧。</p>
+            </template>
+            <template #extra>
+              <div class="flex justify-center gap-3 flex-wrap">
+                <a-button type="primary" @click="go('/friends')">去添加好友</a-button>
+                <a-button @click="go('/record-submit')">去记录运动</a-button>
+              </div>
+            </template>
+          </a-result>
+          <p v-if="rowsMessage" class="text-xs text-center text-gray-400 mt-2">{{ rowsMessage }}</p>
         </div>
       </a-spin>
 
@@ -95,6 +115,38 @@ function authorName(item: FeedItemDTO): string {
 function sportTypeLabel(code: number): string {
   const m: Record<number, string> = { 1: 'RUNNING', 2: 'CYCLING', 3: 'WALKING' }
   return m[code] || `UNKNOWN(${code})`
+}
+
+// ===== TASK-245 B27：首字主题彩色头像 + 运动类型中文徽标 =====
+/** 作者首字（昵称缺失回退 userId 首字符）；空串兜底用默认可辨识字符 */
+function avatarChar(item: FeedItemDTO): string {
+  const name = authorName(item)
+  const first = (name || '').trim().charAt(0)
+  return first || '?'
+}
+
+/** 首字主题色：由作者 userId 稳定派生（同一作者恒同色，直观可辨识） */
+function avatarColor(item: FeedItemDTO): string {
+  const palette = ['#1677ff', '#52c41a', '#fa8c16', '#eb2f96', '#722ed1', '#13c2c2', '#f5222d']
+  const id = item.authorUserId ?? 0
+  return palette[Math.abs(id) % palette.length]
+}
+
+/** 运动类型中文徽标（🏃 跑步 / 🚴 骑行 / 🚶 健走）；未知类型返回空 → 走旧英文 fallback */
+function sportTypeBadge(code: number): string {
+  const m: Record<number, string> = { 1: '🏃 跑步', 2: '🚴 骑行', 3: '🚶 健走' }
+  return m[code] || ''
+}
+
+/** 徽标配色（与类型语义关联） */
+function sportTypeColor(code: number): string {
+  const m: Record<number, string> = { 1: 'green', 2: 'blue', 3: 'orange' }
+  return m[code] || 'default'
+}
+
+/** 空态 / 引导按钮跳转（去添加好友 / 去记录运动） */
+function go(path: string) {
+  router.push(path)
 }
 
 function statusLabel(code: number): string {

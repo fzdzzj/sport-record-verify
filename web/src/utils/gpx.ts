@@ -54,3 +54,97 @@ export function generateGpx(points: TrackPointDTO[], opts?: GpxOptions): string 
   lines.push('</gpx>')
   return lines.join('\n')
 }
+
+/**
+ * 解析 GPX 1.1 字符串为轨迹点数组（TASK-245 B28 前端导入解析，与 {@link generateGpx} 形成双向闭环）。
+ *
+ * <p>纯正则解析（零新依赖），不依赖浏览器 {@code DOMParser}（vitest/Node 环境与浏览器通用）：
+ * 逐 {@code <trkpt lat="..." lon="...">} 节点提取经纬度与内部 {@code <time>} 文本；每个点自动补
+ * {@code seq}（文档序 0..N-1）、{@code ts}（epoch 毫秒，非法/缺失时间戳按首点递推或置 0）、
+ * {@code speed}（相邻点球面距离/时间差，m/s；首点不做速度计算则该字段缺省）。</p>
+ *
+ * <p>异常防御：输入为空/非字符串 → 格式错误；解析不到任何 trkpt → 格式错误（同时给出已解析
+ * 到的行级提示以便排查）；经纬度缺失的点跳过但若最终零有效点仍报错。</p>
+ *
+ * @param xmlString GPX 文件文本
+ * @returns {@code TrackPointDTO[]}（seq 升序，与文档序一致）
+ * @throws Error 输入空/非法，或未解析到任何有效 trkpt
+ */
+export function parseGpx(xmlString: string): TrackPointDTO[] {
+  if (!xmlString || typeof xmlString !== 'string' || !xmlString.trim()) {
+    throw new Error('parseGpx: 输入为空或非法 GPX 内容')
+  }
+
+  // 逐个 <trkpt ...>...</trkpt> 节点：非贪婪跨点捕获（属性段 + 内部子元素段）
+  const trkptRe = /<trkpt([^>]*)>([\s\S]*?)<\/trkpt>/g
+  const timeRe = /<time>\s*([^<]+?)\s*<\/time>/
+  const latAttrRe = /lat\s*=\s*["']([^"']+)["']/
+  const lonAttrRe = /lon\s*=\s*["']([^"']+)["']/
+
+  const parsed: { lat: number; lng: number; ts: number }[] = []
+  let m: RegExpExecArray | null
+  while ((m = trkptRe.exec(xmlString)) !== null) {
+    const attrs = m[1] || ''
+    const body = m[2] || ''
+    const latMatch = latAttrRe.exec(attrs)
+    const lonMatch = lonAttrRe.exec(attrs)
+    if (!latMatch || !lonMatch) {
+      // 缺经纬度属性 → 该点无效，跳过
+      continue
+    }
+    const lat = Number.parseFloat(latMatch[1])
+    const lng = Number.parseFloat(lonMatch[1])
+    if (!Number.isFinite(lat) || !Number.isFinite(lng)) {
+      continue
+    }
+    let ts = 0
+    const timeMatch = timeRe.exec(body)
+    if (timeMatch) {
+      const t = Date.parse(timeMatch[1].trim())
+      if (!Number.isNaN(t)) {
+        ts = t
+      }
+    }
+    parsed.push({ lat, lng, ts })
+  }
+
+  if (parsed.length === 0) {
+    throw new Error('parseGpx: 未解析到任何有效 trkpt 轨迹点')
+  }
+
+  // 补齐 seq 文档序、缺时间戳点按首点偏移递推、相邻点 speed（m/s）
+  return parsed.map((p, i) => {
+    const seq = i
+    const prev = parsed[i - 1]
+    let ts = p.ts
+    if (ts === 0 && i > 0) {
+      // 无时间戳：以首点 ts（或 0）为基递推偏移 i（秒），保证单调可推导
+      ts = parsed[0].ts + i * 1000
+    }
+    let speed: number | undefined
+    if (prev) {
+      const dtMs = ts - prev.ts
+      const dMeters = haversineDistanceMeters(prev.lat, prev.lng, p.lat, p.lng)
+      if (dtMs > 0) {
+        speed = Math.round((dMeters / (dtMs / 1000)) * 100) / 100
+      }
+    }
+    const point: TrackPointDTO = { seq, lat: p.lat, lng: p.lng, ts }
+    if (speed !== undefined) {
+      point.speed = speed
+    }
+    return point
+  })
+}
+
+/** 两点球面距离（米，Haversine；R=6371000，与后端推导同公式同常量）。 */
+function haversineDistanceMeters(lat1: number, lng1: number, lat2: number, lng2: number): number {
+  const R = 6371000
+  const rad = (x: number) => (x * Math.PI) / 180
+  const dLat = rad(lat2 - lat1)
+  const dLng = rad(lng2 - lng1)
+  const s =
+    Math.sin(dLat / 2) ** 2 +
+    Math.cos(rad(lat1)) * Math.cos(rad(lat2)) * Math.sin(dLng / 2) ** 2
+  return 2 * R * Math.asin(Math.sqrt(s))
+}

@@ -19,6 +19,7 @@ import com.sportverify.api.record.dto.TrackPointDTO;
 import com.sportverify.api.record.dto.FeedItemDTO;
 import com.sportverify.api.user.UserApi;
 import com.sportverify.api.user.dto.UserDTO;
+import com.sportverify.api.verify.AppealStatus;
 import com.sportverify.api.verify.VerifyApi;
 import com.sportverify.api.verify.dto.AppealCreateDTO;
 import com.sportverify.api.verify.dto.AppealDTO;
@@ -564,6 +565,100 @@ public class SportRecordService {
         SportRecordDTO dto = new SportRecordDTO();
         BeanUtils.copyProperties(record, dto);
         return dto;
+    }
+
+    /**
+     * 记录详情基础指标（TASK-245 B22）：返回单条记录的运动类型/距离/时长/起止时间/状态/可见性。
+     *
+     * <p>归属校验（与 deleteRecord/appeal 同款，见 ADR-0007）：caller 非空且非记录归属人 → 403 越权；
+     * caller=null（鉴权关闭降级态）放行，零改动降级旧行为。详情读数不对 FRIENDS/PUBLIC 陌生人开放
+     * （本端点服务于「本人详情卡片」场景，与可见性修改同一归属门）。</p>
+     *
+     * @param recordId 记录 id
+     * @param caller   调用者 userId（鉴权开启时为网关注入，关闭时为 null）
+     */
+    public SportRecordDTO getRecordDetail(Long recordId, Long caller) {
+        SportRecord record = sportRecordMapper.selectById(recordId);
+        if (record == null) {
+            throw new BizException(ResultCode.RECORD_NOT_FOUND);
+        }
+        if (caller != null && !caller.equals(record.getUserId())) {
+            throw new BizException(ResultCode.FORBIDDEN);
+        }
+        SportRecordDTO dto = new SportRecordDTO();
+        BeanUtils.copyProperties(record, dto);
+        return dto;
+    }
+
+    /**
+     * 原地修改记录可见性（TASK-245 B22/B29）：仅允许本人修改，值域 0(PUBLIC)/1(FRIENDS)/2(PRIVATE)。
+     *
+     * <p>归属校验：caller 非空且非记录归属人 → 403 越权；合法值域外 → IllegalArgumentException（控制器映射 400）。
+     * 更新主表 {@code sport_record.visibility} 即持久化（无乐观锁参与，可见性非状态机字段）。</p>
+     *
+     * @param caller     调用者 userId（鉴权开启时为网关注入，关闭时为 null）
+     * @param recordId   记录 id
+     * @param visibility 目标可见性（0/1/2）
+     * @return 修改后的记录详情
+     */
+    public SportRecordDTO updateVisibility(Long caller, Long recordId, Integer visibility) {
+        if (visibility == null || RecordVisibility.fromCode(visibility) == null) {
+            throw new IllegalArgumentException("非法可见性：" + visibility);
+        }
+        SportRecord record = sportRecordMapper.selectById(recordId);
+        if (record == null) {
+            throw new BizException(ResultCode.RECORD_NOT_FOUND);
+        }
+        if (caller != null && !caller.equals(record.getUserId())) {
+            throw new BizException(ResultCode.FORBIDDEN);
+        }
+        record.setVisibility(visibility);
+        sportRecordMapper.updateById(record);
+        SportRecordDTO dto = new SportRecordDTO();
+        BeanUtils.copyProperties(record, dto);
+        return dto;
+    }
+
+    /**
+     * 记录申诉逆向追踪（TASK-245 B26）：返回该记录关联的申诉进度信息（仅本人或管理员可查）。
+     *
+     * <p>申诉单数据本体在 verify_db（verify-service 侧），本服务仅在申诉提交路径把 {@code REJECTED→APPEALING}
+     * 迁移持久化于 {@code sport_record.status}。故申诉「存在性 + 进度」由记录状态权威推导：</p>
+     * <ul>
+     *   <li>{@code status=APPEALING(4)} → 申诉已提交、待人工复核（对应 AppealStatus.PENDING）；</li>
+     *   <li>{@code status=RE_PASSED(5)} → 终判改判通过（AppealStatus.RE_PASSED）；</li>
+     *   <li>{@code status=RE_CONFIRMED(6)} → 终判维持拒绝（AppealStatus.RE_CONFIRMED）；</li>
+     *   <li>其余状态 → 无申诉单，返回的 {@link AppealDTO#getStatus()} 为 null 作为「无申诉」信号。
+     *       前端据此决定是否渲染进度条与禁用重复提交（杜绝 3005 重复建单冲突）。</li>
+     * </ul>
+     *
+     * <p>申诉理由与管理员复核结论（recheckResult）存于 verify_db，需 verify-service 开放按 recordId
+     * 查询端点后方可透出；当前白名单不含 verify-service，渲染面以进度与结论态为主（文档如实记录该局限）。</p>
+     *
+     * @param recordId 记录 id
+     * @param caller   调用者 userId（鉴权开启时为网关注入，关闭时为 null）
+     * @return 申诉进度对象（status 为 AppealStatus 码；无申诉时 status=null）
+     */
+    public AppealDTO getAppeal(Long recordId, Long caller) {
+        SportRecord record = sportRecordMapper.selectById(recordId);
+        if (record == null) {
+            throw new BizException(ResultCode.RECORD_NOT_FOUND);
+        }
+        if (caller != null && !caller.equals(record.getUserId())) {
+            throw new BizException(ResultCode.FORBIDDEN);
+        }
+        AppealDTO appeal = new AppealDTO();
+        appeal.setRecordId(recordId);
+        appeal.setUserId(record.getUserId());
+        Integer status = record.getStatus();
+        if (RecordStatus.APPEALING.getCode() == status) {
+            appeal.setStatus(AppealStatus.PENDING.getCode());
+        } else if (RecordStatus.RE_PASSED.getCode() == status) {
+            appeal.setStatus(AppealStatus.RE_PASSED.getCode());
+        } else if (RecordStatus.RE_CONFIRMED.getCode() == status) {
+            appeal.setStatus(AppealStatus.RE_CONFIRMED.getCode());
+        }
+        return appeal;
     }
 
     /**

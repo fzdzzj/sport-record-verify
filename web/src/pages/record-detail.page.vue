@@ -32,6 +32,41 @@
       </div>
       <a-alert v-if="summaryDegraded" type="warning" class="mb-4" message="记录摘要不可用（仅展示轨迹）。" />
 
+      <!-- 运动指标卡片（TASK-245 B22）：类型/里程/时长/配速 + 可见性原地切换（仅本人可编辑） -->
+      <a-card v-if="detail" size="small" class="mb-4" title="运动指标">
+        <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
+          <div>
+            <div class="text-xs text-gray-500">运动类型</div>
+            <div class="font-medium">{{ sportTypeLabel(detail.sportType) }}</div>
+          </div>
+          <div>
+            <div class="text-xs text-gray-500">里程</div>
+            <div class="font-medium">{{ distanceLabel }}</div>
+          </div>
+          <div>
+            <div class="text-xs text-gray-500">耗时</div>
+            <div class="font-medium">{{ durationLabel }}</div>
+          </div>
+          <div>
+            <div class="text-xs text-gray-500">平均配速</div>
+            <div class="font-medium">{{ paceLabel }}</div>
+          </div>
+        </div>
+        <div class="mt-3 flex items-center gap-2">
+          <span class="text-xs text-gray-500">可见性：</span>
+          <a-select
+            :value="detail.visibility"
+            style="width: 140px"
+            size="small"
+            :loading="visUpdating"
+            :options="visibilityOptions"
+            @change="onVisibilityChange"
+          />
+          <span class="text-xs text-gray-400">选择后即时保存（仅本人可改，越权由服务端 403 拦截）。</span>
+          <a-alert v-if="visError" type="error" :message="visError" class="ml-2 text-xs" banner />
+        </div>
+      </a-card>
+
       <a-spin :spinning="loading">
         <a-alert v-if="permError" type="error" :message="permErrorMsg" />
         <a-alert v-else-if="loadError" type="error" :message="loadError" />
@@ -60,7 +95,7 @@
             :cx="p.x"
             :cy="p.y"
             :r="i === 0 || i === projected.length - 1 ? 5 : 3"
-            :fill="i === 0 ? '#22c55e' : i === projected.length - 1 ? '#ef4444' : '#1677ff'"
+            :fill="i === 0 ? '#52c41a' : i === projected.length - 1 ? '#ff4d4f' : '#1677ff'"
           >
             <title>{{ pointTitle(validPoints[i]) }}</title>
           </circle>
@@ -138,9 +173,12 @@ import {
   getRecordLike,
   likeRecord,
   unlikeRecord,
+  getRecordDetail,
+  updateRecordVisibility,
   type TrackPointDTO,
   type VerificationResultDTO,
   type LikeDTO,
+  type RecordDetailDTO,
 } from '@/api/client'
 import { generateGpx } from '@/utils/gpx'
 import { computePaceSeries, formatPace, isDrawablePace } from '@/utils/pace'
@@ -156,6 +194,80 @@ const summaryDegraded = ref(false)
 const loading = ref(false)
 const loadError = ref('')
 const permError = ref(false)
+
+// ===== 运动指标与可见性（TASK-245 B22/B29）=====
+const detail = ref<RecordDetailDTO | null>(null)
+const visUpdating = ref(false)
+const visError = ref('')
+/** 可见性中文名（供回读展示与下拉选项文本复用） */
+const visibilityOptions = [
+  { value: 0, label: '公开' },
+  { value: 1, label: '好友可见' },
+  { value: 2, label: '仅自己' },
+]
+
+function sportTypeLabel(code: number): string {
+  const m: Record<number, string> = { 1: '🏃 跑步', 2: '🚴 骑行', 3: '🚶 健走' }
+  return m[code] || `UNKNOWN(${code})`
+}
+
+const distanceLabel = computed(() => {
+  const d = detail.value?.distance
+  return d == null ? '—' : `${Number(d).toFixed(2)} km`
+})
+
+const durationLabel = computed(() => {
+  const s = detail.value?.duration
+  if (s == null) return '—'
+  const h = Math.floor(s / 3600)
+  const m = Math.floor((s % 3600) / 60)
+  const sec = s % 60
+  if (h > 0) return `${h}时${m}分${sec}秒`
+  if (m > 0) return `${m}分${sec}秒`
+  return `${sec}秒`
+})
+
+const paceLabel = computed(() => {
+  const d = detail.value?.distance
+  const s = detail.value?.duration
+  if (d == null || !s || Number(d) <= 0) return '—'
+  const minPerKm = s / 60 / Number(d)
+  const min = Math.floor(minPerKm)
+  const sec = Math.round((minPerKm - min) * 60)
+  return `${min}'${String(sec).padStart(2, '0')}" /km`
+})
+
+/** 加载详情 + 并发拉取判定/点赞态（与 TASK-236 同 Side-effect 组织） */
+async function loadDetail() {
+  try {
+    const res = await getRecordDetail(recordId.value)
+    detail.value = res.data
+  } catch (e: any) {
+    // 详情失败仅降级为「仅展示轨迹」（归属 403 已由 permError 兜底，不重复展示）
+    detail.value = null
+  }
+}
+
+/** 原地切换可见性（TASK-245 B22/B29）：下拉 change 即保存，失败回滚并提示 */
+async function onVisibilityChange(value: number) {
+  if (visUpdating.value || !detail.value) return
+  const prev = detail.value.visibility
+  visUpdating.value = true
+  visError.value = ''
+  detail.value.visibility = value
+  try {
+    const res = await updateRecordVisibility(recordId.value, value)
+    detail.value = res.data
+  } catch (e: any) {
+    detail.value.visibility = prev
+    visError.value =
+      e.code === 1002 || e.status === 403
+        ? '越权：仅本人可修改可见性'
+        : (e.code ? `[${e.code}] ${e.message}` : (e.message || '修改可见性失败'))
+  } finally {
+    visUpdating.value = false
+  }
+}
 
 // ===== 点赞交互（TASK-236）：加载时并发调取点赞态，失败静默降级；点击一键切换 =====
 const likeInfo = ref<LikeDTO | null>(null)
@@ -371,7 +483,7 @@ async function load() {
       allPoints = allPoints.concat(nextBatch)
     }
     points.value = allPoints
-    // 摘要头 + 点赞态：并发调取，任一失败静默降级（403 权限/非通过 6001/摘要缺失均不阻断轨迹渲染）
+    // 摘要头 + 详情指标 + 点赞态：并发调取，任一失败静默降级（403 权限/非通过 6001/摘要缺失均不阻断轨迹渲染）
     await Promise.allSettled([
       getVerifyResult(recordId.value)
         .then((vr) => {
@@ -380,6 +492,7 @@ async function load() {
         .catch(() => {
           summaryDegraded.value = true
         }),
+      loadDetail(),
       getRecordLike(recordId.value)
         .then((res2) => {
           likeInfo.value = res2.data

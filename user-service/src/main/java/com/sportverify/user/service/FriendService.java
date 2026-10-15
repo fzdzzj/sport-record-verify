@@ -258,6 +258,59 @@ public class FriendService {
         }
     }
 
+    // ==================== 批量流转（TASK-245 B25） ====================
+
+    /**
+     * 批量同意好友申请（TASK-245 B25，POST /api/friends/requests/batch-accept）。
+     *
+     * <p>逐条委托 {@link #accept}（复用其归属校验 + 锁 + 乐观流转 + 通知）；对已处理 / 越权 /
+     * 不存在的申请跳过不中断（前端「批量同意」半成功不报整批失败），返回实际成功条数。</p>
+     *
+     * @param requestIds 待同意申请 id 列表（可为空 → 返回 0）
+     * @param caller     调用者 userId（鉴权开启时为网关注入，关闭时为 null）
+     * @return 实际同意成功条数
+     */
+    public int batchAccept(List<Long> requestIds, Long caller) {
+        return batchTransition(requestIds, caller, true);
+    }
+
+    /**
+     * 批量拒绝 / 忽略好友申请（TASK-245 B25，POST /api/friends/requests/batch-reject）。
+     *
+     * <p>逐条委托 {@link #reject}（复用其归属校验 + 锁 + 乐观流转）；跳过已处理 / 越权 / 不存在的
+     * 申请不中断，返回实际拒绝成功条数。</p>
+     *
+     * @param requestIds 待拒绝申请 id 列表（可为空 → 返回 0）
+     * @param caller     调用者 userId（鉴权开启时为网关注入，关闭时为 null）
+     * @return 实际拒绝成功条数
+     */
+    public int batchReject(List<Long> requestIds, Long caller) {
+        return batchTransition(requestIds, caller, false);
+    }
+
+    /** 批量流转公共串：逐个 id 委托 accept/reject，业务异常（已处理/越权/不存在）跳过计数。 */
+    private int batchTransition(List<Long> requestIds, Long caller, boolean accept) {
+        if (requestIds == null || requestIds.isEmpty()) {
+            return 0;
+        }
+        int ok = 0;
+        for (Long id : requestIds) {
+            try {
+                if (accept) {
+                    accept(id, caller);
+                } else {
+                    reject(id, caller);
+                }
+                ok++;
+            } catch (BizException e) {
+                // 已处理(5002)/越权(1002)/不存在可跳过，不因单条失败中断整批（前端可半成功）
+                log.info("批量{}跳过异常申请：id={}, code={}",
+                        accept ? "同意" : "拒绝", id, e.getCode());
+            }
+        }
+        return ok;
+    }
+
     // ==================== 待处理申请列表（TASK-235） ====================
 
     /**
@@ -285,7 +338,17 @@ public class FriendService {
                         // TASK-243 B13：仅返回 7 天内有效 PENDING 待办（过期申请不再进入待办列表）
                         .ge(FriendRequest::getCreatedAt, LocalDateTime.now().minusDays(7))
                         .orderByDesc(FriendRequest::getCreatedAt));
-        List<FriendRequestDTO> records = result.getRecords().stream().map(this::toDto).toList();
+        // TASK-245 B25：待处理申请列表按申请人（from_user）批量补齐真实昵称，供前端识别对方身份
+        List<Long> fromIds = result.getRecords().stream()
+                .map(FriendRequest::getFromUser)
+                .distinct()
+                .toList();
+        Map<Long, User> fromMap = fromIds.isEmpty() ? Map.of()
+                : userMapper.selectBatchIds(fromIds).stream()
+                        .collect(Collectors.toMap(User::getId, u -> u));
+        List<FriendRequestDTO> records = result.getRecords().stream()
+                .map(r -> toDto(r, fromMap.get(r.getFromUser())))
+                .toList();
         return new PageResult<>(result.getCurrent(), result.getSize(), result.getTotal(), records);
     }
 
@@ -425,6 +488,11 @@ public class FriendService {
 
     /** 实体 → DTO（status 由 TINYINT 码转为枚举名下发，见 FriendRequestDTO 注释） */
     private FriendRequestDTO toDto(FriendRequest request) {
+        return toDto(request, null);
+    }
+
+    /** 实体 → DTO，附带申请人真实昵称（TASK-245 B25：fromNickname 为空/未知时不下发字段） */
+    private FriendRequestDTO toDto(FriendRequest request, User applicant) {
         FriendRequestDTO dto = new FriendRequestDTO();
         dto.setId(request.getId());
         dto.setFromUser(request.getFromUser());
@@ -432,6 +500,9 @@ public class FriendService {
         dto.setStatus(FriendRequestStatus.nameOf(request.getStatus()));
         dto.setCreatedAt(request.getCreatedAt());
         dto.setUpdatedAt(request.getUpdatedAt());
+        if (applicant != null && applicant.getNickname() != null) {
+            dto.setFromNickname(applicant.getNickname());
+        }
         return dto;
     }
 

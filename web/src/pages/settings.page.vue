@@ -1,5 +1,21 @@
 <template>
   <div class="max-w-md mx-auto mt-10">
+    <!-- 个人资料卡片（TASK-245 B25）：查看昵称 + 原地修改保存 -->
+    <a-card title="个人资料" style="width: 100%;" class="mb-6">
+      <a-alert v-if="profileError" :message="profileError" type="error" show-icon class="mb-4" />
+      <a-alert v-if="profileSaved" :message="profileSaved" type="success" show-icon class="mb-4" />
+      <div v-if="profileLoading" class="text-gray-400 py-4 text-center">加载中…</div>
+      <div v-else-if="profile">
+        <div class="mb-1"><span class="text-gray-500">用户ID：</span><b>{{ profile.id }}</b></div>
+        <a-form layout="vertical" @finish="onProfileFinish">
+          <a-form-item label="昵称" name="nickname" :rules="profileNicknameRules">
+            <a-input v-model:value="profileNickname" placeholder="请输入昵称（≤32 字符）" :maxlength="32" />
+          </a-form-item>
+          <a-button type="primary" html-type="submit" :loading="profileSaving" block>保存昵称</a-button>
+        </a-form>
+      </div>
+    </a-card>
+
     <a-card title="修改密码" style="width: 100%;">
       <a-form :model="formState" :rules="rules" @finish="onFinish" layout="vertical">
         <a-form-item label="旧密码" name="oldPassword">
@@ -55,11 +71,60 @@ import {
   changePassword,
   getNotificationPreferences,
   updateNotificationPreferences,
+  getUserProfile,
+  updateUserProfile,
   type NotificationPreferenceView,
+  type UserProfileDTO,
 } from "@/api/client"
 import { clearTokens } from "@/utils/token"
 
 const router = useRouter()
+
+// ===== 个人资料（TASK-245 B25） =====
+const profile = ref<UserProfileDTO | null>(null)
+const profileLoading = ref(false)
+const profileSaving = ref(false)
+const profileError = ref("")
+const profileSaved = ref("")
+const profileNickname = ref("")
+
+const profileNicknameRules = [
+  { required: true, message: "昵称不能为空" },
+  { max: 32, message: "昵称长度不能超过 32 字符" },
+]
+
+async function loadProfile() {
+  profileLoading.value = true
+  profileError.value = ""
+  try {
+    const res = await getUserProfile()
+    profile.value = res.data
+    profileNickname.value = res.data?.nickname || ""
+  } catch (e: any) {
+    profileError.value = e.code ? `[${e.code}] ${e.message}` : (e.message || "加载个人资料失败")
+  } finally {
+    profileLoading.value = false
+  }
+}
+
+async function onProfileFinish() {
+  const nickname = profileNickname.value.trim()
+  if (!nickname || profileSaving.value) return
+  profileSaving.value = true
+  profileError.value = ""
+  profileSaved.value = ""
+  try {
+    const res = await updateUserProfile(nickname)
+    profile.value = res.data
+    profileNickname.value = res.data?.nickname || nickname
+    profileSaved.value = "昵称已更新。"
+    message.success("昵称已更新")
+  } catch (e: any) {
+    profileError.value = e.code ? `[${e.code}] ${e.message}` : (e.message || "更新昵称失败")
+  } finally {
+    profileSaving.value = false
+  }
+}
 
 const formState = reactive({
   oldPassword: "",
@@ -180,5 +245,8 @@ async function onPrefToggle(row: PrefRow) {
   }
 }
 
-onMounted(loadPreferences)
+onMounted(() => {
+  loadProfile()
+  loadPreferences()
+})
 </script>

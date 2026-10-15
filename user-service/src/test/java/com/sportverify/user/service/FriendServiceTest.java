@@ -47,6 +47,7 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.mockito.Mockito.inOrder;
 import org.mockito.ArgumentCaptor;
 import org.mockito.ArgumentMatchers;
@@ -419,6 +420,107 @@ class FriendServiceTest {
         BizException e = assertThrows(BizException.class, () -> service.reject(5L, 1002L));
 
         assertEquals(ResultCode.FRIEND_RELATION_NOT_FOUND.getCode(), e.getCode());
+    }
+
+    // ==================== 待处理申请列表与批量流转（TASK-245 B25） ====================
+
+    /** B25 绿：listPendingRequests 按申请人批量补齐 fromNickname（userMapper 批量拉昵称） */
+    @Test
+    void listPendingRequests_batchEnrichesFromNickname() {
+        TableInfoHelper.initTableInfo(
+                new MapperBuilderAssistant(new MybatisConfiguration(), ""), FriendRequest.class);
+        Page<FriendRequest> page = new Page<>(1, 20, 2);
+        page.setRecords(List.of(pendingRequest(1L, 1001L, 2001L), pendingRequest(2L, 1002L, 2001L)));
+        when(requestMapper.selectPage(any(), any())).thenReturn(page);
+        when(userMapper.selectBatchIds(any())).thenReturn(List.of(user(1001L, "Alice"), user(1002L, "Bob")));
+
+        PageResult<FriendRequestDTO> result = service.listPendingRequests(2001L, 1, 20);
+
+        assertEquals(2, result.getRecords().size());
+        assertEquals("Alice", result.getRecords().get(0).getFromNickname(), "申请人昵称须被批量补齐");
+        assertEquals("Bob", result.getRecords().get(1).getFromNickname());
+        // 批量查询只按申请人 ID 集合走一次 userMapper.selectBatchIds
+        ArgumentCaptor<List<Long>> idsCaptor = ArgumentCaptor.forClass(List.class);
+        verify(userMapper).selectBatchIds(idsCaptor.capture());
+        assertTrue(idsCaptor.getValue().contains(1001L) && idsCaptor.getValue().contains(1002L));
+    }
+
+    /** B25 绿：listPendingRequests 申请人昵称缺失（未知用户）→ fromNickname 不出现在 DTO 中 */
+    @Test
+    void listPendingRequests_missingApplicant_nullNickname() {
+        TableInfoHelper.initTableInfo(
+                new MapperBuilderAssistant(new MybatisConfiguration(), ""), FriendRequest.class);
+        Page<FriendRequest> page = new Page<>(1, 20, 1);
+        page.setRecords(List.of(pendingRequest(1L, 9999L, 2001L)));
+        when(requestMapper.selectPage(any(), any())).thenReturn(page);
+        when(userMapper.selectBatchIds(any())).thenReturn(List.of()); // 申请人 9999 拉不到
+
+        PageResult<FriendRequestDTO> result = service.listPendingRequests(2001L, 1, 20);
+
+        assertEquals(1, result.getRecords().size());
+        assertNull(result.getRecords().get(0).getFromNickname());
+    }
+
+    /** B25 绿：batchAccept 逐条同意成功 → 返回成功条数=入参数量 */
+    @Test
+    void batchAccept_success_returnsCount() {
+        when(requestMapper.selectById(5L)).thenReturn(pendingRequest(5L, 1001L, 2001L));
+        when(requestMapper.selectById(6L)).thenReturn(pendingRequest(6L, 1002L, 2001L));
+        when(requestMapper.updateStatus(anyLong(), anyInt(), anyInt(), any())).thenReturn(1);
+
+        int ok = service.batchAccept(List.of(5L, 6L), 2001L);
+
+        assertEquals(2, ok);
+        verify(friendshipMapper, times(2)).insert(any(Friendship.class));
+    }
+
+    /** B25 绿：batchAccept 其中一条已处理（5002）→ 跳过不中断，返回成功条数=1 */
+    @Test
+    void batchAccept_skipsAlreadyProcessed() {
+        // 5 正常同意；6 已处理（updateStatus 影响 0 行 → 5002）
+        when(requestMapper.selectById(5L)).thenReturn(pendingRequest(5L, 1001L, 2001L));
+        when(requestMapper.selectById(6L)).thenReturn(pendingRequest(6L, 1002L, 2001L));
+        when(requestMapper.updateStatus(eq(5L), anyInt(), anyInt(), any())).thenReturn(1);
+        when(requestMapper.updateStatus(eq(6L), anyInt(), anyInt(), any())).thenReturn(0);
+
+        int ok = service.batchAccept(List.of(5L, 6L), 2001L);
+
+        assertEquals(1, ok, "已处理申请跳过，不中断整批");
+    }
+
+    /** B25 红：batchAccept 含越权申请（caller 非 to_user）→ 该条 403 跳过，其余继续 */
+    @Test
+    void batchAccept_skipsUnauthorized() {
+        when(requestMapper.selectById(5L)).thenReturn(pendingRequest(5L, 1001L, 2001L));
+        when(requestMapper.selectById(6L)).thenReturn(pendingRequest(6L, 1002L, 3001L)); // to_user=3001 ≠ caller
+        when(requestMapper.updateStatus(eq(5L), anyInt(), anyInt(), any())).thenReturn(1);
+
+        int ok = service.batchAccept(List.of(5L, 6L), 2001L);
+
+        assertEquals(1, ok);
+        verify(friendshipMapper, times(1)).insert(any(Friendship.class));
+    }
+
+    /** B25 绿：batchReject 逐条拒绝成功 → 返回成功条数，不落 friendship */
+    @Test
+    void batchReject_success_returnsCount() {
+        when(requestMapper.selectById(5L)).thenReturn(pendingRequest(5L, 1001L, 2001L));
+        when(requestMapper.selectById(6L)).thenReturn(pendingRequest(6L, 1002L, 2001L));
+        when(requestMapper.updateStatus(anyLong(), anyInt(), anyInt(), any())).thenReturn(1);
+
+        int ok = service.batchReject(List.of(5L, 6L), 2001L);
+
+        assertEquals(2, ok);
+        verify(friendshipMapper, never()).insert(any(Friendship.class));
+    }
+
+    /** B25 绿：空列表/入参 null → 返回 0，零流转调用 */
+    @Test
+    void batchTransition_emptyOrNull_returnsZero() {
+        assertEquals(0, service.batchAccept(null, 2001L));
+        assertEquals(0, service.batchAccept(List.of(), 2001L));
+        assertEquals(0, service.batchReject(null, 2001L));
+        verifyNoInteractions(requestMapper);
     }
 
     // ==================== 好友列表 ====================

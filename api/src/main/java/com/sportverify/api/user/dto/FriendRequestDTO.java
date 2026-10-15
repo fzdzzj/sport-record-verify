@@ -27,6 +27,9 @@ public class FriendRequestDTO implements Serializable {
     /** 被申请人 */
     private Long toUser;
 
+    /** 申请人真实昵称（TASK-245 B25：待处理申请列表由 userMapper 批量补齐，前端据此展示申请人身份） */
+    private String fromNickname;
+
     /** 状态：PENDING / ACCEPTED / REJECTED / CANCELLED */
     private String status;
 

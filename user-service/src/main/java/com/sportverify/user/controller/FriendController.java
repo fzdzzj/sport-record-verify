@@ -25,6 +25,8 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
+import java.util.List;
+
 /**
  * 好友域对外接口（网关 /user/api/friends/** → StripPrefix → 本控制器，
  * 对应审批版 §4.1 好友四接口）。
@@ -98,6 +100,28 @@ public class FriendController {
                                            HttpServletRequest request) {
         Long caller = authEnabled ? resolveUserId(request, null) : null;
         return Result.success(friendService.reject(id, caller));
+    }
+
+    /**
+     * 批量同意好友申请（TASK-245 B25）：入参 {@code List<Long> requestIds}，逐条委托 accept
+     * 并跳过已处理/越权申请，返回实际同意成功条数。身份认定同 {@link #resolveUserId}。
+     */
+    @PostMapping("/requests/batch-accept")
+    public Result<Integer> batchAccept(@RequestBody List<Long> requestIds,
+                                       HttpServletRequest request) {
+        Long caller = authEnabled ? resolveUserId(request, null) : null;
+        return Result.success(friendService.batchAccept(requestIds, caller));
+    }
+
+    /**
+     * 批量拒绝/忽略好友申请（TASK-245 B25）：入参 {@code List<Long> requestIds}，逐条委托 reject
+     * 并跳过已处理/越权申请，返回实际拒绝成功条数。身份认定同 {@link #resolveUserId}。
+     */
+    @PostMapping("/requests/batch-reject")
+    public Result<Integer> batchReject(@RequestBody List<Long> requestIds,
+                                       HttpServletRequest request) {
+        Long caller = authEnabled ? resolveUserId(request, null) : null;
+        return Result.success(friendService.batchReject(requestIds, caller));
     }
 
     /**

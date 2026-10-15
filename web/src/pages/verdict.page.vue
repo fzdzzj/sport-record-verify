@@ -31,17 +31,47 @@
         <div class="text-xs text-gray-500 mt-1">未通过赞会返回 6001 错误（前端展示，不当成功）。</div>
       </a-card>
 
-      <!-- Appeal section -->
+      <!-- Appeal section（TASK-245 B26 逆向全链路透明追踪） -->
       <a-card v-if="verifyResult && verifyResult.verdict === 2" title="申诉 (仅 REJECTED)" size="small">
-        <a-textarea v-model:value="appealReason" placeholder="申诉理由（必填，≤500字）" :rows="3" />
-        <a-button :loading="appealing" @click="onAppeal" class="mt-2" :disabled="!appealReason.trim()">提交申诉</a-button>
+        <!-- 申诉进度条：已提交 → 人工复核中 → 终判结果与审核意见；无申诉时提示可提交 -->
+        <a-steps v-if="appealTracking.appealExists" size="small" :current="appealTracking.step" class="mb-3">
+          <a-step title="已提交申诉" :description="appealTracking.submittedDesc" />
+          <a-step title="人工复核中" :description="appealTracking.reviewDesc" />
+          <a-step
+            title="终判结果"
+            :status="appealTracking.finalStatus"
+            :description="appealTracking.finalDesc"
+          />
+        </a-steps>
+
+        <a-alert v-if="appealTracking.finalResult" type="warning" show-icon class="mb-3">
+          <template #message>{{ appealTracking.finalResult }}</template>
+        </a-alert>
+
+        <a-textarea
+          v-model:value="appealReason"
+          placeholder="申诉理由（必填，≤500字）"
+          :rows="3"
+          :disabled="appealTracking.disabled"
+        />
+        <a-button
+          v-if="!appealTracking.disabled"
+          type="primary"
+          :loading="appealing"
+          @click="onAppeal"
+          class="mt-2"
+          :disabled="!appealReason.trim()"
+        >
+          提交申诉
+        </a-button>
+        <div v-else class="mt-2 text-xs text-orange-500">
+          该记录已有申诉在处理 / 已出终判结论，已禁止重复提交（防 3005 冲突）。
+        </div>
         <a-alert v-if="appealResult" type="success" class="mt-2">
           <template #message>
             <div class="flex items-center justify-between">
               <span>申诉已提交 (id: {{ appealResult.id || 'n/a' }})</span>
-              <router-link v-if="appealResult.id" :to="`/admin-appeal?id=${appealResult.id}`" class="text-blue-600 hover:underline text-xs">
-                去管理后台审核 &rarr;
-              </router-link>
+              <span class="text-xs text-gray-400">可在本页实时查看复核进度。</span>
             </div>
           </template>
         </a-alert>
@@ -60,7 +90,7 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router/auto'
-import { getVerifyResult, submitAppeal, likeRecord, unlikeRecord, getRecordLike, type VerificationResultDTO, type LikeDTO } from '@/api/client'
+import { getVerifyResult, submitAppeal, likeRecord, unlikeRecord, getRecordLike, getRecordAppeal, type VerificationResultDTO, type LikeDTO, type RecordAppealDTO } from '@/api/client'
 
 const route = useRoute()
 const router = useRouter()
@@ -80,6 +110,47 @@ const appealReason = ref('')
 const appealing = ref(false)
 const appealResult = ref<any>(null)
 const appealError = ref('')
+
+// ===== 申诉逆向全链路追踪（TASK-245 B26）：
+// 已提交 → 人工复核中 → 终判结果与审核意见；已有申诉则回显并禁用重复提交（防 3005）=====
+const appeal = ref<RecordAppealDTO | null>(null)
+const appealTracking = computed(() => {
+  const status = appeal.value?.status
+  const exists = status != null
+  // 终态结论（审核意见在 verify-db，当前白名单不含 verify-service，故取状态结论）
+  const finalResult =
+    status === 1
+      ? '终判改判通过：申诉成立，记录复审通过。'
+      : status === 2
+        ? '终判维持拒绝：申诉不成立，维持原判。'
+        : ''
+  return {
+    appealExists: exists,
+    // a-steps current：0=已提交，1=复核中，2=终判决
+    step: status === 0 ? 1 : 2,
+    submittedDesc: status === 0 ? '已提交，等待进入人工复核' : finalResult,
+    reviewDesc: status === 0 ? '排队复核中…' : '复核完成',
+    finalDesc: status === 0 ? '等待终判' : finalResult,
+    finalStatus: status === 2 ? 'error' : 'finish',
+    finalResult,
+    disabled: exists,
+  }
+})
+
+/** 拉取申诉追踪信息（归属由服务端校验；无申诉时 data.status=null → appealExists=false） */
+async function fetchAppeal(quiet = false) {
+  if (!recordId.value) return
+  try {
+    const res = await getRecordAppeal(recordId.value)
+    appeal.value = res.data
+  } catch (e: any) {
+    if (!quiet) {
+      const msg = e.code ? `[${e.code}] ${e.message}` : (e.message || '查询申诉状态失败')
+      // 申诉状态查询失败非致命：保留上次状态，不重复渲染错误
+      console.warn(msg)
+    }
+  }
+}
 
 const verdictLabel = computed(() => {
   const v = verifyResult.value?.verdict
@@ -116,6 +187,10 @@ async function fetchVerify(quiet = false) {
     // refresh like if passed
     if (res.data.verdict === 1) {
       await fetchLike(true)
+    }
+    // TASK-245 B26：REJECTED 时同步拉取申诉追踪（是否有申诉/当前进度）
+    if (res.data.verdict === 2) {
+      await fetchAppeal(true)
     }
     return res.data.verdict
   } catch (e: any) {
@@ -169,8 +244,9 @@ async function onAppeal() {
   try {
     const res = await submitAppeal(recordId.value, appealReason.value.trim())
     appealResult.value = res.data
-    // refetch verify
+    // refetch verify + appeal（提交成功后记录迁移 APPEALING，回显进度并禁用重复提交）
     await fetchVerify(true)
+    await fetchAppeal(true)
   } catch (e: any) {
     appealError.value = e.code ? `[${e.code}] ${e.message}` : (e.message || '申诉失败')
   } finally {

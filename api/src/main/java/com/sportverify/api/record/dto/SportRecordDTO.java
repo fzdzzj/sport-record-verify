@@ -44,6 +44,9 @@ public class SportRecordDTO implements Serializable {
     /** 审核状态（状态机见 §5.1） */
     private Integer status;
 
+    /** 可见性（RecordVisibility.code：0 公开/默认，1 好友可见，2 仅自己；TASK-245 B22 记录详情展示与原地修改） */
+    private Integer visibility;
+
     /** 乐观锁版本号 */
     private Integer version;
 

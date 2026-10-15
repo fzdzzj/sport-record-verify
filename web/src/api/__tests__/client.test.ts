@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { AxiosError, type AxiosResponse } from 'axios'
 import api from '@/api/client'
 import { getAccessToken, setAuthFailHandler, setTokens } from '@/utils/token'
-import { deleteGoal, delRecord, deleteFriend, getFeed, getLikesBatch, getMyGoals, getMyRecords, getMyStats, reviewAppeal, submitAppeal, upsertGoal, fetchPendingAppeals, batchMarkNotificationsAsRead } from '@/api/client'
+import { deleteGoal, delRecord, deleteFriend, getFeed, getLikesBatch, getMyGoals, getMyRecords, getMyStats, reviewAppeal, submitAppeal, upsertGoal, fetchPendingAppeals, batchMarkNotificationsAsRead, getRecordDetail, updateRecordVisibility, getRecordAppeal, batchAcceptFriendRequests, batchRejectFriendRequests, getUserProfile, updateUserProfile } from '@/api/client'
 
 
 // adapter 注入范式：替换 api.defaults.adapter 为 vi.fn 模拟传输层，
@@ -548,5 +548,142 @@ describe('client.ts batchMarkNotificationsAsRead（B17）', () => {
     expect(call.url).toBe('/user/api/notifications/batch-read')
     expect(call.method?.toLowerCase()).toBe('patch')
     expect(JSON.parse(call.data || '[]')).toEqual([1, 2])
+  })
+})
+
+// ===== 记录详情指标与可见性修改（TASK-245 B22/B29） =====
+describe('client.ts 记录详情与可见性（TASK-245）', () => {
+  // B22 R1：getRecordDetail 打 GET /record/api/records/{id}
+  it('R1 getRecordDetail hits GET /record/api/records/{id}', async () => {
+    const detailBody = {
+      code: 0,
+      message: 'ok',
+      data: {
+        id: 7,
+        sportType: 1,
+        distance: 12.5,
+        duration: 3600,
+        startTime: '2026-10-01T10:00:00',
+        endTime: '2026-10-01T11:00:00',
+        status: 2,
+        visibility: 1,
+      },
+    }
+    adapter.mockImplementationOnce((config: unknown) => Promise.resolve(ok(config, detailBody)))
+
+    const res = await getRecordDetail(7)
+
+    expect(res.data.visibility).toBe(1)
+    expect(adapter).toHaveBeenCalledTimes(1)
+    const call = adapter.mock.calls[0][0] as { url: string; method?: string }
+    expect(call.url).toBe('/record/api/records/7')
+    expect(call.method?.toLowerCase() || 'get').toBe('get')
+  })
+
+  // B29 R1：updateRecordVisibility 打 PATCH /record/api/records/{id}/visibility 且 query 携带 visibility
+  it('R2 updateRecordVisibility hits PATCH with visibility param', async () => {
+    const body = { code: 0, message: 'ok', data: { id: 7, sportType: 1, visibility: 2, status: 2 } }
+    adapter.mockImplementationOnce((config: unknown) => Promise.resolve(ok(config, body)))
+
+    const res = await updateRecordVisibility(7, 2)
+
+    expect(res.data.visibility).toBe(2)
+    expect(adapter).toHaveBeenCalledTimes(1)
+    const call = adapter.mock.calls[0][0] as { url: string; method?: string; params?: Record<string, unknown> }
+    expect(call.url).toBe('/record/api/records/7/visibility')
+    expect(call.method?.toLowerCase()).toBe('patch')
+    expect(call.params).toEqual({ visibility: 2 })
+  })
+
+  // B29 R2：字符串 recordId 也被规范化进 URL
+  it('R3 updateRecordVisibility accepts string recordId', async () => {
+    const body = { code: 0, message: 'ok', data: { id: 8, sportType: 1, visibility: 0, status: 2 } }
+    adapter.mockImplementationOnce((config: unknown) => Promise.resolve(ok(config, body)))
+
+    await updateRecordVisibility('8', 0)
+
+    const call = adapter.mock.calls[0][0] as { url: string }
+    expect(call.url).toBe('/record/api/records/8/visibility')
+  })
+})
+
+// ===== 申诉逆向追踪（TASK-245 B26） =====
+describe('client.ts getRecordAppeal（TASK-245 B26）', () => {
+  // R1：getRecordAppeal 打 GET /record/api/records/{id}/appeal
+  it('R1 getRecordAppeal hits GET /record/api/records/{id}/appeal', async () => {
+    const appealBody = {
+      code: 0,
+      message: 'ok',
+      data: { recordId: 7, userId: 100, status: 1, operator: 'admin', recheckResult: '复核通过' },
+    }
+    adapter.mockImplementationOnce((config: unknown) => Promise.resolve(ok(config, appealBody)))
+
+    const res = await getRecordAppeal(7)
+
+    expect(res.data.status).toBe(1)
+    expect(res.data.recheckResult).toBe('复核通过')
+    expect(adapter).toHaveBeenCalledTimes(1)
+    const call = adapter.mock.calls[0][0] as { url: string; method?: string }
+    expect(call.url).toBe('/record/api/records/7/appeal')
+    expect(call.method?.toLowerCase() || 'get').toBe('get')
+  })
+})
+
+// ===== 好友批量流转与个人资料（TASK-245 B25） =====
+describe('client.ts 好友批量与个人资料（TASK-245 B25）', () => {
+  // R1：batchAcceptFriendRequests 打 POST /user/api/friends/requests/batch-accept 且 body 为 id 列表
+  it('R1 batchAcceptFriendRequests hits POST batch-accept with requestIds', async () => {
+    const body = { code: 0, message: 'ok', data: 2 }
+    adapter.mockImplementationOnce((config: unknown) => Promise.resolve(ok(config, body)))
+
+    const res = await batchAcceptFriendRequests([3, 4])
+
+    expect(res.data).toBe(2)
+    expect(adapter).toHaveBeenCalledTimes(1)
+    const call = adapter.mock.calls[0][0] as { url: string; method?: string; data?: string }
+    expect(call.url).toBe('/user/api/friends/requests/batch-accept')
+    expect(call.method?.toLowerCase()).toBe('post')
+    expect(JSON.parse(call.data || '[]')).toEqual([3, 4])
+  })
+
+  // R2：batchRejectFriendRequests 打 POST /user/api/friends/requests/batch-reject
+  it('R2 batchRejectFriendRequests hits POST batch-reject with requestIds', async () => {
+    adapter.mockImplementationOnce((config: unknown) => Promise.resolve(ok(config, { code: 0, message: 'ok', data: 1 })))
+
+    await batchRejectFriendRequests([5])
+
+    const call = adapter.mock.calls[0][0] as { url: string; method?: string; data?: string }
+    expect(call.url).toBe('/user/api/friends/requests/batch-reject')
+    expect(call.method?.toLowerCase()).toBe('post')
+    expect(JSON.parse(call.data || '[]')).toEqual([5])
+  })
+
+  // R3：getUserProfile 打 GET /user/api/user/profile
+  it('R3 getUserProfile hits GET /user/api/user/profile', async () => {
+    adapter.mockImplementationOnce((config: unknown) =>
+      Promise.resolve(ok(config, { code: 0, message: 'ok', data: { id: 100, nickname: '小明' } })),
+    )
+
+    const res = await getUserProfile()
+
+    expect(res.data.nickname).toBe('小明')
+    const call = adapter.mock.calls[0][0] as { url: string; method?: string }
+    expect(call.url).toBe('/user/api/user/profile')
+    expect(call.method?.toLowerCase() || 'get').toBe('get')
+  })
+
+  // R4：updateUserProfile 打 PUT /user/api/user/profile 且 body 为 { nickname }
+  it('R4 updateUserProfile hits PUT /user/api/user/profile with nickname', async () => {
+    adapter.mockImplementationOnce((config: unknown) =>
+      Promise.resolve(ok(config, { code: 0, message: 'ok', data: { id: 100, nickname: '新昵称' } })),
+    )
+
+    const res = await updateUserProfile('新昵称')
+
+    expect(res.data.nickname).toBe('新昵称')
+    const call = adapter.mock.calls[0][0] as { url: string; method?: string; data?: string }
+    expect(call.url).toBe('/user/api/user/profile')
+    expect(call.method?.toLowerCase()).toBe('put')
+    expect(JSON.parse(call.data || '{}')).toEqual({ nickname: '新昵称' })
   })
 })
