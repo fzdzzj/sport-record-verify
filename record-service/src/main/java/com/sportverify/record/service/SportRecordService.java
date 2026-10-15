@@ -26,6 +26,7 @@ import com.sportverify.api.verify.dto.VerificationResultDTO;
 import com.sportverify.common.exception.BizException;
 import com.sportverify.common.result.Result;
 import com.sportverify.common.result.ResultCode;
+import com.sportverify.record.dto.RecordAggDTO;
 import com.sportverify.record.entity.SportRecord;
 import com.sportverify.record.entity.TrackPoint;
 import com.sportverify.record.entity.TrackPointArchive;
@@ -752,14 +753,17 @@ public class SportRecordService {
     }
 
     /**
-     * 个人核心统计（TASK-231 服务端聚合端点，归属即身份）。
+     * 个人核心统计（TASK-231 服务端聚合端点 + TASK-232 SQL 聚合下推，归属即身份）。
      *
      * <p>与列表彻底解耦：查询条件仅为归属人（{@code WHERE user_id=?}，构造上天然无越权），
      * <b>不过滤状态、不分页</b>——totalCount / totalDistance / passCount 覆盖该用户全部记录，
      * 修掉了此前前端「size=500 单次拉取 + 浏览器内存聚合」的截断与翻页耦合两处技术债。</p>
      *
-     * <p>查询形态：按需投影 {@code select(distance, status, createdAt)}，避免 select * 带出
-     * request_id 等大字段（个人量级单查 + 内存轻量汇总，无额外 count/sum 往返）。</p>
+     * <p>查询形态（TASK-232 SQL 聚合下推）：全量指标由 {@code selectAggByUserId} 单行聚合
+     * （{@code COUNT(*)} / {@code COALESCE(SUM(distance),0)} / {@code COUNT(CASE WHEN status IN
+     * (PASSED,RE_PASSED) THEN 1 END)}）在数据库端算出，不再把该用户全部记录投影到 JVM 内存汇总；
+     * 近 30 天日粒度只查 {@code user_id=? AND created_at>=windowStart}（命中
+     * {@code idx_user_time} 复合索引、时间窗收窄），仅对窗口内行做内存按日累加。</p>
      *
      * <p>口径：totalDistance 与 dailyDistances 各值保留两位小数（HALF_UP，null 距离按 0 计）；
      * passCount 仅计通过终态 PASSED(2) / RE_PASSED(5)（与 {@link #myStreak} 同款入账口径）；
@@ -771,14 +775,12 @@ public class SportRecordService {
      * @return 个人核心统计（全量口径）
      */
     public MyStatsDTO myStats(Long userId) {
-        List<SportRecord> rows = sportRecordMapper.selectList(
-                new LambdaQueryWrapper<SportRecord>()
-                        .select(SportRecord::getDistance, SportRecord::getStatus, SportRecord::getCreatedAt)
-                        .eq(SportRecord::getUserId, userId));
-
-        long totalCount = rows.size();
-        long passCount = 0;
-        BigDecimal totalDistance = BigDecimal.ZERO;
+        // 1. 全量指标：数据库单行聚合（不拉记录行），无记录时 SUM 由 COALESCE 兜 0
+        RecordAggDTO agg = sportRecordMapper.selectAggByUserId(userId, PASS_STATUS_CODES);
+        long totalCount = agg == null || agg.getTotalCount() == null ? 0L : agg.getTotalCount();
+        long passCount = agg == null || agg.getPassCount() == null ? 0L : agg.getPassCount();
+        BigDecimal totalDistance = agg == null || agg.getTotalDistance() == null
+                ? BigDecimal.ZERO : agg.getTotalDistance();
         // 近 30 天窗口（升序，无记录日补 0）：LinkedHashMap 保证键序即日期序
         Map<String, BigDecimal> daily = new LinkedHashMap<>();
         LocalDate windowStart = LocalDate.now().minusDays(STATS_DAILY_WINDOW_DAYS - 1L);
@@ -786,18 +788,18 @@ public class SportRecordService {
             daily.put(windowStart.plusDays(i).toString(), BigDecimal.ZERO);
         }
 
-        for (SportRecord row : rows) {
-            BigDecimal distance = row.getDistance() == null ? BigDecimal.ZERO : row.getDistance();
-            totalDistance = totalDistance.add(distance);
-            if (isPassedStatus(row.getStatus())) {
-                passCount++;
-            }
+        // 3. 日粒度：只取窗口内 (created_at, distance) 投影（idx_user_time 范围扫描），
+        //    窗口外记录不参与日粒度（已由时间窗条件在 SQL 端排除），仅计入第 1 步总量
+        List<RecordAggDTO> windowRows =
+                sportRecordMapper.selectDailyDistanceSince(userId, windowStart.atStartOfDay());
+        for (RecordAggDTO row : windowRows) {
             LocalDateTime createdAt = row.getCreatedAt();
             if (createdAt == null) {
                 continue;
             }
             String dayKey = createdAt.toLocalDate().toString();
             if (daily.containsKey(dayKey)) {
+                BigDecimal distance = row.getDistance() == null ? BigDecimal.ZERO : row.getDistance();
                 daily.put(dayKey, daily.get(dayKey).add(distance));
             }
         }
@@ -815,11 +817,9 @@ public class SportRecordService {
         return dto;
     }
 
-    /** 通过终态判定（PASSED(2) / RE_PASSED(5)，与 myStreak 入账口径一致）。 */
-    private static boolean isPassedStatus(Integer status) {
-        return status != null
-                && (status == RecordStatus.PASSED.getCode() || status == RecordStatus.RE_PASSED.getCode());
-    }
+    /** 通过终态码集（PASSED(2) / RE_PASSED(5)）：myStats 聚合入参与 myStreak 入账口径同源。 */
+    private static final List<Integer> PASS_STATUS_CODES =
+            List.of(RecordStatus.PASSED.getCode(), RecordStatus.RE_PASSED.getCode());
 
     /** 通过率格式化（一位小数百分比；无记录返回 0%，与前端历史展示口径一致）。 */
     private static String formatPassRate(long passCount, long totalCount) {

@@ -27,6 +27,8 @@
         <div v-if="loading" class="py-4 text-gray-500">加载中…</div>
         <a-alert v-else-if="loadError" type="error" :message="loadError" />
         <template v-else>
+          <!-- 统计卡与近 30 天里程（TASK-232 解耦：仅初次加载/删除后刷新，翻页与筛选不触发） -->
+          <a-alert v-if="statsError" class="mb-4" type="warning" show-icon :message="statsError" />
           <div class="grid grid-cols-4 gap-4 mb-4">
             <div class="rounded border border-gray-200 p-4 text-center">
               <div class="text-2xl font-semibold">{{ totalDistance }}</div>
@@ -147,47 +149,54 @@
           </div>
 
           <div class="mb-1 text-sm text-gray-600">运动记录列表</div>
-          <a-table
-            v-if="records.length"
-            :data-source="records"
-            :columns="recentColumns"
-            :pagination="false"
-            size="small"
-            row-key="id"
-          >
-            <template #bodyCell="{ column, record }">
-              <span v-if="column.key === 'sportType'">{{ sportTypeLabel(record.sportType) }}</span>
-              <span v-else-if="column.key === 'status'">{{ statusLabel(record.status) }}</span>
-              <a-tag v-else-if="column.key === 'visibility' && record.visibility === 2" color="red">仅自己</a-tag>
-              <a-tag v-else-if="column.key === 'visibility' && record.visibility === 1" color="blue">好友可见</a-tag>
-              <template v-else-if="column.key === 'actions'">
-                <a @click="goTrack(record.id)">查看轨迹</a>
-                <a-divider type="vertical" />
-                <a-popconfirm
-                  title="确认删除该运动记录？此操作将永久删除。"
-                  ok-text="确认"
-                  cancel-text="取消"
-                  @confirm="handleDelete(record.id)"
-                >
-                  <a class="text-red-500">删除</a>
-                </a-popconfirm>
-              </template>
-            </template>
-          </a-table>
-          <div v-else class="text-gray-500 py-2">暂无运动记录。</div>
-
-          <div v-if="total > size" class="mt-3 flex justify-end">
-            <a-pagination
-              :current="page"
-              :page-size="size"
-              :total="total"
+          <!-- 列表加载态独立于统计卡（TASK-232）：首屏/全量刷新时表格区显示占位，
+              翻页与筛选只走 tableLoading（刷新中…），不闪统计卡与打卡 -->
+          <div v-if="tableLoading && !records.length" class="py-4 text-gray-500">加载中…</div>
+          <template v-else>
+            <a-table
+              v-if="records.length"
+              :data-source="records"
+              :columns="recentColumns"
+              :pagination="false"
               size="small"
-              @change="onPageChange"
-            />
-          </div>
+              row-key="id"
+            >
+              <template #bodyCell="{ column, record }">
+                <span v-if="column.key === 'sportType'">{{ sportTypeLabel(record.sportType) }}</span>
+                <span v-else-if="column.key === 'status'">{{ statusLabel(record.status) }}</span>
+                <a-tag v-else-if="column.key === 'visibility' && record.visibility === 2" color="red">仅自己</a-tag>
+                <a-tag v-else-if="column.key === 'visibility' && record.visibility === 1" color="blue">好友可见</a-tag>
+                <template v-else-if="column.key === 'actions'">
+                  <a @click="goTrack(record.id)">查看轨迹</a>
+                  <a-divider type="vertical" />
+                  <a-popconfirm
+                    title="确认删除该运动记录？此操作将永久删除。"
+                    ok-text="确认"
+                    cancel-text="取消"
+                    @confirm="handleDelete(record.id)"
+                  >
+                    <a class="text-red-500">删除</a>
+                  </a-popconfirm>
+                </template>
+              </template>
+            </a-table>
+            <div v-else class="text-gray-500 py-2">暂无运动记录。</div>
+
+            <div v-if="tableLoading" class="mt-2 text-xs text-gray-400">列表刷新中…</div>
+
+            <div v-if="total > size" class="mt-3 flex justify-end">
+              <a-pagination
+                :current="page"
+                :page-size="size"
+                :total="total"
+                size="small"
+                @change="onPageChange"
+              />
+            </div>
+          </template>
 
           <p class="mt-3 text-xs text-gray-400">
-            分页与过滤基于 GET /record/api/records/my；统计卡与近 30 天里程来自 GET /record/api/records/my/stats（服务端全量聚合，翻页不影响统计）。通过率口径 = PASSED(2) + RE_PASSED(5)。
+            分页与过滤基于 GET /record/api/records/my（翻页/筛选只重拉列表）；统计卡与近 30 天里程来自 GET /record/api/records/my/stats（服务端 SQL 全量聚合 + 30 天时间窗，翻页不影响统计）。通过率口径 = PASSED(2) + RE_PASSED(5)。
           </p>
         </template>
       </a-card>
@@ -263,8 +272,13 @@ function goTrack(id: number) { router.push({ path: '/record-detail', query: { id
 const authed = ref(hasAccessToken())
 
 const records = ref<RecordSummaryDTO[]>([])
+/** 首屏/全量刷新闸门：仅初次加载与删除后刷新期间为 true（翻页与筛选不置位，避免整页闪烁） */
 const loading = ref(false)
+/** 表格独立加载态（TASK-232）：翻页/筛选只影响表格区，统计卡与打卡不闪烁 */
+const tableLoading = ref(false)
 const loadError = ref('')
+/** 统计卡区软错误（TASK-232）：统计拉取失败只提示统计区，不回退清空列表与整页 */
+const statsError = ref('')
 
 /**
  * 个人核心统计（TASK-231）：来自 GET /record/api/records/my/stats 的服务端全量聚合。
@@ -378,7 +392,7 @@ const dateRange = ref<[string, string] | null>(null)
 
 function onFilterChange() {
   page.value = 1
-  loadData()
+  loadRecords()
 }
 
 function resetFilters() {
@@ -386,12 +400,12 @@ function resetFilters() {
   filterStatus.value = undefined
   dateRange.value = null
   page.value = 1
-  loadData()
+  loadRecords()
 }
 
 function onPageChange(p: number) {
   page.value = p
-  loadData()
+  loadRecords()
 }
 
 /** 统计卡（TASK-231）：直接读服务端全量聚合，未加载/失败时显示零值兜底 */
@@ -452,53 +466,96 @@ function statusLabel(code: number): string {
   return m[code] || `UNKNOWN(${code})`
 }
 
-async function loadData() {
+/**
+ * 列表加载（TASK-232 解耦）：只负责「我的记录」分页查询与分页状态。
+ * 翻页（onPageChange）与过滤变更（onFilterChange / resetFilters）只调用本函数，
+ * 不再重复打 /my/stats、streak 与 goals（消除 N-6 的重复聚合与整页清屏）。
+ * 过滤后当前页可能越界（如第 3 页筛选后仅剩 1 页）→ 回退到最后一页重查一次。
+ */
+async function loadRecords() {
   if (!authed.value) return
-  loading.value = true
+  tableLoading.value = true
   loadError.value = ''
   try {
-    const filters: MyRecordsFilterParams = {}
-    if (filterSportType.value != null) filters.sportType = filterSportType.value
-    if (filterStatus.value != null) filters.status = filterStatus.value
-    if (dateRange.value && dateRange.value[0]) filters.startDate = dateRange.value[0]
-    if (dateRange.value && dateRange.value[1]) filters.endDate = dateRange.value[1]
-
-    const res = await getMyRecords(page.value, size.value, filters)
-    records.value = (res.data && res.data.records) || []
-    total.value = (res.data && res.data.total) || 0
-    // 最近记录由后端 createdAt 倒序返回；若前端发现未排序则按 createdAt 降序兜底
-    records.value = [...records.value].sort((a, b) =>
-      String(b.createdAt).localeCompare(String(a.createdAt)),
-    )
+    const res = await fetchRecordsPage()
+    const totalRows = (res.data && res.data.total) || 0
+    const lastPage = Math.max(1, Math.ceil(totalRows / size.value))
+    if (page.value > lastPage) {
+      page.value = lastPage
+      const fallback = await fetchRecordsPage()
+      applyRecordsPage(fallback)
+      return
+    }
+    applyRecordsPage(res)
   } catch (e: any) {
     loadError.value = e.code ? `[${e.code}] ${e.message}` : (e.message || '加载个人记录失败')
     records.value = []
     total.value = 0
+  } finally {
+    tableLoading.value = false
   }
+}
 
-  // 个人核心统计（TASK-231）：独立拉取服务端全量聚合端点，与列表分页/过滤彻底解耦；
-  // 失败时统计卡回退零值兜底，不影响列表与其余区块渲染
+/** 按当前分页与过滤条件拉取一页记录（loadRecords 与其越界回退共用） */
+function fetchRecordsPage() {
+  const filters: MyRecordsFilterParams = {}
+  if (filterSportType.value != null) filters.sportType = filterSportType.value
+  if (filterStatus.value != null) filters.status = filterStatus.value
+  if (dateRange.value && dateRange.value[0]) filters.startDate = dateRange.value[0]
+  if (dateRange.value && dateRange.value[1]) filters.endDate = dateRange.value[1]
+  return getMyRecords(page.value, size.value, filters)
+}
+
+/** 应用一页列表结果（后端已按 createdAt 倒序；前端再做一次降序兜底） */
+function applyRecordsPage(res: { data?: { records?: RecordSummaryDTO[]; total?: number } }) {
+  records.value = (res.data && res.data.records) || []
+  total.value = (res.data && res.data.total) || 0
+  records.value = [...records.value].sort((a, b) =>
+    String(b.createdAt).localeCompare(String(a.createdAt)),
+  )
+}
+
+/**
+ * 统计卡与每日里程加载（TASK-232 解耦）：独立于列表，只在首屏与删除记录后触发。
+ * 失败时保留上一份统计并给出软提示（不清空、不拖垮列表渲染）。
+ */
+async function loadStats() {
+  if (!authed.value) return
   try {
     const statsRes = await getMyStats()
     stats.value = statsRes.data || null
+    statsError.value = ''
   } catch {
-    stats.value = null
+    statsError.value = '统计数据加载失败，展示的可能不是最新统计。'
   }
-  loading.value = false
+}
 
-  // 连续打卡（TASK-220）：独立拉取，失败不拖垮统计卡区（卡内显示 —）
+/** 连续打卡加载（TASK-220/232）：独立链路，失败不拖垮统计卡区（卡内显示 —） */
+async function loadStreak() {
+  if (!authed.value) return
   try {
     const res = await getMyStreak()
     streak.value = res.data || null
   } catch {
     streak.value = null
   }
-
-  // 运动目标（TASK-225）：独立拉取
-  await loadGoals()
 }
 
-/** 删除记录并刷新列表与统计（TASK-223） */
+/**
+ * 全量加载（仅首屏与删除记录后调用）：列表 + 统计卡 + 连续打卡 + 运动目标。
+ * loading 闸门只在此处持有，翻页/筛选路径不经过它 → 统计卡与打卡不再闪烁。
+ */
+async function loadData() {
+  if (!authed.value) return
+  loading.value = true
+  try {
+    await Promise.all([loadRecords(), loadStats(), loadStreak(), loadGoals()])
+  } finally {
+    loading.value = false
+  }
+}
+
+/** 删除记录后刷新列表与统计（TASK-223/232）：统计口径随删除变化，故走全量加载 */
 async function handleDelete(id: number) {
   try {
     await delRecord(id)

@@ -1,7 +1,10 @@
 package com.sportverify.record.mapper;
 
 import com.baomidou.mybatisplus.core.mapper.BaseMapper;
+import com.sportverify.record.dto.RecordAggDTO;
 import com.sportverify.record.entity.SportRecord;
+import java.time.LocalDateTime;
+import java.util.List;
 import org.apache.ibatis.annotations.Param;
 import org.apache.ibatis.annotations.Select;
 import org.apache.ibatis.annotations.Update;
@@ -29,4 +32,50 @@ public interface SportRecordMapper extends BaseMapper<SportRecord> {
      */
     @Select("SELECT * FROM sport_record WHERE request_id = #{requestId}")
     SportRecord selectByRequestId(@Param("requestId") String requestId);
+
+
+    /**
+     * 个人全量指标单行聚合（TASK-232 统计下推）。
+     *
+     * <p>把 {@code MyStatsDTO} 的全量口径（总数 / 总里程 / 通过数）从「拉全量行到 JVM 汇总」
+     * 下推到数据库单行返回：{@code COUNT(*)}、{@code COALESCE(SUM(distance), 0)}、
+     * {@code COUNT(CASE WHEN status IN (通过终态) THEN 1 END)}。命中 {@code idx_user_time}
+     * 前缀列 {@code user_id}，不做 select *、不拉回 record 行。</p>
+     *
+     * <p>通过终态集合由调用方以 {@link com.sportverify.api.record.RecordStatus} 枚举值传入
+     * （PASSED/RE_PASSED），避免在 SQL 里硬编码状态码而与枚举漂移。</p>
+     *
+     * @param userId     归属用户（归属即身份，唯一过滤条件）
+     * @param passStatus 计入「通过」的状态码集合（非空，2=PASSED，5=RE_PASSED）
+     * @return 单行聚合结果（无记录时 totalCount=0、totalDistance=0、passCount=0，恒非 null）
+     */
+    @Select("<script>"
+            + "SELECT COUNT(*) AS total_count,"
+            + " COALESCE(SUM(distance), 0) AS total_distance,"
+            + " COUNT(CASE WHEN status IN "
+            + "<foreach item='st' collection='passStatus' open='(' separator=',' close=')'>#{st}</foreach>"
+            + " THEN 1 END) AS pass_count"
+            + " FROM sport_record WHERE user_id = #{userId}"
+            + "</script>")
+    RecordAggDTO selectAggByUserId(@Param("userId") Long userId,
+                                   @Param("passStatus") List<Integer> passStatus);
+
+    /**
+     * 近 N 天窗口内的 (created_at, distance) 投影（TASK-232 窗口收窄）。
+     *
+     * <p>WHERE 同时带 {@code user_id} 与 {@code created_at >= ?}，两列恰为
+     * {@code idx_user_time (user_id, created_at)} 复合索引的完整键序，走范围扫描，
+     * 不再全用户回表拉取历史行。</p>
+     *
+     * <p>只投影两列：日粒度按自然日汇总与补 0 由服务层完成（SQL 不引入 {@code DATE()}
+     * 以保持跨库方言无关）。</p>
+     *
+     * @param userId              归属用户
+     * @param windowStartDateTime 窗口下界（含），取 {@code today - (窗口天数-1)} 的 00:00
+     * @return 窗口内记录投影（无记录时为空列表）
+     */
+    @Select("SELECT created_at, distance FROM sport_record "
+            + "WHERE user_id = #{userId} AND created_at >= #{windowStartDateTime}")
+    List<RecordAggDTO> selectDailyDistanceSince(@Param("userId") Long userId,
+                                                @Param("windowStartDateTime") LocalDateTime windowStartDateTime);
 }

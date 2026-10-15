@@ -13,6 +13,7 @@ import com.sportverify.api.record.dto.StatusCallbackDTO;
 import com.sportverify.api.record.dto.TrackPointDTO;
 import com.sportverify.common.exception.BizException;
 import com.sportverify.common.result.ResultCode;
+import com.sportverify.record.dto.RecordAggDTO;
 import com.sportverify.record.entity.SportRecord;
 import com.sportverify.record.entity.TrackPoint;
 import com.sportverify.record.entity.TrackPointArchive;
@@ -1556,13 +1557,24 @@ class SportRecordServiceTest {
         return row;
     }
 
+    /** 窗口投影行（selectDailyDistanceSince 结果）：只带 createdAt / distance 两列 */
+    private RecordAggDTO dailyRow(SportRecord row) {
+        RecordAggDTO agg = new RecordAggDTO();
+        agg.setCreatedAt(row.getCreatedAt());
+        agg.setDistance(row.getDistance());
+        return agg;
+    }
+
     /**
-     * R1/R2 判别式：myStats 单查全量投影（distance, status, createdAt）——
-     * (a) 归属过滤 user_id=200 且<b>不带状态过滤</b>（统计覆盖全部状态，与列表过滤解耦）；
-     * (b) 投影列恰为三列，不 select *；
-     * (c) totalCount/totalDistance/passCount/passRate 为全量口径（含窗口外记录）；
-     * (d) dailyDistances 恒 30 键且升序，窗口内按自然日汇总（同日多条累加）、无记录日补 0，
-     *     窗口外记录只计入总量。
+     * R1/R2 判别式（TASK-232 SQL 聚合下推）——全量指标由单行聚合查询承担、日粒度由
+     * created_at 时间窗投影承担，不再把该用户全部记录拉到 JVM：
+     * (a) 聚合入参恰为 user_id=200 与通过终态码集 {PASSED(2), RE_PASSED(5)}（与 RecordStatus 枚举同源）；
+     * (b) 窗口入参恰为 user_id=200 与 today-29 00:00（与 30 键窗口同源）；窗口查询必带 created_at
+     *     下界（idx_user_time 复合索引范围扫描的判别式，且窗口外行不进日粒度）；
+     * (c) myStats 不再调用 selectList（全量行拉取已消灭）；
+     * (d) totalCount/totalDistance/passCount/passRate 为全量口径（含窗口外记录）；
+     * (e) dailyDistances 恒 30 键且升序，窗口内按自然日汇总（同日多条累加）、无记录日补 0；
+     * (f) 防御性：投影行 createdAt 为 null 时跳过，不抛 NPE。
      */
     @Test
     @SuppressWarnings("unchecked")
@@ -1575,18 +1587,29 @@ class SportRecordServiceTest {
         SportRecord rejectedToday = statsRow(RecordStatus.REJECTED.getCode(), "2.0", today.atTime(9, 0));
         SportRecord passedYesterday = statsRow(RecordStatus.PASSED.getCode(), "4.0", today.minusDays(1).atTime(8, 0));
         SportRecord windowEdge = statsRow(RecordStatus.PASSED.getCode(), "5.0", today.minusDays(29).atTime(8, 0));
-        SportRecord outOfWindow = statsRow(RecordStatus.PASSED.getCode(), "6.0", today.minusDays(30).atTime(8, 0));
         SportRecord nullDistance = statsRow(RecordStatus.VERIFYING.getCode(), null, today.atTime(10, 0));
-        when(sportRecordMapper.selectList(any()))
-                .thenReturn(List.of(passedToday, rePassedToday, rejectedToday, passedYesterday,
-                        windowEdge, outOfWindow, nullDistance));
+
+        // 全量指标：DB 端单行聚合结果（覆盖全量 8 条，含窗口外 2 条；null 距离不计入 SUM）
+        RecordAggDTO agg = new RecordAggDTO();
+        agg.setTotalCount(8L);
+        agg.setTotalDistance(new BigDecimal("22.00"));
+        agg.setPassCount(5L);
+        when(sportRecordMapper.selectAggByUserId(any(), any())).thenReturn(agg);
+
+        // 近 30 天窗口投影（DB 端已按 created_at >= windowStart 排除窗口外行）
+        RecordAggDTO nullCreatedAtRow = new RecordAggDTO(); // 防御性：无 createdAt 的行必须被跳过
+        nullCreatedAtRow.setDistance(new BigDecimal("9.9"));
+        when(sportRecordMapper.selectDailyDistanceSince(any(), any()))
+                .thenReturn(List.of(dailyRow(passedToday), dailyRow(rePassedToday), dailyRow(rejectedToday),
+                        dailyRow(passedYesterday), dailyRow(windowEdge), dailyRow(nullDistance), nullCreatedAtRow));
 
         MyStatsDTO out = service.myStats(200L);
 
-        assertEquals(7L, out.getTotalCount(), "totalCount 覆盖全量记录（含窗口外）");
-        assertEquals(new BigDecimal("22.00"), out.getTotalDistance(), "3.5+1.5+2+4+5+6+null(0)");
-        assertEquals(5L, out.getPassCount(), "仅 PASSED×4 + RE_PASSED×1 计入通过");
-        assertEquals("71.4%", out.getPassRate(), "5/7 = 71.428… → 一位小数 71.4%");
+        assertEquals(8L, out.getTotalCount(), "totalCount 取 DB 单行聚合（覆盖全量记录，含窗口外）");
+        assertEquals(new BigDecimal("22.00"), out.getTotalDistance(),
+                "totalDistance 取 DB 单行聚合：3.5+1.5+2+4+5+6+null(0)");
+        assertEquals(5L, out.getPassCount(), "passCount 取 DB 端 CASE 聚合：仅 PASSED×4 + RE_PASSED×1");
+        assertEquals("62.5%", out.getPassRate(), "5/8 = 62.5%（一位小数）");
 
         java.util.Map<String, BigDecimal> daily = out.getDailyDistances();
         assertEquals(30, daily.size(), "近 30 天窗口恒 30 键");
@@ -1599,25 +1622,31 @@ class SportRecordServiceTest {
         assertEquals(new BigDecimal("0.00"), daily.get(today.minusDays(2).toString()), "无记录日补 0");
         assertNull(daily.get(today.minusDays(30).toString()), "窗口外记录不进日粒度（仍计入总量）");
 
-        ArgumentCaptor<LambdaQueryWrapper> wrapper = ArgumentCaptor.forClass(LambdaQueryWrapper.class);
-        verify(sportRecordMapper).selectList(wrapper.capture());
-        String segment = wrapper.getValue().getSqlSegment();
-        assertTrue(segment.contains("user_id ="), "归属即身份：查询必须带 user_id 过滤：" + segment);
-        assertFalse(segment.contains("status"), "统计必须覆盖全部状态，不得带状态过滤：" + segment);
-        assertEquals(java.util.Set.of(200L),
-                new java.util.HashSet<>(wrapper.getValue().getParamNameValuePairs().values()),
-                "唯一查询条件必须是归属人 user_id=200");
-        String select = wrapper.getValue().getSqlSelect();
-        assertTrue(select.contains("distance") && select.contains("status"),
-                "投影必须含 distance/status/createdAt，不得 select *：" + select);
-        assertTrue(select.toLowerCase().contains("createdat") || select.toLowerCase().contains("created_at"),
-                "投影必须含 createdAt：" + select);
+        // (a) 单行聚合入参：归属人 + 通过终态码集（枚举同源，不得硬编码漂移）
+        ArgumentCaptor<List<Integer>> statusCaptor = ArgumentCaptor.forClass(List.class);
+        verify(sportRecordMapper).selectAggByUserId(eq(200L), statusCaptor.capture());
+        assertEquals(List.of(RecordStatus.PASSED.getCode(), RecordStatus.RE_PASSED.getCode()),
+                statusCaptor.getValue(), "通过终态码集必须与 RecordStatus 枚举同源（PASSED/RE_PASSED）");
+
+        // (b) 窗口入参：归属人 + created_at 下界（今日-29 00:00）
+        ArgumentCaptor<LocalDateTime> windowCaptor = ArgumentCaptor.forClass(LocalDateTime.class);
+        verify(sportRecordMapper).selectDailyDistanceSince(eq(200L), windowCaptor.capture());
+        assertEquals(today.minusDays(29).atStartOfDay(), windowCaptor.getValue(),
+                "日粒度查询必须带 created_at >= windowStart（idx_user_time 范围扫描）");
+
+        // (c) 下推判别式：myStats 路径不再有全量行拉取
+        verify(sportRecordMapper, never()).selectList(any());
     }
 
     /** R2 空态：无记录 → totalCount/passCount 为 0、总里程 0.00、passRate="0%"、日粒度仍 30 键全 0 */
     @Test
     void myStats_emptyReturnsZeroStatsWithFullDailyWindow() {
-        when(sportRecordMapper.selectList(any())).thenReturn(List.of());
+        RecordAggDTO emptyAgg = new RecordAggDTO();
+        emptyAgg.setTotalCount(0L);
+        emptyAgg.setTotalDistance(BigDecimal.ZERO);
+        emptyAgg.setPassCount(0L);
+        when(sportRecordMapper.selectAggByUserId(any(), any())).thenReturn(emptyAgg);
+        when(sportRecordMapper.selectDailyDistanceSince(any(), any())).thenReturn(List.of());
 
         MyStatsDTO out = service.myStats(200L);
 
@@ -1629,6 +1658,21 @@ class SportRecordServiceTest {
         assertTrue(out.getDailyDistances().values().stream()
                         .allMatch(v -> v.compareTo(BigDecimal.ZERO) == 0),
                 "无记录时窗口内每日里程全为 0.00");
+    }
+
+    /** R3 防御性：聚合行缺失（null）时回退零值，不抛 NPE，日粒度仍为完整 30 键 */
+    @Test
+    void myStats_nullAggregateRowFallsBackToZero() {
+        when(sportRecordMapper.selectAggByUserId(any(), any())).thenReturn(null);
+        when(sportRecordMapper.selectDailyDistanceSince(any(), any())).thenReturn(List.of());
+
+        MyStatsDTO out = service.myStats(200L);
+
+        assertEquals(0L, out.getTotalCount());
+        assertEquals(new BigDecimal("0.00"), out.getTotalDistance());
+        assertEquals(0L, out.getPassCount());
+        assertEquals("0%", out.getPassRate());
+        assertEquals(30, out.getDailyDistances().size());
     }
 
     // ==================== 记录删除级联与缓存清理（TASK-223） ====================
