@@ -35,9 +35,9 @@
 | B8 | 申诉复核管理后台端到端闭环 | verdict 提交后仅展示 ID，admin-appeal 需盲打 ID；无自动回填与直达链接 | 消除断层体验，完成审核管理闭环 | LIGHT | **已封盘 TASK-241（2026-10-15，8f7601d / a6cd2c1 绿）** |
 | B9 | 提交表单客户端幂等加固 | 前端仅靠局部 loading 锁，弱网重试未带固定 requestId，可能产生重复单号 | 端到端网络闪断重试幂等防重 | LIGHT | **已封盘 TASK-241（2026-10-15，8f7601d / a6cd2c1 绿）** |
 | B10 | 周期榜与结算全表慢查消除 | `leaderboard_contribution` 仅有 (record_id) 和 (user_id)，周期榜聚合及定时结算 markSettled 全表扫描 | 消除核心慢 SQL，大幅减轻 DB 锁与 I/O | LIGHT | **已封盘 TASK-242（2026-10-15，8804c71 / cd0f5be 绿）** |
-| B11 | Outbox 毒丸事件防死信隔离 | verify_event_outbox 超过 maxRetry 仍保持 PENDING，Relay 轮询引发严重 I/O 放大 | 终态隔离保障高频 Relay 吞吐 | LIGHT/MEDIUM | 方案 B 储备（首推） |
-| B12 | 规则缓存并发防击穿硬化 | 规则缓存重建 tryLock 超时后无锁直接穿透 dbLoader.get() | 引入轮询重试收敛，防规则发布并发打穿 DB | LIGHT | 方案 B 储备 |
-| B13 | 好友申请生命周期闭环 | PENDING 状态永不过期，同向反向双向拦截造成永久社交死锁 | 消除业务逻辑死锁缺陷 | MEDIUM | 方案 B 储备 |
+| B11 | Outbox 毒丸事件防死信隔离 | verify_event_outbox 超过 maxRetry 仍保持 PENDING，Relay 轮询引发严重 I/O 放大 | 终态隔离保障高频 Relay 吞吐 | LIGHT/MEDIUM | **进行中 TASK-243（方案 B 组成部分）** |
+| B12 | 规则缓存并发防击穿硬化 | 规则缓存重建 tryLock 超时后无锁直接穿透 dbLoader.get() | 引入轮询重试收敛，防规则发布并发打穿 DB | LIGHT | **进行中 TASK-243（方案 B 组成部分）** |
+| B13 | 好友申请生命周期闭环 | PENDING 状态永不过期，同向反向双向拦截造成永久社交死锁 | 消除业务逻辑死锁缺陷 | MEDIUM | **进行中 TASK-243（方案 B 组成部分）** |
 | B14 | 好友社交闭环体验补齐 | friends.page.vue 漏调 loadFriends()；全仓缺失解除/删除好友端点与逻辑 | 补全核心社交闭环最后一公里 | MEDIUM | **已封盘 TASK-242（2026-10-15，8804c71 / cd0f5be 绿）** |
 | B15 | 申诉复核中心待办闭环 | 管理端无待办列表接口，只能盲打 ID 复核 | 治理后台闭环队列化管理 | MEDIUM | 方案 C 储备 |
 | B16 | 记录删除与榜单回撤对账补偿 | 删除记录回撤 Feign 失败仅 WARN 留痕，里程在榜单永久残留脏态 | 保证跨服务分布式数据最终一致性 | MEDIUM | 方案 C 储备 |
@@ -47,8 +47,8 @@
 | H2 | E5 生产部署姿态演练 | TASK-205 后置议题长期在册（CORS 真实注入/跨域 cookie/TLS 终止协同） | 上生产前必做 | MEDIUM 零代码 | 候选 |
 
 推荐序：
-1. **方案 B（TASK-243 拟）**：B11（Outbox 死信隔离）+ B12（规则防击穿重试）+ B13（好友申请超时防死锁）；
-2. **推送与远端 CI**：批量推送触发 GitHub Actions 外部终验（当前领先 15 笔提交）；
+1. **方案 B（TASK-243，进行中）**：B11（Outbox 死信隔离）+ B12（规则防击穿重试）+ B13（好友申请超时防死锁）；
+2. **推送与远端 CI**：批量推送触发 GitHub Actions 外部终验（当前领先 16 笔提交）；
 3. **方案 C**：B15（申诉待审列表）+ B16（删除回撤离线对账）+ B17（通知批量）+ B18（总榜裁剪）；
 4. **H2（E5 生产部署姿态演练）**：CORS 真实注入/跨域 cookie/TLS 终止协同演练。
 

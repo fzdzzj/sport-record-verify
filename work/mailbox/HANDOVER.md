@@ -11,7 +11,7 @@
 - **当前分支与 HEAD**：`main` 分支，最新实施提交为 `8804c71`（C-01）与 `cd0f5be`（C-02），封盘笔随本提交闭环。
 - **外部 CI 门槛状态**：GitHub Actions run `38692154084`（`web` ✓30s / `build` ✓12m10s 全绿）。
 - **工作树状态**：TASK-242 独立复核全绿，在途文件已完成台账归档。
-- **当前在途任务数**：`0` 个在途（历史任务至 TASK-242 全部已闭环收口）。
+- **当前在途任务数**：`1` 个（TASK-243 方案 B 开工在途：B11 Outbox 毒丸死信隔离 + B12 规则缓存防击穿硬化 + B13 好友申请超时防死锁）。
 
 ---
 
@@ -40,16 +40,17 @@
 2. **契约校验口径**：运行 `scripts/verify/mailbox-contract.sh` 必须在 Git Bash（`D:\git\Git\bin\bash.exe`）下执行；无参模式短路跳过判据 B，白名单一致性以开工 `--open` 与直接 `git diff` 为准。
 3. **挂账候选事项**：
    - `H2` 生产部署姿态演练（CORS 真实注入/跨域 cookie/TLS 终止协同）；
-   - 远端 CI 批量推送（当前本地领先 origin/main 15 笔提交，待推送触发外部终验）；
+   - 远端 CI 批量推送（当前本地领先 origin/main 16 笔提交，待推送触发外部终验）；
    - TASK-230 遗留提示：删除已提交后若 Feign 调用或锁失败，锚点可能残留 ACTIVE，依赖 WARN 日志人工排查（后续可安排离线对账补齐）。
 
 ---
 
-## 4. 下一个主 Agent 的唯一推荐动作
+## 4. 当前推进与唯一推荐动作
 
-- **推荐动作**：
-  1. 推进 **方案 B（TASK-243 拟，MEDIUM 档）**：B11（Outbox 毒丸死信隔离）+ B12（规则防击穿重试）+ B13（好友申请超时防死锁）；
-  2. 或执行 `git push origin main` 批量推送已封盘批次触发 GitHub Actions 远端全量 CI 外部终验（当前本地领先 origin/main 15 笔提交）。
+- **当前推进**：**方案 B（TASK-243，MEDIUM 档）**
+  - B11：`VerifyOutboxRelay` 引入 `EXHAUSTED` 终态隔离，隔绝毒丸死信对热轮询扫描的 I/O 放大；
+  - B12：`RuleCacheService` 锁等待超时后增加轮询重试收敛，防规则发布并发打穿 `rule_version` DB；
+  - B13：`FriendService` 增加好友申请 7 天有效期校验与惰性过期流转至 `CANCELLED`，彻底解除双向死锁。
 - **开工准备**：按 `docs/internal/AGENTS.md` 的「极简任务派发包模板」为子 Agent 派发。
 
 ---
