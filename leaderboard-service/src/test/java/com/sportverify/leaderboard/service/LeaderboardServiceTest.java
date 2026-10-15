@@ -20,6 +20,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.redisson.api.RLock;
 import org.redisson.api.RedissonClient;
+import org.springframework.data.redis.core.RedisCallback;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.data.redis.core.ZSetOperations;
 import org.springframework.data.redis.core.ZSetOperations.TypedTuple;
@@ -28,6 +29,8 @@ import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.lang.reflect.Method;
+import java.util.Arrays;
+import java.util.Collections;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Set;
@@ -48,7 +51,6 @@ import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
-import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
@@ -251,13 +253,13 @@ class LeaderboardServiceTest {
         assertEquals("用户100", board.get(0).getNickname());
     }
 
-    /** 规范差异「只显示好友」：ZSet 中非好友（300）被过滤，仅好友（100）上榜；本人不在榜 */
+    /** 规范差异「只显示好友」：Pipeline 只点查好友积分，非好友（300）不入榜；本人不在榜 */
     @Test
     void topFriend_filtersNonFriends() {
         when(userApi.listFriends(200L, 1L, 1000L)).thenReturn(Result.success(
                 new PageResult<>(1, 1000, 1, List.of(friend(100L)))));
-        when(zSetOps.reverseRangeWithScores(LeaderboardService.OVERALL_ZSET_KEY, 0, 499L))
-                .thenReturn(tuples("300", 88.0, "100", 42.5, "200", 30.0));
+        // Pipeline 单次往返：distinctFriendIds=[100]，点查 1 条 → 返回 [42.5]（非好友 300/200 根本不查询）
+        when(redis.executePipelined(any(RedisCallback.class))).thenReturn(List.of((Object) 42.5));
 
         List<LeaderboardDTO> board = service.top("friend", 200L, 10);
 
@@ -276,8 +278,11 @@ class LeaderboardServiceTest {
                 new PageResult<>(1, 1000, 1001, firstPage)));
         when(userApi.listFriends(200L, 2L, 1000L)).thenReturn(Result.success(
                 new PageResult<>(2, 1000, 1001, List.of(friend(1001L)))));
-        when(zSetOps.reverseRangeWithScores(LeaderboardService.OVERALL_ZSET_KEY, 0, 499L))
-                .thenReturn(tuples("1001", 42.5));
+        // Pipeline 返回 1001 个点查结果：仅末位好友 1001 上榜（42.5），其余好友未上榜（null 被过滤）
+        List<Object> scores = IntStream.rangeClosed(1, 1001)
+                .mapToObj(i -> i == 1001 ? (Object) 42.5 : null)
+                .toList();
+        when(redis.executePipelined(any(RedisCallback.class))).thenReturn(scores);
 
         List<LeaderboardDTO> board = service.top("friend", 200L, 10);
 
@@ -297,8 +302,8 @@ class LeaderboardServiceTest {
         // UserApiFallback 的 listFriends 降级形态：空 records，total=0。
         when(userApi.listFriends(200L, 2L, 1000L)).thenReturn(Result.success(
                 new PageResult<>(2, 1000, 0, List.of())));
-        when(zSetOps.reverseRangeWithScores(LeaderboardService.OVERALL_ZSET_KEY, 0, 499L))
-                .thenReturn(tuples("1", 42.5));
+        // 好友未拉齐 → 在进入 Pipeline 前已返回空榜（该桩保持与既有实现一致，实际不会被消费）
+        when(redis.executePipelined(any(RedisCallback.class))).thenReturn(List.of((Object) 42.5));
 
         List<LeaderboardDTO> board = service.top("friend", 200L, 10);
 
@@ -313,45 +318,50 @@ class LeaderboardServiceTest {
                 .toList();
         when(userApi.listFriends(200L, 1L, 1000L)).thenReturn(Result.success(
                 new PageResult<>(1, 1000, 1001, shortFirstPage)));
-        when(zSetOps.reverseRangeWithScores(LeaderboardService.OVERALL_ZSET_KEY, 0, 499L))
-                .thenReturn(tuples("1", 42.5));
+        // 好友未拉齐 → 在进入 Pipeline 前已返回空榜（该桩保持与既有实现一致，实际不会被消费）
+        when(redis.executePipelined(any(RedisCallback.class))).thenReturn(List.of((Object) 42.5));
 
         List<LeaderboardDTO> board = service.top("friend", 200L, 10);
 
         assertTrue(board.isEmpty());
     }
 
-    /** 分批读取：好友位于榜单末尾时仍能命中，且 rank 保持为过滤后序号。 */
+    /** Pipeline 单次往返：好友积分一次点查拉齐，不再整榜分批扫描——executePipelined 恰 1 次，ZREVRANGE 0 次。 */
     @Test
-    void topFriend_scansBoundedBatches_untilFriendAtLeaderboardEnd() {
+    void topFriend_usesPipeline_batchRetrievesFriendScoresInSingleRoundTrip() {
         when(userApi.listFriends(200L, 1L, 1000L)).thenReturn(Result.success(
                 new PageResult<>(1, 1000, 1, List.of(friend(9999L)))));
-        when(zSetOps.reverseRangeWithScores(LeaderboardService.OVERALL_ZSET_KEY, 0, 499L))
-                .thenReturn(rangeTuples(1, 500));
-        when(zSetOps.reverseRangeWithScores(LeaderboardService.OVERALL_ZSET_KEY, 500, 999L))
-                .thenReturn(rangeTuples(501, 1000));
-        when(zSetOps.reverseRangeWithScores(LeaderboardService.OVERALL_ZSET_KEY, 1000, 1499L))
-                .thenReturn(tuples("9999", 1.0));
+        when(redis.executePipelined(any(RedisCallback.class))).thenReturn(List.of((Object) 1.0));
 
         List<LeaderboardDTO> board = service.top("friend", 200L, 10);
 
         assertEquals(1, board.size());
         assertEquals(9999L, board.get(0).getUserId());
         assertEquals(1, board.get(0).getRank());
-        verify(zSetOps).reverseRangeWithScores(LeaderboardService.OVERALL_ZSET_KEY, 0, 499L);
-        verify(zSetOps).reverseRangeWithScores(LeaderboardService.OVERALL_ZSET_KEY, 500, 999L);
-        verify(zSetOps).reverseRangeWithScores(LeaderboardService.OVERALL_ZSET_KEY, 1000, 1499L);
-        verify(zSetOps, times(3)).reverseRangeWithScores(
-                eq(LeaderboardService.OVERALL_ZSET_KEY), anyLong(), anyLong());
-        verify(zSetOps, never()).reverseRangeWithScores(LeaderboardService.OVERALL_ZSET_KEY, 0, -1L);
+        verify(redis).executePipelined(any(RedisCallback.class));
+        verify(zSetOps, never()).reverseRangeWithScores(anyString(), anyLong(), anyLong());
     }
 
-    private Set<TypedTuple<String>> rangeTuples(int startInclusive, int endInclusive) {
-        Set<TypedTuple<String>> set = new LinkedHashSet<>();
-        for (int id = startInclusive; id <= endInclusive; id++) {
-            set.add(TypedTuple.of(String.valueOf(id), (double) (endInclusive - id + 1)));
-        }
-        return set;
+    /** Pipeline 排序契约：分数降序；同分按 member 字符串降序（对齐 ZREVRANGE 词典序回排）；
+     *  未上榜好友（null 分数）被过滤；请求 size 截断。 */
+    @Test
+    void topFriend_sortsFriendsByScoreDescending_andTiesByMemberDescending() {
+        // 好友 100/200/300 上榜：200→88.0，100/300 同分 42.5（member 降序 300 先于 100）；400 未上榜（null）
+        when(userApi.listFriends(200L, 1L, 1000L)).thenReturn(Result.success(
+                new PageResult<>(1, 1000, 4,
+                        List.of(friend(100L), friend(200L), friend(300L), friend(400L)))));
+        when(redis.executePipelined(any(RedisCallback.class)))
+                .thenReturn(Arrays.asList((Object) 42.5, (Object) 88.0, (Object) 42.5, null));
+
+        // size=2：截断后取分数最高两席 200（88.0）、300（42.5，同分 member 降序压过 100）
+        List<LeaderboardDTO> top2 = service.top("friend", 200L, 2);
+        assertEquals(List.of(200L, 300L), top2.stream().map(LeaderboardDTO::getUserId).toList());
+        assertEquals(List.of(1, 2), top2.stream().map(LeaderboardDTO::getRank).toList());
+
+        // size=4：完整排序 200 > 300 > 100；400 因 null 分数被过滤
+        List<LeaderboardDTO> top4 = service.top("friend", 200L, 4);
+        assertEquals(List.of(200L, 300L, 100L), top4.stream().map(LeaderboardDTO::getUserId).toList());
+        assertEquals(List.of(1, 2, 3), top4.stream().map(LeaderboardDTO::getRank).toList());
     }
 
     /** 规范差异「无好友或未上榜」：无好友 / 好友均无里程 / Feign 失败 → 空榜降级 */
@@ -364,12 +374,12 @@ class LeaderboardServiceTest {
         // Feign 失败 → 降级空榜
         when(userApi.listFriends(200L, 1L, 1000L)).thenThrow(new RuntimeException("down"));
         assertTrue(service.top("friend", 200L, 10).isEmpty());
-        // ZSet 空（好友均无 pass 里程）
+        // Pipeline 点查返回 null 分数（好友均无 pass 里程/未上榜）→ 候选为空 → 空榜
         // 注意：对已 thenThrow 的桩重打桩必须用 doReturn（when 写法会先触发旧桩抛异常）
         doReturn(Result.success(new PageResult<>(1, 1000, 1, List.of(friend(100L)))))
                 .when(userApi).listFriends(200L, 1L, 1000L);
-        when(zSetOps.reverseRangeWithScores(LeaderboardService.OVERALL_ZSET_KEY, 0, 499L))
-                .thenReturn(null);
+        when(redis.executePipelined(any(RedisCallback.class)))
+                .thenReturn(Collections.singletonList(null));
         assertTrue(service.top("friend", 200L, 10).isEmpty());
     }
 

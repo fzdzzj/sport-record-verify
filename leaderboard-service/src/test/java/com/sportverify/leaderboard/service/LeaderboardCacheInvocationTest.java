@@ -16,6 +16,7 @@ import org.springframework.cache.concurrent.ConcurrentMapCacheManager;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.boot.test.context.runner.ApplicationContextRunner;
+import org.springframework.data.redis.core.RedisCallback;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.data.redis.core.ZSetOperations;
 
@@ -25,6 +26,7 @@ import java.util.LinkedHashSet;
 import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
@@ -68,22 +70,24 @@ class LeaderboardCacheInvocationTest {
         runner.run(context -> {
             LeaderboardService service = context.getBean(LeaderboardService.class);
             UserApi userApi = context.getBean(UserApi.class);
+            StringRedisTemplate redis = context.getBean(StringRedisTemplate.class);
             ZSetOperations<String, String> zSet = context.getBean(ZSetOperations.class);
             FriendDTO friend = new FriendDTO();
             friend.setUserId(100L);
 
             when(userApi.listFriends(7L, 1L, 1000L))
                     .thenReturn(Result.success(new PageResult<>(1, 1000, 1, List.of(friend))));
-            when(zSet.reverseRangeWithScores(LeaderboardService.OVERALL_ZSET_KEY, 0, 499L))
-                    .thenReturn(new LinkedHashSet<>(
-                            java.util.Set.of(ZSetOperations.TypedTuple.of("100", 42.5d))));
+            // TASK-239：好友榜改为 Redis Pipeline 单次往返批量点查（ZSCORE），不再走 ZSet 整榜扫描
+            when(redis.executePipelined(any(RedisCallback.class)))
+                    .thenReturn(List.of((Object) 42.5d));
 
             service.top("friend", 7L, 10);
             service.top("friend", 7L, 10);
 
             verify(userApi, times(2)).listFriends(7L, 1L, 1000L);
-            verify(zSet, times(2))
-                    .reverseRangeWithScores(LeaderboardService.OVERALL_ZSET_KEY, 0, 499L);
+            verify(redis, times(2)).executePipelined(any(RedisCallback.class));
+            // 好友榜每请求都直查 Redis（不经总体榜缓存），且不再触碰 ZSet 操作
+            verifyNoInteractions(zSet);
         });
     }
 

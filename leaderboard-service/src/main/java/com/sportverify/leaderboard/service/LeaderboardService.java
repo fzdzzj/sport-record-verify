@@ -20,12 +20,14 @@ import lombok.extern.slf4j.Slf4j;
 import org.redisson.api.RLock;
 import org.redisson.api.RedissonClient;
 import org.springframework.cache.annotation.Cacheable;
+import org.springframework.data.redis.core.RedisCallback;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.data.redis.core.ZSetOperations.TypedTuple;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 
 import java.math.BigDecimal;
+import java.nio.charset.StandardCharsets;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
@@ -78,7 +80,8 @@ public class LeaderboardService {
     private static final int DAILY_REPORT_MAX_SIZE = 500;
     /** 好友列表分页大小：与 user-service 分页接口配合，逐页拉齐好友集合。 */
     private static final long FRIEND_FETCH_SIZE = 1000;
-    /** 好友榜 Redis 扫描批大小：每次只取有限窗口，命中 size 后立即停止。 */
+    /** 好友榜整榜扫描批大小（TASK-239 前实现：分批 reverseRangeWithScores 窗口；已由 Redis
+     *  Pipeline 批量点查取代，保留字段仅作历史注释，不再被引用）。 */
     private static final long FRIEND_SCAN_BATCH = 500;
     /** 锁等待上限（秒）：拿不到锁抛出让 MQ 重投（不跳过，入榜/回滚不可丢） */
     private static final long LOCK_WAIT_SECONDS = 3;
@@ -244,8 +247,8 @@ public class LeaderboardService {
     }
 
     /**
-     * 好友榜（规范差异「好友榜查询」）：按 user-service 分页契约拉齐好友列表 → ZSet
-     * 分批按好友过滤（内存过滤，不逐条远程调用；非好友与本人均被排除，只显示好友）。
+     * 好友榜（规范差异「好友榜查询」）：按 user-service 分页契约拉齐好友列表 → Redis Pipeline
+     * 单次往返批量点查各好友在总榜的积分（ZSCORE），内存过滤/排序/截断，不再整榜分批扫描。
      *
      * <p>降级口径（产品决策，add-resilience-hardening）：user-service 不可用 → <b>返回空榜</b>，
      * 不选「不过滤」。不过滤会把总榜非好友泄露进好友榜（隐私/语义错误）；空榜仅短暂降级。
@@ -267,28 +270,40 @@ public class LeaderboardService {
             return List.of();
         }
 
-        Set<Long> friendSet = new LinkedHashSet<>(friendIds);
-        // 按榜单原有降序顺序分批过滤；凑满前 N 后停止，rank 仍是过滤后的序号。
-        List<TypedTuple<String>> filtered = new ArrayList<>(size);
-        for (long start = 0; ; start += FRIEND_SCAN_BATCH) {
-            Set<TypedTuple<String>> tuples = stringRedisTemplate.opsForZSet()
-                    .reverseRangeWithScores(OVERALL_ZSET_KEY, start, start + FRIEND_SCAN_BATCH - 1);
-            if (tuples == null || tuples.isEmpty()) {
-                break;
+        // 去重好友 ID（分页拉取可能含重复），每个好友只点查一次积分
+        List<Long> distinctFriendIds = new ArrayList<>(new LinkedHashSet<>(friendIds));
+        // 单次往返批量 ZSCORE：Pipeline 内按 distinctFriendIds 顺序逐条点查，返回序与入参一一对应
+        List<Object> rawScores = stringRedisTemplate.executePipelined((RedisCallback<Object>) connection -> {
+            byte[] keyBytes = OVERALL_ZSET_KEY.getBytes(StandardCharsets.UTF_8);
+            for (Long fid : distinctFriendIds) {
+                connection.zSetCommands().zScore(keyBytes, String.valueOf(fid).getBytes(StandardCharsets.UTF_8));
             }
-            for (TypedTuple<String> tuple : tuples) {
-                if (friendSet.contains(Long.valueOf(tuple.getValue()))) {
-                    filtered.add(tuple);
-                    if (filtered.size() == size) {
-                        return assemble(filtered);
-                    }
-                }
-            }
-            if (tuples.size() < FRIEND_SCAN_BATCH) {
-                break;
+            return null;
+        });
+        if (rawScores == null) {
+            return List.of();
+        }
+        // 内存过滤：未上榜好友（null）与零分好友（score <= 0）不入榜
+        List<TypedTuple<String>> candidates = new ArrayList<>(distinctFriendIds.size());
+        int n = Math.min(rawScores.size(), distinctFriendIds.size());
+        for (int i = 0; i < n; i++) {
+            Object raw = rawScores.get(i);
+            if (raw instanceof Number number && number.doubleValue() > 0) {
+                candidates.add(TypedTuple.of(String.valueOf(distinctFriendIds.get(i)), number.doubleValue()));
             }
         }
-        return assemble(filtered);
+        if (candidates.isEmpty()) {
+            return List.of();
+        }
+        // 分数降序；同分按 member 字符串降序（对齐 Redis ZREVRANGE 的词典序回排）
+        candidates.sort((a, b) -> {
+            int byScore = Double.compare(b.getScore(), a.getScore());
+            return byScore != 0 ? byScore : b.getValue().compareTo(a.getValue());
+        });
+        // 截取前 size 条后组装
+        List<TypedTuple<String>> top = candidates.size() > size
+                ? new ArrayList<>(candidates.subList(0, size)) : candidates;
+        return assemble(top);
     }
 
     /** 按 user-service 的 PageResult.total 继续读取好友页，避免单页 1000 条静默截断。 */
