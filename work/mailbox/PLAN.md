@@ -2,7 +2,7 @@
 
 ## 当前进度与外部基线
 
-- **最新代码基线与分支**：`main` 分支，最新已封盘至 **TASK-239**（HEAD `3cf0406` / `7c6d9ef`）。
+- **最新代码基线与分支**：`main` 分支，最新已封盘至 **TASK-240**（HEAD `86be2d8` / `f0ea149`）。
 - **会话无缝交接看板**：新主 Agent 接手状态与下一步动作见 [HANDOVER.md](HANDOVER.md)（原地滚动更新，免建新交接文档）。
 - **CI 外部门槛状态**：GitHub Actions run `38692154084`（HEAD `b1c0e3a`，web ✓30s / build ✓12m10s 全 job 绿）。包含全模块 clean verify、Checkstyle/SpotBugs/PMD 静态门、Docker 镜像构建与 Trivy 依赖扫描。
 - **历史记录归档索引**：早期 100+ 笔验收记录（TASK-001 至 TASK-210）已完整归档至 [PLAN-history-001-210.md](archive/PLAN-history-001-210.md)。各任务的原始契约与回传留存见 `work/mailbox/tasks/TASK-xxx/`。
@@ -425,4 +425,19 @@
 | 是否到达外部门槛 | **未到达**：C-01/C-02 已提交，待指导侧统一提交台账闭环笔并随批推送触发 CI 外部终验 |
 | 独立复核结论与裁决 | 指导侧独立四块核验全过（总体 **PASS**，BLOCKER 0，偏差 D1 白名单扩展合理）：3 个实施文件 + 2 个两件套严丝合缝全等白名单；后端 87 测与前端全套门禁独立实测稳定全绿；Pipeline 改造使高频好友榜接口性能与总榜大小彻底解耦，同分排序完全对齐 Redis 原生语义；终审裁定 **ACCEPT 予以封盘** |
 | 状态 | TASK-239 本地闭环，指导侧终裁 **ACCEPT 予以封盘** |
+ 
+## 验收记录：`TASK-240`（存储性能与网络吞吐双重优化——friendship 表 user_high 索引补齐与动态流 Feed 点赞态批量下推，MEDIUM 档，2026-10-15）
+
+| 项 | 内容 |
+| --- | --- |
+| 开工基线 | `d2c6d62`（main 分支，工作树干净，TASK-239 封盘笔与优化看板登记） |
+| C-01 实施笔 | `86be2d8` `feat(perf): TASK-240 存储索引补齐与Feed点赞态批量下推（C-01 实施笔）`（恰 8 文件，+298/−9） |
+| C-02 任务两件套 | `f0ea149` `docs(mailbox): TASK-240 存储与网络性能优化验收与台账闭环（C-02 台账笔）`（恰 2 文件，+239/−0） |
+| 任务内容与白名单 | 相对开工基线恰 10 文件 = 白名单全等（实施 8 文件 + 任务两件套 2 文件）；生产网关、其他服务代码及红线文件 100% 零触碰，零新外部依赖 |
+| 核心实现 | ① B6 存储慢查消灭：`sql/01-user-db.sql` 中 `friendship` 建表补齐 `KEY idx_user_high (user_high)`；新建幂等迁移脚本 `sql/migrations/add-idx-friendship-user-high.sql`（采用 `information_schema.statistics` 判存在模式，与 `add-idx-record-status.sql` 同口径，供存量库安全执行），彻底消除 `FriendService.listFriendIds` 与 `listFriends` 在较大用户 ID 侧的全表扫描，支持 MySQL `index_merge` 高效聚合；② B7 服务端点赞态批量下推与 Redis Pipeline：`LikeController.java` 新增 `POST /api/records/likes/batch` 端点（入参 `List<Long> recordIds`，经网关注入 `X-User-Id` 认定身份）；`RecordLikeService.java` 实现 `getLikesBatch(recordIds, userId)`：空/null 入参安全返回空列表、去重保序、逐条 `selectById` 经 `sportRecordService.assertCanView` 校验（记录不存在或不可视安全跳过，绝不拖垮整批）、`stringRedisTemplate.executePipelined` 单次往返（RTT=1）批量获取 `COUNT` 与 `SISMEMBER`、缓存 miss 时回退既有 `readCount`（DB 兜底+回填）；③ B7 前端单请求直出：`web/src/api/client.ts` 导出 `getLikesBatch(recordIds)`；`web/src/pages/feed.page.vue` 重构 `loadLikes()` 为单次批量请求，动态流首屏网络包由 20 次并发 HTTP 骤减为 1 次批量下推，catch 静默降级保障页面高可用；④ 测试全套强化：`RecordLikeServiceTest.java` 新增 7 个单元测试（覆盖 Pipeline 单次往返、空入参安全、去重保序、缓存未命中兜底回填、不可视记录安全过滤、userId=null 降级、全不可视空返回）；`web/src/api/__tests__/client.test.ts` 新增 R1 `getLikesBatch` 路由与请求体契约测试 |
+| 本机门禁 | 后端 `mvn -B -ntp -o -s .mvn-settings.xml clean test -pl record-service,user-service -am` BUILD SUCCESS（Tests run: 284, Failures: 0, Errors: 0，rc=0）；前端 `pnpm run type-check` 0 错误（rc=0）；前端单元测试 4 套 33 测全过（rc=0）；契约门 `mailbox-contract.sh --baseline=d2c6d62` 退出码 0（判据 A 两件套齐 + 判据 B 清单一致，0 在途） |
+| 是否到达外部门槛 | **未到达**：C-01/C-02 已提交，待指导侧统一提交台账闭环笔并随批推送触发 CI 外部终验 |
+| 独立复核结论与裁决 | 指导侧独立四块核验全过（总体 **PASS**，BLOCKER 0，偏差 D1 台账自指约定合规）：8 个实施文件 + 2 个两件套严丝合缝全等白名单；后端 284 测与前端 33 测及契约门禁独立实测稳定全绿；B6 索引消除了核心社交表隐蔽慢查风险，B7 Pipeline 批量下推大幅降低网关与前端并发压力，容错降级与权限隔离设计严谨；终审裁定 **ACCEPT 予以封盘** |
+| 状态 | TASK-240 本地闭环，指导侧终裁 **ACCEPT 予以封盘** |
+
 

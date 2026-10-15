@@ -8,17 +8,23 @@
 
 ## 1. 当前代码基线与外部状态
 
-- **当前分支与 HEAD**：`main` 分支，最新实施提交为 `3cf0406`（C-01）与 `7c6d9ef`（C-02），封盘笔随本提交闭环。
+- **当前分支与 HEAD**：`main` 分支，最新实施提交为 `86be2d8`（C-01）与 `f0ea149`（C-02），封盘笔随本提交闭环。
 - **外部 CI 门槛状态**：GitHub Actions run `38692154084`（`web` ✓30s / `build` ✓12m10s 全绿）。
-- **工作树状态**：TASK-239 独立复核全绿，在途文件已完成台账归档。
-- **当前在途任务数**：`0` 个在途（历史任务至 TASK-239 全部已闭环收口）。
+- **工作树状态**：TASK-240 独立复核全绿，在途文件已完成台账归档。
+- **当前在途任务数**：`0` 个在途（历史任务至 TASK-240 全部已闭环收口）。
 
 ---
 
 ## 2. 上一会话交付成果
 
 - **刚闭环事项**：
-  1. 落地 **TASK-239**（好友榜查询高并发性能优化——Redis Pipeline 批量分数检索与单次往返，MEDIUM 档）：
+  1. 落地 **TASK-240**（存储性能与网络吞吐双重优化——friendship 表 user_high 索引补齐与动态流 Feed 点赞态批量下推，MEDIUM 档）：
+     - B6 存储慢查消灭：`sql/01-user-db.sql` 为 `friendship` 补齐 `KEY idx_user_high (user_high)` 并新建幂等迁移 `sql/migrations/add-idx-friendship-user-high.sql`，消除 `listFriends` 在较大用户 ID 维度的全表扫描，支持 MySQL `index_merge`；
+     - B7 服务端批量下推：`LikeController.java` 新增 `POST /api/records/likes/batch`；`RecordLikeService.java` 实现 `getLikesBatch`（空入参安全、去重保序、`assertCanView` 安全过滤、`executePipelined` 单次往返批量获取点赞数与状态、缓存 miss 回退 `readCount`）；
+     - B7 前端单请求直出：`web/src/api/client.ts` 导出 `getLikesBatch`；`web/src/pages/feed.page.vue` 重构 `loadLikes()` 为单次批量请求，动态流 20 次并发 HTTP 压至 1 次；
+     - 单元测试全套覆盖：`RecordLikeServiceTest` 新增 7 个单测，前端 `client.test.ts` 新增 R1 路由契约单测；
+     - 生产后端其他代码与配置 100% 零触碰，零新外部依赖。
+  2. 落地 **TASK-239**（好友榜查询高并发性能优化——Redis Pipeline 批量分数检索与单次往返，MEDIUM 档）：
      - `LeaderboardService.topFriends` 彻底移除原 `for (start += 500)` 对总榜 `leaderboard:overall` 循环批次扫描，基于去重好友 ID 集合（`distinctFriendIds`）通过 `stringRedisTemplate.executePipelined` 执行 `connection.zSetCommands().zScore` 一次性拉齐全体好友得分，网络往返由数十次/百次降至恰 1 次（RTT=1），时间复杂度由 $O(N_{zset})$ 降至 $O(N_{friends})$；
      - 内存过滤/排序/截断契约自洽：内存过滤未上榜（null）与非正分数，按分数降序（同分按 member 字符串降序 tie-breaker，100% 对齐 Redis ZREVRANGE 稳定排序），截取前 `size` 条交由 `assemble` 组装返回；
      - 业务契约 100% 保持：只显示好友（本人与非好友均不在榜）、无好友/未上榜/降级安全返回空榜，`fetchAllFriendIds` 降级与分页拉齐契约一字不动；
@@ -60,9 +66,9 @@
 ## 4. 下一个主 Agent 的唯一推荐动作
 
 - **推荐动作**：
-  1. 执行 `git push origin main` 批量推送已封盘批次触发 GitHub Actions 远端全量 CI 外部终验；
-  2. 或推进 **B6（拟立项 TASK-240：friendship 补充 user_high 索引）**，消灭好友查询在较大 ID 方向的全表扫描；
-  3. 或推进 **B7（拟立项 TASK-241：Feed 点赞态批量下推）**，消除动态流 20 次并发 HTTP；
+  1. 执行 `git push origin main` 批量推送已封盘批次触发 GitHub Actions 远端全量 CI 外部终验（当前本地领先 origin/main 9 笔提交）；
+  2. 或推进 **B8（拟立项 TASK-241：申诉管理端闭环与自动回填）**，消除用户在申诉提交后需盲打 ID 的断层体验；
+  3. 或推进 **B9（拟立项 TASK-242：提交表单客户端幂等加固）**，消除弱网重发重复记录破窗；
   4. 或推进 **H2（E5 生产部署姿态演练）**。
 - **开工准备**：按 `docs/internal/AGENTS.md` 的「极简任务派发包模板」为子 Agent 派发。
 
