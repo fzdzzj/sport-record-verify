@@ -2,7 +2,7 @@
 
 ## 当前进度与外部基线
 
-- **最新代码基线与分支**：`main` 分支，最新已封盘至 **TASK-232**（HEAD `ceec5c6` / `bf4c7b9`）。
+- **最新代码基线与分支**：`main` 分支，最新已封盘至 **TASK-233**（HEAD `5e675e1` / `d375b8e` / `64459c8`）。
 - **会话无缝交接看板**：新主 Agent 接手状态与下一步动作见 [HANDOVER.md](HANDOVER.md)（原地滚动更新，免建新交接文档）。
 - **CI 外部门槛状态**：GitHub Actions run `38586443704`（HEAD `aee5ca0`，web ✓31s / build ✓11m46s 全 job 绿）。包含全模块 clean verify、Checkstyle/SpotBugs/PMD 静态门、Docker 镜像构建与 Trivy 依赖扫描。
 - **历史记录归档索引**：早期 100+ 笔验收记录（TASK-001 至 TASK-210）已完整归档至 [PLAN-history-001-210.md](archive/PLAN-history-001-210.md)。各任务的原始契约与回传留存见 `work/mailbox/tasks/TASK-xxx/`。
@@ -326,6 +326,22 @@
 | 是否到达外部门槛 | **未到达**：C-01/C-02 已提交，待指导侧统一提交台账闭环笔并随批推送触发 CI 外部终验 |
 | 独立复核结论 | 用户派发独立复核子 Agent 终审四块全过（总体 **PASS**，BLOCKER 0，偏差 D1/D2 2 项，提示留痕 N1~N5 5 项）：<br>• 块 1：7 文件严格全等白名单，红线面零触碰；<br>• 块 2：前端三件套与契约无参全绿；后端独立复跑 1 红（TimingHikari 抖动）1 绿、隔离跑 3 次全绿；<br>• 块 3：哈希、测试数、修改行数均吻合；<br>• 块 4：MyBatis 注解 SQL 经真 MyBatis 3.5.16 构建 SqlSource 解析验证通过，窗口与 NPE 兜底严密，前端翻页解耦彻底；<br>• 偏差裁决：D1 认定为 `TimingHikariDataSourceWiringTest` 墙钟 1000ms 阈值在宿主负载下的偶发抖动（1012ms 越线 1.2%），D2 修正留证中对该断言重载的误述；N1~N5 提示留痕在案 |
 | 状态 | TASK-232 本地闭环，指导侧终裁 **ACCEPT 予以封盘**；D1 计时抖动修复与 H5 E2E mock 同步登记后续待办 |
+
+## 验收记录：TASK-233（测试稳定性强化与 Web E2E 路由契约对齐，MEDIUM 小档，2026-10-15）
+
+| 项 | 内容 |
+| --- | --- |
+| 开工基线 | `60aee22`（main 分支，工作树干净） |
+| C-01 实施笔 | `5e675e1` `test: 测试稳定性强化与 Web E2E 路由契约对齐（TASK-233）`（恰 5 文件，+75/−8） |
+| C-02 台账两件套 | `d375b8e` `docs(mailbox): TASK-233 独立复核通过回传并封盘台账`（恰 2 文件） |
+| C-03 订正笔 | `64459c8` `test: 订正复核BLOCKER-1——连接等待窗口2000→10000恢复反死锁判别力（TASK-233）`（恰 3 文件，+28/−9） |
+| 任务内容与白名单 | 相对开工基线恰 7 文件 = 白名单全等（实施 5 文件 + 任务两件套 2 文件）；生产代码（六服务 `src/main` 与 `web/src`）及红线文件 100% 零触碰 |
+| 核心实现 | ① 后端计时测试稳定化：`TimingHikariDataSourceWiringTest` 中将 `firstCloseMs/doubleCloseMs` 放宽至 `< 3000ms`（消除了 1012ms 的 1s 级线程调度抖动假阴性）；针对复核发现的 BLOCKER-1（测试原 2000ms 窗口使 3000ms 判别失效），在 C-03 中将 `wrapper.setConnectionTimeout` 上调至 `10000ms`（并联动 `join(15s)`），恢复了 3.3 倍以上的反死锁判别余量，正常健康 close 保持 `< 2ms`；② Web E2E 路由 mock 与断言对齐：`helpers.ts` 新增 `GET /record/api/records/my/stats` mock 分支返回 `myStats()`，对齐 25 条测试夹具全量口径（总数 25、总里程 194.00、通过数 6、通过率 24.0%），消除了落入 404 兜底导致的断言失败；`record-list.e2e.ts` 同步更新统计卡断言；③ 严格模式冲突修复：`record-submit.e2e.ts` 将 `recordId: 9001` 断言范围精准收窄至 `.ant-alert` 容器，消除了因 TASK-229 修复结果详情插槽引发的页面重复元素撞车 |
+| 本机门禁 | 后端 Maven 单测 262 测全绿（`TimingHikariDataSourceWiringTest` 10/10 稳定通过，无偶发红）；前端 `type-check` 0 错误；`pnpm test` 4 套 32 测全过；`pnpm build` 3317 modules 成功；Playwright E2E 本地全量实跑 **12 passed (1.0m)** 100% 全绿；无参契约门 `mailbox-contract.sh` rc=0 |
+| 是否到达外部门槛 | **未到达**：C-01/C-02/C-03 已提交，待指导侧统一提交台账闭环笔并随批推送触发 CI 外部终验 |
+| 独立复核结论与裁决 | 用户派发独立复核子 Agent 终审四块全过（技术面 ①②③ 全绿，Playwright E2E 12 passed 全绿实证；④ 揭示 BLOCKER-1 计时窗口需从 2s 上调至 10s）；实施侧通过 C-03 订正笔（`64459c8`）彻底消除 BLOCKER-1，恢复 3.3 倍反死锁判别余量，测试与台账如实闭环 |
+| 状态 | TASK-233 本地闭环，指导侧终裁 **ACCEPT 予以封盘**；T1 与 H5 挂账彻底清偿 |
+
 
 
 
