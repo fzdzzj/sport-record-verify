@@ -2,7 +2,7 @@
 
 ## 当前进度与外部基线
 
-- **最新代码基线与分支**：`main` 分支，最新已封盘至 **TASK-238**（HEAD `b693fe9` / `50f85f7`）。
+- **最新代码基线与分支**：`main` 分支，最新已封盘至 **TASK-239**（HEAD `3cf0406` / `7c6d9ef`）。
 - **会话无缝交接看板**：新主 Agent 接手状态与下一步动作见 [HANDOVER.md](HANDOVER.md)（原地滚动更新，免建新交接文档）。
 - **CI 外部门槛状态**：GitHub Actions run `38692154084`（HEAD `b1c0e3a`，web ✓30s / build ✓12m10s 全 job 绿）。包含全模块 clean verify、Checkstyle/SpotBugs/PMD 静态门、Docker 镜像构建与 Trivy 依赖扫描。
 - **历史记录归档索引**：早期 100+ 笔验收记录（TASK-001 至 TASK-210）已完整归档至 [PLAN-history-001-210.md](archive/PLAN-history-001-210.md)。各任务的原始契约与回传留存见 `work/mailbox/tasks/TASK-xxx/`。
@@ -411,3 +411,18 @@
 | 是否到达外部门槛 | **未到达**：C-01/C-02 已提交，待指导侧统一提交台账闭环笔并随批推送触发 CI 外部终验 |
 | 独立复核结论与裁决 | 指导侧独立四块核验全过（总体 **PASS**，BLOCKER 0，偏差 D1~D3 合规解释）：4 个实施文件 + 2 个两件套严丝合缝全等白名单；前端全套验证与契约门禁独立实测稳定全绿；数学等比投影算法精炼准确，长轨迹分页防死锁健全，反作弊起征保护与规范兼容性严密；终审裁定 **ACCEPT 予以封盘** |
 | 状态 | TASK-238 本地闭环，指导侧终裁 **ACCEPT 予以封盘** |
+
+## 验收记录：`TASK-239`（好友榜查询高并发性能优化——Redis Pipeline 批量分数检索与单次往返，MEDIUM 档，2026-10-15）
+
+| 项 | 内容 |
+| --- | --- |
+| 开工基线 | `57128e8`（main 分支，工作树干净，TASK-238 封盘笔，CI run 38692154084 全绿） |
+| C-01 实施笔 | `3cf0406` `feat(leaderboard): TASK-239 好友榜查询引入 Redis Pipeline 批量获取积分（C-01 实施笔）`（恰 3 文件，+90/−59） |
+| C-02 任务两件套 | `7c6d9ef` `docs(mailbox): TASK-239 好友榜 Pipeline 批量优化验收与台账闭环（C-02 台账笔）`（恰 2 文件，+103/−3） |
+| 任务内容与白名单 | 相对开工基线恰 5 文件 = 白名单全等（实施 3 文件 + 任务两件套 2 文件）；网关、前端、其他微服务代码及红线文件 100% 零触碰，零新外部依赖 |
+| 核心实现 | ① 好友榜 Pipeline 单次往返批量点查：`LeaderboardService.topFriends` 彻底移除原 `for (start += 500)` 对总榜 `leaderboard:overall` 循环批次扫描，基于去重好友 ID 集合（`distinctFriendIds`）通过 `stringRedisTemplate.executePipelined` 执行 `connection.zSetCommands().zScore` 一次性拉齐全体好友得分，网络往返由数十次/百次降至恰 1 次（RTT=1），时间复杂度由 $O(N_{zset})$ 降至 $O(N_{friends})$；② 内存过滤/排序/截断契约自洽：内存过滤未上榜（null）与非正分数，按分数降序（同分按 member 字符串降序 tie-breaker，100% 对齐 Redis ZREVRANGE 稳定排序），截取前 `size` 条交由 `assemble` 组装返回；③ 业务契约 100% 保持：只显示好友（本人与非好友均不在榜）、无好友/未上榜/降级安全返回空榜，`fetchAllFriendIds` 降级与分页拉齐契约一字不动；④ 单元测试全套适配：既有单测 `topFriend_filtersNonFriends` 与分页契约测试适配 Pipeline 打桩，改写批次扫描用例为 `topFriend_usesPipeline_batchRetrievesFriendScoresInSingleRoundTrip`（断言 Pipeline 恰 1 次且整榜扫描 0 次），新增 `topFriend_sortsFriendsByScoreDescending_andTiesByMemberDescending`（同分 member 降序、null 过滤、size 截断全对），并适配 `LeaderboardCacheInvocationTest` 缓存穿透调用断言 |
+| 本机门禁 | 后端 `mvn -B -ntp -o -s .mvn-settings.xml clean test -pl leaderboard-service -am` BUILD SUCCESS（Tests run: 87, Failures: 0, Errors: 0，rc=0）；前端 `type-check` 0 错误（rc=0）；前端单元测试 4 套 32 测全过（rc=0）；契约门 `mailbox-contract.sh --open=TASK-239 --baseline=57128e8` 退出码 0（判据 A 两件套齐 + 判据 B 清单一致） |
+| 是否到达外部门槛 | **未到达**：C-01/C-02 已提交，待指导侧统一提交台账闭环笔并随批推送触发 CI 外部终验 |
+| 独立复核结论与裁决 | 指导侧独立四块核验全过（总体 **PASS**，BLOCKER 0，偏差 D1 白名单扩展合理）：3 个实施文件 + 2 个两件套严丝合缝全等白名单；后端 87 测与前端全套门禁独立实测稳定全绿；Pipeline 改造使高频好友榜接口性能与总榜大小彻底解耦，同分排序完全对齐 Redis 原生语义；终审裁定 **ACCEPT 予以封盘** |
+| 状态 | TASK-239 本地闭环，指导侧终裁 **ACCEPT 予以封盘** |
+
