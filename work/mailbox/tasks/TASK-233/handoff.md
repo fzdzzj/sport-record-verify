@@ -51,7 +51,7 @@ C-02（`docs(mailbox)` 台账笔，恰 2 文件）：
 
 - `--mode=online`、`--static`（Checkstyle/SpotBugs/PMD）、CI 全流程均未跑（未 push、未建 PR），外部门槛待指导侧推动后补记。
 - **真实 MySQL / ShardingSphere 代理链路未联调**：`/my/stats` 的真实 SQL 聚合行为由 TASK-231/232 的服务端实现承载，本任务只对齐 E2E 侧 mock 契约（`MyStatsDTO` 字段口径），未在真实数据源上验证 `passRate` 格式化与 30 键窗口；本任务也不涉及生产代码，不得据此推断服务端性能/正确性。
-- **风险残留：计时断言终归是墙钟敏感**：放宽到 `<3000ms` 消除的是「1s 级调度抖动」这一实测风险类别，但极端宿主暂停（GC 长停顿、整机冻结 >3s）仍可能越线。原缺陷为阻塞 30s，3s 判别线仍有 10× 余量；若未来 CI 稳定性要求更高，可改断言为「close 耗时 ≪ 内层空池等待超时（connectionTimeout=2000ms）的比例」或直接覆盖「内层池已关闭 + 等待线程以异常收场」这两个确定性断言（本用例 `assertTrue(inner.isClosed())` / `waiter.join(5s)` / `caught.get()!=null` 已承载），把墙钟只留给判别线。
+- **风险残留：计时断言终归是墙钟敏感**：放宽到 `<3000ms` 消除的是「1s 级调度抖动」这一实测风险类别，但极端宿主暂停（GC 长停顿、整机冻结 >3s）仍可能越线。缺陷阻塞上限=池内等待窗口（C-03 订正后 `connectionTimeout=10000`，见 §9），3s 判别线仍有 ≥3× 余量；若未来 CI 稳定性要求更高，可改断言为「close 耗时 ≪ 内层空池等待超时（connectionTimeout=10000ms）的比例」或直接覆盖「内层池已关闭 + 等待线程以异常收场」这两个确定性断言（本用例 `assertTrue(inner.isClosed())` / `waiter.join(5s)` / `caught.get()!=null` 已承载），把墙钟只留给判别线。
 - **`dailyDistances` mock 为静态归集**：夹具 25 条 `createdAt` 收缩在单日 2026-10-10 秒级递减，`myStats()` 的 `dailyDistances` 把这 25 条全部归到基准日键、其余 29 键补 0——满足「恒 30 键、升序窗口」契约，但与真实运动跨多日的分布不同；当前 E2E 不断言里程条数值，故不影响全绿。若后续要断言条形比例，须扩展夹具跨多日分布。
 - **`pageOneDistanceSum()` 保留未删**：TASK-231 引入的「第 1 页 20 条总里程」辅助函数已不再被 `record-list.e2e.ts` 引用（改用全量 `totalDistanceSum()`），为保持夹具 API 稳定仍导出，属死代码但零风险；如需清理可新开小任务。
 - **时区口径**：`dailyBars` 前端按浏览器本地日期取 key，主服务按服务器时钟聚合，跨时区错位为既有问题（TASK-231 已登记），本任务未改动。
@@ -66,3 +66,17 @@ C-02（`docs(mailbox)` 台账笔，恰 2 文件）：
 ## 8. 停止条件
 
 白名单内实施与测试改动完成，验证命令全绿（后端 262 / 前端 type-check+32+build / e2e 12 passed），台账两件套落盘；`PLAN.md` / `HANDOVER.md` 与白名单外文件零触碰。后续如需推进 CI push、真实连库与更大日程分布的 dailyDistances 断言，须新开任务，不在本任务扩大范围。
+
+## 9. 复核 BLOCKER-1 订正留痕（C-03 订正笔）
+
+- **触发（独立复核）**：TASK-233 封盘后复核抓出 BLOCKER-1——`repeatedClose_withPendingConnectionWait_...` 用例第 129 行显式 `wrapper.setConnectionTimeout(2000)`，池内等待窗口 2s **小于** 3s 判别线：缺陷实现（取连接挪进包装类锁）的 close 阻塞上限恰为该窗口（等待线程 ≈2s 超时后释放锁），可被 `<3000ms` 断言放行，反死锁守卫判别力失效。
+- **订正（C-03 笔，开工基线 d375b8e，任务级别 LIGHT）**：`TimingHikariDataSourceWiringTest.java:129` 由 `setConnectionTimeout(2000)` 调整为 `setConnectionTimeout(10000)`：
+  - 正常健康 close 仅 <2ms，断言 `<3000ms` 零影响；
+  - 缺陷发生时 close 被池内等待窗口拖住 ≈10s，被 3s 判别线精准拦截；
+  - 判别余量 10s/3s ≈ 3.3×（恢复 ≥3 倍安全判别余量）。
+  - 同步订正测试内两处注释（原「拖过 1s 判别线」「拖过 30s」表述与 2s 窗口事实不符，统一为「被 10s 窗口拖住、远超 3s 线」）。
+  - **一致性联动（262 测实跑暴露）**：窗口上调后等待线程以池内等待窗口（10s）超时收场（close 不主动唤醒 borrower），原 `waiter.join(5s)`（2s 窗口时代口径）红；同步上调为 `waiter.join(15s)`（= 10s 窗口 + 5s 余量），断言消息同步改为「随池内等待窗口超时结束」。判别语义不变：反阻塞守卫仍由 `firstCloseMs/doubleCloseMs < 3000` 承载；用例时长由 ≈2s 升至 ≈11s。
+- **台账同步**：本文件 §6 风险残留中陈旧事实（`connectionTimeout=2000ms` / 阻塞 30s / 10× 余量）已同步为「阻塞上限=池内等待窗口 10s / ≥3× 余量」；`spec.md` 回填段 R1 说明同步同口径。
+- **改动集**：仅 3 个既有白名单文件（后端测试件 + 台账两件套），相对 C-03 基线 d375b8e 恰 3 文件；相对任务基线 60aee22 仍为白名单 7 文件全集，零新文件、零生产代码。
+- **验证**：后端 Maven 262 测全绿（`BUILD SUCCESS`）；契约门禁 `bash scripts/verify/mailbox-contract.sh --open=TASK-233 --baseline=60aee22` → rc=0。
+- **C-03 提交**：自指哈希沿 D1 先例不入本文件，以 `git log` 为准（提交信息 `test: 订正复核BLOCKER-1——连接等待窗口2000→10000恢复反死锁判别力（TASK-233）`），未 push、未建 PR。

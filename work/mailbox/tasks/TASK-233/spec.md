@@ -60,7 +60,7 @@
 
 **判别式红绿**
 
-- R1 后端计时容差：**绿**。`firstCloseMs<3000` / `doubleCloseMs<3000`；原阻塞缺陷（30s）远超 3s 线，识别力保留，仅消 1s 级调度抖动。
+- R1 后端计时容差：**绿**。`firstCloseMs<3000` / `doubleCloseMs<3000`；池内等待窗口 `connectionTimeout=10000`（C-03 订正：原 2000 会令缺陷阻塞上限 2s < 3s 判别线而被放行——复核 BLOCKER-1），缺陷 close 被窗口拖住 ≈10s 远超 3s 线（≥3× 余量），识别力保留，仅消 1s 级调度抖动；等待线程收场 join 同步由 5s 上调至 15s（覆盖 10s 窗口，2s 窗口时代口径的必要联动）。
 - R2 前端 E2E `/my/stats` mock 契约：**绿**。`helpers.ts` 新增 `GET /record/api/records/my/stats` 分支返回 `myStats()`，与 25 条夹具全量对齐（totalCount=25 / 总里程 194.00 / passCount=6 / passRate=`24.0%` / 30 键 dailyDistances）；不再落入 404 兜底。
 - R3 统计卡断言对齐：**绿**。`record-list.e2e.ts` 同用 `totalDistanceSum().toFixed(2)`=`194.00` 与 `24.0%` 全量口径。
 - R4 strict-mode 修正：**绿**。`record-submit.e2e.ts` 的 `recordId: 9001` 限定在 `.ant-alert` 容器内。

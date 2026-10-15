@@ -125,8 +125,10 @@ class TimingHikariDataSourceWiringTest {
     @Test
     void repeatedClose_withPendingConnectionWait_isIdempotent_andNotBlockedByPoolWait() throws Exception {
         TimingHikariDataSource wrapper = newWrapperForPoolCreation();
-        // 等待线程的最大池内等待窗口：缺陷实现若把取连接挪进包装类锁，close 会被拖过 1s 判别线
-        wrapper.setConnectionTimeout(2000);
+        // 等待线程的最大池内等待窗口：缺陷实现若把取连接挪进包装类锁，close 会被该窗口拖住直至
+        // 超时。窗口必须远超 3s 判别线（TASK-233 复核 BLOCKER-1 订正：原 2s 窗口 < 3s 判别线，
+        // 缺陷阻塞上限 2s 可被 <3000ms 断言放行，判别力失效）；现 10s 窗口留 3 倍以上余量。
+        wrapper.setConnectionTimeout(10000);
         try {
             HikariDataSource inner = ReflectionTestUtils.invokeMethod(wrapper, "buildPool");
             assertNotNull(inner, "内层池构建失败");
@@ -149,16 +151,19 @@ class TimingHikariDataSourceWiringTest {
             long firstCloseMs = (System.nanoTime() - t0) / 1_000_000;
             wrapper.close();
             long doubleCloseMs = (System.nanoTime() - t0) / 1_000_000;
-            // 放宽至 3000ms（TASK-233）：缺陷实现若把取连接挪进包装类锁会被拖过 30s（远超本线），
-            // 3000ms 仍完整保留反阻塞缺陷识别力；仅消除宿主/CI 高负载调度偶发抖动红
+            // 放宽至 3000ms（TASK-233）：缺陷实现若把取连接挪进包装类锁会被池内等待窗口（10s，
+            // C-03 订正后；原 2s 窗口 < 本线致判别力失效——复核 BLOCKER-1）拖住，远超 3000ms
+            // 判别线，识别力完整保留；仅消除宿主/CI 高负载调度偶发抖动红
             // （此前 1000ms 阈值曾被仅越线 1.2% 的 1012ms 偶发命中）。
             assertTrue(firstCloseMs < 3000,
                     "close 被等待线程的池内等待拖住 " + firstCloseMs + "ms——不得持包装类生命周期锁等待数据库连接");
             assertTrue(doubleCloseMs < 3000, "重复 close 同样不得被池内等待阻塞（" + doubleCloseMs + "ms）");
             assertTrue(inner.isClosed(), "重复 close 后内层池必须已关闭");
             wrapper.close();
-            waiter.join(TimeUnit.SECONDS.toMillis(5));
-            assertFalse(waiter.isAlive(), "等待线程未在 5s 内随池关闭结束");
+            // 等待线程以池内等待窗口（10s，C-03 订正后）超时收场：close 不主动唤醒 borrower，
+            // join 上限必须覆盖该窗口（15s = 窗口 + 5s 余量；原 5s 为 2s 窗口时代口径）
+            waiter.join(TimeUnit.SECONDS.toMillis(15));
+            assertFalse(waiter.isAlive(), "等待线程未在 15s 内随池内等待窗口超时结束（窗口 10s）");
             assertNotNull(caught.get(), "池已关闭，等待中的取连接必须以异常结束");
             assertThrows(SQLException.class, wrapper::getConnection, "关闭后取连接必须拒绝");
         } finally {
