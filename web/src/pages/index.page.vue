@@ -169,6 +169,10 @@
                 <a-tag v-else-if="column.key === 'visibility' && record.visibility === 1" color="blue">好友可见</a-tag>
                 <template v-else-if="column.key === 'actions'">
                   <a @click="goTrack(record.id)">查看轨迹</a>
+                  <template v-if="canAppeal(record.status)">
+                    <a-divider type="vertical" />
+                    <a @click="goVerdict(record.id)">判定/申诉</a>
+                  </template>
                   <a-divider type="vertical" />
                   <a-popconfirm
                     title="确认删除该运动记录？此操作将永久删除。"
@@ -268,6 +272,14 @@ function go(p: string) { router.push(p) }
 function goLogin() { router.push('/login') }
 /** 记录轨迹查看入口：recordId 经路由 query 传给 record-detail 页 */
 function goTrack(id: number) { router.push({ path: '/record-detail', query: { id: String(id) } }) }
+
+/** 可判定/申诉状态（TASK-237）：校验中(1)/拒绝(3)/维持拒绝(6)/人工审核(7) → 操作列提供直达链接 */
+function canAppeal(status: number): boolean {
+  return status === 1 || status === 3 || status === 6 || status === 7
+}
+
+/** 判定/申诉直达（TASK-237）：带 recordId 跳 /verdict（对齐 verdict 页 route.query.id 范式） */
+function goVerdict(id: number) { router.push({ path: '/verdict', query: { id: String(id) } }) }
 
 /** 登录态判定：仅依赖本地 access token 是否存在（取值口径同 auth 会话 util） */
 const authed = ref(hasAccessToken())

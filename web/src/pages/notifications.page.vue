@@ -20,7 +20,15 @@
         class="mt-2"
       >
         <template #bodyCell="{ column, record }">
-          <template v-if="column.key === 'isRead'">
+          <template v-if="column.key === 'title'">
+            <a v-if="drillTarget(record)" class="text-blue-600" @click="onDrill(record)">{{ record.title }}</a>
+            <span v-else>{{ record.title }}</span>
+          </template>
+          <template v-else-if="column.key === 'sourceId'">
+            <a v-if="drillTarget(record)" class="text-blue-600" @click="onDrill(record)">{{ record.sourceId }}</a>
+            <span v-else>{{ record.sourceId ?? '—' }}</span>
+          </template>
+          <template v-else-if="column.key === 'isRead'">
             <a-tag :color="record.isRead === 0 ? 'orange' : 'green'">
               {{ record.isRead === 0 ? '未读' : '已读' }}
             </a-tag>
@@ -88,6 +96,7 @@
 
 <script setup lang="ts">
 import { ref, computed, onMounted, onBeforeUnmount } from 'vue'
+import { useRouter } from 'vue-router/auto'
 import { message } from 'ant-design-vue'
 import {
   listNotifications,
@@ -102,6 +111,40 @@ import { hasAccessToken } from '@/utils/token'
 import { refreshUnread, onNotification } from '@/composables/useNotificationBell'
 
 const loggedIn = computed(() => hasAccessToken())
+
+const router = useRouter()
+
+/**
+ * 下钻目标（TASK-237）：RECORD_* 通知 → 记录详情（RECORD_REJECTED 直达判定/申诉页）；
+ * FRIEND_ACCEPTED → 好友页；其余类型无可下钻实体，返回 null。
+ */
+function drillTarget(record: NotificationViewDTO): { path: string; query?: Record<string, string> } | null {
+  if (record.type.startsWith('RECORD_')) {
+    if (record.sourceId == null) return null
+    if (record.type === 'RECORD_REJECTED') {
+      return { path: '/verdict', query: { id: String(record.sourceId) } }
+    }
+    return { path: '/record-detail', query: { id: String(record.sourceId) } }
+  }
+  if (record.type === 'FRIEND_ACCEPTED') return { path: '/friends' }
+  return null
+}
+
+/** 点击下钻（TASK-237）：未读先自动标已读并刷新未读角标，再跳转目标页；标已读失败静默不阻断跳转 */
+async function onDrill(record: NotificationViewDTO) {
+  const target = drillTarget(record)
+  if (!target) return
+  if (record.isRead === 0) {
+    try {
+      await markNotificationRead(record.id)
+      record.isRead = 1
+      await refreshUnread()
+    } catch {
+      // 静默：下钻仍可继续，未读数由角标轮询/推送兜底
+    }
+  }
+  router.push(target)
+}
 
 const rows = ref<NotificationViewDTO[]>([])
 const loading = ref(false)

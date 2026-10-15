@@ -23,6 +23,12 @@
         <div>verdict: <b :class="verdictClass">{{ verdictLabel }}</b></div>
         <div v-if="verifyResult.score !== undefined">score: {{ verifyResult.score }}</div>
         <div v-if="verifyResult.checkedAt">checkedAt: {{ verifyResult.checkedAt }}</div>
+        <!-- 拒绝申诉引导（TASK-237）：verdict=2 拒绝 → 一键带参跳 /verdict 查看判定明细并申诉 -->
+        <a-alert v-if="verifyResult.verdict === 2" type="warning" show-icon class="mt-2">
+          <template #message>
+            未通过校验？<a class="text-blue-600 underline" @click="goAppeal">点击查看反作弊判定明细并提交申诉</a>
+          </template>
+        </a-alert>
       </div>
       <a-alert v-if="summaryDegraded" type="warning" class="mb-4" message="记录摘要不可用（仅展示轨迹）。" />
 
@@ -125,7 +131,7 @@
 
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue'
-import { useRoute } from 'vue-router/auto'
+import { useRoute, useRouter } from 'vue-router/auto'
 import { message } from 'ant-design-vue'
 import {
   getRecordPoints,
@@ -142,6 +148,7 @@ import { computePaceSeries, formatPace, isDrawablePace } from '@/utils/pace'
 import { hasAccessToken } from '@/utils/token'
 
 const route = useRoute()
+const router = useRouter()
 
 const recordId = ref<string>('')
 const points = ref<TrackPointDTO[]>([])
@@ -193,6 +200,11 @@ const verdictClass = computed(() => {
   const v = verifyResult.value?.verdict
   return v === 1 ? 'text-green-600' : v === 2 ? 'text-red-600' : 'text-blue-600'
 })
+
+/** 拒绝申诉引导（TASK-237）：一键带参跳转 /verdict（与首页操作列同范式，query.id 供 verdict 页装载） */
+function goAppeal() {
+  router.push({ path: '/verdict', query: { id: recordId.value } })
+}
 
 /**
  * 归一化投影：lng→x（左西右东），lat→y（翻转使北在上）。
