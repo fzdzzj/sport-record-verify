@@ -482,5 +482,20 @@
 | 独立复核结论与裁决 | 独立复核子 Agent 实跑全过（总体 **PASS**，BLOCKER 0，三权分立严格履行）：10 个白名单文件严丝合缝；后端 168 测与前端全套门禁独立实测稳定全绿；B11 彻底隔绝了死信毒丸对热轮询扫描的污染，B12 阻断了规则失效瞬时击穿打爆 DB 的风险，B13 解除了好友申请双向永久死锁的系统缺陷；终审裁定 **ACCEPT 予以封盘** |
 | 状态 | TASK-243 本地闭环，指导侧终裁 **ACCEPT 予以封盘** |
 
+## 验收记录：`TASK-244`（治理闭环、存储优化与高并发防爆——申诉待审列表驱动、通知索引慢查消除与批量已读、总榜Redis内存防爆与定时结算对账补偿，MEDIUM 档，2026-10-15）
+
+| 项 | 内容 |
+| --- | --- |
+| 开工基线 | `a870d1c`（main 分支，工作树干净，TASK-244 方案 C 立项准备基线） |
+| C-01 实施笔 | `e753b39` `feat(governance): TASK-244 治理闭环、存储优化与高并发防爆（C-01 实施笔）`（恰 15 文件，+435/−21） |
+| C-02 任务两件套 | `0c7b7a5` `docs(mailbox): TASK-244 治理闭环、存储优化与高并发防爆验收与台账闭环（C-02 台账笔）`（恰 2 文件，+245/−0） |
+| 任务内容与白名单 | 相对开工基线恰 17 文件 = 白名单全等（实施 15 文件 + 任务两件套 2 文件）；生产 record-service、网关、pom.xml、package.json 及红线文件 100% 零触碰，零新外部依赖 |
+| 核心实现 | ① B15 申诉待审队列与管理后台表格驱动闭环：`VerifyController.java` 新增 `@GetMapping("/pending")`，`VerifyService.java` 实现 `listPendingAppeals()` 过滤 `PENDING` 申诉并按 id 倒序返回；前端 `client.ts` 导出 `fetchPendingAppeals()`；`admin-appeal.page.vue` 增加「待审核申诉列表」卡片与表格，支持初载与终判自动加载并具备「填入审核」一键联动，彻底终结盲打 ID；VerifyControllerTest 与 client.test.ts 单测全覆盖；② B16 记录删除与榜单回撤自动对账自愈：`LeaderboardContributionMapper.java` 新增 `selectOrphanContributions`（NOT EXISTS 查已被物理删除记录的残留 ACTIVE 贡献）；`LeaderboardService.java` 在 `settleAndReconcile` 结算期间自动识别孤儿贡献行并调用 `updateStatus` 迁移为 `ROLLED_BACK`，从当期 target/ZSet 剔除；LeaderboardServiceTest 单测全覆盖；③ B17 通知中心索引优化与批量标记已读：`sql/01-user-db.sql` 补齐 `KEY idx_user_id (user_id, id)`；新增幂等迁移脚本 `sql/migrations/add-idx-notification-user-id.sql`，彻底消除分页慢排序 `Using filesort`；`NotificationController.java` 新增 `@PatchMapping("/batch-read")`，`NotificationService.java` 实现 `batchMarkRead(userId, ids)` 批量更新并触发回执；前端 `client.ts` 导出 `batchMarkNotificationsAsRead`，`notifications.page.vue` 表格开启行多选复选框并支持「批量标记已读」；NotificationServiceTest 与 client.test.ts 单测全覆盖；④ B18 总榜 Redis 内存防爆与倾倒重构：`LeaderboardService.java` 的 `settleAndReconcile` 彻底重构移除 `range(OVERALL_ZSET_KEY, 0, -1)` 全量 dump 进 JVM，改为基于 `opsForZSet().scan(...)` 游标分批遍历比对（带 null 安全与异常防护）；结算末尾执行 `removeRange` 容量截断保留前 10,000 名，防止未活跃成员无限堆积打爆 Redis 内存；LeaderboardServiceTest 补齐单测 |
+| 本机门禁 | 后端 `mvn -B -ntp -o -s .mvn-settings.xml clean test -pl verify-service,user-service,leaderboard-service -am` BUILD SUCCESS（Reactor 6 模块全绿，verify 169 / user 189 / leaderboard 91 用例全部通过，rc=0）；前端 `pnpm run type-check` 0 错误（rc=0）；前端单测 4 文件 41 测全过（rc=0）；契约门 `mailbox-contract.sh --open=TASK-244 --baseline=a870d1c` 退出码 0（判据 A 两件套齐 + 判据 B 清单一致，0 在途） |
+| 是否到达外部门槛 | **未到达**：C-01/C-02 已提交，待指导侧统一提交台账闭环笔并随批推送触发 CI 外部终验 |
+| 独立复核结论与裁决 | 独立复核子 Agent 实跑全过（总体 **PASS**，BLOCKER 0，三权分立严格履行）：17 个白名单文件严丝合缝；后端 449 测、前端类型与 41 测及契约门禁独立实测稳定全绿；B15 终结了盲打 ID，B16 实现了跨服务离线自愈，B17 消除了慢排序并打通多选批量操作，B18 治理了内存倾倒与 Redis 膨胀隐患；终审裁定 **ACCEPT 予以封盘** |
+| 状态 | TASK-244 本地闭环，指导侧终裁 **ACCEPT 予以封盘** |
+
+
 
 
