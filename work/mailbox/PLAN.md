@@ -2,7 +2,7 @@
 
 ## 当前进度与外部基线
 
-- **最新代码基线与分支**：`main` 分支，最新已封盘至 **TASK-236**（HEAD `b6699f2` / `b41fe19`）。
+- **最新代码基线与分支**：`main` 分支，最新已封盘至 **TASK-237**（HEAD `1d37ed0` / `8177e97`）。
 - **会话无缝交接看板**：新主 Agent 接手状态与下一步动作见 [HANDOVER.md](HANDOVER.md)（原地滚动更新，免建新交接文档）。
 - **CI 外部门槛状态**：GitHub Actions run `38586443704`（HEAD `aee5ca0`，web ✓31s / build ✓11m46s 全 job 绿）。包含全模块 clean verify、Checkstyle/SpotBugs/PMD 静态门、Docker 镜像构建与 Trivy 依赖扫描。
 - **历史记录归档索引**：早期 100+ 笔验收记录（TASK-001 至 TASK-210）已完整归档至 [PLAN-history-001-210.md](archive/PLAN-history-001-210.md)。各任务的原始契约与回传留存见 `work/mailbox/tasks/TASK-xxx/`。
@@ -384,3 +384,16 @@
 | 独立复核结论与裁决 | 指导侧独立四块核验全过（总体 **PASS**，BLOCKER 0，偏差 D1~D2 合规解释）：4 个实施文件 + 2 个两件套严丝合缝全等白名单；前端全套验证与契约门禁独立实测稳定全绿；点赞交互、防抖与 6001 状态防呆严谨自洽，终审裁定 **ACCEPT 予以封盘** |
 | 状态 | TASK-236 本地闭环，指导侧终裁 **ACCEPT 予以封盘** |
 
+## 验收记录：`TASK-237`（全链路闭环体验补齐：记录申诉前台打通、通知中心交互下钻与顶栏登录感知，MEDIUM 档，2026-10-15）
+
+| 项 | 内容 |
+| --- | --- |
+| 开工基线 | `e745c25`（main 分支，工作树干净） |
+| C-01 实施笔 | `1d37ed0` `feat(web): TASK-237 全链路闭环体验补齐——申诉直通、通知下钻与顶栏登录感知（C-01 实施笔）`（恰 5 文件，+118/−16） |
+| C-02 任务两件套 | `8177e97` `docs(mailbox): TASK-237 全链路闭环体验补齐验收与台账闭环（C-02 台账笔）`（恰 2 文件，+160/−0） |
+| 任务内容与白名单 | 相对开工基线恰 7 文件 = 白名单全等（实施 5 文件 + 任务两件套 2 文件）；生产后端代码、配置及红线文件 100% 零触碰，零新外部依赖 |
+| 核心实现 | ① 首页被拒记录申诉直通：`index.page.vue` 列表操作列新增 `canAppeal(status)` 门控（1 校验中 / 3 拒绝 / 6 维持拒绝 / 7 人工审核）→「判定/申诉」链接，`goVerdict` 带 `query.id` 直达 `/verdict`，彻底终结手动敲 URL 查因的断层体验；既有「查看轨迹」「删除」保留不变；② 记录详情页申诉引导：`record-detail.page.vue` 摘要卡片在 `verdict === 2`（拒绝）时渲染警告提示与直达按钮，一键带参直通 `/verdict?id=${recordId}`；③ 通知中心交互下钻与自动已读：`notifications.page.vue` 表格 `title`/`sourceId` 列对可下钻通知渲染链接——`RECORD_*` 跳详情（`RECORD_REJECTED` 直达判定页）、`FRIEND_ACCEPTED` 跳好友页，未读项点击自动 `markNotificationRead` 并刷新角标（失败静默不阻断跳转）；④ 顶栏登录态感知与设置入口：`App.vue` 顶栏根据 `loggedIn` 动态渲染，登录态展示「已登录: USER/ADMIN」身份标签 +「设置」（跳 `/settings`）+「退出」，未登录恢复「注册/登录」；⑤ E2E 断言对齐：`top-nav.e2e.ts` 对齐「设置」导航验证与退出后登录态恢复断言，全量 12 测稳定全绿 |
+| 本机门禁 | 前端 `type-check` 0 错误（rc=0）；`pnpm test` 4 套 32 测全过（rc=0）；`pnpm build` 3317 modules 产出成功（19.62s，rc=0）；Playwright E2E 本地全量实跑 **12 passed (38.1s)** 100% 全绿（rc=0）；契约门 `mailbox-contract.sh --open=TASK-237 --baseline=e745c25` 退出码 0（判据 A 两件套齐 + 判据 B 清单一致） |
+| 是否到达外部门槛 | **未到达**：C-01/C-02 已提交，待指导侧统一提交台账闭环笔并随批推送触发 CI 外部终验 |
+| 独立复核结论与裁决 | 指导侧独立四块核验全过（总体 **PASS**，BLOCKER 0，偏差 D1~D3 合规解释）：5 个实施文件 + 2 个两件套严丝合缝全等白名单；前端全套验证与契约门禁独立实测稳定全绿；D3 认定 ref 承载 localStorage 登录态并由 logout/watch 同步属合理设计防陈旧值；终审裁定 **ACCEPT 予以封盘** |
+| 状态 | TASK-237 本地闭环，指导侧终裁 **ACCEPT 予以封盘** |
