@@ -2,9 +2,9 @@
 
 ## 当前进度与外部基线
 
-- **最新代码基线与分支**：`main` 分支，最新已封盘至 **TASK-246**（本地已合盘，HEAD `be3853e`；外部已推送至 `0cd9db0` TASK-244）。
+- **最新代码基线与分支**：`main` 分支，最新已封盘至 **TASK-246**（HEAD `a6701b0`，已全量推至 `origin/main`）。
 - **会话无缝交接看板**：新主 Agent 接手状态与下一步动作见 [HANDOVER.md](HANDOVER.md)（原地滚动更新，免建新交接文档）。
-- **CI 外部门槛状态**：GitHub Actions run `38746969796`（HEAD `0cd9db0`，web ✓41s / build ✓11m57s 全 job 绿）。包含全模块 clean verify、Checkstyle/SpotBugs/PMD 静态门、Docker 镜像构建与 Trivy 依赖扫描。
+- **CI 外部门槛状态**：GitHub Actions run `38774258105`（HEAD `a6701b0`，web ✓20s / build ✓11m41s 全 job 绿）。包含全模块 clean verify、Checkstyle/SpotBugs/PMD 静态门、Docker 镜像构建与 Trivy 依赖扫描。
 - **历史记录归档索引**：早期 100+ 笔验收记录（TASK-001 至 TASK-210）已完整归档至 [PLAN-history-001-210.md](archive/PLAN-history-001-210.md)。各任务的原始契约与回传留存见 `work/mailbox/tasks/TASK-xxx/`。
 - **候选规划与待办状态**：后续方向候选（F/H 系列）与排期规划统一定位在 [BACKLOG.md](BACKLOG.md)。
 
@@ -506,7 +506,7 @@
 | 任务内容与白名单 | 相对开工基线恰 21 文件 = 19 白名单 + 经主 Agent 决策（方案 B）放宽的 2 个 api DTO 契约文件（`SportRecordDTO` 与 `FriendRequestDTO`）；生产 verify-service、leaderboard-service、gateway-service、pom.xml、package.json 及红线文件 100% 零触碰，零新外部依赖 |
 | 核心实现 | ① B22+B29 记录详情全能卡与可见性修改：`RecordController` 新增 `PATCH /records/{id}/visibility`（0/1/2 严格校验，非本人 403）与 `GET /records/{id}`；`SportRecordService` 实现值域校验与归属防护；`record-detail.page.vue` 补齐运动指标卡（🏃/🚴/🚶 中文类型、里程 km、耗时、平均配速）+ 原地可见性下拉切换即保存；SVG 起终点高亮特征颜色（绿色起点 `#52c41a`、红色终点 `#ff4d4f`）；② B26 申诉全链路透明追踪：`SportRecordService` 新增 `getAppeal` 由记录状态权威推导申诉进度/结论；`verdict.page.vue` 彻底移除跳转管理后台（403）的荒谬外链，引入 `<a-steps>` 进度条组件，已有申诉自动回显并禁用重复提交防 3005 冲突；③ B25 用户资料维护与好友批量操作：`UserController` 新增 `GET/PUT /api/user/profile` 支持查看与修改用户昵称；`FriendService.listPendingRequests` 批量补齐申请人真实昵称 `fromNickname`；`FriendController` 新增 `batch-accept` 与 `batch-reject` 端点；`settings.page.vue` 增加个人资料卡片；`friends.page.vue` 表格开启行多选复选框并支持「批量同意」与「全部忽略」；④ B27 动态流视觉与空态引导：`feed.page.vue` 卡片头部增加首字主题彩色头像与中文运动类型徽标；空态采用 `<a-result>` 丰富展示并提供「去添加好友」「去记录运动」引导按钮；⑤ B28 轨迹 GPX 文件导入解析：`gpx.ts` 新增纯正则实现的 `parseGpx`（零依赖，鲁棒提取经纬度并补齐 seq/speed/ts 递推）；`record-submit.page.vue` 增加「导入 GPX 文件」支持拖拽/选择文件自动解析填入表单并推导时间与距离；⑥ 测试全套强化：新增 `FriendServiceTest`（批量与资料）、`SportRecordServiceTest`（详情与可见性）、`gpx.test.ts`（11 测）、`client.test.ts` 契约扩充（32 测） |
 | 本机门禁 | 后端 `mvn -B -ntp -o -s .mvn-settings.xml clean test -pl record-service,user-service -am` BUILD SUCCESS（Tests run: 298, Failures: 0, Errors: 0，rc=0）；前端 `pnpm run type-check` 0 错误（rc=0）；前端单元测试 4 套 55 测全过（rc=0）；契约门 `mailbox-contract.sh --open=TASK-245 --baseline=6f4d766` 退出码 0（判据 A 两件套齐 + 判据 B 清单一致，0 在途） |
-| 是否到达外部门槛 | **未到达**：C-01/C-02 已提交，待指导侧统一提交台账闭环笔并随批推送触发 CI 外部终验 |
+| 是否到达外部门槛 | **已到达**：随批推送 a6701b0 后经第 56 次 CI（run 38774258105）conclusion=success 全 job 绿（web ✓20s / build ✓11m41s 外部终验全过） |
 | 独立复核结论与裁决 | 独立复核子 Agent 实跑全过（总体 **PASS**，BLOCKER 0，三权分立严格履行）：改动集恰 21 文件（19 白名单 + 2 如实披露的 api DTO）；后端 298 测、前端类型与 55 测及契约门禁独立实测稳定全绿；B22/B29/B26/B25/B27/B28 端到端打通了前台高频交互，彻底终结了外链越权、盲打与无头像等断层体验；终审裁定 **ACCEPT 予以封盘** |
 | 状态 | TASK-245 本地闭环，指导侧终裁 **ACCEPT 予以封盘** |
 
@@ -520,7 +520,7 @@
 | 任务内容与白名单 | 相对开工基线恰 19 文件 = 18 业务/测试文件 + 1 台账文件 `handoff.md`；含对既有断言适配的 `LeaderboardCacheInvocationTest.java`（旧断言与 B23 缓存机制互斥，已如实披露并满足契约判据 B）；生产 record-service、根与各子模块 pom.xml、package.json 及红线文件 100% 零触碰，零新外部依赖 |
 | 核心实现 | ① B20 Outbox 历史清理与毒丸人工重放：`VerifyEventOutboxMapper` 新增 `selectExhausted`（查 EXHAUSTED 毒丸行）、`replayExhausted`（`SET status='PENDING', retry_count=0 WHERE id=#{id} AND status='EXHAUSTED'` 幂等重放）、`cleanSentEvents`（`DELETE WHERE status='SENT' AND sent_at < #{before} LIMIT #{limit}` 分批删除）；`VerifyController` 新增 `GET /api/outbox/exhausted`（limit cap 200）、`POST /api/outbox/exhausted/{id}/replay`、`DELETE /api/outbox/sent`（默认 7 天）；前端 `client.ts` 导出三个 API，`admin.page.vue` 增加「Outbox 消息补偿与死信看板」卡片支持初载、一键重放与清理；`VerifyControllerTest` 8 测覆盖；② B21 通知中心历史清理与索引补齐：`sql/01-user-db.sql` 为 `notification` 表补齐 `KEY idx_read_created (is_read, created_at)`；新增幂等迁移脚本 `sql/migrations/add-idx-notification-read-created.sql`；`NotificationMapper` 新增 `cleanExpiredReadNotifications` 与 `cleanUserReadNotifications`；`NotificationService` 增加参数校验与清理；`NotificationController` 新增 `DELETE /api/notifications/read`（X-User-Id 认定清空本人已读）与 `DELETE /api/notifications/expired`；前端 `notifications.page.vue` 增加「清空已读」危险按钮与确认弹窗；`NotificationServiceTest` 4 测全覆盖；③ B23 好友榜本地多级缓存防穿透：`LeaderboardService` 引入专用 Caffeine 缓存（15s TTL、maximumSize 2000，Key=`userId:size`）；`topFriends` 优先命中本地缓存返回，未命中拉取后非空回填（空榜不缓存防背锅）；`LeaderboardServiceTest` 与 `LeaderboardCacheInvocationTest` 验证二次调用命中缓存且 Feign/Pipeline 次数不增；④ B24 网关未捕获异常统一标准包装：`gateway-service` 新增 `GatewayExceptionHandler`（实现 `ErrorWebExceptionHandler` 与 `Ordered`，Order=-1），拦截 `ResponseStatusException`、`ConnectException`（503）、`TimeoutException`（504）、404、通用 500，统一输出 `application/json;charset=UTF-8` 的 `{"code":status,"message":msg,"data":null}` Result 契约 JSON；严格遵循网关零 common 依赖边界；`GatewayExceptionHandlerTest` 7 测全覆盖 |
 | 本机门禁 | 后端 `mvn -B -ntp -o -s .mvn-settings.xml clean test -pl verify-service,user-service,leaderboard-service,gateway-service -am` BUILD SUCCESS（Reactor 7 模块全绿，user-service 200 测、leaderboard-service 92 测全部通过，rc=0）；前端 `pnpm run type-check` 0 错误（rc=0）；前端单测 4 文件 61 测全过（rc=0）；契约门 `mailbox-contract.sh --open=TASK-246 --baseline=fa9858a` 退出码 0（判据 A 两件套齐 + 判据 B 清单一致，0 在途） |
-| 是否到达外部门槛 | **未到达**：C-01/C-02 已提交，待指导侧统一提交台账闭环笔并随批推送触发 CI 外部终验 |
+| 是否到达外部门槛 | **已到达**：随批推送 a6701b0 后经第 56 次 CI（run 38774258105）conclusion=success 全 job 绿（web ✓20s / build ✓11m41s 外部终验全过） |
 | 独立复核结论与裁决 | 独立复核审查官实跑全过（总体 **PASS**，BLOCKER 0，三权分立严格履行）：19 个改动文件严丝合缝；后端、前端类型、前端单测与契约门禁独立实测稳定全绿；B20 建立了死信排查自愈通道并消除了历史消息膨胀，B21 补齐了索引并打通了历史与用户已读治理，B23 根除了高并发下好友榜对 user-service 的穿透雪崩风险，B24 终结了非标 HTML 报错保证了全站 Result 契约统一；终审裁定 **ACCEPT 予以封盘** |
 | 状态 | TASK-246 本地闭环，指导侧终裁 **ACCEPT 予以封盘** |
 
