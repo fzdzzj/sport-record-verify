@@ -11,7 +11,7 @@
 - **当前分支与 HEAD**：`main` 分支，最新实施提交为 `b50829a`（C-01）与 `3f6856c`（C-02），封盘笔随本提交闭环。
 - **外部 CI 门槛状态**：GitHub Actions run `38692154084`（`web` ✓30s / `build` ✓12m10s 全绿）。
 - **工作树状态**：TASK-243 独立复核全绿，在途文件已完成台账归档。
-- **当前在途任务数**：`0` 个在途（历史任务至 TASK-243 全部已闭环收口）。
+- **当前在途任务数**：`1` 个（TASK-244 方案 C 开工在途：B15 申诉待审列表与表格驱动 + B16 记录删除与榜单回撤对账补偿 + B17 通知中心排序索引与批量标记 + B18 总榜 Redis 内存防爆与倾倒重构）。
 
 ---
 
@@ -46,11 +46,13 @@
 
 ---
 
-## 4. 下一个主 Agent 的唯一推荐动作
+## 4. 当前推进与唯一推荐动作
 
-- **推荐动作**：
-  1. 推进 **方案 C（TASK-244 拟，MEDIUM 档）**：B15（申诉待审列表与表格驱动）+ B16（删除回撤离线对账补偿）+ B17（通知批量处理与索引优化）+ B18（总榜 Redis 裁剪与倾倒重构）；
-  2. 或执行 `git push origin main` 批量推送已封盘批次触发 GitHub Actions 远端全量 CI 外部终验（当前本地领先 origin/main 18 笔提交）。
+- **当前推进**：**方案 C（TASK-244，MEDIUM 档）**
+  - B15：`VerifyController` 增加 `GET /api/appeals/pending` 待审申诉队列接口；前端 `admin-appeal.page.vue` 增加表格驱动列表并支持一键填充审核，终结盲打 ID；
+  - B16：`LeaderboardService` 在定时结算中引入孤儿贡献对账补偿，自动识别并清理已物理删除记录的残留 ACTIVE 贡献，实现跨服务删除失败后的定时离线补偿自愈；
+  - B17：`sql/01-user-db.sql` 为 `notification` 表补充 `KEY idx_user_id (user_id, id)` 消除慢排序；后端增加 `PATCH /api/notifications/batch-read` 批量标记，前端表格支持行复选与批量标记；
+  - B18：`LeaderboardService` 重构定时结算 `range(0,-1)` 内存倾倒为游标/批次迭代扫描，消除全网成员一次性 dump 进 JVM 堆的 GC 顿挫与 OOM 隐患，并增加总榜容量限制保护。
 - **开工准备**：按 `docs/internal/AGENTS.md` 的「极简任务派发包模板」为子 Agent 派发。
 
 ---
