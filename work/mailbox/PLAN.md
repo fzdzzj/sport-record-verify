@@ -467,6 +467,20 @@
 | 是否到达外部门槛 | **未到达**：C-01/C-02 已提交，待指导侧统一提交台账闭环笔并随批推送触发 CI 外部终验 |
 | 独立复核结论与裁决 | 独立复核子 Agent 实跑全过（总体 **PASS**，BLOCKER 0，三权分立严格履行）：11 个白名单文件严丝合缝；后端 183 测、前端类型与 39 测及契约门禁独立实测稳定全绿；B10 消除了核心周期榜慢查，B14 补齐了好友社交删除动作与初载断层，B19 修复了目标次数常理小数违和并提升了空态体验；终审裁定 **ACCEPT 予以封盘** |
 | 状态 | TASK-242 本地闭环，指导侧终裁 **ACCEPT 予以封盘** |
+ 
+## 验收记录：`TASK-243`（核心服务高可用与容灾加固——Outbox死信隔离、规则缓存防击穿硬化与好友申请超时防死锁，MEDIUM 档，2026-10-15）
+
+| 项 | 内容 |
+| --- | --- |
+| 开工基线 | `cf2deae`（main 分支，工作树干净，TASK-243 方案 B 立项准备基线） |
+| C-01 实施笔 | `b50829a` `feat(reliability): TASK-243 核心服务高可用与容灾加固（C-01 实施笔）`（恰 8 文件，+226/−28） |
+| C-02 任务两件套 | `3f6856c` `docs(mailbox): TASK-243 核心服务高可用与容灾加固验收与台账闭环（C-02 台账笔）`（恰 2 文件，+232/−0） |
+| 任务内容与白名单 | 相对开工基线恰 10 文件 = 白名单全等（实施 8 文件 + 任务两件套 2 文件）；生产前端、网关、pom.xml、package.json 及红线文件 100% 零触碰，零新外部依赖 |
+| 核心实现 | ① B11 Outbox 毒丸事件防死信扫描劣化：`sql/03-verify-db.sql` 注释补充 `EXHAUSTED` 说明；`VerifyEventOutboxMapper.java` 新增 `markExhausted(id)` 端点（带 `status = 'PENDING'` 幂等防护）；`VerifyOutboxRelay.java` 抽取公共 `onRowFailure` 处理失败，在投递或标记达到 `maxRetry`（16 次）时调用 `markExhausted` 将消息移入 `EXHAUSTED` 终态并记录 error 告警（`totals.exhausted++`），彻底移出 `PENDING` 扫描集消除 I/O 放大；新增 4 个单测全绿；② B12 规则缓存并发防击穿硬化：`RuleCacheService.java` 在 `rebuildFromDb` 未获锁分支增加至多 3 次（50ms 间隔）轮询重读 Redis 机制，命中有效值或 EMPTY 哨兵直接回填本地 Caffeine 并返回，避免并发线程回源打穿 `rule_version` DB；单测断言 `dbLoader.get()` 触发 0 次；③ B13 好友申请生命周期闭环与防死锁：`FriendService.java` 在 `createRequest` 中对创建时间早于 7 天前的同向/反向 PENDING 申请做惰性流转至 `CANCELLED(3)`，解除互斥阻断并允许创建新单，根除双向永久死锁；`listPendingRequests` 增加 7 天内有效过滤；单测全覆盖 |
+| 本机门禁 | 后端 `mvn -B -ntp -o -s .mvn-settings.xml clean test -pl verify-service,user-service -am` BUILD SUCCESS（Tests run: 168, Failures: 0, Errors: 0，rc=0）；前端 `pnpm run type-check` 0 错误（rc=0）；前端单测 4 套 39 测全过（rc=0）；契约门 `mailbox-contract.sh --open=TASK-243 --baseline=cf2deae` 退出码 0（判据 A 两件套齐 + 判据 B 清单一致，0 在途） |
+| 是否到达外部门槛 | **未到达**：C-01/C-02 已提交，待指导侧统一提交台账闭环笔并随批推送触发 CI 外部终验 |
+| 独立复核结论与裁决 | 独立复核子 Agent 实跑全过（总体 **PASS**，BLOCKER 0，三权分立严格履行）：10 个白名单文件严丝合缝；后端 168 测与前端全套门禁独立实测稳定全绿；B11 彻底隔绝了死信毒丸对热轮询扫描的污染，B12 阻断了规则失效瞬时击穿打爆 DB 的风险，B13 解除了好友申请双向永久死锁的系统缺陷；终审裁定 **ACCEPT 予以封盘** |
+| 状态 | TASK-243 本地闭环，指导侧终裁 **ACCEPT 予以封盘** |
 
 
 
