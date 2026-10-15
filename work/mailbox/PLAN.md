@@ -2,7 +2,7 @@
 
 ## 当前进度与外部基线
 
-- **最新代码基线与分支**：`main` 分支，最新已封盘至 **TASK-233**（HEAD `5e675e1` / `d375b8e` / `64459c8`）。
+- **最新代码基线与分支**：`main` 分支，最新已封盘至 **TASK-234**（HEAD `169e367` / `54977f5`）。
 - **会话无缝交接看板**：新主 Agent 接手状态与下一步动作见 [HANDOVER.md](HANDOVER.md)（原地滚动更新，免建新交接文档）。
 - **CI 外部门槛状态**：GitHub Actions run `38586443704`（HEAD `aee5ca0`，web ✓31s / build ✓11m46s 全 job 绿）。包含全模块 clean verify、Checkstyle/SpotBugs/PMD 静态门、Docker 镜像构建与 Trivy 依赖扫描。
 - **历史记录归档索引**：早期 100+ 笔验收记录（TASK-001 至 TASK-210）已完整归档至 [PLAN-history-001-210.md](archive/PLAN-history-001-210.md)。各任务的原始契约与回传留存见 `work/mailbox/tasks/TASK-xxx/`。
@@ -341,6 +341,21 @@
 | 是否到达外部门槛 | **未到达**：C-01/C-02/C-03 已提交，待指导侧统一提交台账闭环笔并随批推送触发 CI 外部终验 |
 | 独立复核结论与裁决 | 用户派发独立复核子 Agent 终审四块全过（技术面 ①②③ 全绿，Playwright E2E 12 passed 全绿实证；④ 揭示 BLOCKER-1 计时窗口需从 2s 上调至 10s）；实施侧通过 C-03 订正笔（`64459c8`）彻底消除 BLOCKER-1，恢复 3.3 倍反死锁判别余量，测试与台账如实闭环 |
 | 状态 | TASK-233 本地闭环，指导侧终裁 **ACCEPT 予以封盘**；T1 与 H5 挂账彻底清偿 |
+
+## 验收记录：TASK-234（原有功能健壮化：物理合理性推导、榜单周期联调与目标边界防御，MEDIUM 档，2026-10-15）
+
+| 项 | 内容 |
+| --- | --- |
+| 开工基线 | `0224ea4`（main 分支，工作树干净） |
+| C-01 实施笔 | `169e367` `feat(record,web): TASK-234 原有功能健壮化——物理合理性推导/榜单周期联调/目标边界防御`（恰 7 文件，+507/−14） |
+| C-02 台账两件套 | `54977f5` `docs(mailbox): TASK-234 物理合理性推导/榜单周期联调/目标边界防御验收与台账闭环（TASK-234）`（恰 2 文件） |
+| 任务内容与白名单 | 相对开工基线恰 9 文件 = 白名单全等（实施 7 文件 + 任务两件套 2 文件）；红线文件（pom.xml、package.json、client.ts、PLAN.md、HANDOVER.md）100% 零触碰，零新外部依赖 |
+| 核心实现 | ① 记录提交物理合理性与自动推导：`SportRecordService.submit` 增加物理合理性校验（显式或推导后的 `startTime <= endTime`、`startTime` 不得为未来时间），未显式提供且 points 非空时，逐字段自动推导补齐——首末点时间/时长（UTC 墙钟）、相邻点球面 Haversine 累加距离（保留两位对齐 DECIMAL(8,2)），根治库内关键指标落 NULL 脏数据；前端 `record-submit.page.vue` 加载样例时提取并带齐推导字段；② 榜单周期查询死逻辑修复：`leaderboard.page.vue` 重构为 `lbMode`（`range` 周期视图与 `zset` 总榜视图），激活「今日 / 本周 / 本月」对 `getLeaderboardRange` 的真实调用，死代码彻底消除；③ 运动目标边界与整数性收紧：`GoalService.upsertGoal` 对 `metric=1`（次数）采用 `stripTrailingZeros().scale() <= 0` 强制要求正整数（安全放行 `8.00` 等尾零数值），设置 `<= 10000` 合理上限防溢出；周期窗口过滤由 `createdAt` 改为 `COALESCE(start_time, created_at)`，离线补传运动归属周期得到修正；④ 前端展示细节补齐：`index.page.vue` 补齐 `visibility === 0` 绿色「公开」标签 |
+| 本机门禁 | 后端 Maven 单测 **275** 测全绿（净增 13 测，0 失败 0 错误，BUILD SUCCESS [03:19 min]）；前端 `type-check` 0 错误；`pnpm test` 4 套 32 测全过；`pnpm build` 3317 modules 产出成功（21.08s）；Playwright E2E 本地全量实跑 **12 passed (42.5s)** 100% 全绿；无参契约门 `mailbox-contract.sh` rc=0 |
+| 是否到达外部门槛 | **未到达**：C-01/C-02 已提交，待指导侧统一提交台账闭环笔并随批推送触发 CI 外部终验 |
+| 独立复核结论与裁决 | 指导侧独立四块核验全过（总体 **PASS**，BLOCKER 0，偏差 D1~D4 均合规解释与复验清除）：7 个实施文件 + 2 个两件套严丝合缝全等白名单；六道门禁全量独立复跑稳定全绿；实施侧误判的 D1（bash 不可用）经指导侧使用 `D:\git\Git\bin\bash.exe` 实跑官方契约脚本验证完全通过（rc=0）；技术与业务实现严谨，终审裁定 **ACCEPT 予以封盘** |
+| 状态 | TASK-234 本地闭环，指导侧终裁 **ACCEPT 予以封盘** |
+
 
 
 
