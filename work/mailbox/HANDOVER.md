@@ -8,16 +8,20 @@
 
 ## 1. 当前代码基线与外部状态
 
-- **当前分支与 HEAD**：`main` 分支，最新已封盘任务为 **TASK-247**（C-01 `89ba3d1` / C-02 `47f1ecb` / 封盘笔 `1b92d19`，批次已推至 `origin/main` 且 CI run `38782194561` 全绿，外部终验达成）。
-- **外部 CI 门槛状态**：TASK-247 封盘批次 GitHub Actions run `38782194561`（HEAD `1b92d19`，`web` ✓31s / `build` ✓10m49s 全绿通过，外部终验达成）；补记笔已本地落库，随下一课题批次统一推送，不单独推送。
-- **工作树状态**：干净（TASK-247 封盘批次 4 笔已推至 `origin/main` 且 CI 全绿；本地保留补记笔 1 笔待随下一批次推送）。
-- **当前在途任务数**：`1` 个（**TASK-248**：B23 覆盖增强——好友榜 15s 本地缓存「空榜不缓存防背锅」显式单测断言，MEDIUM 档纯测试新增，2026-10-16 立项，待实施）。
+- **当前分支与 HEAD**：`main` 分支，最新已封盘任务为 **TASK-248**（B23 覆盖增强，C-01 `1ed6f57` / C-02 `d7fa60d` / 封盘笔即本笔；TASK-247 补记笔 `c975f24` 随本批次统一推送）。
+- **外部 CI 门槛状态**：TASK-248 封盘批次（5 笔：补记笔 `c975f24` + 立项笔 `770fc40` + C-01 `1ed6f57` + C-02 `d7fa60d` + 封盘笔）随封盘推送，CI 外部终验观察中（MEDIUM 档收口口径：CI 外部终验即收口）；上一批次 TASK-247 CI run `38782194561` 全绿，外部终验达成。
+- **工作树状态**：干净（封盘批次推送后与 `origin/main` 同步）。
+- **当前在途任务数**：`0` 个（TASK-248 已封盘，待 CI 外部终验读数补记）。
 
 ---
 
 ## 2. 上一会话交付成果
 
 - **刚闭环事项**：
+  1. 落地 **TASK-248**（B23 覆盖增强——好友榜 15s 本地缓存「空榜不缓存防背锅」机制补齐显式单测断言，MEDIUM 档纯测试新增）：
+     - R1 `emptyBoardFromDegradation_isNotCached_secondCallRefreshesOnRecovery`（核心防背锅语义）：`listFriends` 首次 `thenThrow` → 第一调断空榜；沿 `LeaderboardServiceTest` L380 先例以 `doReturn(...).when(...)` 重打桩恢复 → 第二调断非空；`verify(userApi, times(2))` 锁定「降级空榜未进缓存、两次均真实穿透 Feign」——若误去掉 `isEmpty` 判定即断言失败；Pipeline 计数按实际执行路径校正 `times(1)`（首次降级未触达 Pipeline，经用户确认登记 handoff §4）；
+     - R2 `emptyBoardFromNoFriends_isNotCached_secondCallPenetratesAgain`：无好友空页（total=0）连续两调均空、`times(2)` 同口径穿透；
+     - 零生产代码改动、零新外部依赖、未删弱任何既有断言；白名单恰 3 文件全等；后端 leaderboard-service 94 测全绿（`LeaderboardCacheInvocationTest` 3→5，只增不减）+ 前端 61 测 + 契约/token（2011 持平）/词面门全过；MEDIUM 档免独立复核子agent，指导侧亲核三块 PASS（紧凑 Git 摘要 + R1/R2 定向抽查 + 回报一致性裁决）。
   1. 落地 **TASK-247**（候选 H2：E5 生产部署姿态演练——CORS 动态多域名注入、跨域 Cookie 凭证透传与 TLS 终止协同，MEDIUM 档）：
      - R1 CORS 生产多域名动态注入：真实网关上下文（RANDOM_PORT）注入 `CORS_ALLOWED_ORIGINS=https://sports.example.com,https://admin.example.com`，真实 HTTP 预检 OPTIONS 断言白名单 Origin 回显 `Access-Control-Allow-Origin` + `Access-Control-Allow-Credentials: true`，恶意 Origin（`https://attacker.com`）不返回 CORS 头；
      - R2 反向代理 TLS 终止与协议感知：`server.forward-headers-strategy: framework` 落地，`ForwardedHeaderTransformer`（framework 等价适配器）断言 `X-Forwarded-Proto/Host/Port` → scheme https，application.yml 资源文件断言声明 framework；
@@ -65,8 +69,8 @@
 1. **子 Agent 边界**：子 Agent 严禁修改 `work/mailbox/PLAN.md` 与本文件，子 Agent 仅在自身 `work/mailbox/tasks/TASK-xxx/` 下提交回传。
 2. **契约校验口径**：运行 `scripts/verify/mailbox-contract.sh` 必须在 Git Bash（`D:\git\Git\bin\bash.exe`）下执行；无参模式短路跳过判据 B，白名单一致性以开工 `--open` 与直接 `git diff` 为准。
 3. **挂账候选事项**：
-   - `TASK-247` 补记笔（CI run `38782194561` 外部终验登记）已本地落库，随下一课题批次统一推送，不单独推送；
-   - `B23 覆盖增强`（好友榜缓存空榜防背锅的显式单测断言）：已立项为 **TASK-248**（2026-10-16，MEDIUM 档纯测试新增）在途，任务书 `work/mailbox/tasks/TASK-248/spec.md`；
+   - `TASK-247` 补记笔（CI run `38782194561` 外部终验登记，`c975f24`）已随 TASK-248 封盘批次统一推送（2026-10-16）；
+   - `B23 覆盖增强`（好友榜缓存空榜防背锅的显式单测断言）：已封盘 **TASK-248**（2026-10-16，`1ed6f57` / `d7fa60d`，指导亲核 PASS；CI 外部终验读数待补记）；
    - **CI runner 预警**：GitHub `ubuntu-latest` 将于 2026-10-19 起迁移至 Ubuntu 26（当前 run 已附 deprecation 注解：Node 20 actions 强制跑于 Node 24、`actions/setup-java@v4` 停更），迁移后首个 CI run 需重点观察，若红按环境签名归因登记，不盲目重试刷绿；
    - 申诉审核意见（verify_db）透出限制：受限与 verify-service 红线，当前前台申诉进度条由记录状态推导，结论权威可靠。
 
@@ -74,9 +78,9 @@
 
 ## 4. 当前推进与唯一推荐动作
 
-- **当前推进**：**TASK-248 在途（B23 覆盖增强——好友榜缓存「空榜不缓存防背锅」显式单测断言，MEDIUM 档纯测试新增，2026-10-16 立项）**
-  - **唯一推荐动作**：实施子 Agent 依 `work/mailbox/tasks/TASK-248/spec.md` 完成两个判别式测试（R1 降级空榜不缓存+恢复立即可见 / R2 无好友空榜同口径），双提交落库后按 MEDIUM 档收口（免独立复核，指导亲核 + CI 外部终验）；TASK-247 补记笔随本课题批次统一推送；
-  - **下一候选**：新批次立项侦察（F/B/H 系列既有候选已全部封盘，沿 2026-10-15 批深度审计先例）；关注 2026-10-19 `ubuntu-latest` → Ubuntu 26 runner 迁移对 CI 的影响。
+- **当前推进**：**无在途任务（TASK-248 已封盘：B23 覆盖增强——好友榜缓存「空榜不缓存防背锅」显式单测断言，MEDIUM 档纯测试新增，指导亲核 PASS，终裁 ACCEPT）**
+  - **唯一推荐动作**：观察 TASK-248 封盘批次（5 笔）CI 外部终验结果，绿则收口达成、读数随后续批次补记；本批次为 2026-10-19 `ubuntu-latest` → Ubuntu 26 runner 迁移前的最后批次之一，迁移后首个 run 需重点观察；
+  - **下一候选**：新批次立项侦察（F/B/H 系列既有候选已全部封盘，沿 2026-10-15 批深度审计先例挖掘后续课题）。
 
 
 

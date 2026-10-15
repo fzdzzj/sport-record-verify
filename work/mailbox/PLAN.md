@@ -538,3 +538,17 @@
 | 独立复核结论与裁决 | 独立复核审查官全程只读实跑（总体 **PASS**，阻断项 0，结束自证 `git status --porcelain` 为空，三权分立严格履行）：A Git 状态与提交链（恰 2 笔在途、7 文件、C-01/C-02 拆分严丝合缝）+ B 红线抽查（四大业务服务、pom.xml/package.json/pnpm-lock、主看板三文件零 diff）+ C 双端门禁实测复跑（后端 62 测 / compose config 0 错 / 前端类型 0 错 / 前端 61 测 / 契约门 0 五项独立复跑全绿）+ D 证据链核对（handoff §3 门禁读数与实测一致，§4 三处受限口径如实登记，R1/R2/R3 实现与测试代码实体逐行相符，非纯 Mockito 预制）+ E 只改清单全等（声明 7 文件与实际改动集双向比对无偏差）五块全 PASS；非阻断留痕 2 项（Nacos 离线日志噪音属 fail-fast=false 预期、62 为 gateway-service 模块单测口径非全仓总数）；终审裁定 **ACCEPT 予以封盘** |
 | 状态 | TASK-247 本地闭环，指导侧终裁 **ACCEPT 予以封盘** |
 
+## 验收记录：`TASK-248`（B23 覆盖增强——好友榜缓存「空榜不缓存防背锅」显式单测断言，MEDIUM 档，2026-10-16）
+
+| 项 | 内容 |
+| --- | --- |
+| 开工基线 | `770fc40`（main 分支，工作树干净，TASK-248 立项准备提交） |
+| C-01 实施笔 | `1ed6f57` `test(leaderboard): 补齐好友榜空榜不缓存显式断言（TASK-248）`（恰 1 文件，+58/−0） |
+| C-02 任务两件套 | `d7fa60d` `docs(mailbox): 登记TASK-248实施完成与门禁回填（TASK-248）`（恰 2 文件，+34/−8；实施侧经 `--amend` 归并为单笔台账笔，最终恰两笔在途） |
+| 任务内容与白名单 | 相对开工基线恰 3 文件 = 1 测试文件（`LeaderboardCacheInvocationTest.java` 仅新增 2 个测试方法）+ 2 台账两件套（spec.md/handoff.md），与白名单全等；一切生产代码（`src/main`）、根与各子模块 pom.xml、package.json 及红线文件 100% 零触碰，零新外部依赖 |
+| 核心实现 | ① R1 `emptyBoardFromDegradation_isNotCached_secondCallRefreshesOnRecovery`（核心防背锅语义）：`listFriends` 首次 `thenThrow` → 第一调断空榜；沿 `LeaderboardServiceTest` L380 先例以 `doReturn(...).when(...)` 重打桩恢复 → 第二调断非空；`verify(userApi, times(2)).listFriends` 锁定「降级空榜未进 15s Caffeine 缓存、两次均真实穿透 Feign」——若误去掉 `isEmpty` 判定，第二调命中缓存使 Feign 只调 1 次，断言即失败；Pipeline 计数按实际执行路径校正为 `times(1)`（首次降级在 `fetchAllFriendIds` 第一步抛异常未触达 Pipeline，经用户确认登记 handoff §4）；② R2 `emptyBoardFromNoFriends_isNotCached_secondCallPenetratesAgain`：无好友空页（total=0）连续两调均空、`times(2)` 同口径穿透。均复用 `CachingTestConfiguration` Spring 代理入口（缓存判别式真实入口口径），行为断言优先（未反射直取私有缓存字段），未删弱/改写任何既有断言 |
+| 本机门禁 | 后端 `scripts/verify/mvn-verify.sh --mode=offline --pl leaderboard-service test` BUILD SUCCESS（`LeaderboardCacheInvocationTest` 5 测全绿（原 3+2），模块累计 Tests run: 94, Failures: 0, Errors: 0, Skipped: 0，rc=0，测试数只增不减；离线分级收窄合规——仅触碰 leaderboard-service 测试，其余模块凭白名单外零 diff 论证不变）；前端 `pnpm run type-check` 0 错误（rc=0）；前端单测 4 文件 61 测全过（rc=0）；契约门 `mailbox-contract.sh --open=TASK-248 --baseline=770fc40` 退出码 0（判据 A 两件套齐 + 判据 B 清单一致）；token 门 29 项 tracked 全量 `git grep -cF` 基线 `770fc40`=2011 与收口态持平、只增不减、改动集零 token 字面量；词面门 CI 权威口径显式 `-E` 真实扫描零命中 + 阳性探针 rc=0 + 阴性探针 rc=1；`git diff --check` 净 |
+| 指导亲核与裁决 | MEDIUM 档（纯测试新增、零核心逻辑改动）免独立复核子agent（分级政策），CI 外部终验即收口；指导侧亲核三块：紧凑 Git 摘要（工作树净、恰 2 笔在途 `1ed6f57`/`d7fa60d`、`git diff --name-only` 恰 3 文件与白名单全等、rev-list 770fc40..HEAD=2）+ 高风险定向抽查（R1 `doReturn` 重打桩、`times(2)`/`times(1)` 断言语义与 spec/handoff 声明逐行相符、`doReturn` import 完整性）+ 执行侧回报 vs 实际一致性裁决（各门禁读数无矛盾）；终审裁定 **ACCEPT 予以封盘** |
+| 是否到达外部门槛 | 封盘批次（5 笔：TASK-247 补记笔 `c975f24` + 立项笔 `770fc40` + C-01 `1ed6f57` + C-02 `d7fa60d` + 封盘笔）随封盘推送，CI 外部终验观察中，绿则收口达成（读数补记沿 TASK-247 先例随后续批次登记） |
+| 状态 | TASK-248 本地闭环，指导侧终裁 **ACCEPT 予以封盘** |
+
