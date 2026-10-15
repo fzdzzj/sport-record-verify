@@ -2,7 +2,7 @@
 
 ## 当前进度与外部基线
 
-- **最新代码基线与分支**：`main` 分支，最新已封盘至 **TASK-234**（HEAD `169e367` / `54977f5`）。
+- **最新代码基线与分支**：`main` 分支，最新已封盘至 **TASK-235**（HEAD `3d31065` / `42f6f2e`）。
 - **会话无缝交接看板**：新主 Agent 接手状态与下一步动作见 [HANDOVER.md](HANDOVER.md)（原地滚动更新，免建新交接文档）。
 - **CI 外部门槛状态**：GitHub Actions run `38586443704`（HEAD `aee5ca0`，web ✓31s / build ✓11m46s 全 job 绿）。包含全模块 clean verify、Checkstyle/SpotBugs/PMD 静态门、Docker 镜像构建与 Trivy 依赖扫描。
 - **历史记录归档索引**：早期 100+ 笔验收记录（TASK-001 至 TASK-210）已完整归档至 [PLAN-history-001-210.md](archive/PLAN-history-001-210.md)。各任务的原始契约与回传留存见 `work/mailbox/tasks/TASK-xxx/`。
@@ -356,8 +356,16 @@
 | 独立复核结论与裁决 | 指导侧独立四块核验全过（总体 **PASS**，BLOCKER 0，偏差 D1~D4 均合规解释与复验清除）：7 个实施文件 + 2 个两件套严丝合缝全等白名单；六道门禁全量独立复跑稳定全绿；实施侧误判的 D1（bash 不可用）经指导侧使用 `D:\git\Git\bin\bash.exe` 实跑官方契约脚本验证完全通过（rc=0）；技术与业务实现严谨，终审裁定 **ACCEPT 予以封盘** |
 | 状态 | TASK-234 本地闭环，指导侧终裁 **ACCEPT 予以封盘** |
 
+## 验收记录：`TASK-235`（核心链路缺陷修复与社交闭环：榜单结算窗口矫正、申诉判定回写、打卡时间对齐与待审申请一键处理，MEDIUM 档，2026-10-15）
 
-
-
-
-
+| 项 | 内容 |
+| --- | --- |
+| 开工基线 | `ef838b4`（main 分支，工作树干净） |
+| C-01 实施笔 | `3d31065` `feat(leaderboard,verify,record,user,web): TASK-235 核心链路缺陷修复与社交闭环——榜单结算窗口矫正/申诉回写/打卡对齐/待审一键处理`（恰 11 文件，+566/−47） |
+| C-02 任务两件套 | `42f6f2e` `docs(mailbox): TASK-235 核心链路缺陷修复与社交闭环验收与台账闭环（TASK-235）`（恰 2 文件） |
+| 任务内容与白名单 | 相对开工基线恰 13 文件 = 白名单全等（实施 11 文件 + 任务两件套 2 文件）；白名单外（api、pom.xml、package.json、其他服务）100% 零触碰，零新外部依赖 |
+| 核心实现 | ① 榜单结算时间覆盖 Bug 根治：`LeaderboardContributionMapper.markSettled` SQL 追加 `AND settled_at IS NULL`，结算仅盖戳未结算行、绝不覆盖历史结算时间，彻底解除了每 10 分钟定时任务将历史已结算贡献刷成当前时间导致今日/周/月周期范围榜失真的系统级缺陷；② 申诉改判状态闭环：`VerifyService.reviewAppeal` 在管理员终审改判后，显式执行 `verification_result.verdict` 回写并主动失效本地 Caffeine 缓存（`RESULT_CACHE_PREFIX + recordId`），消除记录表显示 `RE_PASSED` 但详情与判定接口仍展示 `REJECTED` 的状态割裂；③ 打卡与统计时间口径对齐：`SportRecordService.myStreak` 与 `myStats` 统一按 `startTime` 归自然日（null 回退 `createdAt`），消除跨零点与离线补传导致的误断签，与 TASK-234 目标服务保持统一；④ 社交待办一键闭环：`user-service` 新增 `GET /api/friends/requests` 查询待处理申请列表，前端 `friends.page.vue` 新增「收到的好友申请」卡片一键同意/拒绝并联动刷新，移除必须线下询问 `requestId` 手工输入的反人类交互 |
+| 本机门禁 | 后端全 reactor 9 模块 clean test 全绿：830 测 0 失败 0 错误（BUILD SUCCESS 12:25 min；user 178 测 +5、record 277 测 +2、verify 161 测 +2、leaderboard 86 测 +1）；前端 `type-check` 0 错误；`pnpm test` 4 套 32 测全过；`pnpm build` 3317 modules 产出成功（25.83s）；Playwright E2E 本地全量实跑 **12 passed (41.7s)** 100% 全绿；契约门 `mailbox-contract.sh --open=TASK-235 --baseline=ef838b4` 退出码 0（判据 A 两件套齐 + 判据 B 清单一致） |
+| 是否到达外部门槛 | **未到达**：C-01/C-02 已提交，待指导侧统一提交台账闭环笔并随批推送触发 CI 外部终验 |
+| 独立复核结论与裁决 | 指导侧独立四块核验全过（总体 **PASS**，BLOCKER 0，偏差 D1~D4 均合规解释与复验清除）：11 个实施文件 + 2 个两件套严丝合缝全等白名单；六道门禁全量独立复跑稳定全绿；D1 确认表结构与任务书口径偏差（`verification_result` 无 `recheck_result` 字段，该列属 appeal 表已写入，回写 verdict + 缓存失效符合架构设计）；技术与业务实现严谨，终审裁定 **ACCEPT 予以封盘** |
+| 状态 | TASK-235 本地闭环，指导侧终裁 **ACCEPT 予以封盘** |
