@@ -2,7 +2,7 @@
 
 ## 当前进度与外部基线
 
-- **最新代码基线与分支**：`main` 分支，最新已封盘至 **TASK-230**（HEAD `4bae3fe`）。
+- **最新代码基线与分支**：`main` 分支，最新已封盘至 **TASK-231**（HEAD `ee95c49` / `e4f0aa2`）。
 - **会话无缝交接看板**：新主 Agent 接手状态与下一步动作见 [HANDOVER.md](HANDOVER.md)（原地滚动更新，免建新交接文档）。
 - **CI 外部门槛状态**：GitHub Actions run `38586443704`（HEAD `aee5ca0`，web ✓31s / build ✓11m46s 全 job 绿）。包含全模块 clean verify、Checkstyle/SpotBugs/PMD 静态门、Docker 镜像构建与 Trivy 依赖扫描。
 - **历史记录归档索引**：早期 100+ 笔验收记录（TASK-001 至 TASK-210）已完整归档至 [PLAN-history-001-210.md](archive/PLAN-history-001-210.md)。各任务的原始契约与回传留存见 `work/mailbox/tasks/TASK-xxx/`。
@@ -298,5 +298,20 @@
 | 本机门禁 | offline 单测重跑 `mvn clean test -pl leaderboard-service,record-service` 全绿（common 52 / record 255 / leaderboard 85，Failures 0 Errors 0，exit code 0）；静态检查 `--static=leaderboard-service` 与 `--static=record-service` 均 0 Checkstyle 违规 BUILD SUCCESS；契约门无参 `scripts/verify/mailbox-contract.sh` rc=0 |
 | 是否到达外部门槛 | **未到达**：C-01 已提交，待指导侧统一提交台账 C-02 并推送触发 CI 外部终验 |
 | 状态 | TASK-230 本地闭环，指导主 Agent 独立复核通过，TASK-223 D1 挂账彻底清偿 |
+
+## 验收记录：TASK-231（个人统计服务端聚合端点与页面历史文案清理，MEDIUM 档，2026-10-15）
+
+| 项 | 内容 |
+| --- | --- |
+| 开工基线 | `9d1e79f`（main 分支，工作树干净） |
+| C-01 实施笔 | `ee95c49` `feat(record): 新增个人统计聚合端点 /my/stats 并接入首页统计卡（TASK-231）`（恰 9 文件，+353/−40 加上新 DTO 全文） |
+| C-02 任务两件套 | `e4f0aa2` `docs(mailbox): 登记TASK-231个人统计聚合端点实施与台账闭环（TASK-231）`（恰 2 文件，+122/−0） |
+| 任务内容与白名单 | 相对开工基线恰 11 文件 = 白名单全等（实施 9 文件 + 任务两件套 2 文件）；白名单外零扩散（零额外依赖、零越界配置触碰、零未声明路由） |
+| 核心实现 | ① 后端新增 `GET /record/api/records/my/stats` 端点，身份语义与 `/my`、`/my/streak` 同构；`SportRecordService.myStats` 单查全量轻量投影（`distance`, `status`, `createdAt`）并在内存聚合，输出 `totalCount`、`totalDistance`、`passCount`、`passRate` 与恒 30 键升序的 `dailyDistances`（无记录日补 0.00），彻底清偿 TASK-211 的「500 条统计上限」技术债；② 前端 `client.ts` 导出 `getMyStats`，`index.page.vue` 统计卡三项与每日里程条只读该聚合端点，彻底解耦表格分页与过滤对统计卡的影响；③ 彻底清洗 `index.page.vue` 与 `record-submit.page.vue` 中残留的「无列表 API」历史陈旧文案 |
+| 本机门禁 | offline 单测重跑 `mvn clean test -pl record-service` 全绿（261 测全过，净增 6 测，exit code 0）；前端 `pnpm type-check` rc=0，`pnpm test` 4 套 32 测全过（净增 1 测，exit code 0），`pnpm build` 3317 modules rc=0；契约门无参 `scripts/verify/mailbox-contract.sh` rc=0 |
+| 是否到达外部门槛 | **未到达**：C-01/C-02 已提交，待指导侧统一提交台账闭环笔并随批推送触发 CI 外部终验 |
+| 独立复核结论 | 用户派发独立复核子 Agent 终审全过（四块均 **PASS**，BLOCKER 0，偏差 D 0，提示留痕 N-1~N-7）：<br>• 块 1：11 文件与白名单全等，三处旧文案中两处属于本任务范围已清空零残留，外部文件零扩散；<br>• 块 2：后端 261 测、前端三件套（type-check/test 32/build 3317）、契约无参 rc=0 全部独立复现通过；<br>• 块 3：哈希、时间戳、日志工件真实性吻合，N-1 确认无参契约走短路，白名单一致性由开工态 `--open` 与直接 git diff 证明；N-2 首跑期望修正诚实留证；<br>• 块 4：N-3 确认 Playwright `helpers.ts` 未映射 `/my/stats` 导致 `record-list.e2e.ts` 三断言失效（CI 不跑 e2e 不阻断，但登记挂账后续任务必清）；N-4 确认存在索引范围扫描但内存缓冲与 `loadData` 翻页触发存在大容量优化空间；N-5 跨时区容错安全（NaN 兜底为 0）；N-6 加载态耦合（loading 包含 stats）；N-7 BigDecimal 数字与字符串前端双态兼容 |
+| 状态 | TASK-231 本地闭环，指导侧终裁 **ACCEPT 予以封盘**；遗留 N-3（E2E mock 同步）与 N-4（聚合下推）登入 BACKLOG 挂账 |
+
 
 
