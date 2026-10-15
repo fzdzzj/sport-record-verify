@@ -2,9 +2,9 @@
 
 ## 当前进度与外部基线
 
-- **最新代码基线与分支**：`main` 分支，最新已封盘至 **TASK-241**（HEAD `8f7601d` / `a6cd2c1`）。
+- **最新代码基线与分支**：`main` 分支，最新已封盘至 **TASK-245**（本地已合盘，HEAD `5a275ab`；外部已推送至 `0cd9db0` TASK-244）。
 - **会话无缝交接看板**：新主 Agent 接手状态与下一步动作见 [HANDOVER.md](HANDOVER.md)（原地滚动更新，免建新交接文档）。
-- **CI 外部门槛状态**：GitHub Actions run `38692154084`（HEAD `b1c0e3a`，web ✓30s / build ✓12m10s 全 job 绿）。包含全模块 clean verify、Checkstyle/SpotBugs/PMD 静态门、Docker 镜像构建与 Trivy 依赖扫描。
+- **CI 外部门槛状态**：GitHub Actions run `38746969796`（HEAD `0cd9db0`，web ✓41s / build ✓11m57s 全 job 绿）。包含全模块 clean verify、Checkstyle/SpotBugs/PMD 静态门、Docker 镜像构建与 Trivy 依赖扫描。
 - **历史记录归档索引**：早期 100+ 笔验收记录（TASK-001 至 TASK-210）已完整归档至 [PLAN-history-001-210.md](archive/PLAN-history-001-210.md)。各任务的原始契约与回传留存见 `work/mailbox/tasks/TASK-xxx/`。
 - **候选规划与待办状态**：后续方向候选（F/H 系列）与排期规划统一定位在 [BACKLOG.md](BACKLOG.md)。
 
@@ -496,6 +496,16 @@
 | 独立复核结论与裁决 | 独立复核子 Agent 实跑全过（总体 **PASS**，BLOCKER 0，三权分立严格履行）：17 个白名单文件严丝合缝；后端 449 测、前端类型与 41 测及契约门禁独立实测稳定全绿；B15 终结了盲打 ID，B16 实现了跨服务离线自愈，B17 消除了慢排序并打通多选批量操作，B18 治理了内存倾倒与 Redis 膨胀隐患；终审裁定 **ACCEPT 予以封盘** |
 | 状态 | TASK-244 本地闭环，指导侧终裁 **ACCEPT 予以封盘** |
 
+## 验收记录：`TASK-245`（前台端到端业务与全功能体验增强闭环——记录详情指标与可见性修改、申诉全链路进度条与管理外链修复、用户资料与好友批量、动态流视觉与GPX导入，MEDIUM 档，2026-10-15）
 
-
-
+| 项 | 内容 |
+| --- | --- |
+| 开工基线 | `6f4d766`（main 分支，工作树干净，TASK-245 方案 D 立项准备基线） |
+| C-01 实施笔 | `23f58e3` `feat(experience): TASK-245 前台端到端业务与全功能体验增强闭环（C-01 实施笔）`（恰 21 文件，+708/−64） |
+| C-02 任务两件套 | `5a275ab` `docs(mailbox): TASK-245 前台端到端业务与全功能体验增强闭环验收与台账闭环（C-02 台账笔）`（恰 2 文件，+212/−0） |
+| 任务内容与白名单 | 相对开工基线恰 21 文件 = 19 白名单 + 经主 Agent 决策（方案 B）放宽的 2 个 api DTO 契约文件（`SportRecordDTO` 与 `FriendRequestDTO`）；生产 verify-service、leaderboard-service、gateway-service、pom.xml、package.json 及红线文件 100% 零触碰，零新外部依赖 |
+| 核心实现 | ① B22+B29 记录详情全能卡与可见性修改：`RecordController` 新增 `PATCH /records/{id}/visibility`（0/1/2 严格校验，非本人 403）与 `GET /records/{id}`；`SportRecordService` 实现值域校验与归属防护；`record-detail.page.vue` 补齐运动指标卡（🏃/🚴/🚶 中文类型、里程 km、耗时、平均配速）+ 原地可见性下拉切换即保存；SVG 起终点高亮特征颜色（绿色起点 `#52c41a`、红色终点 `#ff4d4f`）；② B26 申诉全链路透明追踪：`SportRecordService` 新增 `getAppeal` 由记录状态权威推导申诉进度/结论；`verdict.page.vue` 彻底移除跳转管理后台（403）的荒谬外链，引入 `<a-steps>` 进度条组件，已有申诉自动回显并禁用重复提交防 3005 冲突；③ B25 用户资料维护与好友批量操作：`UserController` 新增 `GET/PUT /api/user/profile` 支持查看与修改用户昵称；`FriendService.listPendingRequests` 批量补齐申请人真实昵称 `fromNickname`；`FriendController` 新增 `batch-accept` 与 `batch-reject` 端点；`settings.page.vue` 增加个人资料卡片；`friends.page.vue` 表格开启行多选复选框并支持「批量同意」与「全部忽略」；④ B27 动态流视觉与空态引导：`feed.page.vue` 卡片头部增加首字主题彩色头像与中文运动类型徽标；空态采用 `<a-result>` 丰富展示并提供「去添加好友」「去记录运动」引导按钮；⑤ B28 轨迹 GPX 文件导入解析：`gpx.ts` 新增纯正则实现的 `parseGpx`（零依赖，鲁棒提取经纬度并补齐 seq/speed/ts 递推）；`record-submit.page.vue` 增加「导入 GPX 文件」支持拖拽/选择文件自动解析填入表单并推导时间与距离；⑥ 测试全套强化：新增 `FriendServiceTest`（批量与资料）、`SportRecordServiceTest`（详情与可见性）、`gpx.test.ts`（11 测）、`client.test.ts` 契约扩充（32 测） |
+| 本机门禁 | 后端 `mvn -B -ntp -o -s .mvn-settings.xml clean test -pl record-service,user-service -am` BUILD SUCCESS（Tests run: 298, Failures: 0, Errors: 0，rc=0）；前端 `pnpm run type-check` 0 错误（rc=0）；前端单元测试 4 套 55 测全过（rc=0）；契约门 `mailbox-contract.sh --open=TASK-245 --baseline=6f4d766` 退出码 0（判据 A 两件套齐 + 判据 B 清单一致，0 在途） |
+| 是否到达外部门槛 | **未到达**：C-01/C-02 已提交，待指导侧统一提交台账闭环笔并随批推送触发 CI 外部终验 |
+| 独立复核结论与裁决 | 独立复核子 Agent 实跑全过（总体 **PASS**，BLOCKER 0，三权分立严格履行）：改动集恰 21 文件（19 白名单 + 2 如实披露的 api DTO）；后端 298 测、前端类型与 55 测及契约门禁独立实测稳定全绿；B22/B29/B26/B25/B27/B28 端到端打通了前台高频交互，彻底终结了外链越权、盲打与无头像等断层体验；终审裁定 **ACCEPT 予以封盘** |
+| 状态 | TASK-245 本地闭环，指导侧终裁 **ACCEPT 予以封盘** |
