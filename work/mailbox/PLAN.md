@@ -2,7 +2,7 @@
 
 ## 当前进度与外部基线
 
-- **最新代码基线与分支**：`main` 分支，最新已封盘至 **TASK-246**（HEAD `a6701b0`，已全量推至 `origin/main`）。
+- **最新代码基线与分支**：`main` 分支，最新已封盘至 **TASK-247**（C-01 `89ba3d1` / C-02 `47f1ecb`，封盘笔随批推送）；前序 TASK-246（HEAD `a6701b0`）已全量推至 `origin/main` 且 CI 全绿。
 - **会话无缝交接看板**：新主 Agent 接手状态与下一步动作见 [HANDOVER.md](HANDOVER.md)（原地滚动更新，免建新交接文档）。
 - **CI 外部门槛状态**：GitHub Actions run `38774258105`（HEAD `a6701b0`，web ✓20s / build ✓11m41s 全 job 绿）。包含全模块 clean verify、Checkstyle/SpotBugs/PMD 静态门、Docker 镜像构建与 Trivy 依赖扫描。
 - **历史记录归档索引**：早期 100+ 笔验收记录（TASK-001 至 TASK-210）已完整归档至 [PLAN-history-001-210.md](archive/PLAN-history-001-210.md)。各任务的原始契约与回传留存见 `work/mailbox/tasks/TASK-xxx/`。
@@ -523,4 +523,18 @@
 | 是否到达外部门槛 | **已到达**：随批推送 a6701b0 后经第 56 次 CI（run 38774258105）conclusion=success 全 job 绿（web ✓20s / build ✓11m41s 外部终验全过） |
 | 独立复核结论与裁决 | 独立复核审查官实跑全过（总体 **PASS**，BLOCKER 0，三权分立严格履行）：19 个改动文件严丝合缝；后端、前端类型、前端单测与契约门禁独立实测稳定全绿；B20 建立了死信排查自愈通道并消除了历史消息膨胀，B21 补齐了索引并打通了历史与用户已读治理，B23 根除了高并发下好友榜对 user-service 的穿透雪崩风险，B24 终结了非标 HTML 报错保证了全站 Result 契约统一；终审裁定 **ACCEPT 予以封盘** |
 | 状态 | TASK-246 本地闭环，指导侧终裁 **ACCEPT 予以封盘** |
+
+## 验收记录：`TASK-247`（E5 生产部署姿态演练——CORS 动态多域名注入、跨域 Cookie 凭证透传与 TLS 终止协同，候选 H2，MEDIUM 档，2026-10-16）
+
+| 项 | 内容 |
+| --- | --- |
+| 开工基线 | `e3ed868`（main 分支，工作树干净，TASK-247 立项准备提交） |
+| C-01 实施笔 | `89ba3d1` `feat(gateway): 落实生产部署姿态演练与CORS/TLS/Cookie协同治理（TASK-247）`（恰 5 文件，+238/−0） |
+| C-02 任务两件套 | `47f1ecb` `docs(mailbox): 登记TASK-247实施完成与门禁回填（TASK-247）`（恰 2 文件，+42/−13） |
+| 任务内容与白名单 | 相对开工基线恰 7 文件 = 5 业务/测试文件（`gateway-service/src/main/resources/application.yml`、`docker-compose.services.yml`、`scripts/verify/env.example`、新增 `GatewayProductionPostureTest.java`、`README.md`）+ 2 台账两件套（spec.md/handoff.md），与白名单全等；record-service、verify-service、user-service、leaderboard-service 四大业务微服务、根与各子模块 pom.xml、package.json 及红线文件 100% 零触碰，零新外部依赖 |
+| 核心实现 | ① R1 CORS 生产多域名动态注入：真实网关上下文（`@SpringBootTest` RANDOM_PORT）注入 `CORS_ALLOWED_ORIGINS=https://sports.example.com,https://admin.example.com`，真实 HTTP 预检 OPTIONS 断言白名单 Origin 回显 `Access-Control-Allow-Origin` + `Access-Control-Allow-Credentials: true`，恶意 Origin（`https://attacker.com`）不返回 CORS 头（CorsWebFilter 短路，离线稳定）；② R2 反向代理 TLS 终止与协议感知：`server.forward-headers-strategy: framework` 落地 + `ForwardedHeaderTransformer`（framework 等价适配器）断言 `X-Forwarded-Proto/Host/Port` → scheme https + application.yml 资源文件断言；③ R3 跨域 Cookie 凭证透传：真实全局过滤链（RequestIdGlobalFilter → AuthGlobalFilter 白名单透传分支）断言 `Cookie: refresh_token` 下游请求头无损保留；④ R4 Compose 与文档对齐：`docker-compose.services.yml` gateway environment 注入 `CORS_ALLOWED_ORIGINS: "${CORS_ALLOWED_ORIGINS:-http://127.0.0.1:5173,http://localhost:5173}"` 占位、`env.example` 补生产配置说明、`README.md` 补反向代理（Nginx 等）`X-Forwarded-Proto` 协同部署章节 |
+| 本机门禁 | 后端 `scripts/verify/mvn-verify.sh --mode=offline --pl gateway-service test` BUILD SUCCESS（Tests run: 62, Failures: 0, Errors: 0, Skipped: 0，rc=0，含新增 GatewayProductionPostureTest 5 测全绿）；`docker compose -f docker-compose.yml -f docker-compose.services.yml config` rc=0；前端 `pnpm run type-check` 0 错误（rc=0）；前端单测 61 测全绿（rc=0）；契约门 `mailbox-contract.sh --open=TASK-247 --baseline=e3ed868` 退出码 0（判据 A 两件套齐 + 判据 B 清单一致） |
+| 是否到达外部门槛 | **未到达**：封盘笔随批推送后待 CI 外部终验，达成后沿「补记笔随下一课题批次统一推送」惯例补记 run 编号（本行由独立复核确认时点前的本地读数构成） |
+| 独立复核结论与裁决 | 独立复核审查官全程只读实跑（总体 **PASS**，阻断项 0，结束自证 `git status --porcelain` 为空，三权分立严格履行）：A Git 状态与提交链（恰 2 笔在途、7 文件、C-01/C-02 拆分严丝合缝）+ B 红线抽查（四大业务服务、pom.xml/package.json/pnpm-lock、主看板三文件零 diff）+ C 双端门禁实测复跑（后端 62 测 / compose config 0 错 / 前端类型 0 错 / 前端 61 测 / 契约门 0 五项独立复跑全绿）+ D 证据链核对（handoff §3 门禁读数与实测一致，§4 三处受限口径如实登记，R1/R2/R3 实现与测试代码实体逐行相符，非纯 Mockito 预制）+ E 只改清单全等（声明 7 文件与实际改动集双向比对无偏差）五块全 PASS；非阻断留痕 2 项（Nacos 离线日志噪音属 fail-fast=false 预期、62 为 gateway-service 模块单测口径非全仓总数）；终审裁定 **ACCEPT 予以封盘** |
+| 状态 | TASK-247 本地闭环，指导侧终裁 **ACCEPT 予以封盘** |
 

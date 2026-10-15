@@ -8,17 +8,23 @@
 
 ## 1. 当前代码基线与外部状态
 
-- **当前分支与 HEAD**：`main` 分支，最新已封盘任务为 **TASK-246**（HEAD `a6701b0`，已全量推至 `origin/main`）。
-- **外部 CI 门槛状态**：GitHub Actions run `38774258105`（`a6701b0`，`web` ✓20s / `build` ✓11m41s 全绿通过）。
-- **工作树状态**：TASK-247 候选 H2 开工在途，准备子 Agent 实施。
-- **当前在途任务数**：`1` 个（TASK-247 候选 H2 开工在途：E5 生产部署姿态演练——CORS 动态多域名注入、跨域 Cookie 凭证透传与 TLS 终止协同演练）。
+- **当前分支与 HEAD**：`main` 分支，最新已封盘任务为 **TASK-247**（C-01 `89ba3d1` / C-02 `47f1ecb`，封盘笔随批推送；前序 TASK-246 HEAD `a6701b0` 已全量推至 `origin/main` 且 CI 全绿）。
+- **外部 CI 门槛状态**：TASK-246 批次 GitHub Actions run `38774258105`（`a6701b0`，`web` ✓20s / `build` ✓11m41s 全绿通过）；TASK-247 封盘批次推送后新 run 待观察，达成后沿「补记笔随下一课题批次统一推送」惯例补记 run 编号。
+- **工作树状态**：干净（TASK-247 两笔规范提交与封盘笔已落库，随批推送）。
+- **当前在途任务数**：`0` 个。
 
 ---
 
 ## 2. 上一会话交付成果
 
 - **刚闭环事项**：
-  1. 落地 **TASK-246**（方案 E：后台架构韧性与存储生命周期治理——B20 Outbox历史清理与毒丸重放、B21 通知历史清理与索引、B23 好友榜多级缓存防穿透、B24 网关统一异常标准包装，MEDIUM 档）：
+  1. 落地 **TASK-247**（候选 H2：E5 生产部署姿态演练——CORS 动态多域名注入、跨域 Cookie 凭证透传与 TLS 终止协同，MEDIUM 档）：
+     - R1 CORS 生产多域名动态注入：真实网关上下文（RANDOM_PORT）注入 `CORS_ALLOWED_ORIGINS=https://sports.example.com,https://admin.example.com`，真实 HTTP 预检 OPTIONS 断言白名单 Origin 回显 `Access-Control-Allow-Origin` + `Access-Control-Allow-Credentials: true`，恶意 Origin（`https://attacker.com`）不返回 CORS 头；
+     - R2 反向代理 TLS 终止与协议感知：`server.forward-headers-strategy: framework` 落地，`ForwardedHeaderTransformer`（framework 等价适配器）断言 `X-Forwarded-Proto/Host/Port` → scheme https，application.yml 资源文件断言声明 framework；
+     - R3 跨域 Cookie 凭证透传：真实全局过滤链（RequestIdGlobalFilter → AuthGlobalFilter 白名单透传分支）断言 `Cookie: refresh_token` 下游请求头无损保留；
+     - R4 Compose 与文档对齐：`docker-compose.services.yml` gateway environment 注入 `CORS_ALLOWED_ORIGINS` 占位（本地默认 `http://127.0.0.1:5173,http://localhost:5173`）、`scripts/verify/env.example` 补生产配置说明、`README.md` 补反向代理（Nginx 等）`X-Forwarded-Proto` 协同部署章节；
+     - 消除 TASK-205 长期挂账技术债（refresh_token HttpOnly Cookie 迁移后的生产姿态未覆盖项）；改动恰 7 文件白名单（5 业务/测试 + 2 台账），四大业务微服务与根/子 pom.xml、package.json 100% 零触碰，零新外部依赖；本地五门全绿（后端 62 测 / compose config / 前端类型 0 错 / 前端 61 测 / 契约门 0）；独立复核审查官五块全 PASS（阻断项 0，只读自证 porcelain 空）后封盘。
+  2. 落地 **TASK-246**（方案 E：后台架构韧性与存储生命周期治理——B20 Outbox历史清理与毒丸重放、B21 通知历史清理与索引、B23 好友榜多级缓存防穿透、B24 网关统一异常标准包装，MEDIUM 档）：
      - B20 Outbox 历史清理与毒丸人工重放：`VerifyEventOutboxMapper` 新增 `selectExhausted`、`replayExhausted`（幂等重放）、`cleanSentEvents`（分批清理）；`VerifyController` 新增 `GET /api/outbox/exhausted`、`POST /api/outbox/exhausted/{id}/replay`、`DELETE /api/outbox/sent`；前端 `admin.page.vue` 增加死信看板卡片与表格；
      - B21 通知中心历史清理与索引补齐：`sql/01-user-db.sql` 补齐 `KEY idx_read_created (is_read, created_at)` 并提供幂等迁移；`NotificationMapper/Service/Controller` 补齐分批过期清理与用户本人一键清空已读（`DELETE /api/notifications/read`）；前端 `notifications.page.vue` 增加「清空已读」交互；
      - B23 好友榜多级缓存防穿透：`LeaderboardService` 引入 15s 本地 Caffeine 缓存（Key=`userId:size`），`topFriends` 优先命中本地缓存，空榜防背锅不缓存，根除高并发下 Feign 穿透打爆 `user-service`；
@@ -59,18 +65,17 @@
 1. **子 Agent 边界**：子 Agent 严禁修改 `work/mailbox/PLAN.md` 与本文件，子 Agent 仅在自身 `work/mailbox/tasks/TASK-xxx/` 下提交回传。
 2. **契约校验口径**：运行 `scripts/verify/mailbox-contract.sh` 必须在 Git Bash（`D:\git\Git\bin\bash.exe`）下执行；无参模式短路跳过判据 B，白名单一致性以开工 `--open` 与直接 `git diff` 为准。
 3. **挂账候选事项**：
-   - `H2` 生产部署姿态演练（CORS 真实注入/跨域 cookie/TLS 终止协同）；
-   - 远端 CI 批量推送（TASK-240~TASK-244 已推送且全绿，TASK-245 待随批推送）；
+   - `TASK-247` 封盘批次 CI 外部终验：推送后观察 GitHub Actions 新 run，达成后随下一批次补记 run 编号（沿「封盘后补记笔随下一课题批次统一推送」惯例）；
+   - `B23 覆盖增强`（好友榜缓存空榜防背锅的显式单测断言）：BACKLOG 推荐序第 1 位，待用户立项；
    - 申诉审核意见（verify_db）透出限制：受限与 verify-service 红线，当前前台申诉进度条由记录状态推导，结论权威可靠。
 
 ---
 
 ## 4. 当前推进与唯一推荐动作
 
-- **当前推进**：**候选 H2（TASK-247 拟，MEDIUM 档）**
-  - **课题**：E5 生产部署姿态演练——CORS 真实注入、跨域 Cookie 与 TLS 终止协同演练；
-  - **背景**：TASK-205 遗留的长期议题，验证生产姿态下网关真实注入 `CORS_ALLOWED_ORIGINS`，外部客户端携带 `refresh_token` HttpOnly Cookie 经网关路由至 AuthController 的刷新与注销通道，TLS 终止与 Header 传递协同；
-  - **形式**：生产部署姿态演练与测试验证，健全生产安全边界。
+- **当前推进**：**无在途任务（TASK-247 已封盘，在途任务数 0）**
+  - **唯一推荐动作**：观察 TASK-247 封盘批次推送后的 GitHub Actions CI 结果，达成外部终验后随下一批次补记 run 编号；
+  - **下一候选**：B23 覆盖增强（好友榜缓存空榜防背锅的显式单测断言，LIGHT/MEDIUM 小档），或由用户指定新方向；BACKLOG F/B/H 系列既有候选已全部封盘，可开展新一轮全仓立项侦察（沿 2026-10-15 批深度审计先例）。
 
 
 
