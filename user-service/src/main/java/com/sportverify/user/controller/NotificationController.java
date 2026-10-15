@@ -101,6 +101,20 @@ public class NotificationController {
     }
 
     /**
+     * 批量标记已读（B17 批量标记已读）：按指定 ID 集合批量流转 is_read=1 并回填 read_at，
+     * 仅收件人本人（越权隔离由归属条件保证，非本人通知不被流转）；空集合或缺失视为空操作
+     * （返回 0）。返回本次实际流转条数。
+     */
+    @PatchMapping("/batch-read")
+    public Result<Integer> batchMarkRead(
+            @RequestBody List<Long> ids,
+            HttpServletRequest request) {
+        Long resolved = resolveUserId(request, null);
+        int updated = notificationService.batchMarkRead(resolved, ids);
+        return Result.success(updated);
+    }
+
+    /**
      * 全部已读（规范差异「全部标已读」）：仅收件人本人全部未读置读；返回本次流转条数。
      * 未传 userId 且未开启鉴权降级时视为空操作（返回 0）。
      */

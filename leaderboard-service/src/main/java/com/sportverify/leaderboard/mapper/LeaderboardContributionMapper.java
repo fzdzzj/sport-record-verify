@@ -63,6 +63,23 @@ public interface LeaderboardContributionMapper extends BaseMapper<LeaderboardCon
     List<UserMileage> selectActiveSummaries(@Param("status") Integer status);
 
     /**
+     * 孤儿贡献识别（B16 记录删除与榜单回撤自动对账补偿）：查询 {@code status = ACTIVE}
+     * 但对应记录在 {@code sport_record} 中已不存在的孤儿行（越权乱删 / record-service
+     * Feign 回滚失败导致物理记录先删而贡献残留）。
+     *
+     * <p>用 {@code NOT EXISTS} 半连接而非 LEFT JOIN 判空：避免 JOIN 放大逐行匹配成本，
+     * 由 {@code (status, settled_at)} 索引（add-idx-leaderboard-contribution-status-settled）
+     * 前缀过滤 ACTIVE 后对每行做记录存在性子查询，语义清晰且利于优化器取 status 前缀。</p>
+     *
+     * @return 孤儿贡献（recordId + userId + distance），供定时结算流转 ROLLED_BACK 终态
+     */
+    @Select("SELECT lc.record_id AS recordId, lc.user_id AS userId, lc.distance AS totalDistance " +
+            "FROM leaderboard_contribution lc " +
+            "WHERE lc.status = #{status} " +
+            "AND NOT EXISTS (SELECT 1 FROM sport_record sr WHERE sr.id = lc.record_id)")
+    List<UserMileage> selectOrphanContributions(@Param("status") Integer status);
+
+    /**
      * 日期范围榜单聚合（TASK-209）：{@code status = ACTIVE} 且 {@code settled_at} 落入
      * 半开窗口 {@code [start, end+1d)} 的贡献按用户汇总里程降序取前 {@code size}。
      *
@@ -87,11 +104,22 @@ public interface LeaderboardContributionMapper extends BaseMapper<LeaderboardCon
      */
     class UserMileage {
 
+        /** 记录ID（仅孤儿贡献查询 selectOrphanContributions 会带出；汇总查询为 null） */
+        private Long recordId;
+
         /** 用户ID */
         private Long userId;
 
         /** 该用户 ACTIVE 贡献里程合计 */
         private java.math.BigDecimal totalDistance;
+
+        public Long getRecordId() {
+            return recordId;
+        }
+
+        public void setRecordId(Long recordId) {
+            this.recordId = recordId;
+        }
 
         public Long getUserId() {
             return userId;

@@ -171,6 +171,35 @@ class NotificationServiceTest {
         assertEquals(0, service.markAllRead(null));
     }
 
+    // ==================== 批量已读（B17 批量标记已读） ====================
+
+    /** 批量已读：按 ID 集合且归属本人且未读条件 UPDATE → 流转条数返回，触发回执 */
+    @Test
+    void batchMarkRead_updatesOwnUnreadAndReturnCount() {
+        when(mapper.update(ArgumentMatchers.isNull(), any())).thenReturn(3);
+
+        int rows = service.batchMarkRead(1001L, List.of(1L, 2L, 3L));
+
+        assertEquals(3, rows);
+    }
+
+    /** 批量已读幂等：已读行不在更新条件内 → 返回 0，不触发回执 */
+    @Test
+    void batchMarkRead_allAlreadyRead_zeroRows() {
+        when(mapper.update(ArgumentMatchers.isNull(), any())).thenReturn(0);
+
+        int rows = service.batchMarkRead(1001L, List.of(5L, 9L));
+
+        assertEquals(0, rows);
+    }
+
+    /** 批量已读越权隔离：非本人通知不在更新条件内 → 返回 0 */
+    @Test
+    void batchMarkRead_nullUserIdOrEmpty_zero() {
+        assertEquals(0, service.batchMarkRead(1001L, List.of()));
+        assertEquals(0, service.batchMarkRead(null, List.of(1L)));
+    }
+
     // ==================== 工具 ====================
 
     private Notification notification(Long id, Long userId, String type, Long sourceId, Integer isRead) {

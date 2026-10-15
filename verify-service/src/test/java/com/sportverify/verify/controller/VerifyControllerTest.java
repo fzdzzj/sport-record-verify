@@ -7,13 +7,15 @@ import com.sportverify.verify.service.VerifyService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
+import java.util.List;
+
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 /**
- * 管理员终判控制器单元测试（review 透传）。
+ * 管理员终判控制器单元测试（review 透传 + 待审队列透传）。
  *
  * <p>纯 Mockito：mock VerifyService，断言 dto 透传与结果包装。</p>
  */
@@ -26,6 +28,25 @@ class VerifyControllerTest {
     void setUp() {
         verifyService = mock(VerifyService.class);
         controller = new VerifyController(verifyService);
+    }
+
+    /** 待审队列：透传 service 待审列表，包装 code=0 */
+    @Test
+    void listPendingAppeals_delegates() {
+        AppealDTO a1 = new AppealDTO();
+        a1.setId(3L);
+        a1.setRecordId(20L);
+        AppealDTO a2 = new AppealDTO();
+        a2.setId(2L);
+        a2.setRecordId(19L);
+        when(verifyService.listPendingAppeals()).thenReturn(List.of(a1, a2));
+
+        Result<List<AppealDTO>> out = controller.listPendingAppeals();
+
+        assertEquals(0, out.getCode());
+        assertEquals(2, out.getData().size());
+        assertEquals(3L, out.getData().get(0).getId());
+        verify(verifyService).listPendingAppeals();
     }
 
     /** review 透传 service 结果，包装 code=0 */

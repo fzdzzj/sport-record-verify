@@ -399,6 +399,23 @@ export async function reviewAppeal(id: number | string, dto: { operator: string;
   return api.post(`/admin/api/appeals/${id}/review`, dto)
 }
 
+// ===== Appeal (B15 待审队列) — fetchPendingAppeals for admin list =====
+export interface AppealDTO {
+  id: number
+  recordId: number
+  userId: number
+  reason?: string
+  status: number
+  operator?: string
+  recheckResult?: string
+  createdAt?: string
+}
+
+/** 待审核申诉列表（B15 申诉待审闭环，GET /admin/api/appeals/pending）：按 id DESC 返回全部 PENDING 申诉。 */
+export async function fetchPendingAppeals(): Promise<Result<AppealDTO[]>> {
+  return api.get('/admin/api/appeals/pending')
+}
+
 // ===== Notifications (add-notification-web-bell) — userId omitted when auth (gateway injects) =====
 export interface NotificationViewDTO {
   id: number
@@ -425,6 +442,11 @@ export async function markNotificationRead(id: number): Promise<Result<any>> {
 
 export async function markAllNotificationsRead(): Promise<Result<number>> {
   return api.patch('/user/api/notifications/read-all')
+}
+
+/** 批量标记已读（B17，PATCH /user/api/notifications/batch-read）：按指定 ID 集合批量置读，返回本次流转条数。 */
+export async function batchMarkNotificationsAsRead(ids: number[]): Promise<Result<number>> {
+  return api.patch('/user/api/notifications/batch-read', ids)
 }
 
 // ===== Notification Preferences (add-notification-preference) — userId omitted when auth (gateway injects) =====

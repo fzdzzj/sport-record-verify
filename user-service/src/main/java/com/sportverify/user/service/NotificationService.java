@@ -16,6 +16,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
 import java.time.LocalDateTime;
+import java.util.Collection;
 import java.util.List;
 
 /**
@@ -176,6 +177,37 @@ public class NotificationService {
         int rows = notificationMapper.update(null,
                 new LambdaUpdateWrapper<Notification>()
                         .eq(Notification::getUserId, userId)
+                        .eq(Notification::getIsRead, 0)
+                        .set(Notification::getIsRead, 1)
+                        .set(Notification::getReadAt, now));
+        if (rows > 0) {
+            publishReceipt(NotificationReadReceipt.all(userId, now));
+        }
+        return rows;
+    }
+
+    /**
+     * 批量标记已读（B17 批量标记已读，PATCH /api/notifications/batch-read）：
+     * 带 user_id 归属校验，仅流转收件人本人且当前未读的指定 ID 集合（is_read=0 → 1，
+     * 回填 read_at）；重复标记已读幂等（已读行不重计），非本人通知被归属条件天然隔离。
+     *
+     * <p>已读回执（TASK-186 语义承续，B17 判定式）：受影响行数大于 0 时触发单条已读回执
+     * 发布（all，尽力而为，零行不发，只发一条回执禁逐条发以防回执风暴，publish 失败仅
+     * 告警不影响返回值）。</p>
+     *
+     * @param userId 收件人 userId（X-User-Id 认定）
+     * @param ids    待标记已读的通知 ID 集合
+     * @return 本次实际从未读流转为已读的条数（空集合返回 0）
+     */
+    public int batchMarkRead(Long userId, Collection<Long> ids) {
+        if (userId == null || ids == null || ids.isEmpty()) {
+            return 0;
+        }
+        LocalDateTime now = LocalDateTime.now();
+        int rows = notificationMapper.update(null,
+                new LambdaUpdateWrapper<Notification>()
+                        .eq(Notification::getUserId, userId)
+                        .in(Notification::getId, ids)
                         .eq(Notification::getIsRead, 0)
                         .set(Notification::getIsRead, 1)
                         .set(Notification::getReadAt, now));

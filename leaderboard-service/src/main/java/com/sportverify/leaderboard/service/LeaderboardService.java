@@ -89,6 +89,10 @@ public class LeaderboardService {
     private static final long SETTLE_FIXED_DELAY_MS = 10 * 60_000;
     /** 结算首跑延迟：1min（启动后先给事件消费留写入窗口） */
     private static final long SETTLE_INITIAL_DELAY_MS = 60_000;
+    /** B18：总榜 ZSet 最大保留成员数（结算末尾容量截断保护，保留前 10,000 名） */
+    private static final long OVERALL_ZSET_MAX = 10_000;
+    /** B18：scan 游标分批遍历批次大小（避免整榜 range(0,-1) 倾倒进 JVM 堆） */
+    private static final int OVERALL_ZSET_SCAN_BATCH = 500;
 
     private final SportRecordMapper sportRecordMapper;
     private final LeaderboardContributionMapper contributionMapper;
@@ -377,8 +381,13 @@ public class LeaderboardService {
      * Redisson 锁 {@code lock:scheduler:leaderboard}（lease=-1 → 默认 30s 看门狗）
      * 保证多实例仅一个执行；以 contribution ACTIVE 汇总为<b>权威源</b>纠偏 ZSet：
      * <ol>
+     *   <li>（B16）孤儿对账补偿：识别 ACTIVE 但 record 已不存在的孤儿行，流转 ROLLED_BACK
+     *       终态——自动兜底 record-service Feign 回滚失败遗留的脏里程，随本轮汇总从 ZSet 剔除；</li>
      *   <li>ZADD 覆盖各用户总分（纠正漂移/负分/Redis 重启丢数据）；</li>
-     *   <li>ZREM 清除已无 ACTIVE 贡献的残留成员（全量回滚后 ZSet 不留幽灵分数）；</li>
+     *   <li>（B18）ZREM 扫掠清除已无 ACTIVE 贡献的残留成员：以 {@code opsForZSet().scan(...)}
+     *       游标分批遍历比对（批次 500），不再整榜 range(0,-1) 倾倒进 JVM 堆；</li>
+     *   <li>（B18）容量截断保护：结算末尾对 {@code OVERALL_ZSET_KEY} 截断，仅保留前
+     *       {@value #OVERALL_ZSET_MAX} 名，消除历史未活跃用户无限累积撑爆 Redis 内存；</li>
      *   <li>批量为 ACTIVE 行盖 settled_at（快照口径）。</li>
      * </ol>
      *
@@ -397,45 +406,115 @@ public class LeaderboardService {
                 return;
             }
             try {
+                // B16 孤儿对账补偿：识别并回滚已删除记录的 ACTIVE 孤儿贡献（自愈 Feign 抖动遗留脏里程）
+                int orphanRolledBack = 0;
+                List<UserMileage> orphans =
+                        contributionMapper.selectOrphanContributions(ContributionStatus.ACTIVE.getCode());
+                for (UserMileage orphan : orphans) {
+                    int rows = contributionMapper.updateStatus(orphan.getRecordId(),
+                            ContributionStatus.ACTIVE.getCode(),
+                            ContributionStatus.ROLLED_BACK.getCode());
+                    if (rows > 0) {
+                        orphanRolledBack++;
+                        log.info("定时结算发现已删除记录的孤儿贡献，自动对账回滚：recordId={}, userId={}",
+                                orphan.getRecordId(), orphan.getUserId());
+                    }
+                }
+
                 List<UserMileage> summaries =
                         contributionMapper.selectActiveSummaries(ContributionStatus.ACTIVE.getCode());
                 Map<Long, Double> target = summaries.stream().collect(Collectors.toMap(
                         UserMileage::getUserId,
                         m -> m.getTotalDistance() == null ? 0d : m.getTotalDistance().doubleValue()));
 
-                // 1) 以汇总覆盖 ZSet（批量 ZADD 幂等纠偏）
+                // 1) 以汇总覆盖 ZSet（批量 ZADD 幂等纠偏；孤儿已回滚，不进入本 target）
                 if (!target.isEmpty()) {
                     Set<TypedTuple<String>> tuples = target.entrySet().stream()
                             .map(e -> TypedTuple.of(String.valueOf(e.getKey()), e.getValue()))
                             .collect(Collectors.toSet());
                     stringRedisTemplate.opsForZSet().add(OVERALL_ZSET_KEY, tuples);
                 }
-                // 2) 清除无 ACTIVE 贡献的残留成员
-                Set<String> members = stringRedisTemplate.opsForZSet().range(OVERALL_ZSET_KEY, 0, -1);
-                List<String> stale = members == null ? List.of() : members.stream()
-                        .filter(m -> !target.containsKey(Long.valueOf(m)))
-                        .toList();
-                if (!stale.isEmpty()) {
-                    stringRedisTemplate.opsForZSet().remove(OVERALL_ZSET_KEY, stale.toArray(new String[0]));
+                // 2) B18 清除无 ACTIVE 贡献的残留成员：scan 游标分批遍历比对，不再整榜倾倒进 JVM 堆
+                int pruned = 0;
+                List<String> staleBatch = new ArrayList<>(OVERALL_ZSET_SCAN_BATCH);
+                TypedTuple<String> cursor = null;
+                while (true) {
+                    Set<TypedTuple<String>> batch = new LinkedHashSet<>();
+                    org.springframework.data.redis.core.Cursor<TypedTuple<String>> zc =
+                            stringRedisTemplate.opsForZSet().scan(OVERALL_ZSET_KEY,
+                                    org.springframework.data.redis.core.ScanOptions
+                                            .scanOptions().count(OVERALL_ZSET_SCAN_BATCH).build());
+                    // scan 为尽力而为采集：null 视为空批（无成员可清理），避免 NPE 阻断结算对账
+                    if (zc != null) {
+                        zc.forEachRemaining(batch::add);
+                    }
+                    List<TypedTuple<String>> page = scanPage(batch, cursor);
+                    if (page.isEmpty()) {
+                        break;
+                    }
+                    for (TypedTuple<String> t : page) {
+                        if (!target.containsKey(Long.valueOf(t.getValue()))) {
+                            staleBatch.add(t.getValue());
+                        }
+                    }
+                    pruned += flushStale(staleBatch);
+                    cursor = page.get(page.size() - 1);
+                    if (page.size() < OVERALL_ZSET_SCAN_BATCH) {
+                        break;
+                    }
                 }
-                // 3) 标记 settled_at（快照口径：本行已随最近一次结算对账）
+                pruned += flushStale(staleBatch);
+                // 3) B18 容量截断保护：仅保留前 OVERALL_ZSET_MAX 名，防止历史未活跃用户无限累积撑爆 Redis 内存
+                long trimmed = stringRedisTemplate.opsForZSet()
+                        .removeRange(OVERALL_ZSET_KEY, 0, -(OVERALL_ZSET_MAX + 1));
+                // 4) 标记 settled_at（快照口径：本行已随最近一次结算对账）
                 if (!summaries.isEmpty()) {
                     contributionMapper.markSettled(ContributionStatus.ACTIVE.getCode(), LocalDateTime.now());
                 }
-                // 4) 写当日报表快照（TASK-108）：单条 INSERT...SELECT...ON DUPLICATE KEY UPDATE 自证原子，
+                // 5) 写当日报表快照（TASK-108）：单条 INSERT...SELECT...ON DUPLICATE KEY UPDATE 自证原子，
                 //    不引本地事务（ADR-0009）；再清掉"今日已无 ACTIVE 贡献"的残留行，
                 //    否则全量回滚过的用户会带着旧里程留在报表里。
                 int upserted = dailySummaryMapper.upsertFromActiveContributions(
                         ContributionStatus.ACTIVE.getCode());
                 int purged = dailySummaryMapper.deleteStaleToday(ContributionStatus.ACTIVE.getCode());
-                log.info("榜单结算完成：ACTIVE 汇总 {} 名，纠偏 {} 名，清理残留 {} 名，报表写入 {} / 清理 {} 行",
-                        target.size(), target.size(), stale.size(), upserted, purged);
+                log.info("榜单结算完成：孤儿回滚 {} 条，ACTIVE 汇总 {} 名，清理残留 {} 名，容量截断 {} 条，报表写入 {} / 清理 {} 行",
+                        orphanRolledBack, target.size(), pruned, trimmed, upserted, purged);
             } finally {
                 unlock(lock, locked);
             }
         } finally {
             TraceIds.clear();
         }
+    }
+
+    /**
+     * B18：以 scan 游标页实现成员的批式消费——scan 返回无序集合，无法直接判定是否已到末尾，
+     * 故持上一批末尾 member 做「推进判据」：若某批未包含该 member 或批次不足一页则视为已遍历完，
+     * 防止游标残差导致遗漏或死循环；该判据为尽力而为，残留清理是兜底纠偏，即便偶漏也会于下一轮结算覆盖。
+     */
+    private List<TypedTuple<String>> scanPage(Set<TypedTuple<String>> batch, TypedTuple<String> cursor) {
+        if (batch == null || batch.isEmpty()) {
+            return List.of();
+        }
+        List<TypedTuple<String>> page = new ArrayList<>(batch);
+        if (cursor != null && page.stream().noneMatch(t -> t.getValue().equals(cursor.getValue()))) {
+            // 上一批末尾 member 不在本批 —— 已跨入新窗口，结束遍历
+            return List.of();
+        }
+        return page;
+    }
+
+    /** B18：累积的残留成员分批 ZREM 出榜，返回已移除条数 */
+    private int flushStale(List<String> staleBatch) {
+        if (staleBatch.isEmpty()) {
+            return 0;
+        }
+        Object[] batch = new String[staleBatch.size()];
+        staleBatch.toArray(batch);
+        stringRedisTemplate.opsForZSet().remove(OVERALL_ZSET_KEY, batch);
+        int n = staleBatch.size();
+        staleBatch.clear();
+        return n;
     }
 
     // ==================== 每日报表只读查询 ====================

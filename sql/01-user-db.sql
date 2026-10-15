@@ -62,7 +62,8 @@ CREATE TABLE IF NOT EXISTS `notification` (
     `read_at`    DATETIME     DEFAULT NULL COMMENT '已读时间',
     PRIMARY KEY (`id`),
     UNIQUE KEY `uk_dedup` (`dedup_key`),
-    KEY `idx_user_read` (`user_id`, `is_read`, `id`)
+    KEY `idx_user_read` (`user_id`, `is_read`, `id`),
+    KEY `idx_user_id` (`user_id`, `id`)
 ) ENGINE = InnoDB
   DEFAULT CHARSET = utf8mb4 COMMENT ='通知表';
 

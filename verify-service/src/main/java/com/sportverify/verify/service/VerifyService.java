@@ -224,6 +224,17 @@ public class VerifyService {
     }
 
     /**
+     * 待审核申诉队列（B15）：按 id DESC 返回所有 PENDING 状态申诉单，
+     * 供管理后台 List<AppealDTO> 展示并驱动终判，终结盲打 ID。
+     */
+    public List<AppealDTO> listPendingAppeals() {
+        List<Appeal> list = appealMapper.selectList(new LambdaQueryWrapper<Appeal>()
+                .eq(Appeal::getStatus, AppealStatus.PENDING.getCode())
+                .orderByDesc(Appeal::getId));
+        return list.stream().map(this::toDto).toList();
+    }
+
+    /**
      * 管理员终判（规范「终判改判」「终判维持拒绝」）：
      * appeal PENDING → RE_PASSED/RE_CONFIRMED（乐观锁）+ 事件待发行行（同事务）→
      * 回调 record 迁移 APPEALING → RE_PASSED/RE_CONFIRMED；事件由 relay 唯一投递。

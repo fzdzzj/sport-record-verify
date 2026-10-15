@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { AxiosError, type AxiosResponse } from 'axios'
 import api from '@/api/client'
 import { getAccessToken, setAuthFailHandler, setTokens } from '@/utils/token'
-import { deleteGoal, delRecord, deleteFriend, getFeed, getLikesBatch, getMyGoals, getMyRecords, getMyStats, reviewAppeal, submitAppeal, upsertGoal } from '@/api/client'
+import { deleteGoal, delRecord, deleteFriend, getFeed, getLikesBatch, getMyGoals, getMyRecords, getMyStats, reviewAppeal, submitAppeal, upsertGoal, fetchPendingAppeals, batchMarkNotificationsAsRead } from '@/api/client'
 
 
 // adapter 注入范式：替换 api.defaults.adapter 为 vi.fn 模拟传输层，
@@ -504,5 +504,49 @@ describe('client.ts reviewAppeal（TASK-241）', () => {
     const call = adapter.mock.calls[0][0] as { url: string; data?: string }
     expect(call.url).toBe('/admin/api/appeals/90/review')
     expect(JSON.parse(call.data || '{}')).toEqual({ operator: 'admin', pass: false })
+  })
+})
+
+// ===== 申诉待审队列（B15 申诉待审闭环，TASK-244） =====
+describe('client.ts fetchPendingAppeals（B15）', () => {
+  // R1：fetchPendingAppeals 请求打 GET /admin/api/appeals/pending，返回待审列表
+  it('R1 fetchPendingAppeals hits GET /admin/api/appeals/pending', async () => {
+    const pendingBody = {
+      code: 0,
+      message: 'ok',
+      data: [
+        { id: 7, recordId: 12, userId: 100, reason: '里程判定有误', status: 0, createdAt: '2026-10-01T10:00:00' },
+        { id: 6, recordId: 11, userId: 101, reason: '轨迹遗漏', status: 0, createdAt: '2026-09-30T09:00:00' },
+      ],
+    }
+    adapter.mockImplementationOnce((config: unknown) => Promise.resolve(ok(config, pendingBody)))
+
+    const res = await fetchPendingAppeals()
+
+    expect(res.data).toHaveLength(2)
+    expect(res.data[0].id).toBe(7)
+    expect(res.data[0].status).toBe(0)
+    expect(adapter).toHaveBeenCalledTimes(1)
+    const call = adapter.mock.calls[0][0] as { url: string; method?: string }
+    expect(call.url).toBe('/admin/api/appeals/pending')
+    expect(call.method?.toLowerCase() || 'get').toBe('get')
+  })
+})
+
+// ===== 通知批量标记已读（B17 批量标记已读，TASK-244） =====
+describe('client.ts batchMarkNotificationsAsRead（B17）', () => {
+  // R1：batchMarkNotificationsAsRead 请求打 PATCH /user/api/notifications/batch-read 且 body 为 ID 列表
+  it('R1 batchMarkNotificationsAsRead hits PATCH /user/api/notifications/batch-read with ids', async () => {
+    const batchBody = { code: 0, message: 'ok', data: 2 }
+    adapter.mockImplementationOnce((config: unknown) => Promise.resolve(ok(config, batchBody)))
+
+    const res = await batchMarkNotificationsAsRead([1, 2])
+
+    expect(res.data).toBe(2)
+    expect(adapter).toHaveBeenCalledTimes(1)
+    const call = adapter.mock.calls[0][0] as { url: string; method?: string; data?: string }
+    expect(call.url).toBe('/user/api/notifications/batch-read')
+    expect(call.method?.toLowerCase()).toBe('patch')
+    expect(JSON.parse(call.data || '[]')).toEqual([1, 2])
   })
 })

@@ -6,6 +6,9 @@
 
       <div class="mb-2">
         <a-button :loading="loading" @click="loadList">刷新</a-button>
+        <a-button class="ml-2" :loading="batchLoading" :disabled="selectedIds.length === 0" @click="onBatchRead">
+          批量标记已读{{ selectedIds.length ? ` (${selectedIds.length})` : '' }}
+        </a-button>
         <a-button class="ml-2" :loading="markAllLoading" @click="onMarkAll">全部已读</a-button>
         <a-alert v-if="infoMessage" type="success" :message="infoMessage" class="mt-2" />
         <a-alert v-if="errorMessage" type="error" :message="errorMessage" class="mt-2" />
@@ -17,6 +20,7 @@
         :pagination="false"
         size="small"
         row-key="id"
+        :row-selection="{ selectedRowKeys: selectedIds, onChange: onSelectChange }"
         class="mt-2"
       >
         <template #bodyCell="{ column, record }">
@@ -102,6 +106,7 @@ import {
   listNotifications,
   markNotificationRead,
   markAllNotificationsRead,
+  batchMarkNotificationsAsRead,
   getNotificationPreferences,
   updateNotificationPreferences,
   type NotificationViewDTO,
@@ -152,6 +157,36 @@ const readingId = ref<number | null>(null)
 const markAllLoading = ref(false)
 const infoMessage = ref('')
 const errorMessage = ref('')
+
+// B17 批量标记已读：多选行 ID 集合 + 批量流转
+const selectedIds = ref<Array<string | number>>([])
+const batchLoading = ref(false)
+
+/** 表格行多选回调：同步选中 ID 集合（Ant Design Vue row-selection onChange 签名，行号/键数组） */
+function onSelectChange(keys: Array<string | number>) {
+  selectedIds.value = keys
+}
+
+/** 批量标记已读：对选中的未读通知批量置读，成功后清空选中并刷新列表及未读计数 */
+async function onBatchRead() {
+  if (batchLoading.value || selectedIds.value.length === 0) return
+  batchLoading.value = true
+  errorMessage.value = ''
+  infoMessage.value = ''
+  try {
+    const ids = selectedIds.value.filter((k): k is number => typeof k === 'number')
+    const res = await batchMarkNotificationsAsRead(ids)
+    const n = typeof res.data === 'number' ? res.data : 0
+    infoMessage.value = `批量标记已读 ${n} 条`
+    selectedIds.value = []
+    await loadList()
+    await refreshUnread()
+  } catch (e: any) {
+    errorMessage.value = e.code ? `[${e.code}] ${e.message}` : (e.message || '操作失败')
+  } finally {
+    batchLoading.value = false
+  }
+}
 
 const page = ref(1)
 const size = ref(10)

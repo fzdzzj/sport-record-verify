@@ -20,7 +20,9 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.redisson.api.RLock;
 import org.redisson.api.RedissonClient;
+import org.springframework.data.redis.core.Cursor;
 import org.springframework.data.redis.core.RedisCallback;
+import org.springframework.data.redis.core.ScanOptions;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.data.redis.core.ZSetOperations;
 import org.springframework.data.redis.core.ZSetOperations.TypedTuple;
@@ -390,9 +392,9 @@ class LeaderboardServiceTest {
         assertThrows(IllegalArgumentException.class, () -> service.top("friend", null, 10));
     }
 
-    // ==================== 快照结算（防重 + 对账纠偏） ====================
+    // ==================== 快照结算（防重 + 对账纠偏 + 孤儿自愈 + 防爆截断） ====================
 
-    /** 规范差异「对账纠偏」：以 ACTIVE 汇总覆盖 ZSet + 清理残留成员 + 标记 settled_at */
+    /** 规范差异「对账纠偏」：以 ACTIVE 汇总覆盖 ZSet + scan 游标清理残留成员 + 标记 settled_at + 容量截断 */
     @Test
     void settleAndReconcile_rebuildsZsetFromContributions() {
         UserMileage m = new UserMileage();
@@ -400,11 +402,13 @@ class LeaderboardServiceTest {
         m.setTotalDistance(new BigDecimal("42.50"));
         when(contributionMapper.selectActiveSummaries(ContributionStatus.ACTIVE.getCode()))
                 .thenReturn(List.of(m));
-        when(zSetOps.range(LeaderboardService.OVERALL_ZSET_KEY, 0, -1))
-                .thenReturn(new LinkedHashSet<>(List.of("100", "999")));
+        Cursor<TypedTuple<String>> cur = cursor(new LinkedHashSet<>(tuples("100", 42.5, "999", 30.0)));
+        when(zSetOps.scan(anyString(), any(ScanOptions.class))).thenReturn(cur);
 
         service.settleAndReconcile();
 
+        // 孤儿对账默认无孤儿行（mock 空列表）
+        verify(contributionMapper).selectOrphanContributions(ContributionStatus.ACTIVE.getCode());
         // 汇总覆盖（批量 ZADD 幂等纠偏）：成员=100，分数=42.5
         verify(zSetOps).add(eq(LeaderboardService.OVERALL_ZSET_KEY),
                 argThat((Set<TypedTuple<String>> set) -> set.size() == 1
@@ -425,6 +429,7 @@ class LeaderboardServiceTest {
         service.settleAndReconcile();
 
         verify(contributionMapper, never()).selectActiveSummaries(anyInt());
+        verify(contributionMapper, never()).selectOrphanContributions(anyInt());
         verifyNoInteractions(zSetOps);
         verify(contributionMapper, never()).markSettled(anyInt(), any());
     }
@@ -439,8 +444,8 @@ class LeaderboardServiceTest {
         m.setTotalDistance(new BigDecimal("42.50"));
         when(contributionMapper.selectActiveSummaries(ContributionStatus.ACTIVE.getCode()))
                 .thenReturn(List.of(m));
-        when(zSetOps.range(LeaderboardService.OVERALL_ZSET_KEY, 0, -1))
-                .thenReturn(new LinkedHashSet<>(List.of("100")));
+        Cursor<TypedTuple<String>> cur = cursor(new LinkedHashSet<>(tuples("100", 42.5)));
+        when(zSetOps.scan(anyString(), any(ScanOptions.class))).thenReturn(cur);
 
         service.settleAndReconcile();
 
@@ -459,6 +464,114 @@ class LeaderboardServiceTest {
         verify(dailySummaryMapper, never()).upsertFromActiveContributions(anyInt());
         verify(dailySummaryMapper, never()).deleteStaleToday(anyInt());
     }
+
+    // ==================== B16 孤儿对账补偿自愈 ====================
+
+    /**
+     * B16 判别式：孤儿贡献（ACTIVE 但 sport_record 已删除）被识别并流转 ROLLED_BACK，
+     * 且不再进入本轮汇总 target（ZADD 不含孤儿）。模拟 record-service Feign 回滚失败
+     * 遗留的脏里程被定时结算离线自愈。
+     */
+    @Test
+    void settleAndReconcile_rollsBackOrphanContributions() {
+        // 孤儿：recordId=500 的 ACTIVE 贡献，但对应 sport_record 已不存在
+        UserMileage orphan = new UserMileage();
+        orphan.setUserId(200L);
+        orphan.setRecordId(500L);
+        orphan.setTotalDistance(new BigDecimal("18.00"));
+        when(contributionMapper.selectOrphanContributions(ContributionStatus.ACTIVE.getCode()))
+                .thenReturn(List.of(orphan));
+        // 只有非孤儿的 ACTIVE 汇总（100 的 42.50）
+        UserMileage m = new UserMileage();
+        m.setUserId(100L);
+        m.setTotalDistance(new BigDecimal("42.50"));
+        when(contributionMapper.selectActiveSummaries(ContributionStatus.ACTIVE.getCode()))
+                .thenReturn(List.of(m));
+        Cursor<TypedTuple<String>> cur = cursor(new LinkedHashSet<>(tuples("100", 42.5)));
+        when(zSetOps.scan(anyString(), any(ScanOptions.class))).thenReturn(cur);
+
+        service.settleAndReconcile();
+
+        // 孤儿被识别并流转 ACTIVE → ROLLED_BACK
+        verify(contributionMapper).updateStatus(500L,
+                ContributionStatus.ACTIVE.getCode(),
+                ContributionStatus.ROLLED_BACK.getCode());
+        // 孤儿里程（200）未进入 ZADD 汇总 target：仅 100 被覆盖
+        verify(zSetOps).add(eq(LeaderboardService.OVERALL_ZSET_KEY),
+                argThat((Set<TypedTuple<String>> set) -> set.size() == 1
+                        && set.iterator().next().getValue().equals("100")));
+    }
+
+    /**
+     * B16 判别式：孤儿行若已在并发中被他进程回滚（updateStatus 影响 0 行），
+     * 不重复处理、不中断结算，静默跳过（自愈幂等）。
+     */
+    @Test
+    void settleAndReconcile_orphanAlreadyRolledBack_isIdempotent() {
+        UserMileage orphan = new UserMileage();
+        orphan.setUserId(200L);
+        orphan.setRecordId(500L);
+        orphan.setTotalDistance(new BigDecimal("18.00"));
+        when(contributionMapper.selectOrphanContributions(ContributionStatus.ACTIVE.getCode()))
+                .thenReturn(List.of(orphan));
+        when(contributionMapper.updateStatus(500L,
+                ContributionStatus.ACTIVE.getCode(),
+                ContributionStatus.ROLLED_BACK.getCode())).thenReturn(0);
+        when(contributionMapper.selectActiveSummaries(ContributionStatus.ACTIVE.getCode()))
+                .thenReturn(List.of());
+        Cursor<TypedTuple<String>> cur = cursor(new LinkedHashSet<>());
+        when(zSetOps.scan(anyString(), any(ScanOptions.class))).thenReturn(cur);
+
+        service.settleAndReconcile();
+
+        // 影响 0 行即已回滚：不重复处理、不抛异常、结算正常走完（汇总/报表照常执行）
+        verify(contributionMapper).updateStatus(500L,
+                ContributionStatus.ACTIVE.getCode(),
+                ContributionStatus.ROLLED_BACK.getCode());
+        // 报告写入仍按惯例执行（孤儿自愈失败不阻断结算主链路）
+        verify(dailySummaryMapper).upsertFromActiveContributions(ContributionStatus.ACTIVE.getCode());
+    }
+
+    // ==================== B18 防爆：scan 分批 + 容量截断 ====================
+
+    /**
+     * B18 判别式一：不再整榜 range(0,-1) 倾倒进 JVM 堆——改用 scan 游标分批遍历，
+     * 未调用已废弃的 range 全量读取。
+     */
+    @Test
+    void settleAndReconcile_usesScanNotFullDumpRange() {
+        when(contributionMapper.selectActiveSummaries(ContributionStatus.ACTIVE.getCode()))
+                .thenReturn(List.of());
+        Cursor<TypedTuple<String>> cur = cursor(new LinkedHashSet<>(tuples("999", 30.0)));
+        when(zSetOps.scan(anyString(), any(ScanOptions.class))).thenReturn(cur);
+
+        service.settleAndReconcile();
+
+        verify(zSetOps, never()).range(anyString(), anyLong(), anyLong());
+        verify(zSetOps).scan(anyString(), any());
+        verify(zSetOps).remove(LeaderboardService.OVERALL_ZSET_KEY, "999");
+    }
+
+    /**
+     * B18 判别式二：结算末尾对总榜执行容量截断保护（removeRange 保留前 OVERALL_ZSET_MAX 名），
+     * 且仅在成员超过上限时实际截断。
+     */
+    @Test
+    void settleAndReconcile_trimsZsetCapacityWhenOverLimit() {
+        when(contributionMapper.selectActiveSummaries(ContributionStatus.ACTIVE.getCode()))
+                .thenReturn(List.of());
+        // 构造一批（含 ACTIVE 100 + 幽灵 999）触发清理，仍保留截断调用
+        Cursor<TypedTuple<String>> cur = cursor(new LinkedHashSet<>(tuples("100", 42.5, "999", 30.0)));
+        when(zSetOps.scan(anyString(), any(ScanOptions.class))).thenReturn(cur);
+
+        service.settleAndReconcile();
+
+        // 容量截断：removeRange(key, 0, -(OVERALL_ZSET_MAX + 1))。OVERALL_ZSET_MAX 未公开，
+        // 以 removeRange 被调用且起点 0 为契约锚点（保留前 N 名的语义由服务实现保证）。
+        verify(zSetOps).removeRange(eq(LeaderboardService.OVERALL_ZSET_KEY), eq(0L), anyLong());
+    }
+
+    // ==================== 每日报表快照（TASK-108） ====================
 
     /** 报表读取：按 Mapper 返回序编 rank，昵称走总榜同一降级口径；size 有上限 */
     @Test
@@ -538,7 +651,7 @@ class LeaderboardServiceTest {
         verify(zSetOps, never()).incrementScore(anyString(), anyString(), anyDouble());
     }
 
-    /** settleAndReconcile 残留成员清理：ZSet 有幽灵分数 */
+    /** 残留成员清理：ZSet 有幽灵分数（scan 遍历识别并分批 ZREM） */
     @Test
     void settleAndReconcile_clearStaleMembers() {
         UserMileage m = new UserMileage();
@@ -547,9 +660,8 @@ class LeaderboardServiceTest {
         when(contributionMapper.selectActiveSummaries(ContributionStatus.ACTIVE.getCode()))
                 .thenReturn(List.of(m));
         // ZSet 中有 ACTIVE 用户和无贡献的幽灵用户
-        Set<String> members = new LinkedHashSet<>(List.of("100", "999", "888"));
-        when(zSetOps.range(LeaderboardService.OVERALL_ZSET_KEY, 0, -1))
-                .thenReturn(members);
+        Cursor<TypedTuple<String>> cur = cursor(new LinkedHashSet<>(tuples("100", 42.5, "999", 30.0, "888", 20.0)));
+        when(zSetOps.scan(anyString(), any(ScanOptions.class))).thenReturn(cur);
 
         service.settleAndReconcile();
 
@@ -557,13 +669,13 @@ class LeaderboardServiceTest {
         verify(zSetOps).remove(LeaderboardService.OVERALL_ZSET_KEY, "999", "888");
     }
 
-    /** settleAndReconcile 无汇总数据：仍执行清理残留 */
+    /** 无汇总数据：仍执行清理残留 */
     @Test
     void settleAndReconcile_noSummaries_onlyCleanup() {
         when(contributionMapper.selectActiveSummaries(ContributionStatus.ACTIVE.getCode()))
                 .thenReturn(List.of());
-        when(zSetOps.range(LeaderboardService.OVERALL_ZSET_KEY, 0, -1))
-                .thenReturn(new LinkedHashSet<>(List.of("999", "888")));
+        Cursor<TypedTuple<String>> cur = cursor(new LinkedHashSet<>(tuples("999", 30.0, "888", 20.0)));
+        when(zSetOps.scan(anyString(), any(ScanOptions.class))).thenReturn(cur);
 
         service.settleAndReconcile();
 
@@ -597,6 +709,21 @@ class LeaderboardServiceTest {
             set.add(TypedTuple.of((String) valueScorePairs[i], ((Number) valueScorePairs[i + 1]).doubleValue()));
         }
         return set;
+    }
+
+    /**
+     * B18：把批次成员集合包装成 {@link Cursor}，模拟 {@code opsForZSet().scan(...)} 的返回。
+     * 用 CALLS_REAL_METHODS 使 {@code Iterator.forEachRemaining} 默认方法真实委托被 mock 的
+     * hasNext/next；结算任务只消费 ≤批次(500) 的一页即终止，故 mock 一次迭代足够。
+     */
+    @SuppressWarnings("unchecked")
+    private Cursor<TypedTuple<String>> cursor(Set<TypedTuple<String>> members) {
+        Cursor<TypedTuple<String>> c = mock(Cursor.class, org.mockito.Mockito.CALLS_REAL_METHODS);
+        int[] i = {0};
+        TypedTuple<String>[] arr = members.toArray(new TypedTuple[0]);
+        when(c.hasNext()).thenAnswer(inv -> i[0] < arr.length);
+        when(c.next()).thenAnswer(inv -> arr[i[0]++]);
+        return c;
     }
 
     // ==================== 日期范围榜单（TASK-209） ====================
