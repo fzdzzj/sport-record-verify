@@ -2,9 +2,9 @@
 
 ## 当前进度与外部基线
 
-- **最新代码基线与分支**：`main` 分支，最新已封盘至 **TASK-237**（HEAD `1d37ed0` / `8177e97`）。
+- **最新代码基线与分支**：`main` 分支，最新已封盘至 **TASK-238**（HEAD `b693fe9` / `50f85f7`）。
 - **会话无缝交接看板**：新主 Agent 接手状态与下一步动作见 [HANDOVER.md](HANDOVER.md)（原地滚动更新，免建新交接文档）。
-- **CI 外部门槛状态**：GitHub Actions run `38586443704`（HEAD `aee5ca0`，web ✓31s / build ✓11m46s 全 job 绿）。包含全模块 clean verify、Checkstyle/SpotBugs/PMD 静态门、Docker 镜像构建与 Trivy 依赖扫描。
+- **CI 外部门槛状态**：GitHub Actions run `38692154084`（HEAD `b1c0e3a`，web ✓30s / build ✓12m10s 全 job 绿）。包含全模块 clean verify、Checkstyle/SpotBugs/PMD 静态门、Docker 镜像构建与 Trivy 依赖扫描。
 - **历史记录归档索引**：早期 100+ 笔验收记录（TASK-001 至 TASK-210）已完整归档至 [PLAN-history-001-210.md](archive/PLAN-history-001-210.md)。各任务的原始契约与回传留存见 `work/mailbox/tasks/TASK-xxx/`。
 - **候选规划与待办状态**：后续方向候选（F/H 系列）与排期规划统一定位在 [BACKLOG.md](BACKLOG.md)。
 
@@ -397,3 +397,17 @@
 | 是否到达外部门槛 | **未到达**：C-01/C-02 已提交，待指导侧统一提交台账闭环笔并随批推送触发 CI 外部终验 |
 | 独立复核结论与裁决 | 指导侧独立四块核验全过（总体 **PASS**，BLOCKER 0，偏差 D1~D3 合规解释）：5 个实施文件 + 2 个两件套严丝合缝全等白名单；前端全套验证与契约门禁独立实测稳定全绿；D3 认定 ref 承载 localStorage 登录态并由 logout/watch 同步属合理设计防陈旧值；终审裁定 **ACCEPT 予以封盘** |
 | 状态 | TASK-237 本地闭环，指导侧终裁 **ACCEPT 予以封盘** |
+
+## 验收记录：`TASK-238`（运动轨迹全链路真实化与反作弊合理性：长轨迹全量突破、GPX完整导出、SVG等比投影与闭环判定合理性，MEDIUM 档，2026-10-15）
+
+| 项 | 内容 |
+| --- | --- |
+| 开工基线 | `b1c0e3a`（main 分支，工作树干净，CI run 38692154084 全绿） |
+| C-01 实施笔 | `b693fe9` `feat(web,verify): TASK-238 运动轨迹全链路真实化——全量长轨迹与GPX导出、SVG等比投影与折返起征保护（C-01 实施笔）`（恰 4 文件，+184/−28） |
+| C-02 任务两件套 | `50f85f7` `docs(mailbox): TASK-238 运动轨迹全链路真实化验收与台账闭环（C-02 台账笔）`（恰 2 文件，+191/−1） |
+| 任务内容与白名单 | 相对开工基线恰 6 文件 = 白名单全等（实施 4 文件 + 任务两件套 2 文件）；生产后端其他代码、配置及红线文件 100% 零触碰，零新外部依赖 |
+| 核心实现 | ① 详情页长轨迹突破与 GPX 完整导出：`record-detail.page.vue` 的 `load()` 首包 500 后，若 `total > records.length` 则自动 `while (allPoints.length < totalPoints && allPoints.length < 20000)` 循环分页按批追加拉取至全量（每批 500 点，空批 break 防死循环），文案改为「共 X 个轨迹点（完整加载）…」并移除 500 点截断警告；`generateGpx(points.value)` 自然基于完整点集导出；② SVG 局部等距等比投影：`record-detail.page.vue` 结合 `avgLat` 余弦修正 `spanX`，统一缩放比 `scale=min(innerW/spanX, innerH/spanY)` 居中等比渲染（viewBox 800×400、PAD 16），全同坐标退化居中兜底，正方形/圆形轨迹不再拉伸变形；③ R4 规则起征门槛保护：`R4DistanceRule.java` 在 `cumulative < minCumulativeMeters` 时直接返回 null 豁免判定，超门槛原比值判定一字未动；`VerifyProperties.java` 新增 `minCumulativeMeters = 500.0`；新建 `R4DistanceRuleTest.java` 覆盖短闭环豁免、长折返命中、正常直线不命中三用例 |
+| 本机门禁 | 后端 `mvn -B -ntp -o -s .mvn-settings.xml clean test -pl verify-service -am` BUILD SUCCESS（Tests run: 164, Failures: 0, Errors: 0，rc=0）；前端 `type-check` 0 错误（rc=0）；`pnpm test` 4 套 32 测全过（rc=0）；`pnpm build` 产出成功（rc=0）；Playwright E2E 本地实跑 **12 passed (31.0s)** 100% 全绿（rc=0）；契约门 `mailbox-contract.sh --open=TASK-238 --baseline=b1c0e3a` 退出码 0（判据 A 两件套齐 + 判据 B 清单一致） |
+| 是否到达外部门槛 | **未到达**：C-01/C-02 已提交，待指导侧统一提交台账闭环笔并随批推送触发 CI 外部终验 |
+| 独立复核结论与裁决 | 指导侧独立四块核验全过（总体 **PASS**，BLOCKER 0，偏差 D1~D3 合规解释）：4 个实施文件 + 2 个两件套严丝合缝全等白名单；前端全套验证与契约门禁独立实测稳定全绿；数学等比投影算法精炼准确，长轨迹分页防死锁健全，反作弊起征保护与规范兼容性严密；终审裁定 **ACCEPT 予以封盘** |
+| 状态 | TASK-238 本地闭环，指导侧终裁 **ACCEPT 予以封盘** |
