@@ -10,6 +10,8 @@ import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
+
+import java.util.List;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpStatus;
@@ -75,6 +77,19 @@ public class LikeController {
                                    @RequestParam(value = "userId", required = false) Long userId,
                                    HttpServletRequest request) {
         return Result.success(recordLikeService.getLike(id, resolveUserId(request, userId)));
+    }
+
+    /**
+     * 批量查询点赞状态（TASK-240：Feed 动态流批量下推，单次往返获取多条记录点赞态与计数）。
+     *
+     * <p>入参为记录 id 列表，返回顺序与去重后的可见记录顺序一致；对不存在或不可见的记录
+     * 由服务端安全过滤（不影响整批数据返回）。同样经网关注入的 X-User-Id 认定身份。</p>
+     */
+    @PostMapping("/likes/batch")
+    public Result<List<LikeDTO>> getLikesBatch(@RequestBody List<Long> recordIds,
+                                               @RequestParam(value = "userId", required = false) Long userId,
+                                               HttpServletRequest request) {
+        return Result.success(recordLikeService.getLikesBatch(recordIds, resolveUserId(request, userId)));
     }
 
     /**

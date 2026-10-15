@@ -194,6 +194,14 @@ export async function getRecordLike(recordId: number | string): Promise<Result<L
   return api.get(`/record/api/records/${recordId}/like`)
 }
 
+/**
+ * 批量查询点赞状态（TASK-240 B7）：POST /record/api/records/likes/batch，入参为记录 id 列表，
+ * 单次往返下推获取多条记录的点赞态与计数（服务端过滤不存在/不可视记录）。auth 会话下 userId 由网关注入。
+ */
+export async function getLikesBatch(recordIds: number[]): Promise<Result<LikeDTO[]>> {
+  return api.post('/record/api/records/likes/batch', recordIds)
+}
+
 export async function getRecordPoints(recordId: number | string, page = 1, size = 5): Promise<Result<PageResult<TrackPointDTO>>> {
   return api.get(`/record/api/records/${recordId}/points`, { params: { page, size } })
 }

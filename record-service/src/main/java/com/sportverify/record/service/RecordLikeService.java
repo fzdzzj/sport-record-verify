@@ -30,6 +30,7 @@ import org.springframework.transaction.support.TransactionTemplate;
 import java.nio.charset.StandardCharsets;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -296,6 +297,98 @@ public class RecordLikeService {
                 stringRedisTemplate.opsForSet().isMember(usersKey(recordId), String.valueOf(userId)));
         long count = readCount(recordId);
         return LikeDTO.of(recordId, count, liked);
+    }
+
+    // ==================== 批量点赞态查询（Pipeline 单次往返，TASK-240 B7） ====================
+
+    /**
+     * 批量查询点赞状态（TASK-240：Feed 动态流批量下推，单次往返获取多条记录的点赞态与计数）：
+     * <ol>
+     *   <li><b>空安全</b>：入参 {@code null} 或空列表直接返回 {@code Collections.emptyList()}；</li>
+     *   <li><b>去重保序</b>：过滤 null、按 {@link LinkedHashMap} 去重，保留首次出现顺序；</li>
+     *   <li><b>可见性保护</b>：逐 id 经 {@link SportRecordMapper#selectById} 加载记录，
+     *       存在且通过 {@link SportRecordService#assertCanView} 才纳入；记录不存在或校验失败
+     *       捕获 {@link BizException} 安全跳过，绝不因单条记录异常导致整批 Feed 报错；</li>
+     *   <li><b>单次往返（RTT=1）</b>：经 {@code stringRedisTemplate.executePipelined} 批量查询
+     *       各记录 count（GET {@code like:count:{id}}）与当前用户已赞态（SISMEMBER
+     *       {@code like:record:{id}:users}），交互按序解包；</li>
+     *   <li><b>穿透回源</b>：某条记录 Redis 计数键缺失（null）时，回退既有 {@link #readCount}
+     *       逻辑补齐（DB COUNT(*)+回填），防止批量读冷键读到 0 假象。</li>
+     * </ol>
+     *
+     * @param recordIds 待查询记录 id 列表（允许重复/含 null）
+     * @param userId 当前用户（可能为 null，降级态）
+     * @return 有序的 {@link LikeDTO} 列表，仅包含通过可见性校验的记录
+     */
+    public List<LikeDTO> getLikesBatch(List<Long> recordIds, Long userId) {
+        if (recordIds == null || recordIds.isEmpty()) {
+            return Collections.emptyList();
+        }
+        // 去重保序 + 过滤 null
+        List<Long> distinctIds = recordIds.stream()
+                .filter(Objects::nonNull)
+                .distinct()
+                .toList();
+        if (distinctIds.isEmpty()) {
+            return Collections.emptyList();
+        }
+
+        // 可见性与记录过滤：不存在的记录或不可视的记录安全跳过（不影响整批）
+        List<SportRecord> authorized = new ArrayList<>();
+        for (Long id : distinctIds) {
+            SportRecord record;
+            try {
+                record = sportRecordMapper.selectById(id);
+                if (record == null) {
+                    continue;   // 记录不存在：跳过
+                }
+                sportRecordService.assertCanView(record, userId);
+            } catch (BizException e) {
+                log.debug("批量点赞态跳过不可视记录：recordId={}, userId={}", id, userId);
+                continue;       // 不可视：跳过（捕获异常，不影响整批）
+            }
+            authorized.add(record);
+        }
+        if (authorized.isEmpty()) {
+            return Collections.emptyList();
+        }
+
+        // Redis Pipeline 单次往返：逐记录发 1 个 GET(count) +（userId 非空时）1 个 SISMEMBER(liked)
+        List<Object> pipelined = stringRedisTemplate.executePipelined(
+                (RedisCallback<Object>) connection -> {
+                    for (SportRecord record : authorized) {
+                        connection.stringCommands().get(
+                                countKey(record.getId()).getBytes(StandardCharsets.UTF_8));
+                        if (userId != null) {
+                            connection.setCommands().sIsMember(
+                                    usersKey(record.getId()).getBytes(StandardCharsets.UTF_8),
+                                    String.valueOf(userId).getBytes(StandardCharsets.UTF_8));
+                        }
+                    }
+                    return null;
+                });
+
+        // 按序解包：每个记录 1 或 2 个响应项（count[, liked]）
+        List<LikeDTO> result = new ArrayList<>(authorized.size());
+        int idx = 0;
+        for (SportRecord record : authorized) {
+            Long recordId = record.getId();
+            Long count;
+            Object countRaw = pipelined.get(idx++);
+            if (countRaw == null) {
+                // 缓存穿透：Redis 计数键缺失，回退既有点赞数读取（DB 兜底 + 回填）
+                count = readCount(recordId);
+            } else {
+                count = Long.valueOf(String.valueOf(countRaw));
+            }
+            boolean liked = false;
+            if (userId != null) {
+                Object likedRaw = pipelined.get(idx++);
+                liked = Boolean.TRUE.equals(likedRaw);
+            }
+            result.add(LikeDTO.of(recordId, count, liked));
+        }
+        return result;
     }
 
     // ==================== 异步批量落库（定时任务 + Redisson 防重） ====================

@@ -68,7 +68,7 @@
 import { ref, computed, onMounted } from 'vue'
 import { useRouter } from 'vue-router/auto'
 import { message } from 'ant-design-vue'
-import { getFeed, getRecordLike, likeRecord, unlikeRecord, type FeedItemDTO } from '@/api/client'
+import { getFeed, getLikesBatch, likeRecord, unlikeRecord, type FeedItemDTO } from '@/api/client'
 import { hasAccessToken } from '@/utils/token'
 
 const router = useRouter()
@@ -149,16 +149,20 @@ function likeLabel(item: FeedItemDTO): string {
   return info.liked ? `已赞 (${info.likeCount})` : `赞 (${info.likeCount})`
 }
 
-/** 列表加载完毕后异步拉取当前页可见记录的点赞态；单条失败不影响整页渲染与列表可用性 */
+/** 列表加载完毕后异步批量拉取当前页可见记录的点赞态；单次请求下推（20 次并发 HTTP 压至 1 次），失败不影响整页渲染与列表可用性 */
 async function loadLikes() {
   const ids = rows.value.map((r) => r.id)
-  const results = await Promise.allSettled(ids.map((id) => getRecordLike(id)))
-  results.forEach((r, i) => {
-    if (r.status === 'fulfilled') {
-      likeMap.value[ids[i]] = { liked: r.value.data.liked, likeCount: r.value.data.likeCount }
+  if (ids.length === 0) return
+  try {
+    const res = await getLikesBatch(ids)
+    if (res.data && Array.isArray(res.data)) {
+      res.data.forEach((item) => {
+        likeMap.value[item.recordId] = { liked: item.liked, likeCount: item.likeCount }
+      })
     }
-    // rejected：单条点赞态查询失败静默跳过（容错降级）
-  })
+  } catch {
+    // 批量点赞态查询失败静默跳过（容错降级）
+  }
 }
 
 async function toggleLike(item: FeedItemDTO) {

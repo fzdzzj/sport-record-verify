@@ -43,6 +43,7 @@ CREATE TABLE IF NOT EXISTS `friendship` (
     `user_high`  BIGINT   NOT NULL COMMENT '较大用户ID',
     `created_at` DATETIME DEFAULT NULL COMMENT '建立时间',
     PRIMARY KEY (`user_low`, `user_high`),
+    KEY `idx_user_high` (`user_high`),
     CONSTRAINT `ck_friendship_low_lt_high` CHECK (`user_low` < `user_high`)
 ) ENGINE = InnoDB
   DEFAULT CHARSET = utf8mb4 COMMENT ='好友关系表（user_low < user_high）';

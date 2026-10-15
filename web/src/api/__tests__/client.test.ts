@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { AxiosError, type AxiosResponse } from 'axios'
 import api from '@/api/client'
 import { getAccessToken, setAuthFailHandler, setTokens } from '@/utils/token'
-import { deleteGoal, delRecord, getFeed, getMyGoals, getMyRecords, getMyStats, upsertGoal } from '@/api/client'
+import { deleteGoal, delRecord, getFeed, getLikesBatch, getMyGoals, getMyRecords, getMyStats, upsertGoal } from '@/api/client'
 
 
 // adapter 注入范式：替换 api.defaults.adapter 为 vi.fn 模拟传输层，
@@ -146,6 +146,33 @@ describe('client.ts 拦截器锚点（TASK-215）', () => {
     expect(failHandler).toHaveBeenCalledTimes(1)
     // 原请求 + refresh = 2 次，无重试
     expect(adapter).toHaveBeenCalledTimes(2)
+  })
+})
+
+// ===== Feed 点赞态批量下推（TASK-240 add-feed-likes-batch） =====
+describe('client.ts getLikesBatch（TASK-240）', () => {
+  // R1：getLikesBatch 请求打 POST /record/api/records/likes/batch 且 body 为记录 id 列表
+  it('R1 getLikesBatch hits POST /record/api/records/likes/batch with payload', async () => {
+    const likeBody = {
+      code: 0,
+      message: 'ok',
+      data: [
+        { recordId: 9, likeCount: 3, liked: true },
+        { recordId: 10, likeCount: 0, liked: false },
+      ],
+    }
+    adapter.mockImplementationOnce((config: unknown) => Promise.resolve(ok(config, likeBody)))
+
+    const ids = [9, 10]
+    const res = await getLikesBatch(ids)
+
+    expect(res.data).toHaveLength(2)
+    expect(res.data[0].recordId).toBe(9)
+    expect(adapter).toHaveBeenCalledTimes(1)
+    const call = adapter.mock.calls[0][0] as { url: string; method?: string; data?: string }
+    expect(call.url).toBe('/record/api/records/likes/batch')
+    expect(call.method?.toLowerCase()).toBe('post')
+    expect(JSON.parse(call.data || '[]')).toEqual(ids)
   })
 })
 
