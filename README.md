@@ -231,6 +231,68 @@ curl http://127.0.0.1:8080/user/api/friends?page=1\&size=20 \
 # 无 token → 401（1001）；A 的 token 带 B 的 userId 参数 → 403（1002）
 ```
 
+## 生产部署：反向代理协同（TLS 终止 + 多域名 CORS）
+
+网关默认单点对宿主机 8080 直连即可使用（见「快速开始」）。**生产部署网关位于反向代理
+（Nginx / K8s Ingress / 云厂商 SLB / 应用型负载均衡）之后，网关与代理需按以下姿态协同**
+（TASK-247 候选 H2 落地，自动化演练见 `gateway-service` 的 `GatewayProductionPostureTest`）：
+
+### 1. TLS 终止与真实协议识别（`X-Forwarded-Proto`）
+
+反代在后面终止 TLS（客户端 ↔ 代理走 https，代理 ↔ 网关走 http 内网），并在转发时透传
+`X-Forwarded-Proto`、`X-Forwarded-Host`、`X-Forwarded-Port`。网关配置：
+
+```yaml
+server:
+  port: 8080
+  forward-headers-strategy: framework   # 框架策略：按 X-Forwarded-* 还原客户端真实协议/域名
+```
+
+以 Nginx 为例（`proxy_set_header` 三段缺一不可，否则网关识别不到 https）：
+
+```nginx
+location / {
+    proxy_pass http://gateway-service:8080;
+    proxy_set_header Host              $host;
+    proxy_set_header X-Forwarded-Proto $scheme;   # https（客户端实际协议）
+    proxy_set_header X-Forwarded-Host  $host;
+    proxy_set_header X-Forwarded-Port  $server_port;
+}
+```
+
+K8s Ingress 默认自动注入 `X-Forwarded-Proto/Host/For`；云厂商 SLB 一般在「监听转发配置」勾选
+「透传客户端请求头」。未透传时 `forward-headers-strategy: framework` 存在被客户端伪造
+`X-Forwarded-Proto` 的风险——**生产必须仅信任反代透传的真实头**（内网隔离 + 反代覆盖同名头）。
+
+### 2. 跨域多域名白名单（`CORS_ALLOWED_ORIGINS`）
+
+网关 `globalcors` 的允许来源由环境变量 `CORS_ALLOWED_ORIGINS` 注入（逗号分隔，多域名），
+`allowCredentials=true` 故禁止 `*`。本地默认回退 `http://127.0.0.1:5173,http://localhost:5173`
+（Vite 前端源，零扰动）；**生产部署把浏览器实际访问的前端域名（可多个）注入**，例如：
+
+```bash
+export CORS_ALLOWED_ORIGINS=https://sports.example.com,https://admin.example.com
+```
+
+注入进 Compose 时（见 `docker-compose.services.yml` 的 `gateway-service.environment`，未注入则回退本地默认）：
+
+```yaml
+CORS_ALLOWED_ORIGINS: "${CORS_ALLOWED_ORIGINS:-http://127.0.0.1:5173,http://localhost:5173}"
+```
+
+行为：白名单内 Origin 的预检 OPTIONS 回显对应 `Access-Control-Allow-Origin` 且
+`Access-Control-Allow-Credentials: true`；未白名单的恶意 Origin（如 `https://attacker.com`）
+拿不到任何 CORS 响应头，跨域带凭证（`Cookie: refresh_token=...`）请求因此无法从恶意站点发起。
+
+### 3. 跨域 Cookie 凭证透传
+
+前端跨域请求需带 `credentials: 'include'`（fetch/XHR 的 `withCredentials`），浏览器才会带
+`Cookie: refresh_token=...` 发送并接受网关的凭证响应。网关全局过滤链对
+`/api/auth/**`、`/user/**` 等路由**原样透传 Cookie 请求头不做剥离**（`refresh_token` 为 HttpOnly
+Cookie，TASK-205；凭证窃取窗口由 refresh 存活期收敛为 access 15min 短窗口），下游 user-service
+据此完成刷新/轮换。链路要求：前端来源必须在 `CORS_ALLOWED_ORIGINS` 白名单内且
+`Access-Control-Allow-Credentials: true`（已由 §2 保证），否则浏览器拒绝携带 cookie，刷新将 401。
+
 ## 监控与告警（Prometheus + Grafana，选型理由见 [ADR-0003](docs/adr/0003-监控选型.md)）
 
 `docker compose up -d` 已包含监控栈（prometheus:9090 / grafana:3000），无需额外命令。各服务经

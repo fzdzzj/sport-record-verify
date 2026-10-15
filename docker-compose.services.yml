@@ -30,6 +30,12 @@ services:
       # Sentinel 动态规则源（app.sentinel.nacos.server-addr）同样指向 compose 内 Nacos
       APP_SENTINEL_NACOS_SERVER_ADDR: nacos:8848
       SPRING_DATA_REDIS_HOST: redis
+      # 生产跨域白名单（TASK-247，见 ADR-0007 网关唯一入口口径）：逗号分隔多域名原样注入
+      # CORS_ALLOWED_ORIGINS，网关 globalcors 动态解析并配合 allowCredentials=true 放行凭证跨域；
+      # 未注入时回退本地前端默认源（http://127.0.0.1:5173 / http://localhost:5173），本地零扰动。
+      # 反向代理 TLS 终止姿态：网关 server.forward-headers-strategy=framework，配合 Nginx/Ingress
+      # 透传 X-Forwarded-Proto=https / X-Forwarded-Host / X-Forwarded-Port 识别客户端真实协议。
+      CORS_ALLOWED_ORIGINS: "${CORS_ALLOWED_ORIGINS:-http://127.0.0.1:5173,http://localhost:5173}"
       # 治理面签名凭证 HMAC 密钥（TASK-201）：必填，缺失/弱 key 治理面失败关闭
       GOVERNANCE_TOKEN: "${GOVERNANCE_TOKEN:?required: cp scripts/verify/env.example .env}"
     ports:

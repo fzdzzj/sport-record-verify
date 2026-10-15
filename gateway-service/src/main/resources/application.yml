@@ -1,5 +1,9 @@
 server:
   port: 8080
+  # 生产反代 TLS 终止协同（TASK-247）：网关部署于 Nginx/K8s Ingress/SLB 之后时，
+  # framework 策略经 X-Forwarded-Proto/Host/Port 恢复客户端真实协议与域名，
+  # 防止构造重定向回退 HTTP 或 Cookie 属性错乱（配合反向代理透传 X-Forwarded-* 头）。
+  forward-headers-strategy: framework
 
 spring:
   application:
