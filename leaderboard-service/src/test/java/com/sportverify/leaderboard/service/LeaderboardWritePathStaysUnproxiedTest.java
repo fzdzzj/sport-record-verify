@@ -13,6 +13,7 @@ import org.springframework.boot.autoconfigure.aop.AopAutoConfiguration;
 import org.springframework.boot.autoconfigure.jdbc.DataSourceTransactionManagerAutoConfiguration;
 import org.springframework.boot.autoconfigure.transaction.TransactionAutoConfiguration;
 import org.springframework.boot.test.context.runner.ApplicationContextRunner;
+import org.springframework.cache.CacheManager;
 import org.springframework.data.redis.core.StringRedisTemplate;
 
 import javax.sql.DataSource;
@@ -40,7 +41,8 @@ class LeaderboardWritePathStaysUnproxiedTest {
     private final LeaderboardService leaderboardService = new LeaderboardService(
             mock(SportRecordMapper.class), mock(LeaderboardContributionMapper.class),
             mock(LeaderboardDailySummaryMapper.class),
-            mock(StringRedisTemplate.class), mock(RedissonClient.class), mock(UserApi.class));
+            mock(StringRedisTemplate.class), mock(RedissonClient.class), mock(UserApi.class),
+            mock(CacheManager.class));
 
     private final ApplicationContextRunner runner = new ApplicationContextRunner()
             .withConfiguration(AutoConfigurations.of(

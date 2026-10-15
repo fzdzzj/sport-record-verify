@@ -20,6 +20,8 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.redisson.api.RLock;
 import org.redisson.api.RedissonClient;
+import org.springframework.cache.Cache;
+import org.springframework.cache.CacheManager;
 import org.springframework.data.redis.core.Cursor;
 import org.springframework.data.redis.core.RedisCallback;
 import org.springframework.data.redis.core.ScanOptions;
@@ -31,6 +33,7 @@ import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.lang.reflect.Method;
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.LinkedHashSet;
@@ -50,9 +53,11 @@ import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
@@ -76,6 +81,8 @@ class LeaderboardServiceTest {
     private RedissonClient redissonClient;
     private RLock lock;
     private UserApi userApi;
+    private CacheManager cacheManager;
+    private Cache overallCache;
     private LeaderboardService service;
 
     @BeforeEach
@@ -89,14 +96,17 @@ class LeaderboardServiceTest {
         redissonClient = mock(RedissonClient.class);
         lock = mock(RLock.class);
         userApi = mock(UserApi.class);
+        cacheManager = mock(CacheManager.class);
+        overallCache = mock(Cache.class);
 
         when(redis.opsForZSet()).thenReturn(zSetOps);
+        when(cacheManager.getCache(LeaderboardService.OVERALL_CACHE_NAME)).thenReturn(overallCache);
         // RLock.tryLock 声明 throws InterruptedException，用 doReturn 规避检查型异常
         doReturn(true).when(lock).tryLock(anyLong(), anyLong(), any(TimeUnit.class));
         when(redissonClient.getLock(anyString())).thenReturn(lock);
 
         service = new LeaderboardService(sportRecordMapper, contributionMapper, dailySummaryMapper,
-                redis, redissonClient, userApi);
+                redis, redissonClient, userApi, cacheManager);
     }
 
     // ==================== 入榜（VERIFIED：仅 pass + 幂等） ====================
@@ -857,5 +867,187 @@ class LeaderboardServiceTest {
                 "仅对尚未结算的行盖戳（不得覆盖历史结算时间），实测 SQL=" + sql);
         assertTrue(sql.contains("SET settled_at"), "结算时间戳写入仍在 SET 子句，实测 SQL=" + sql);
         assertTrue(sql.contains("WHERE status"), "ACTIVE 状态过滤保留，实测 SQL=" + sql);
+    }
+
+    // ==================== D1 总榜缓存失效联动（TASK-249） ====================
+
+    /** D1：新锚点入榜（credit=true）→ ZINCRBY 后恰一次失效总榜缓存 */
+    @Test
+    void applyVerified_creditTrue_evictsOverallCacheOnce() {
+        when(sportRecordMapper.selectById(1L)).thenReturn(record(RecordStatus.PASSED, "42.50"));
+        when(contributionMapper.insertIgnore(eq(1L), eq(100L), any(), anyInt())).thenReturn(1);
+
+        service.applyVerified(1L);
+
+        verify(overallCache, times(1)).clear();
+    }
+
+    /** D1：重复 VERIFIED（幂等跳过）→ 不触发缓存失效，避免无效缓存抖动 */
+    @Test
+    void applyVerified_idempotentSkip_doesNotEvictCache() {
+        when(sportRecordMapper.selectById(1L)).thenReturn(record(RecordStatus.PASSED, "42.50"));
+        when(contributionMapper.insertIgnore(eq(1L), eq(100L), any(), anyInt())).thenReturn(0);
+        when(contributionMapper.updateStatus(1L,
+                ContributionStatus.ROLLED_BACK.getCode(),
+                ContributionStatus.ACTIVE.getCode())).thenReturn(0);
+
+        service.applyVerified(1L);
+
+        verify(overallCache, never()).clear();
+    }
+
+    /** D1：回滚命中 ACTIVE 锚点（rows==1）→ ZINCRBY 扣分后恰一次失效总榜缓存 */
+    @Test
+    void rollbackOnRejected_rowsOne_evictsOverallCacheOnce() {
+        when(contributionMapper.selectById(1L)).thenReturn(anchor(100L, "42.50"));
+        when(contributionMapper.updateStatus(1L,
+                ContributionStatus.ACTIVE.getCode(),
+                ContributionStatus.ROLLED_BACK.getCode())).thenReturn(1);
+
+        service.rollbackOnRejected(1L);
+
+        verify(overallCache, times(1)).clear();
+    }
+
+    /** D1：回滚幂等（rows==0，重复事件）→ 不触发缓存失效 */
+    @Test
+    void rollbackOnRejected_rowsZero_doesNotEvictCache() {
+        when(contributionMapper.selectById(1L)).thenReturn(anchor(100L, "42.50"));
+        when(contributionMapper.updateStatus(1L,
+                ContributionStatus.ACTIVE.getCode(),
+                ContributionStatus.ROLLED_BACK.getCode())).thenReturn(0);
+
+        service.rollbackOnRejected(1L);
+
+        verify(overallCache, never()).clear();
+    }
+
+    /** D1：缓存失效抛异常（Redis 抖动）→ best-effort 不抛出，入榜加分主链路照常完成 */
+    @Test
+    void applyVerified_evictThrows_doesNotBlockCrediting() {
+        when(sportRecordMapper.selectById(1L)).thenReturn(record(RecordStatus.PASSED, "42.50"));
+        when(contributionMapper.insertIgnore(eq(1L), eq(100L), any(), anyInt())).thenReturn(1);
+        when(cacheManager.getCache(anyString())).thenThrow(new IllegalStateException("cache down"));
+
+        service.applyVerified(1L);
+
+        verify(zSetOps).incrementScore(LeaderboardService.OVERALL_ZSET_KEY, "100", 42.5d);
+    }
+
+    /** D1：结算 ZSet 纠偏完成后恰一次失效总榜缓存 */
+    @Test
+    void settleAndReconcile_evictsOverallCacheOnce() {
+        UserMileage m = new UserMileage();
+        m.setUserId(100L);
+        m.setTotalDistance(new BigDecimal("42.50"));
+        when(contributionMapper.selectActiveSummaries(ContributionStatus.ACTIVE.getCode()))
+                .thenReturn(List.of(m));
+        Cursor<TypedTuple<String>> cur = cursor(new LinkedHashSet<>(tuples("100", 42.5)));
+        when(zSetOps.scan(anyString(), any(ScanOptions.class))).thenReturn(cur);
+
+        service.settleAndReconcile();
+
+        verify(overallCache, times(1)).clear();
+    }
+
+    // ==================== D3 结算 scan 游标单遍重构（TASK-249） ====================
+
+    /** D3：清理段单次 scan（times(1)），不再每轮循环重开游标 */
+    @Test
+    void settleAndReconcile_scanInvokedExactlyOnce() {
+        when(contributionMapper.selectActiveSummaries(ContributionStatus.ACTIVE.getCode()))
+                .thenReturn(List.of());
+        Cursor<TypedTuple<String>> cur = cursor(new LinkedHashSet<>(tuples("999", 30.0)));
+        when(zSetOps.scan(anyString(), any(ScanOptions.class))).thenReturn(cur);
+
+        service.settleAndReconcile();
+
+        verify(zSetOps, times(1)).scan(anyString(), any(ScanOptions.class));
+    }
+
+    /** D3：成员数超批次（600 &gt; 500）单遍迭代自然终止，stale 全量分批 ZREM（不再有终止判据死循环） */
+    @Test
+    void settleAndReconcile_overBatchSize_singlePassRemovesAllStale() {
+        when(contributionMapper.selectActiveSummaries(ContributionStatus.ACTIVE.getCode()))
+                .thenReturn(List.of());
+        Set<TypedTuple<String>> members = new LinkedHashSet<>();
+        for (int i = 0; i < 600; i++) {
+            members.add(TypedTuple.of(String.valueOf(1000 + i), 1.0 + i));
+        }
+        Cursor<TypedTuple<String>> cur = cursor(members);
+        when(zSetOps.scan(anyString(), any(ScanOptions.class))).thenReturn(cur);
+        List<String> removed = recordRemovedMembers();
+
+        service.settleAndReconcile();
+
+        // 单遍迭代：scan 恰一次（旧实现该判据在成员 ≥ 批次时恒真 → 结算不可终止）
+        verify(zSetOps, times(1)).scan(anyString(), any(ScanOptions.class));
+        // stale 全量分批 ZREM（600 = 500 + 100 两批），无遗漏无重复
+        assertEquals(600, removed.size());
+        assertEquals(600, removed.stream().distinct().count());
+    }
+
+    /** D3：target 全含当前成员 → 零 ZREM（残留清理不误删 ACTIVE 成员） */
+    @Test
+    void settleAndReconcile_allMembersActive_noStaleRemoval() {
+        UserMileage m1 = new UserMileage();
+        m1.setUserId(100L);
+        m1.setTotalDistance(new BigDecimal("42.50"));
+        UserMileage m2 = new UserMileage();
+        m2.setUserId(200L);
+        m2.setTotalDistance(new BigDecimal("18.00"));
+        when(contributionMapper.selectActiveSummaries(ContributionStatus.ACTIVE.getCode()))
+                .thenReturn(List.of(m1, m2));
+        Cursor<TypedTuple<String>> cur = cursor(new LinkedHashSet<>(tuples("100", 42.5, "200", 18.0)));
+        when(zSetOps.scan(anyString(), any(ScanOptions.class))).thenReturn(cur);
+        List<String> removed = recordRemovedMembers();
+
+        service.settleAndReconcile();
+
+        assertTrue(removed.isEmpty());
+    }
+
+    /** D3：scan 返回 null（尽力而为采集）→ 清理段跳过，其余结算步骤照常执行 */
+    @Test
+    void settleAndReconcile_scanNull_otherStepsProceed() {
+        UserMileage m = new UserMileage();
+        m.setUserId(100L);
+        m.setTotalDistance(new BigDecimal("42.50"));
+        when(contributionMapper.selectActiveSummaries(ContributionStatus.ACTIVE.getCode()))
+                .thenReturn(List.of(m));
+        when(zSetOps.scan(anyString(), any(ScanOptions.class))).thenReturn(null);
+
+        service.settleAndReconcile();
+
+        // 汇总覆盖 / 容量截断 / settled_at 标记 / 报表写入均照常
+        verify(zSetOps).add(eq(LeaderboardService.OVERALL_ZSET_KEY),
+                argThat((Set<TypedTuple<String>> set) -> set.size() == 1
+                        && set.iterator().next().getValue().equals("100")));
+        verify(zSetOps).removeRange(eq(LeaderboardService.OVERALL_ZSET_KEY), eq(0L), anyLong());
+        verify(contributionMapper).markSettled(eq(ContributionStatus.ACTIVE.getCode()),
+                any(LocalDateTime.class));
+        verify(dailySummaryMapper).upsertFromActiveContributions(ContributionStatus.ACTIVE.getCode());
+    }
+
+    /** 记录 ZREM 出榜的成员（按 flush 次数展开 varargs），用于断言 stale 清理口径 */
+    private List<String> recordRemovedMembers() {
+        List<String> removed = new ArrayList<>();
+        doAnswer(inv -> {
+            // ZSetOperations.remove(K, Object...) 为 varargs：Mockito 可能把末位数组展开为
+            // 逐个参数，也可能原样保留为单个 Object[]，两种形态都要兼容采集
+            Object[] args = inv.getArguments();
+            for (int k = 1; k < args.length; k++) {
+                Object arg = args[k];
+                if (arg instanceof Object[] vals) {
+                    for (Object v : vals) {
+                        removed.add((String) v);
+                    }
+                } else if (arg != null) {
+                    removed.add((String) arg);
+                }
+            }
+            return 0L;
+        }).when(zSetOps).remove(anyString(), any(Object[].class));
+        return removed;
     }
 }

@@ -129,10 +129,23 @@ public class MapMatchService {
     }
 
     /**
-     * 一块采样点的候选边（**一次** DB 往返）：块外接矩形按查询半径外扩后 ST_DWithin 预筛，
+     * 一块采样点的候选边（**一次或多次** DB 往返）：块外接矩形按查询半径外扩后 ST_DWithin 预筛，
      * 返回候选边 WKT 供块内各点在 Java 侧精算（见类注释）。
+     *
+     * <p>D6 自适应防护：块外接矩形对角线米距（沿用 {@link #DEG_FACTOR} 换算）超
+     * {@code maxQuerySpanMeters} 且块内 &gt;1 点 → 沿点序中点二分递归，子块独立预筛后并集。
+     * 块 bbox ⊇ 子块 bbox，故子块结果并集 ⊇ 原块结果，逐点判定结果逐位不变（见
+     * {@link #nearestEdgeIndex} 超集论证）；防马拉松等长轨迹单块（默认 50 点）外接矩形
+     * 覆盖整条走廊，把 ST_DWithin 候选边巨量全拉进 JVM。</p>
      */
     private List<String> fetchCandidates(List<MapMatchPointDTO> block) {
+        List<String> candidates = new ArrayList<>();
+        collectCandidates(block, candidates);
+        return candidates;
+    }
+
+    /** 自适应分块递归：块跨度超阈值即中点二分，叶子块执行一次 bbox 预筛并累加候选边。 */
+    private void collectCandidates(List<MapMatchPointDTO> block, List<String> acc) {
         double minLat = Double.MAX_VALUE;
         double maxLat = -Double.MAX_VALUE;
         double minLng = Double.MAX_VALUE;
@@ -143,8 +156,32 @@ public class MapMatchService {
             minLng = Math.min(minLng, p.getLng());
             maxLng = Math.max(maxLng, p.getLng());
         }
+        if (block.size() > 1
+                && diagonalSpanMeters(minLat, minLng, maxLat, maxLng) > props.getMaxQuerySpanMeters()) {
+            // 跨度超限：沿点序中点二分（子块 bbox ⊇ 原块内各点），递归至叶子块
+            int mid = block.size() / 2;
+            collectCandidates(block.subList(0, mid), acc);
+            collectCandidates(block.subList(mid, block.size()), acc);
+            return;
+        }
         double radiusDeg = props.getSearchRadiusMeters() / DEG_FACTOR;
-        return jdbcTemplate.queryForList(CANDIDATE_SQL, String.class, minLng, minLat, maxLng, maxLat, radiusDeg);
+        List<String> candidates = jdbcTemplate.queryForList(CANDIDATE_SQL, String.class,
+                minLng, minLat, maxLng, maxLat, radiusDeg);
+        if (candidates != null && candidates.size() > props.getMaxCandidateEdges()) {
+            // 仅告警观测，严禁 LIMIT 截断（截断丢真近邻边 → 假离路 → R5 误判）
+            log.warn("候选边数超上限（仅告警不截断，防丢真近邻边）：块点数={}, 候选边数={}, 上限={}",
+                    block.size(), candidates.size(), props.getMaxCandidateEdges());
+        }
+        if (candidates != null) {
+            acc.addAll(candidates);
+        }
+    }
+
+    /** 块外接矩形对角线米距（米）：经纬度跨度均沿用 {@link #DEG_FACTOR} 折算后取欧氏对角长。 */
+    private static double diagonalSpanMeters(double minLat, double minLng, double maxLat, double maxLng) {
+        double latSpanMeters = (maxLat - minLat) * DEG_FACTOR;
+        double lngSpanMeters = (maxLng - minLng) * DEG_FACTOR;
+        return Math.hypot(latSpanMeters, lngSpanMeters);
     }
 
     /**

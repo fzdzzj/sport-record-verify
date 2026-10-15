@@ -10,6 +10,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.redisson.api.RLock;
 import org.redisson.api.RedissonClient;
+import org.springframework.cache.CacheManager;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.data.redis.core.ZSetOperations;
 
@@ -59,7 +60,7 @@ class LeaderboardServiceTraceIdTest {
         doReturn(true).when(lock).tryLock(anyLong(), anyLong(), any(TimeUnit.class));
         when(redissonClient.getLock(anyString())).thenReturn(lock);
         service = new LeaderboardService(sportRecordMapper, contributionMapper,
-                dailySummaryMapper, redis, redissonClient, mock(UserApi.class));
+                dailySummaryMapper, redis, redissonClient, mock(UserApi.class), mock(CacheManager.class));
     }
 
     @AfterEach

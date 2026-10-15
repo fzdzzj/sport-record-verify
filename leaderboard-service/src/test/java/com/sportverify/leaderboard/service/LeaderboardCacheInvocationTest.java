@@ -193,14 +193,16 @@ class LeaderboardCacheInvocationTest {
         }
 
         @Bean
-        LeaderboardService leaderboardService(StringRedisTemplate redis, UserApi userApi) {
+        LeaderboardService leaderboardService(StringRedisTemplate redis, UserApi userApi,
+                                              CacheManager cacheManager) {
             return new LeaderboardService(
                     mock(SportRecordMapper.class),
                     mock(LeaderboardContributionMapper.class),
                     mock(LeaderboardDailySummaryMapper.class),
                     redis,
                     mock(org.redisson.api.RedissonClient.class),
-                    userApi);
+                    userApi,
+                    cacheManager);
         }
 
         @Bean

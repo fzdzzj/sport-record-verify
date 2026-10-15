@@ -27,7 +27,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
  */
 class MatchPropertiesTest {
 
-    /** R3a 默认值承重契约：200/50/25/300（黄金值判别式依赖） */
+    /** R3a 默认值承重契约：200/50/25/300 + D6 新增 2000/2000（黄金值/防护判别式依赖） */
     @Test
     @DisplayName("四默认值 200/50/25/300 逐位锁定（黄金值判别式承重契约）")
     void defaults_matchGoldenValueContract() {
@@ -37,6 +37,9 @@ class MatchPropertiesTest {
         assertEquals(50, props.getPrefilterChunkPoints());
         assertEquals(25.0, props.getSnapThresholdMeters(), 0.0);
         assertEquals(300.0, props.getSearchRadiusMeters(), 0.0);
+        // D6 新增查询防护参数默认值（分裂阈值 / 候选边告警上限）
+        assertEquals(2000.0, props.getMaxQuerySpanMeters(), 0.0);
+        assertEquals(2000, props.getMaxCandidateEdges());
     }
 
     /** R3b 配置覆盖：mapmatch.match.* 前缀绑定生效（无系统源隔离） */
@@ -48,7 +51,9 @@ class MatchPropertiesTest {
                 "mapmatch.match.max-sampled-points", "100",
                 "mapmatch.match.prefilter-chunk-points", "60",
                 "mapmatch.match.snap-threshold-meters", "30",
-                "mapmatch.match.search-radius-meters", "850")));
+                "mapmatch.match.search-radius-meters", "850",
+                "mapmatch.match.max-query-span-meters", "1500",
+                "mapmatch.match.max-candidate-edges", "3000")));
 
         Binder binder = new Binder(ConfigurationPropertySources.from(propertySources),
                 new PropertySourcesPlaceholdersResolver(propertySources));
@@ -58,5 +63,7 @@ class MatchPropertiesTest {
         assertEquals(60, props.getPrefilterChunkPoints());
         assertEquals(30.0, props.getSnapThresholdMeters(), 0.0);
         assertEquals(850.0, props.getSearchRadiusMeters(), 0.0);
+        assertEquals(1500.0, props.getMaxQuerySpanMeters(), 0.0);
+        assertEquals(3000, props.getMaxCandidateEdges());
     }
 }

@@ -4,8 +4,14 @@ import com.sportverify.api.mapmatch.dto.MapMatchPointDTO;
 import com.sportverify.api.mapmatch.dto.MapMatchRequestDTO;
 import com.sportverify.api.mapmatch.dto.MapMatchResultDTO;
 import com.sportverify.mapmatch.config.MatchProperties;
+import ch.qos.logback.classic.Level;
+import ch.qos.logback.classic.Logger;
+import ch.qos.logback.classic.spi.ILoggingEvent;
+import ch.qos.logback.core.read.ListAppender;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.slf4j.LoggerFactory;
 import org.springframework.jdbc.core.JdbcTemplate;
 
 import java.util.ArrayList;
@@ -43,12 +49,27 @@ class MapMatchServiceTest {
     /** 轨迹级预筛查询的实参留底（每个元素 = 一次 queryForList 调用的全部实参） */
     private final List<Object[]> prefilterCalls = new ArrayList<>();
 
+    private Logger mapMatchLogger;
+    private ListAppender<ILoggingEvent> warnCapture;
+
     @BeforeEach
     void setUp() {
         jdbcTemplate = mock(JdbcTemplate.class);
         props = new MatchProperties();
         service = new MapMatchService(jdbcTemplate, props);
         prefilterCalls.clear();
+
+        // 挂 logback ListAppender 捕获 MapMatchService 的 warn（D6 候选超限告警可观测性）
+        mapMatchLogger = (Logger) LoggerFactory.getLogger(MapMatchService.class);
+        warnCapture = new ListAppender<>();
+        warnCapture.start();
+        mapMatchLogger.setLevel(Level.WARN);
+        mapMatchLogger.addAppender(warnCapture);
+    }
+
+    @AfterEach
+    void tearDown() {
+        mapMatchLogger.detachAppender(warnCapture);
     }
 
     /** 一条南北向道路折线（WGS84，经度恒定，纬度递增），模拟 ST_AsText 返回 */
@@ -350,6 +371,84 @@ class MapMatchServiceTest {
                     : MapMatchService.pointToLineStringMeters(p.getLat(), p.getLng(), chunkEdge);
             assertThat(dist).as("第 %d 点垂距（黄金值）", i).isCloseTo(GOLDEN_DIST[i], within(1e-9));
         }
+    }
+
+    // ==================== D6 候选集查询防护（TASK-249） ====================
+
+    /**
+     * 宽块分裂：单块外接矩形对角线米距超阈值 → 沿中点二分递归为多次小 bbox 查询，
+     * 子块候选并集与原单块语义逐位等价（块 bbox ⊇ 子块 bbox，并集 ⊇ 原结果）。
+     */
+    @Test
+    void 宽块分裂_多次小bbox查询_并集语义不变() {
+        stubTrajectoryPrefilter(NETWORK);
+        stubLegacyPointQueryEmpty();
+        // 40 点单块覆盖 ~6.6km（> 默认 maxQuerySpanMeters=2000）→ 40→20→10 递归出 4 个叶子块
+        List<MapMatchPointDTO> points = new ArrayList<>();
+        for (int i = 0; i < 40; i++) {
+            points.add(point(i, 31.2000 + i * 0.0020, 121.4700));
+        }
+
+        MapMatchResultDTO split = service.match(request(points));
+        // 分裂路径：跨度超限不再单块一次查询，递归叶子块各执行一次（恰 4 次）
+        verifyTrajectoryPrefilter(4);
+        assertThat(prefilterCalls).hasSize(4);
+        assertThat(numericArgs(prefilterCalls.get(0)).get(1)).isCloseTo(31.2000, within(1e-9));
+        assertThat(numericArgs(prefilterCalls.get(3)).get(3))
+                .isCloseTo(31.2000 + 39 * 0.0020, within(1e-9));
+
+        // 单块路径对照：阈值抬到无穷 → 不分裂，恰 1 次查询
+        prefilterCalls.clear();
+        props.setMaxQuerySpanMeters(Double.MAX_VALUE);
+        MapMatchResultDTO single = service.match(request(points));
+        assertThat(prefilterCalls).hasSize(1);
+        verifyNoLegacyPointQuery();
+
+        // 并集语义逐位等价：分裂（子块并集，候选重复无影响）与单块给出相同聚合指标
+        assertThat(split.getSampledPoints()).isEqualTo(single.getSampledPoints());
+        assertThat(split.getMatchedRatio()).isEqualTo(single.getMatchedRatio());
+        assertThat(split.getOffRoadRatio()).isEqualTo(single.getOffRoadRatio());
+        assertThat(split.getAvgOffRoadDistance()).isEqualTo(single.getAvgOffRoadDistance());
+        assertThat(split.getMaxOffRoadDistance()).isEqualTo(single.getMaxOffRoadDistance());
+    }
+
+    /** 退化单点块：对角线跨度为 0，即便阈值极小也不递归（块 &gt;1 点才分裂），恰一次查询 */
+    @Test
+    void 单点块_退化为单次查询_不递归() {
+        stubTrajectoryPrefilter(List.of(NS_ROAD));
+        stubLegacyPointQueryEmpty();
+        props.setMaxQuerySpanMeters(0);
+
+        MapMatchResultDTO r = service.match(request(List.of(point(0, 31.2300, 121.4737))));
+
+        verifyTrajectoryPrefilter(1);
+        verifyNoLegacyPointQuery();
+        assertThat(r.getSampledPoints()).isEqualTo(1);
+        // 退化块的 bbox 四角重合于该点
+        List<Double> args = numericArgs(prefilterCalls.get(0));
+        assertThat(args.get(0)).isCloseTo(121.4737, within(1e-9));
+        assertThat(args.get(1)).isCloseTo(31.2300, within(1e-9));
+        assertThat(args.get(2)).isCloseTo(121.4737, within(1e-9));
+        assertThat(args.get(3)).isCloseTo(31.2300, within(1e-9));
+    }
+
+    /** 候选边超限：仅告警不截断——warn 可观测且完整候选集（2001 条）参与精算，无 LIMIT 截断 */
+    @Test
+    void 候选边超限_触发warn且不截断() {
+        List<String> overLimit = new ArrayList<>();
+        for (int i = 0; i < 2001; i++) {
+            overLimit.add("LINESTRING(121.47" + i + "000 31.2300,121.47" + i + "000 31.2400)");
+        }
+        when(jdbcTemplate.queryForList(any(String.class), eq(String.class),
+                anyDouble(), anyDouble(), anyDouble(), anyDouble(), anyDouble())).thenReturn(overLimit);
+        stubLegacyPointQueryEmpty();
+
+        service.match(request(List.of(point(0, 31.2300, 121.4737))));
+
+        // 告警可观测，且报文含完整候选数 2001（未被 LIMIT 截断为 2000）
+        assertThat(warnCapture.list.stream()
+                .anyMatch(e -> e.getFormattedMessage().contains("候选边数超上限")
+                        && e.getFormattedMessage().contains("候选边数=2001"))).isTrue();
     }
 
     /** 从候选集取最佳边（null = 无候选或全部超半径，按查询半径封顶） */

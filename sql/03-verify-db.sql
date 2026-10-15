@@ -31,7 +31,9 @@ CREATE TABLE IF NOT EXISTS `appeal` (
     `recheck_result` TEXT        DEFAULT NULL COMMENT '复核结论（详细）',
     `created_at`    DATETIME     DEFAULT NULL COMMENT '创建时间',
     PRIMARY KEY (`id`),
-    UNIQUE KEY `uk_record` (`record_id`)
+    UNIQUE KEY `uk_record` (`record_id`),
+    -- D2：管理端待审列表 WHERE status=PENDING ORDER BY id 覆盖索引（对齐 verify_event_outbox.idx_status_id 先例）
+    KEY `idx_status_id` (`status`, `id`)
 ) ENGINE = InnoDB
   DEFAULT CHARSET = utf8mb4 COMMENT ='申诉表';
 

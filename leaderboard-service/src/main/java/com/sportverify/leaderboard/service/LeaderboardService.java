@@ -19,6 +19,7 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.redisson.api.RLock;
 import org.redisson.api.RedissonClient;
+import org.springframework.cache.CacheManager;
 import org.springframework.cache.annotation.Cacheable;
 import org.springframework.data.redis.core.RedisCallback;
 import org.springframework.data.redis.core.StringRedisTemplate;
@@ -73,6 +74,8 @@ public class LeaderboardService {
     public static final String ROLLBACK_LOCK_PREFIX = "lock:rollback:";
     /** 定时结算防重锁（多实例仅一个执行，审批版 §7.5） */
     public static final String SCHEDULER_LOCK_KEY = "lock:scheduler:leaderboard";
+    /** 总榜二级缓存名（与 {@code @Cacheable(value=...)} 一致；D1 写路径显式失效用） */
+    public static final String OVERALL_CACHE_NAME = "leaderboard:overall";
 
     /** 榜单默认取前 N 名 */
     private static final int DEFAULT_TOP_N = 50;
@@ -116,6 +119,12 @@ public class LeaderboardService {
     private final StringRedisTemplate stringRedisTemplate;
     private final RedissonClient redissonClient;
     private final UserApi userApi;
+    /**
+     * D1 总榜缓存失效用（类型注入解析到 {@code @Primary} {@code hierarchicalCacheManager}）。
+     * 刻意不引入 {@code @CacheEvict}/{@code @Cacheable} 代理注解——写路径 bean 必须零代理
+     * （ADR-0009 哨兵 {@code LeaderboardWritePathStaysUnproxiedTest}），故此处显式调用管理器。
+     */
+    private final CacheManager cacheManager;
 
     // ==================== 事件驱动入榜（VERIFIED） ====================
 
@@ -172,6 +181,7 @@ public class LeaderboardService {
             }
             if (credit) {
                 zincrby(record.getUserId(), distance.doubleValue());
+                evictOverallCache();
                 log.info("入榜成功：recordId={}, userId={}, +{}km", recordId, record.getUserId(), distance);
             } else {
                 log.info("记录已入榜（重复事件），幂等跳过：recordId={}", recordId);
@@ -218,6 +228,7 @@ public class LeaderboardService {
                 return;
             }
             zincrby(anchor.getUserId(), -anchor.getDistance().doubleValue());
+            evictOverallCache();
             log.info("回滚成功：recordId={}, userId={}, -{}km",
                     recordId, anchor.getUserId(), anchor.getDistance());
         } finally {
@@ -473,39 +484,38 @@ public class LeaderboardService {
                             .collect(Collectors.toSet());
                     stringRedisTemplate.opsForZSet().add(OVERALL_ZSET_KEY, tuples);
                 }
-                // 2) B18 清除无 ACTIVE 贡献的残留成员：scan 游标分批遍历比对，不再整榜倾倒进 JVM 堆
+                // 2) B18/D3 清除无 ACTIVE 贡献的残留成员：单次 scan 游标一遍遍历比对 + 批式 ZREM。
+                //    旧实现每轮循环重开 scan 并以「上一批末尾 member 是否在下一批」判终止，当成员数
+                //    ≥ 批次(500) 时该判据恒真（全量采集的批次恒含上一批末尾）→ 结算线程不可终止
+                //    （持调度锁 + watchdog 续期）；单遍迭代天然收敛，不再有终止判据。
                 int pruned = 0;
                 List<String> staleBatch = new ArrayList<>(OVERALL_ZSET_SCAN_BATCH);
-                TypedTuple<String> cursor = null;
-                while (true) {
-                    Set<TypedTuple<String>> batch = new LinkedHashSet<>();
-                    org.springframework.data.redis.core.Cursor<TypedTuple<String>> zc =
-                            stringRedisTemplate.opsForZSet().scan(OVERALL_ZSET_KEY,
-                                    org.springframework.data.redis.core.ScanOptions
-                                            .scanOptions().count(OVERALL_ZSET_SCAN_BATCH).build());
-                    // scan 为尽力而为采集：null 视为空批（无成员可清理），避免 NPE 阻断结算对账
+                try (org.springframework.data.redis.core.Cursor<TypedTuple<String>> zc =
+                             stringRedisTemplate.opsForZSet().scan(OVERALL_ZSET_KEY,
+                                     org.springframework.data.redis.core.ScanOptions
+                                             .scanOptions().count(OVERALL_ZSET_SCAN_BATCH).build())) {
+                    // scan 为尽力而为采集：null 视为无成员可清理，避免 NPE 阻断其余结算步骤
                     if (zc != null) {
-                        zc.forEachRemaining(batch::add);
-                    }
-                    List<TypedTuple<String>> page = scanPage(batch, cursor);
-                    if (page.isEmpty()) {
-                        break;
-                    }
-                    for (TypedTuple<String> t : page) {
-                        if (!target.containsKey(Long.valueOf(t.getValue()))) {
-                            staleBatch.add(t.getValue());
+                        while (zc.hasNext()) {
+                            TypedTuple<String> t = zc.next();
+                            if (t == null || t.getValue() == null) {
+                                continue; // null 安全跳过（脏元素不参与 stale 判定）
+                            }
+                            if (!target.containsKey(Long.valueOf(t.getValue()))) {
+                                staleBatch.add(t.getValue());
+                                if (staleBatch.size() >= OVERALL_ZSET_SCAN_BATCH) {
+                                    pruned += flushStale(staleBatch);
+                                }
+                            }
                         }
-                    }
-                    pruned += flushStale(staleBatch);
-                    cursor = page.get(page.size() - 1);
-                    if (page.size() < OVERALL_ZSET_SCAN_BATCH) {
-                        break;
                     }
                 }
                 pruned += flushStale(staleBatch);
                 // 3) B18 容量截断保护：仅保留前 OVERALL_ZSET_MAX 名，防止历史未活跃用户无限累积撑爆 Redis 内存
                 long trimmed = stringRedisTemplate.opsForZSet()
                         .removeRange(OVERALL_ZSET_KEY, 0, -(OVERALL_ZSET_MAX + 1));
+                // 3.1) D1：ZSet 纠偏完成，恰一次失效总榜缓存，避免结算后总榜最长 5min 仍读旧值
+                evictOverallCache();
                 // 4) 标记 settled_at（快照口径：本行已随最近一次结算对账）
                 if (!summaries.isEmpty()) {
                     contributionMapper.markSettled(ContributionStatus.ACTIVE.getCode(), LocalDateTime.now());
@@ -527,20 +537,25 @@ public class LeaderboardService {
     }
 
     /**
-     * B18：以 scan 游标页实现成员的批式消费——scan 返回无序集合，无法直接判定是否已到末尾，
-     * 故持上一批末尾 member 做「推进判据」：若某批未包含该 member 或批次不足一页则视为已遍历完，
-     * 防止游标残差导致遗漏或死循环；该判据为尽力而为，残留清理是兜底纠偏，即便偶漏也会于下一轮结算覆盖。
+     * D1：总榜二级缓存失效（best-effort，写路径专用）。
+     *
+     * <p>入榜/回滚/结算纠偏改完 ZSet 后清空 {@code leaderboard:overall} 缓存，否则总榜最长
+     * 5min（L1/L2 同 TTL）仍显示已撤销旧里程、或新入榜不可见——这是记录删除/回撤主链路的盲区。</p>
+     *
+     * <p><b>无代理注解</b>（ADR-0009 哨兵）：禁止 {@code @CacheEvict}——写路径 bean 必须零代理
+     * （{@code LeaderboardWritePathStaysUnproxiedTest}），故此处显式经 {@link CacheManager} 清理。
+     * 异常仅告警不抛出：失效是一致性的 best-effort 补偿，不得因 Redis 抖动阻断入榜/回滚主链路；
+     * 偶发失效失败由下一轮失效或 TTL 到期收敛。</p>
      */
-    private List<TypedTuple<String>> scanPage(Set<TypedTuple<String>> batch, TypedTuple<String> cursor) {
-        if (batch == null || batch.isEmpty()) {
-            return List.of();
+    private void evictOverallCache() {
+        try {
+            org.springframework.cache.Cache cache = cacheManager.getCache(OVERALL_CACHE_NAME);
+            if (cache != null) {
+                cache.clear();
+            }
+        } catch (Exception e) {
+            log.warn("总榜缓存失效失败（best-effort，不阻断写链路）", e);
         }
-        List<TypedTuple<String>> page = new ArrayList<>(batch);
-        if (cursor != null && page.stream().noneMatch(t -> t.getValue().equals(cursor.getValue()))) {
-            // 上一批末尾 member 不在本批 —— 已跨入新窗口，结束遍历
-            return List.of();
-        }
-        return page;
     }
 
     /** B18：累积的残留成员分批 ZREM 出榜，返回已移除条数 */
