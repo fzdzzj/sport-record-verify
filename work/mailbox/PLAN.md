@@ -453,6 +453,20 @@
 | 是否到达外部门槛 | **未到达**：C-01/C-02 已提交，待指导侧统一提交台账闭环笔并随批推送触发 CI 外部终验 |
 | 独立复核结论与裁决 | 独立复核子 Agent 实跑全过（总体 **PASS**，BLOCKER 0，三权分立严格履行）：6 个白名单文件严丝合缝；前端类型与 37 测及契约门禁独立实测稳定全绿；B8 彻底打通了申诉提交与后台审核的双向通道，B9 强化了前端表单在弱网重发下的幂等稳定性；终审裁定 **ACCEPT 予以封盘** |
 | 状态 | TASK-241 本地闭环，指导侧终裁 **ACCEPT 予以封盘** |
+ 
+## 验收记录：`TASK-242`（存储慢查消灭与社交闭环及体验提升——周期榜复合索引补齐、解除好友链路打通与目标空态优化，MEDIUM 档，2026-10-15）
+
+| 项 | 内容 |
+| --- | --- |
+| 开工基线 | `76b1b47`（main 分支，工作树干净，B10-B19 侦察归档与看板更新基线） |
+| C-01 实施笔 | `8804c71` `feat(perf): TASK-242 周期榜复合索引补齐、解除好友链路打通与目标空态体验提升（C-01 实施笔）`（恰 9 文件，+215/−12） |
+| C-02 任务两件套 | `cd0f5be` `docs(mailbox): TASK-242 存储慢查消灭与社交闭环及体验提升验收与台账闭环（C-02 台账笔）`（恰 2 文件，+211/−0） |
+| 任务内容与白名单 | 相对开工基线恰 11 文件 = 白名单全等（实施 9 文件 + 任务两件套 2 文件）；生产其他后端微服务、网关、pom.xml、package.json 及红线文件 100% 零触碰，零新外部依赖 |
+| 核心实现 | ① B10 存储索引补齐与慢查消灭：`sql/02-record-db.sql` 为 `leaderboard_contribution` 添加 `KEY idx_status_settled (status, settled_at)`；新建幂等迁移脚本 `sql/migrations/add-idx-leaderboard-contribution-status-settled.sql`（采用 `information_schema.statistics` 防重），彻底消除周期榜聚合与定时结算全表慢查，消除 Javadoc 技术债挂账；② B14 好友社交全链路闭环：后端 `FriendController.java` 新增 `@DeleteMapping("/{targetUserId}")` 端点，经 `resolveUserId` 安全认定调用者身份；`FriendService.java` 实现 `deleteFriend(userId, targetUserId)`（参数非空防自删校验、Redisson 锁 `lock:friend:low_high` 保护、`(user_low, user_high)` 规范化删除、影响 0 行不报错幂等安全）；`FriendServiceTest.java` 新增 5 个单测（成功解除、幂等安全、自删拦截、反向归一、空参拦截，总用例 36 全绿）；前端 `client.ts` 导出 `deleteFriend` 并覆盖路由契约测试；前端 `friends.page.vue` 补齐 `loadFriends()` 挂载自加载，好友表格增加「操作」列与 `a-popconfirm` 确认气泡，解除成功后自动刷新好友列表；③ B19 前端体验优化：`web/src/pages/index.page.vue` 当 `metric === 1`（次数）时消除 `.00` 小数显示；近 30 天每日里程在累计总里程为 0 时渲染优雅引导空态卡片并支持一键跳转提交页 |
+| 本机门禁 | 后端 `mvn -B -ntp -o -s .mvn-settings.xml clean test -pl user-service -am` BUILD SUCCESS（Tests run: 183, Failures: 0, Errors: 0，rc=0）；前端 `pnpm run type-check` 0 错误（rc=0）；前端单元测试 4 套 39 测全过（rc=0）；契约门 `mailbox-contract.sh --open=TASK-242 --baseline=76b1b47` 退出码 0（判据 A 两件套齐 + 判据 B 清单一致，0 在途） |
+| 是否到达外部门槛 | **未到达**：C-01/C-02 已提交，待指导侧统一提交台账闭环笔并随批推送触发 CI 外部终验 |
+| 独立复核结论与裁决 | 独立复核子 Agent 实跑全过（总体 **PASS**，BLOCKER 0，三权分立严格履行）：11 个白名单文件严丝合缝；后端 183 测、前端类型与 39 测及契约门禁独立实测稳定全绿；B10 消除了核心周期榜慢查，B14 补齐了好友社交删除动作与初载断层，B19 修复了目标次数常理小数违和并提升了空态体验；终审裁定 **ACCEPT 予以封盘** |
+| 状态 | TASK-242 本地闭环，指导侧终裁 **ACCEPT 予以封盘** |
 
 
 
