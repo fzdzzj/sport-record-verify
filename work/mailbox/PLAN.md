@@ -2,7 +2,7 @@
 
 ## 当前进度与外部基线
 
-- **最新代码基线与分支**：`main` 分支，最新已封盘至 **TASK-231**（HEAD `ee95c49` / `e4f0aa2`）。
+- **最新代码基线与分支**：`main` 分支，最新已封盘至 **TASK-232**（HEAD `ceec5c6` / `bf4c7b9`）。
 - **会话无缝交接看板**：新主 Agent 接手状态与下一步动作见 [HANDOVER.md](HANDOVER.md)（原地滚动更新，免建新交接文档）。
 - **CI 外部门槛状态**：GitHub Actions run `38586443704`（HEAD `aee5ca0`，web ✓31s / build ✓11m46s 全 job 绿）。包含全模块 clean verify、Checkstyle/SpotBugs/PMD 静态门、Docker 镜像构建与 Trivy 依赖扫描。
 - **历史记录归档索引**：早期 100+ 笔验收记录（TASK-001 至 TASK-210）已完整归档至 [PLAN-history-001-210.md](archive/PLAN-history-001-210.md)。各任务的原始契约与回传留存见 `work/mailbox/tasks/TASK-xxx/`。
@@ -312,6 +312,21 @@
 | 是否到达外部门槛 | **未到达**：C-01/C-02 已提交，待指导侧统一提交台账闭环笔并随批推送触发 CI 外部终验 |
 | 独立复核结论 | 用户派发独立复核子 Agent 终审全过（四块均 **PASS**，BLOCKER 0，偏差 D 0，提示留痕 N-1~N-7）：<br>• 块 1：11 文件与白名单全等，三处旧文案中两处属于本任务范围已清空零残留，外部文件零扩散；<br>• 块 2：后端 261 测、前端三件套（type-check/test 32/build 3317）、契约无参 rc=0 全部独立复现通过；<br>• 块 3：哈希、时间戳、日志工件真实性吻合，N-1 确认无参契约走短路，白名单一致性由开工态 `--open` 与直接 git diff 证明；N-2 首跑期望修正诚实留证；<br>• 块 4：N-3 确认 Playwright `helpers.ts` 未映射 `/my/stats` 导致 `record-list.e2e.ts` 三断言失效（CI 不跑 e2e 不阻断，但登记挂账后续任务必清）；N-4 确认存在索引范围扫描但内存缓冲与 `loadData` 翻页触发存在大容量优化空间；N-5 跨时区容错安全（NaN 兜底为 0）；N-6 加载态耦合（loading 包含 stats）；N-7 BigDecimal 数字与字符串前端双态兼容 |
 | 状态 | TASK-231 本地闭环，指导侧终裁 **ACCEPT 予以封盘**；遗留 N-3（E2E mock 同步）与 N-4（聚合下推）登入 BACKLOG 挂账 |
+
+## 验收记录：TASK-232（个人统计 SQL 聚合下推与页面加载态解耦，MEDIUM 档，2026-10-15）
+
+| 项 | 内容 |
+| --- | --- |
+| 开工基线 | `af97413`（main 分支，工作树干净） |
+| C-01 实施笔 | `ceec5c6` `feat(record): 个人统计 SQL 聚合下推与首页加载态解耦（TASK-232）`（恰 5 文件，+306/−114） |
+| C-02 任务两件套 | `bf4c7b9` `docs(mailbox): 登记TASK-232个人统计SQL聚合下推与加载态解耦验收与台账闭环（TASK-232）`（恰 2 文件） |
+| 任务内容与白名单 | 相对开工基线恰 7 文件 = 白名单全等（实施 5 文件 + 任务两件套 2 文件）；红线文件零扩散（零 pom 变更、零配置越界、零未声明路由） |
+| 核心实现 | ① 服务端 SQL 聚合下推：`SportRecordMapper` 新增 `selectAggByUserId` 注解 SQL，采用 `<script>+<foreach>` 动态绑定 `PASS_STATUS_CODES` 枚举，单行查出 `COUNT(*)`、`COALESCE(SUM(distance),0)`、`COUNT(CASE WHEN status IN (...) THEN 1 END)`，映射至新增 `RecordAggDTO`；② 30 天每日里程窗口下推：`selectDailyDistanceSince(userId, windowStart)` 增加时间窗下界过滤，命中既有复合索引 `idx_user_time (user_id, created_at)` 做范围扫描，仅拉取近 30 天记录，彻底消灭全历史记录回表与大内存缓冲开销；③ 边界健壮性：`SportRecordService.myStats` 增加聚合行缺失全 0 兜底，`setScale(2, HALF_UP)` 归一化；④ 前端解耦体验：`index.page.vue` 拆分 `loadRecords()` 与 `loadStats()`，列表翻页（`onPageChange`）与筛选变更（`onFilterChange`, `resetFilters`）仅调用轻量 `loadRecords()`，不再重复打统计与打卡接口；解耦 `tableLoading` 与首屏 `loading`，翻页时不整卡闪烁 |
+| 本机门禁 | 后端 `record-service` 262 测全绿（净增 1 测 `myStats_nullAggregateRowFallsBackToZero`，exit code 0）；前端 `pnpm type-check` rc=0，`pnpm test` 4 套 32 测全过，`pnpm build` 3317 modules 产出成功 rc=0；契约门无参 `scripts/verify/mailbox-contract.sh` rc=0 |
+| 是否到达外部门槛 | **未到达**：C-01/C-02 已提交，待指导侧统一提交台账闭环笔并随批推送触发 CI 外部终验 |
+| 独立复核结论 | 用户派发独立复核子 Agent 终审四块全过（总体 **PASS**，BLOCKER 0，偏差 D1/D2 2 项，提示留痕 N1~N5 5 项）：<br>• 块 1：7 文件严格全等白名单，红线面零触碰；<br>• 块 2：前端三件套与契约无参全绿；后端独立复跑 1 红（TimingHikari 抖动）1 绿、隔离跑 3 次全绿；<br>• 块 3：哈希、测试数、修改行数均吻合；<br>• 块 4：MyBatis 注解 SQL 经真 MyBatis 3.5.16 构建 SqlSource 解析验证通过，窗口与 NPE 兜底严密，前端翻页解耦彻底；<br>• 偏差裁决：D1 认定为 `TimingHikariDataSourceWiringTest` 墙钟 1000ms 阈值在宿主负载下的偶发抖动（1012ms 越线 1.2%），D2 修正留证中对该断言重载的误述；N1~N5 提示留痕在案 |
+| 状态 | TASK-232 本地闭环，指导侧终裁 **ACCEPT 予以封盘**；D1 计时抖动修复与 H5 E2E mock 同步登记后续待办 |
+
 
 
 
