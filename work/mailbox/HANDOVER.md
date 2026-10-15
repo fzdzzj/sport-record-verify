@@ -59,7 +59,11 @@
 
 ## 4. 下一个主 Agent 的唯一推荐动作
 
-- **推荐动作**：执行 `git push origin main` 批量推送已封盘批次触发 GitHub Actions 远端全量 CI 外部终验，或推进 **H2（E5 生产部署姿态演练：CORS 真实注入/跨域 cookie/TLS 终止协同）**。
+- **推荐动作**：
+  1. 执行 `git push origin main` 批量推送已封盘批次触发 GitHub Actions 远端全量 CI 外部终验；
+  2. 或推进 **B6（拟立项 TASK-240：friendship 补充 user_high 索引）**，消灭好友查询在较大 ID 方向的全表扫描；
+  3. 或推进 **B7（拟立项 TASK-241：Feed 点赞态批量下推）**，消除动态流 20 次并发 HTTP；
+  4. 或推进 **H2（E5 生产部署姿态演练）**。
 - **开工准备**：按 `docs/internal/AGENTS.md` 的「极简任务派发包模板」为子 Agent 派发。
 
 ---
