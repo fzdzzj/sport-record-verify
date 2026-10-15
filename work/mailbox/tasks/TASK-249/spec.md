@@ -3,8 +3,8 @@
 > **课题**：D 系推荐序 ①②③ 合并——D1 总榜缓存失效联动 + D3 结算 scan 游标单遍重构 + D2 appeal 待审索引 + D6 mapmatch 候选集查询防护（数据一致性与查询防护治理）  
 > **级别**：FULL 档（leaderboard 核心事件/结算路径生产代码 + mapmatch 核心匹配逻辑 + SQL 基建，多模块 → 独立复核 + 全量逐位离线门禁）  
 > **责任服务**：`leaderboard-service`、`mapmatch-service`、`sql`（verify_db 基建）  
-> **开工基线**：`<立项笔哈希>`（main，工作树干净；占位符由实施侧 C-02 回填为实际哈希）  
-> **状态**：待实施
+> **开工基线**：`5212bc3`（main，工作树干净；占位符由实施侧 C-02 回填为实际哈希）
+> **状态**：已实施
 
 ---
 
@@ -69,7 +69,7 @@
 
 1. **后端单测（全模块）**：`& "D:\git\Git\bin\bash.exe" scripts/verify/mvn-verify.sh --mode=offline test` → rc=0，全仓测试数只增不减；
 2. **前端回归**：`cd web && pnpm run type-check && pnpm test` 全绿通过；
-3. **契约门禁**：`& "D:\git\Git\bin\bash.exe" scripts/verify/mailbox-contract.sh --open=TASK-249 --baseline=<立项笔哈希>` → 退出码 0；
+3. **契约门禁**：`& "D:\git\Git\bin\bash.exe" scripts/verify/mailbox-contract.sh --open=TASK-249 --baseline=5212bc3` → 退出码 0；
 4. **token 门**：29 项受保护 token 字面量 `git grep -cF` tracked 全量只增不减（改动集零命中，清单勿枚举字面量）；
 5. **词面门**：CI 权威口径 `git grep -n -I -iE` 零命中（本机须显式 `-E` + 合成探针阳性对照证明模式有效）；
 6. **`git diff --check`**：提交前净。
