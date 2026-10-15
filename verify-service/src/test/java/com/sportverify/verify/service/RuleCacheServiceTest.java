@@ -177,6 +177,31 @@ class RuleCacheServiceTest {
         verify(lock, never()).unlock();
     }
 
+    /** TASK-243 B12 防击穿硬化：未获锁线程在轮询重读中命中其他线程回填的 Redis → 直接复用并回填本地，dbLoader 触发 0 次 */
+    @Test
+    void notHoldingLock_pollsRedis_throwsOffDbLoop() throws InterruptedException {
+        doReturn(false).when(lock).tryLock(anyLong(), anyLong(), any(TimeUnit.class));
+        // 第一次（get 第 2 步 Redis 检查）miss → 进入 rebuildFromDb；随后轮询重读第 1 次即命中他线程回填的 Redis
+        when(redis.opsForValue().get(REDIS_KEY)).thenReturn(null, "\"REBUILT_BY_OTHER\"");
+        AtomicInteger reads = new AtomicInteger();
+
+        Optional<String> v = service.get(KEY, String.class, () -> {
+            reads.incrementAndGet();
+            return "SHOULD_NOT_BE_CALLED";
+        });
+
+        assertEquals(Optional.of("REBUILT_BY_OTHER"), v);
+        assertEquals(0, reads.get(), "未获锁线程轮询重读应命中 Redis，dbLoader 触发 0 次");
+        verify(lock, never()).unlock();
+        // 本地 Caffeine 已回填：后续命中本地，不再触碰 Redis/DB
+        assertEquals(Optional.of("REBUILT_BY_OTHER"),
+                service.get(KEY, String.class, () -> {
+                    reads.incrementAndGet();
+                    return "NOPE";
+                }));
+        assertEquals(0, reads.get());
+    }
+
     // ===== TTL 抖动（雪崩防护） =====
 
     /** 非空值的 Redis TTL 落在 [base-jitter, base+jitter] 区间（60s ± 10s） */

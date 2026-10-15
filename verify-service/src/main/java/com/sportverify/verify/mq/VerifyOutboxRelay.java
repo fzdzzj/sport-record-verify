@@ -361,16 +361,7 @@ public class VerifyOutboxRelay {
                 if (diagEnabled) {
                     totals.sendNanos += System.nanoTime() - sendStart;
                 }
-                long incrStart = diagEnabled ? System.nanoTime() : 0L;
-                outboxMapper.incrRetry(row.getId());
-                if (diagEnabled) {
-                    totals.incrRetryNanos += System.nanoTime() - incrStart;
-                }
-                totals.failed++;
-                log.warn("outbox 事件投递失败，下轮重试：id={}, eventId={}, retryCount={}",
-                        row.getId(), row.getEventId(),
-                        row.getRetryCount() == null ? 1
-                                : row.getRetryCount() + 1, e);
+                onRowFailure(row, diagEnabled, totals, e);
                 return;
             }
             if (diagEnabled) {
@@ -392,16 +383,7 @@ public class VerifyOutboxRelay {
                     if (diagEnabled) {
                         totals.markNanos += System.nanoTime() - markStart;
                     }
-                    long incrStart = diagEnabled ? System.nanoTime() : 0L;
-                    outboxMapper.incrRetry(row.getId());
-                    if (diagEnabled) {
-                        totals.incrRetryNanos += System.nanoTime() - incrStart;
-                    }
-                    totals.failed++;
-                    log.warn("outbox 事件投递失败，下轮重试：id={}, eventId={}, retryCount={}",
-                            row.getId(), row.getEventId(),
-                            row.getRetryCount() == null ? 1
-                                    : row.getRetryCount() + 1, e);
+                    onRowFailure(row, diagEnabled, totals, e);
                 }
                 return;
             }
@@ -428,6 +410,41 @@ public class VerifyOutboxRelay {
     private void sendRow(final VerifyEventOutbox row, final boolean diagEnabled,
                          final RelayTotals totals) {
         sendRow(row, 0, null, diagEnabled, totals);
+    }
+
+    /**
+     * 单行投递/标记失败后的统一处理（TASK-243 B11 防毒丸死信扫描劣化）：计算下一重试次数，
+     * 达到 {@code maxRetry} 上限 → 调用 {@code markExhausted} 流转至 EXHAUSTED 终态并告警
+     * （把死信移出 PENDING 扫描集，杜绝全表扫描 I/O 放大）；未达上限 → {@code incrRetry} 留下轮。
+     * 与 {@code totals.failed} 计数语义保持一致：无论耗尽还是重试，该行本轮都计入失败，
+     * 耗时统一累计到 {@code incrRetryNanos}（原 incrRetry 分支口径，仅归因不改变语义）。
+     *
+     * <p>不 try/catch 包裹 Mapper 调用与日志：重试计数异常照原样由调用方（串行直接、
+     * 并发 worker 兜底）传播/隔离，与既有语义一致。</p>
+     *
+     * @param row         本行 outbox 数据
+     * @param diagEnabled 诊断开关
+     * @param totals      累计器
+     * @param e           本次投递/标记失败的原始异常（用于 WARN 日志定位）
+     */
+    private void onRowFailure(final VerifyEventOutbox row, final boolean diagEnabled,
+                              final RelayTotals totals, final Exception e) {
+        int nextRetry = (row.getRetryCount() == null ? 0 : row.getRetryCount()) + 1;
+        long incrStart = diagEnabled ? System.nanoTime() : 0L;
+        if (nextRetry >= maxRetry) {
+            outboxMapper.markExhausted(row.getId());
+            totals.exhausted++;
+            log.error("outbox 事件重试次数达到上限，移入 EXHAUSTED 终态：id={}, eventId={}, retryCount={}",
+                    row.getId(), row.getEventId(), nextRetry);
+        } else {
+            outboxMapper.incrRetry(row.getId());
+            log.warn("outbox 事件投递失败，下轮重试：id={}, eventId={}, retryCount={}",
+                    row.getId(), row.getEventId(), nextRetry, e);
+        }
+        if (diagEnabled) {
+            totals.incrRetryNanos += System.nanoTime() - incrStart;
+        }
+        totals.failed++;
     }
 
     /**

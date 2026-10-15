@@ -164,7 +164,26 @@ public class RuleCacheService {
                 }
             }
         }
-        // 未拿到锁：其他实例正在重建——本地降级读一次（概率低），不阻塞校验主链路
+        // 未拿到锁：其他线程正在重建——至多 3 次（每次 50ms）短暂停顿重读 Redis（防击穿硬化）。
+        // 持锁线程重建期间回填了 Redis，随后轮询重读命中即直接复用并回填本地，避免所有未获锁
+        // 线程同时回源打爆 DB（dbLoader 触发 0 次）；重试耗尽仍未命中才安全回退至本地兜底查库。
+        for (int i = 0; i < 3; i++) {
+            try {
+                Thread.sleep(50);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                break;
+            }
+            Object redis = readRedis(cacheKey, type);
+            if (redis != null && redis != EMPTY) {
+                caffeineCache.put(cacheKey, redis);
+                return Optional.of(type.cast(redis));
+            } else if (redis == EMPTY) {
+                caffeineCache.put(cacheKey, EMPTY);
+                return Optional.empty();
+            }
+        }
+        // 3 次重试仍未从 Redis 命中，才安全回退至本地兜底查库
         return readThroughLocal(cacheKey, type, dbLoader);
     }
 

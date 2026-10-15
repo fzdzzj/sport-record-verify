@@ -39,6 +39,14 @@ public interface VerifyEventOutboxMapper extends BaseMapper<VerifyEventOutbox> {
     int incrRetry(@Param("id") Long id);
 
     /**
+     * 投递重试耗尽流转至 EXHAUSTED 终态（条件含 status='PENDING'：并发下只生效一次，
+     * 幂等；移出 PENDING 扫描集，消除毒丸死信的全表扫描 I/O 放大）。
+     */
+    @Update("UPDATE verify_event_outbox SET status = 'EXHAUSTED' " +
+            "WHERE id = #{id} AND status = 'PENDING'")
+    int markExhausted(@Param("id") Long id);
+
+    /**
      * 分块批量投递成功标记（条件含 status='PENDING'：并发下只生效一次，重复标记幂等）.
      *
      * <p>仅当 {@code verify.outbox.relay-batch-mark-enabled=true} 时由

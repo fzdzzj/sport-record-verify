@@ -176,6 +176,67 @@ class FriendServiceTest {
         verify(requestMapper, never()).insert(ArgumentMatchers.<FriendRequest>any());
     }
 
+    /** TASK-243 B13：同向申请满 7 天后重新发起 → 旧申请惰性流转 CANCELLED，成功创建新单（解除同向死锁） */
+    @Test
+    void createRequest_whenSameDirExpired_cancelsOldAndCreatesNew() {
+        when(userMapper.selectById(1002L)).thenReturn(user(1002L, "B"));
+        FriendRequest oldSame = pendingRequest(1L, 1001L, 1002L);
+        oldSame.setCreatedAt(LocalDateTime.now().minusDays(10)); // 超过 7 天
+        when(requestMapper.selectOne(any())).thenReturn(oldSame, null); // 同向命中过期单，反向无
+        when(friendshipMapper.selectCount(any())).thenReturn(0L);
+        when(requestMapper.updateStatus(eq(1L), eq(0), eq(3), any())).thenReturn(1);
+        when(requestMapper.insert(ArgumentMatchers.<FriendRequest>any())).thenAnswer(inv -> {
+            FriendRequest r = inv.getArgument(0);
+            r.setId(9L);
+            return 1;
+        });
+
+        FriendRequestDTO dto = service.createRequest(1001L, 1002L);
+
+        assertEquals(9L, dto.getId());
+        assertEquals("PENDING", dto.getStatus());
+        // 旧申请 PENDING(0) → CANCELLED(3)
+        verify(requestMapper).updateStatus(eq(1L), eq(0), eq(3), any());
+        verify(requestMapper).insert(ArgumentMatchers.<FriendRequest>any());
+    }
+
+    /** TASK-243 B13：反向申请满 7 天后发起申请 → 旧反向申请惰性流转 CANCELLED，成功创建新单（过期反向不阻断正向） */
+    @Test
+    void createRequest_whenReverseDirExpired_cancelsReverseAndCreatesNew() {
+        when(userMapper.selectById(1002L)).thenReturn(user(1002L, "B"));
+        FriendRequest oldReverse = pendingRequest(2L, 1002L, 1001L);
+        oldReverse.setCreatedAt(LocalDateTime.now().minusDays(9)); // 超过 7 天
+        when(requestMapper.selectOne(any())).thenReturn(null, oldReverse); // 同向无，反向命中过期单
+        when(friendshipMapper.selectCount(any())).thenReturn(0L);
+        when(requestMapper.updateStatus(eq(2L), eq(0), eq(3), any())).thenReturn(1);
+        when(requestMapper.insert(ArgumentMatchers.<FriendRequest>any())).thenAnswer(inv -> {
+            FriendRequest r = inv.getArgument(0);
+            r.setId(10L);
+            return 1;
+        });
+
+        FriendRequestDTO dto = service.createRequest(1001L, 1002L);
+
+        assertEquals(10L, dto.getId());
+        assertEquals("PENDING", dto.getStatus());
+        // 旧反向申请 PENDING(0) → CANCELLED(3)
+        verify(requestMapper).updateStatus(eq(2L), eq(0), eq(3), any());
+        verify(requestMapper).insert(ArgumentMatchers.<FriendRequest>any());
+    }
+
+    /** TASK-243 B13：同向申请未满 7 天仍拦截（5001），不流转不建单 */
+    @Test
+    void createRequest_sameDirWithinSevenDays_stillRejected() {
+        when(userMapper.selectById(1002L)).thenReturn(user(1002L, "B"));
+        when(requestMapper.selectOne(any())).thenReturn(pendingRequest(1L, 1001L, 1002L)); // createdAt = now（7 天内）
+
+        BizException e = assertThrows(BizException.class, () -> service.createRequest(1001L, 1002L));
+
+        assertEquals(ResultCode.FRIEND_REQUEST_EXISTS.getCode(), e.getCode());
+        verify(requestMapper, never()).updateStatus(anyLong(), anyInt(), anyInt(), any());
+        verify(requestMapper, never()).insert(ArgumentMatchers.<FriendRequest>any());
+    }
+
     // ==================== 申请状态机 ====================
 
     /** 规范差异「同意申请」：PENDING→ACCEPTED，并落 friendship（规范化 user_low<user_high） */

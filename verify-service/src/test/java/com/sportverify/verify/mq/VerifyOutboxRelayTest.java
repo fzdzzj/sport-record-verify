@@ -231,6 +231,55 @@ class VerifyOutboxRelayTest {
         verify(outboxMapper, never()).incrRetry(anyLong());
     }
 
+    /** TASK-243 B11：已达阈值前一跳（retryCount=15，maxRetry=16）发送失败 → 流转 EXHAUSTED 终态而非 incrRetry */
+    @Test
+    @SuppressWarnings("unchecked")
+    void relay_sendFailureAtThresholdExhaustsRow() throws Exception {
+        stubLockAcquired();
+        when(outboxMapper.selectPendingBatch(100, 16)).thenReturn(List.of(row(7L, 15)));
+        when(rocketMQTemplate.syncSend(anyString(), any(Message.class)))
+                .thenThrow(new RuntimeException("MQ 不可用"));
+
+        relay.relay();
+
+        verify(outboxMapper).markExhausted(7L);
+        verify(outboxMapper, never()).incrRetry(anyLong());
+        verify(outboxMapper, never()).markSent(anyLong());
+        verify(lock).unlock();
+    }
+
+    /** TASK-243 B11：未达上限仍 incrRetry（阈值前两跳，retryCount=14，maxRetry=16）→ 不误耗尽 */
+    @Test
+    @SuppressWarnings("unchecked")
+    void relay_sendFailureBelowThreshold_incrRetryNotExhaust() throws Exception {
+        stubLockAcquired();
+        when(outboxMapper.selectPendingBatch(100, 16)).thenReturn(List.of(row(7L, 14)));
+        when(rocketMQTemplate.syncSend(anyString(), any(Message.class)))
+                .thenThrow(new RuntimeException("MQ 不可用"));
+
+        relay.relay();
+
+        verify(outboxMapper).incrRetry(7L);
+        verify(outboxMapper, never()).markExhausted(anyLong());
+        verify(lock).unlock();
+    }
+
+    /** TASK-243 B11：标记段 markSent 失败同样保护——达上限 → markExhausted 而非 incrRetry */
+    @Test
+    @SuppressWarnings("unchecked")
+    void relay_markSentFailureAtThresholdExhaustsRow() throws Exception {
+        stubLockAcquired();
+        when(outboxMapper.selectPendingBatch(100, 16)).thenReturn(List.of(row(7L, 15)));
+        when(rocketMQTemplate.syncSend(anyString(), any(Message.class))).thenReturn(null);
+        when(outboxMapper.markSent(7L)).thenThrow(new RuntimeException("markSent 失败"));
+
+        relay.relay();
+
+        verify(outboxMapper).markExhausted(7L);
+        verify(outboxMapper, never()).incrRetry(anyLong());
+        verify(lock).unlock();
+    }
+
     /**
      * 队首满批耗尽行被 SQL 过滤后，紧随其后的正常行进入本轮批次、被发送并沿用原 eventId。
      *

@@ -94,6 +94,7 @@ public class FriendService {
         }
         try {
             // —— 锁内「检查-建单」原子化（规范差异「申请幂等去重」）
+            LocalDateTime now = LocalDateTime.now();
             // 1) 同向 PENDING 重复申请 → 5001（或返回原申请单，本实现统一 5001）
             FriendRequest sameDir = friendRequestMapper.selectOne(new LambdaQueryWrapper<FriendRequest>()
                     .eq(FriendRequest::getFromUser, userId)
@@ -101,18 +102,35 @@ public class FriendService {
                     .eq(FriendRequest::getStatus, FriendRequestStatus.PENDING.getCode())
                     .last("LIMIT 1"));
             if (sameDir != null) {
-                log.info("同向重复申请被拒：from={}, to={}, 既有申请Id={}", userId, targetUserId, sameDir.getId());
-                throw new BizException(ResultCode.FRIEND_REQUEST_EXISTS, "重复申请：已有同向 PENDING 申请");
+                // TASK-243 B13：超过 7 天未处理 → 惰性流转 CANCELLED 解除互斥，允许重新申请；否则仍报 FRIEND_REQUEST_EXISTS
+                if (sameDir.getCreatedAt() != null && sameDir.getCreatedAt().isBefore(now.minusDays(7))) {
+                    friendRequestMapper.updateStatus(sameDir.getId(),
+                            FriendRequestStatus.PENDING.getCode(),
+                            FriendRequestStatus.CANCELLED.getCode(), now);
+                    log.info("同向好友申请超过 7 天有效期，自动取消以解除死锁：id={}, from={}, to={}",
+                            sameDir.getId(), userId, targetUserId);
+                } else {
+                    log.info("同向重复申请被拒：from={}, to={}, 既有申请Id={}", userId, targetUserId, sameDir.getId());
+                    throw new BizException(ResultCode.FRIEND_REQUEST_EXISTS, "重复申请：已有同向 PENDING 申请");
+                }
             }
-            // 2) 反向 PENDING 已存在（对方已发起）→ 5001
+            // 2) 反向 PENDING 已存在（对方已发起）→ 5001；超过 7 天同样惰性流转 CANCELLED 解除死锁
             FriendRequest reverse = friendRequestMapper.selectOne(new LambdaQueryWrapper<FriendRequest>()
                     .eq(FriendRequest::getFromUser, targetUserId)
                     .eq(FriendRequest::getToUser, userId)
                     .eq(FriendRequest::getStatus, FriendRequestStatus.PENDING.getCode())
                     .last("LIMIT 1"));
             if (reverse != null) {
-                log.info("反向 PENDING 已存在被拒：from={}, to={}", targetUserId, userId);
-                throw new BizException(ResultCode.FRIEND_REQUEST_EXISTS, "对方已向你发起申请，请先处理对方申请");
+                if (reverse.getCreatedAt() != null && reverse.getCreatedAt().isBefore(now.minusDays(7))) {
+                    friendRequestMapper.updateStatus(reverse.getId(),
+                            FriendRequestStatus.PENDING.getCode(),
+                            FriendRequestStatus.CANCELLED.getCode(), now);
+                    log.info("反向好友申请超过 7 天有效期，自动取消以解除死锁：id={}, from={}, to={}",
+                            reverse.getId(), targetUserId, userId);
+                } else {
+                    log.info("反向 PENDING 已存在被拒：from={}, to={}", targetUserId, userId);
+                    throw new BizException(ResultCode.FRIEND_REQUEST_EXISTS, "对方已向你发起申请，请先处理对方申请");
+                }
             }
             // 3) 已存在好友关系 → 5001
             Long relationCount = friendshipMapper.selectCount(new LambdaQueryWrapper<Friendship>()
@@ -124,7 +142,6 @@ public class FriendService {
             }
 
             // —— 建单（status=PENDING，规范差异「好友申请创建」）
-            LocalDateTime now = LocalDateTime.now();
             FriendRequest request = new FriendRequest();
             request.setFromUser(userId);
             request.setToUser(targetUserId);
@@ -265,6 +282,8 @@ public class FriendService {
                 new LambdaQueryWrapper<FriendRequest>()
                         .eq(FriendRequest::getToUser, userId)
                         .eq(FriendRequest::getStatus, FriendRequestStatus.PENDING.getCode())
+                        // TASK-243 B13：仅返回 7 天内有效 PENDING 待办（过期申请不再进入待办列表）
+                        .ge(FriendRequest::getCreatedAt, LocalDateTime.now().minusDays(7))
                         .orderByDesc(FriendRequest::getCreatedAt));
         List<FriendRequestDTO> records = result.getRecords().stream().map(this::toDto).toList();
         return new PageResult<>(result.getCurrent(), result.getSize(), result.getTotal(), records);

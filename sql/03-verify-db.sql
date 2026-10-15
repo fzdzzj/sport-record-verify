@@ -43,7 +43,7 @@ CREATE TABLE IF NOT EXISTS `verify_event_outbox` (
     `tag`         VARCHAR(64)  NOT NULL COMMENT '事件 Tag（VERIFIED / REJECTED）',
     `payload`     JSON         NOT NULL COMMENT '事件体 JSON（VerifyEventDTO）',
     `trace_id`    VARCHAR(64)  DEFAULT NULL COMMENT '写入时链路追踪ID（relay 投递透传到消息 userProperty）',
-    `status`      VARCHAR(16)  NOT NULL DEFAULT 'PENDING' COMMENT '状态：PENDING 待投递，SENT 已投递',
+    `status`      VARCHAR(16)  NOT NULL DEFAULT 'PENDING' COMMENT '状态：PENDING 待投递，SENT 已投递，EXHAUSTED 重试耗尽',
     `retry_count` INT          NOT NULL DEFAULT 0 COMMENT '投递失败次数（超阈值保留行供人工处理）',
     `created_at`  DATETIME     DEFAULT NULL COMMENT '创建时间',
     `sent_at`     DATETIME     DEFAULT NULL COMMENT '投递成功时间',
