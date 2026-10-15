@@ -14,7 +14,8 @@ import java.util.List;
  * R4 距离一致性（SOFT，折返/绕圈刷里程特征，规范「折返刷里程触发 R4」）。
  *
  * <p>累计轨迹距离 / 起终点直线距离 &gt; 3.0 → 命中。
- * 起点≈终点且累计距离显著（典型折返）时直线距离趋零，比值视为无穷大。</p>
+ * 起点≈终点且累计距离显著（典型折返）时直线距离趋零，比值视为无穷大。
+ * 累计距离低于 {@code minCumulativeMeters}（默认 500m）的微短闭环先豁免（TASK-238 起征门槛）。</p>
  */
 @Component
 @Order(4)
@@ -43,6 +44,12 @@ public class R4DistanceRule implements Rule {
         for (int i = 1; i < points.size(); i++) {
             cumulative += GeoUtils.distance(points.get(i - 1).getLat(), points.get(i - 1).getLng(),
                     points.get(i).getLat(), points.get(i).getLng());
+        }
+        // 起征门槛保护（TASK-238）：累计距离低于 minCumulativeMeters（默认 500.0m）时豁免，
+        // 微短起步/原地微弱运动的闭合轨迹不误判为折返刷里程；超门槛后走原判定逻辑不变。
+        double minCumulative = typeThreshold.getR4().getMinCumulativeMeters();
+        if (cumulative < minCumulative) {
+            return null;
         }
         // 起终点直线距离
         Point first = points.get(0);

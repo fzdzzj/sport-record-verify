@@ -142,6 +142,8 @@ public class VerifyProperties {
     public static class R4 {
         /** 累计轨迹距离 / 起终点直线距离 比值阈值 */
         private double maxRatio = 3.0;
+        /** 触发折返刷里程判定的最小累计轨迹距离（米），低于此门槛不视为折返刷里程（防微短起步误杀；默认 500.0 米） */
+        private double minCumulativeMeters = 500.0;
     }
 
     @Data

@@ -2,8 +2,8 @@
   <div class="max-w-4xl mx-auto">
     <a-card title="记录轨迹查看（SVG 投影）" class="mb-4">
       <p class="text-gray-600 mb-4">
-        GET /record/api/records/{id}/points（分页 size=500 单次拉取）。归属由服务端校验（auth 开启时本人记录才可查，
-        非本人 → 403/1002 权限错误态）。轨迹用 min-max 归一化投影到 SVG viewBox（非真实地图，仅示意形状）。
+        GET /record/api/records/{id}/points（分页 size=500，超 500 点自动循环拉取至全量，上限 20000 点）。归属由服务端校验（auth 开启时本人记录才可查，
+        非本人 → 403/1002 权限错误态）。轨迹用局部等距等比投影（cos 纬度修正）到 SVG viewBox（非真实地图，仅示意形状）。
       </p>
 
       <div class="flex gap-2 mb-4">
@@ -62,15 +62,14 @@
             :r="i === 0 || i === projected.length - 1 ? 5 : 3"
             :fill="i === 0 ? '#22c55e' : i === projected.length - 1 ? '#ef4444' : '#1677ff'"
           >
-            <title>{{ pointTitle(points[i]) }}</title>
+            <title>{{ pointTitle(validPoints[i]) }}</title>
           </circle>
         </svg>
       </a-spin>
 
       <p v-if="points.length" class="mt-2 text-xs text-gray-500">
-        共 {{ points.length }} 个轨迹点；起点绿、终点红，其余点为蓝，悬停查看 seq/speed/ts。
-        <span v-if="points.length >= 500">单次拉取上限 500 点，超出部分轨迹未显示（已知限制）。</span>
-        坐标经 min-max 归一化投影，固定留边，非真实地理底图。
+        共 {{ points.length }} 个轨迹点（完整加载）；起点绿、终点红，其余点为蓝，悬停查看 seq/speed/ts。
+        坐标经局部等距等比投影（cos 纬度修正），固定留边，非真实地理底图。
       </p>
 
       <div v-if="points.length" class="mt-2 flex items-center gap-2">
@@ -182,10 +181,10 @@ const likeLabel = computed(() => {
   return likeInfo.value.liked ? `已赞 (${likeInfo.value.likeCount})` : `赞 (${likeInfo.value.likeCount})`
 })
 
-// 固定 viewBox 与留边；lat/lng 各自 min-max 归一化后按比例铺入内层区。
+// 固定 viewBox 与留边；局部等距投影：cos(avgLat) 修正经度地面跨度，统一缩放保持真实纵横比。
 const W = 800
-const H = 480
-const PAD = 40
+const H = 400
+const PAD = 16
 
 const permErrorMsg = '无权查看该记录轨迹（服务端归属校验为权威，前端不绕过、不做本地身份判断）。'
 
@@ -206,29 +205,49 @@ function goAppeal() {
   router.push({ path: '/verdict', query: { id: recordId.value } })
 }
 
+/** 有效数值坐标点集（几何投影与悬停标题共用，过滤非法 lat/lng） */
+const validPoints = computed(() =>
+  points.value.filter((p) => Number.isFinite(Number(p.lat)) && Number.isFinite(Number(p.lng))),
+)
+
 /**
- * 归一化投影：lng→x（左西右东），lat→y（翻转使北在上）。
- * 退化：单点或所有点同坐标（range=0）时取 0.5，落内层区正中。
+ * 局部等距等比投影（TASK-238）：cos(avgLat) 修正经度每度地面宽度（纬度 1°≈111km、
+ * 经度 1°随纬度余弦缩小），统一缩放比 min(innerW/spanX, innerH/spanY) 居中等比渲染，
+ * 消除正方形路线压扁、圆形操场压成椭圆的几何拉伸变形。
+ * 退化：无有效点返回空数组；全部同坐标（span≈0）时全部居中映射。
  */
 const projected = computed(() => {
-  const pts = points.value
+  const pts = validPoints.value.map((p) => ({ lat: Number(p.lat), lng: Number(p.lng) }))
   if (!pts.length) return [] as { x: number; y: number }[]
-  const lats = pts.map((p) => Number(p.lat))
-  const lngs = pts.map((p) => Number(p.lng))
-  const minLat = Math.min(...lats)
-  const maxLat = Math.max(...lats)
-  const minLng = Math.min(...lngs)
-  const maxLng = Math.max(...lngs)
-  const latRange = maxLat - minLat
-  const lngRange = maxLng - minLng
+  const minLat = Math.min(...pts.map((v) => v.lat))
+  const maxLat = Math.max(...pts.map((v) => v.lat))
+  const minLng = Math.min(...pts.map((v) => v.lng))
+  const maxLng = Math.max(...pts.map((v) => v.lng))
+  const avgLat = (minLat + maxLat) / 2
+  const cosLat = Math.cos((avgLat * Math.PI) / 180)
+  const spanX = (maxLng - minLng) * cosLat
+  const spanY = maxLat - minLat
   const innerW = W - PAD * 2
   const innerH = H - PAD * 2
-  return pts.map((p) => {
-    const fx = lngRange > 0 ? (Number(p.lng) - minLng) / lngRange : 0.5
-    const fy = latRange > 0 ? (Number(p.lat) - minLat) / latRange : 0.5
+  // 退化：所有点同坐标 → 全部居中映射
+  if (spanX <= 1e-9 && spanY <= 1e-9) {
+    const cx = PAD + innerW / 2
+    const cy = H - PAD - innerH / 2
+    return pts.map(() => ({ x: cx, y: cy }))
+  }
+  const scaleX = spanX > 1e-9 ? innerW / spanX : 0
+  const scaleY = spanY > 1e-9 ? innerH / spanY : 0
+  const scale = spanX > 1e-9 && spanY > 1e-9 ? Math.min(scaleX, scaleY) : (scaleX || scaleY)
+  const drawW = spanX * scale
+  const drawH = spanY * scale
+  const offsetX = PAD + (innerW - drawW) / 2
+  const offsetY = PAD + (innerH - drawH) / 2
+  return pts.map((v) => {
+    const px = (v.lng - minLng) * cosLat
+    const py = v.lat - minLat
     return {
-      x: Number((PAD + fx * innerW).toFixed(2)),
-      y: Number((H - PAD - fy * innerH).toFixed(2)),
+      x: Number((offsetX + px * scale).toFixed(2)),
+      y: Number((H - offsetY - py * scale).toFixed(2)),
     }
   })
 })
@@ -337,9 +356,21 @@ async function load() {
   summaryDegraded.value = false
   likeInfo.value = null
   try {
-    // size=500 单次拉取（沿用 my-records 同口径；>500 为已知部分轨迹限制）
-    const res = await getRecordPoints(recordId.value, 1, 500)
-    points.value = (res.data && res.data.records) || []
+    // 全量拉取：首包 size=500；若 total > 已收点数，自动循环分页按批追加直至齐备
+    // （防超大死循环，上限 20000 点对齐 DTO 契约；>500 点不再腰斩轨迹与 GPX）
+    const firstRes = await getRecordPoints(recordId.value, 1, 500)
+    let allPoints = (firstRes.data && firstRes.data.records) || []
+    const totalPoints = (firstRes.data && firstRes.data.total) || allPoints.length
+    let curPage = 1
+    const pageSize = 500
+    while (allPoints.length < totalPoints && allPoints.length < 20000) {
+      curPage++
+      const nextRes = await getRecordPoints(recordId.value, curPage, pageSize)
+      const nextBatch = (nextRes.data && nextRes.data.records) || []
+      if (!nextBatch.length) break
+      allPoints = allPoints.concat(nextBatch)
+    }
+    points.value = allPoints
     // 摘要头 + 点赞态：并发调取，任一失败静默降级（403 权限/非通过 6001/摘要缺失均不阻断轨迹渲染）
     await Promise.allSettled([
       getVerifyResult(recordId.value)
