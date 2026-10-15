@@ -25,6 +25,9 @@
           <a-button @click="loadSample" class="mr-2">加载内置样例</a-button>
           <a-button @click="clearPoints">清空</a-button>
           <div class="mt-2 text-xs text-gray-500">points 数量: {{ points.length }} （必须 ≥1）</div>
+          <div v-if="points.length" class="mt-1 text-xs text-gray-500">
+            推导字段（TASK-234，随提交一并下发）：startTime={{ startTime }} / endTime={{ endTime }} / duration={{ duration }}s / distance={{ distance }}km
+          </div>
           <pre v-if="points.length" class="mt-1 text-xs bg-gray-50 p-2 rounded max-h-24 overflow-auto">{{ JSON.stringify(points.slice(0,3), null, 2) }} ... (共 {{ points.length }} 点)</pre>
         </a-form-item>
 
@@ -82,7 +85,7 @@
 <script setup lang="ts">
 import { ref, onMounted } from 'vue'
 import { useRouter } from 'vue-router/auto'
-import { submitRecord, SAMPLE_TRACK_POINTS, getRecordPoints, type RecordSubmitResultDTO, type TrackPointDTO } from '@/api/client'
+import { submitRecord, SAMPLE_TRACK_POINTS, getRecordPoints, type RecordSubmitDTO, type RecordSubmitResultDTO, type TrackPointDTO } from '@/api/client'
 
 const router = useRouter()
 
@@ -96,6 +99,13 @@ const submitError = ref('')
 const sessionRecords = ref<number[]>([])
 const myUserId = ref<number | null>(null)
 
+// TASK-234：样例轨迹推导出的关键字段（加载样例时同步提取，随提交一并带齐，
+// 与服务端「缺字段时按轨迹首末点/相邻点 Haversine 推导」口径一致）
+const startTime = ref('')
+const endTime = ref('')
+const duration = ref(0)
+const distance = ref(0)
+
 function genRequestId() {
   requestId.value = `demo-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
 }
@@ -103,10 +113,49 @@ function genRequestId() {
 function loadSample() {
   points.value = JSON.parse(JSON.stringify(SAMPLE_TRACK_POINTS))
   if (!requestId.value) genRequestId()
+  // TASK-234：同步提取首末点时间（UTC 墙钟，与服务端推导口径一致）、时长与 Haversine 距离
+  const pts = points.value
+  const first = pts[0]
+  const last = pts[pts.length - 1]
+  startTime.value = isoFromTs(first.ts)
+  endTime.value = isoFromTs(last.ts)
+  duration.value = Math.floor((last.ts - first.ts) / 1000)
+  distance.value = Math.round(sumHaversineKm(pts) * 100) / 100
 }
 
 function clearPoints() {
   points.value = []
+}
+
+/** 毫秒 ts → "YYYY-MM-DDTHH:mm:ss"（UTC 墙钟，与服务端推导同口径） */
+function isoFromTs(ts: number): string {
+  const d = new Date(ts)
+  const mm = String(d.getUTCMonth() + 1).padStart(2, '0')
+  const dd = String(d.getUTCDate()).padStart(2, '0')
+  const hh = String(d.getUTCHours()).padStart(2, '0')
+  const mi = String(d.getUTCMinutes()).padStart(2, '0')
+  const ss = String(d.getUTCSeconds()).padStart(2, '0')
+  return `${d.getUTCFullYear()}-${mm}-${dd}T${hh}:${mi}:${ss}`
+}
+
+/** 相邻点 Haversine 累加距离（公里；公式与常量同 verify GeoUtils/服务端推导） */
+function haversineKm(a: TrackPointDTO, b: TrackPointDTO): number {
+  const R = 6371000
+  const rad = (x: number) => (x * Math.PI) / 180
+  const dLat = rad(b.lat - a.lat)
+  const dLng = rad(b.lng - a.lng)
+  const s =
+    Math.sin(dLat / 2) ** 2 +
+    Math.cos(rad(a.lat)) * Math.cos(rad(b.lat)) * Math.sin(dLng / 2) ** 2
+  return (2 * R * Math.asin(Math.sqrt(s))) / 1000
+}
+
+function sumHaversineKm(pts: TrackPointDTO[]): number {
+  let km = 0
+  for (let i = 1; i < pts.length; i++) {
+    km += haversineKm(pts[i - 1], pts[i])
+  }
+  return km
 }
 
 async function onSubmit() {
@@ -118,8 +167,13 @@ async function onSubmit() {
       requestId: requestId.value,
       sportType: sportType.value,
       visibility: visibility.value,
+      // TASK-234：带齐推导字段，服务端不再因缺失而留 NULL 破窗
+      startTime: startTime.value || undefined,
+      endTime: endTime.value || undefined,
+      distance: distance.value || undefined,
+      duration: duration.value || undefined,
       points: points.value
-    }
+    } as RecordSubmitDTO
     const res = await submitRecord(dto)
     submitResult.value = res.data
     // auto save to session

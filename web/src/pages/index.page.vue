@@ -164,6 +164,7 @@
               <template #bodyCell="{ column, record }">
                 <span v-if="column.key === 'sportType'">{{ sportTypeLabel(record.sportType) }}</span>
                 <span v-else-if="column.key === 'status'">{{ statusLabel(record.status) }}</span>
+                <a-tag v-else-if="column.key === 'visibility' && record.visibility === 0" color="green">公开</a-tag>
                 <a-tag v-else-if="column.key === 'visibility' && record.visibility === 2" color="red">仅自己</a-tag>
                 <a-tag v-else-if="column.key === 'visibility' && record.visibility === 1" color="blue">好友可见</a-tag>
                 <template v-else-if="column.key === 'actions'">

@@ -41,6 +41,9 @@ public class GoalService {
     private final GoalMapper goalMapper;
     private final SportRecordMapper sportRecordMapper;
 
+    /** 目标值合理上限（TASK-234）：距离/次数目标均不得超过 10000，防离谱值污染进度展示。 */
+    private static final BigDecimal GOAL_TARGET_VALUE_MAX = new BigDecimal("10000");
+
     /**
      * 查询我的目标列表及实时进度（默认使用当前服务器日期）。
      *
@@ -171,15 +174,29 @@ public class GoalService {
         if (targetValue == null || targetValue.compareTo(BigDecimal.ZERO) <= 0) {
             throw new IllegalArgumentException("目标值必须大于0");
         }
+        // TASK-234 边界收紧：任何指标目标值均设 10000 合理上限，防离谱值污染进度展示
+        if (targetValue.compareTo(GOAL_TARGET_VALUE_MAX) > 0) {
+            throw new IllegalArgumentException("目标值不能超过10000");
+        }
+        // TASK-234 整数性：次数目标必须为正整数（无小数位）——4.5 次无物理意义；
+        // 尾零小数（如 8.00）经 stripTrailingZeros 归一后视作整数放行
+        if (metric == 1 && targetValue.stripTrailingZeros().scale() > 0) {
+            throw new IllegalArgumentException("次数目标必须为正整数（无小数位）");
+        }
     }
 
+    /**
+     * 周期内记录查询（TASK-234 周期归属修正）：达成量统计的窗口过滤优先按 start_time
+     * （离线补传/轨迹推导均会回填 start_time；其为空时回退 created_at），修正离线补传
+     * 运动被 createdAt 误归入错误周期（补传当日已过周期窗口）的破窗。
+     */
     private List<SportRecord> queryPeriodRecords(Long userId, LocalDateTime start, LocalDateTime end) {
         return sportRecordMapper.selectList(new LambdaQueryWrapper<SportRecord>()
                 .select(SportRecord::getDistance, SportRecord::getCreatedAt)
                 .eq(SportRecord::getUserId, userId)
                 .in(SportRecord::getStatus, List.of(RecordStatus.PASSED.getCode(), RecordStatus.RE_PASSED.getCode()))
-                .ge(SportRecord::getCreatedAt, start)
-                .le(SportRecord::getCreatedAt, end));
+                .apply("COALESCE(start_time, created_at) >= {0}", start)
+                .apply("COALESCE(start_time, created_at) <= {0}", end));
     }
 
     private BigDecimal calculateAchieved(List<SportRecord> records, Integer metric) {

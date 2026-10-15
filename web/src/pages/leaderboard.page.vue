@@ -4,12 +4,12 @@
       <p class="text-gray-600 mb-4">GET /leaderboard/api/leaderboard?type=overall|friend&amp;size=...（ZSet 总/好友榜）；下方 今日/本周/本月 走 GET /leaderboard/api/leaderboard/range（settled_at 半开窗口聚合 ACTIVE 贡献，周=ISO 周一、月=本月 1 号，end=今天）。rank 从 1 开始，distance 累计 pass 里程。</p>
 
       <div class="mb-4">
-        <a-radio-group v-model:value="lbType" @change="loadLb">
+        <a-radio-group v-model:value="lbType" @change="onLbTypeChange">
           <a-radio-button value="overall">总榜 (overall)</a-radio-button>
           <a-radio-button value="friend">好友榜 (friend)</a-radio-button>
         </a-radio-group>
         <span class="mx-2 text-gray-400">|</span>
-        <a-radio-group v-model:value="lbRange" @change="loadLb">
+        <a-radio-group v-model:value="lbRange" @change="onLbRangeChange">
           <a-radio-button value="day">今日</a-radio-button>
           <a-radio-button value="week">本周</a-radio-button>
           <a-radio-button value="month">本月</a-radio-button>
@@ -43,6 +43,24 @@ const lbSize = ref(10)
 const lbData = ref<LeaderboardDTO[]>([])
 const loading = ref(false)
 const lbError = ref('')
+
+/**
+ * 查询分支（TASK-234 死逻辑修复）：TASK-209 引入 lbRange 时分支误写在 lbType 上
+ * （'overall'|'friend' 封闭联合恒真 → getLeaderboardRange 分支永远不可达）。
+ * 改为「最后一次点选的控制项获胜」：今日/本周/本月 → getLeaderboardRange（period 视图），
+ * 总榜/好友榜 → getLeaderboard（ZSet 视图），两组按钮均真实生效、无缝协调。
+ */
+const lbMode = ref<'range' | 'zset'>('range')
+
+function onLbRangeChange() {
+  lbMode.value = 'range'
+  loadLb()
+}
+
+function onLbTypeChange() {
+  lbMode.value = 'zset'
+  loadLb()
+}
 
 const lbColumns = [
   { title: 'rank', dataIndex: 'rank', key: 'rank' },
@@ -80,11 +98,11 @@ async function loadLb() {
   loading.value = true
   lbError.value = ''
   try {
-    if (lbType.value === 'overall' || lbType.value === 'friend') {
-      const res = await getLeaderboard(lbType.value, lbSize.value)
+    if (lbMode.value === 'range') {
+      const res = await getLeaderboardRange(rangeStart(), lbSize.value)
       lbData.value = res.data || []
     } else {
-      const res = await getLeaderboardRange(rangeStart(), lbSize.value)
+      const res = await getLeaderboard(lbType.value, lbSize.value)
       lbData.value = res.data || []
     }
   } catch (e: any) {

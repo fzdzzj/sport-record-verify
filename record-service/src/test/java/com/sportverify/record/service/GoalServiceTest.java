@@ -24,12 +24,14 @@ import org.springframework.dao.DuplicateKeyException;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.time.LocalTime;
 import java.util.Collections;
 import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.never;
@@ -262,6 +264,123 @@ class GoalServiceTest {
 
         goalService.deleteGoal(caller, 10L);
         verify(goalMapper).deleteById(10L);
+    }
+
+    // ==================== 目标边界与整数性收紧（TASK-234） ====================
+
+    /** TASK-234 R1：次数目标（metric=1）必须为正整数——小数目标（4.50 次）拒绝 */
+    @Test
+    void upsertGoal_metricCountFractionalTarget_throws() {
+        GoalUpsertDTO dto = new GoalUpsertDTO();
+        dto.setPeriodType(0);
+        dto.setMetric(1);
+        dto.setTargetValue(new BigDecimal("4.50"));
+
+        IllegalArgumentException e = assertThrows(IllegalArgumentException.class,
+                () -> goalService.upsertGoal(100L, dto));
+        assertEquals("次数目标必须为正整数（无小数位）", e.getMessage());
+        verify(goalMapper, never()).insert(any(Goal.class));
+    }
+
+    /** TASK-234 R2：目标值上限——超 10000 拒绝（距离/次数同口径） */
+    @Test
+    void upsertGoal_targetAboveUpperBound_throws() {
+        GoalUpsertDTO dto = new GoalUpsertDTO();
+        dto.setPeriodType(0);
+        dto.setMetric(0);
+        dto.setTargetValue(new BigDecimal("10000.01"));
+
+        IllegalArgumentException e = assertThrows(IllegalArgumentException.class,
+                () -> goalService.upsertGoal(100L, dto));
+        assertEquals("目标值不能超过10000", e.getMessage());
+        verify(goalMapper, never()).insert(any(Goal.class));
+    }
+
+    /** TASK-234 R3：边界放行——上限 10000 恰可；尾零小数（如 8.00）归一后视作整数 */
+    @Test
+    void upsertGoal_upperBoundAndTrailingZeroInteger_accepted() {
+        when(goalMapper.selectOne(any())).thenReturn(null);
+
+        GoalUpsertDTO dto = new GoalUpsertDTO();
+        dto.setPeriodType(1);
+        dto.setMetric(1);
+        dto.setTargetValue(new BigDecimal("10000"));
+
+        Goal result = goalService.upsertGoal(100L, dto);
+        assertNotNull(result);
+        assertEquals(new BigDecimal("10000"), result.getTargetValue());
+        verify(goalMapper).insert(any(Goal.class));
+    }
+
+    // ==================== 周期归属修正（TASK-234） ====================
+
+    /**
+     * TASK-234 R4：周期统计优先按 startTime 归属（空则回退 createdAt）——
+     * 离线补传记录 startTime 在本周窗口内、createdAt 在窗口外时仍计入本周达成量；
+     * 窗口过滤条件必须为 COALESCE(start_time, created_at) 且上下界为 ISO 周窗口。
+     */
+    @Test
+    @SuppressWarnings("unchecked")
+    void listGoalsWithProgress_periodAttributionPrefersStartTime() {
+        Long userId = 300L;
+        LocalDate fixedDate = LocalDate.of(2026, 10, 14); // Wednesday：周窗口 10-12(Mon) ~ 10-18(Sun)
+
+        Goal weeklyGoal = new Goal();
+        weeklyGoal.setId(30L);
+        weeklyGoal.setUserId(userId);
+        weeklyGoal.setPeriodType(0);
+        weeklyGoal.setMetric(0);
+        weeklyGoal.setTargetValue(new BigDecimal("10.00"));
+        when(goalMapper.selectList(any())).thenReturn(List.of(weeklyGoal));
+
+        ArgumentCaptor<com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper<SportRecord>> captor =
+                ArgumentCaptor.forClass(com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper.class);
+        // 离线补传记录：startTime 在本周窗口内（周二）、createdAt 在窗口外（上月）→ 修正后计入本周
+        SportRecord backfill = new SportRecord();
+        backfill.setDistance(new BigDecimal("6.00"));
+        backfill.setStartTime(LocalDate.of(2026, 10, 13).atTime(9, 0));
+        backfill.setCreatedAt(LocalDate.of(2026, 9, 1).atTime(9, 0));
+        when(sportRecordMapper.selectList(captor.capture())).thenReturn(List.of(backfill));
+
+        List<GoalDTO> out = goalService.listGoalsWithProgress(userId, fixedDate);
+
+        assertEquals(1, out.size());
+        assertEquals(new BigDecimal("6.00"), out.get(0).getAchievedValue(),
+                "补传记录按 startTime 归属本周，即使 createdAt 在窗口外");
+        assertTrue(captor.getValue().getSqlSegment().contains("COALESCE(start_time, created_at)"),
+                "周期窗口必须按 COALESCE(start_time, created_at) 过滤");
+        assertTrue(captor.getValue().getParamNameValuePairs().containsValue(
+                LocalDate.of(2026, 10, 12).atStartOfDay()), "窗口下界=ISO 周一 00:00");
+        assertTrue(captor.getValue().getParamNameValuePairs().containsValue(
+                LocalDate.of(2026, 10, 18).atTime(LocalTime.MAX)), "窗口上界=周日 23:59:59.999999999");
+    }
+
+    /** TASK-234 R5：startTime 缺失时回退 createdAt——老记录（未回填 start_time）仍按创建时间归属 */
+    @Test
+    @SuppressWarnings("unchecked")
+    void listGoalsWithProgress_periodAttributionFallsBackToCreatedAt() {
+        Long userId = 400L;
+        LocalDate fixedDate = LocalDate.of(2026, 10, 14); // Wednesday
+
+        Goal weeklyGoal = new Goal();
+        weeklyGoal.setId(40L);
+        weeklyGoal.setUserId(userId);
+        weeklyGoal.setPeriodType(0);
+        weeklyGoal.setMetric(1); // 次数
+        weeklyGoal.setTargetValue(new BigDecimal("5.00"));
+        when(goalMapper.selectList(any())).thenReturn(List.of(weeklyGoal));
+
+        // startTime 为 null（存量行未回填）：createdAt 在本周窗口内 → 计入次数
+        SportRecord legacy = new SportRecord();
+        legacy.setStartTime(null);
+        legacy.setCreatedAt(LocalDate.of(2026, 10, 14).atTime(10, 0));
+        when(sportRecordMapper.selectList(any())).thenReturn(List.of(legacy));
+
+        List<GoalDTO> out = goalService.listGoalsWithProgress(userId, fixedDate);
+
+        assertEquals(1, out.size());
+        assertEquals(new BigDecimal("1.00"), out.get(0).getAchievedValue(),
+                "startTime 为空时按 createdAt 归属周期，次数 +1");
     }
 
     @Test

@@ -41,9 +41,11 @@ import org.springframework.transaction.support.TransactionSynchronization;
 import org.springframework.transaction.support.TransactionSynchronizationManager;
 
 import java.math.BigDecimal;
+import java.time.Instant;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.LocalTime;
+import java.time.ZoneOffset;
 import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -459,6 +461,188 @@ class SportRecordServiceTest {
 
         verify(verifyApi).triggerVerify(100L);
         verify(verifyDegradeService).degradeToManualReview(eq(100L), any());
+    }
+
+    // ==================== 物理推导与合理性校验（TASK-234） ====================
+
+    /** 构造轨迹点（seq/lat/lng/ts 齐备） */
+    private TrackPointDTO pt(int seq, String lat, String lng, long ts) {
+        TrackPointDTO p = new TrackPointDTO();
+        p.setSeq(seq);
+        p.setLat(new BigDecimal(lat));
+        p.setLng(new BigDecimal(lng));
+        p.setTs(ts);
+        return p;
+    }
+
+    /** 红 R1a：显式 startTime > endTime → 拒绝（不得倒流），不落库 */
+    @Test
+    void submit_startTimeAfterEndTime_rejected() {
+        when(sportRecordMapper.selectByRequestId("req-1")).thenReturn(null);
+        RecordSubmitDTO req = dto(1, 1);
+        req.setStartTime(LocalDateTime.now().minusDays(2));
+        req.setEndTime(LocalDateTime.now().minusDays(3));
+
+        IllegalArgumentException e = assertThrows(IllegalArgumentException.class, () -> service.submit(req));
+        assertEquals("开始时间不能晚于结束时间", e.getMessage());
+        verify(sportRecordMapper, never()).insert(any(SportRecord.class));
+    }
+
+    /** 红 R1b：显式 startTime 为未来时间 → 拒绝，不落库 */
+    @Test
+    void submit_startTimeInFuture_rejected() {
+        when(sportRecordMapper.selectByRequestId("req-1")).thenReturn(null);
+        RecordSubmitDTO req = dto(1, 1);
+        req.setStartTime(LocalDateTime.now().plusDays(1));
+        req.setEndTime(req.getStartTime().plusMinutes(30)); // endTime 同步后移，避免先命中倒流校验
+
+        IllegalArgumentException e = assertThrows(IllegalArgumentException.class, () -> service.submit(req));
+        assertEquals("开始时间不能为未来时间", e.getMessage());
+        verify(sportRecordMapper, never()).insert(any(SportRecord.class));
+    }
+
+    /**
+     * 绿 R2：四字段全缺 + 轨迹非空 → 服务端按首末点推导 startTime/endTime/duration、
+     * 相邻点 Haversine 累加推导 distance 落库（根除关键字段 NULL 破窗）。
+     * 赤道 0.001° 段 ≈ 111.195 m → 0.111195 km 保留两位 = 0.11；首末 ts 差 1000ms → 时长 1s。
+     */
+    @Test
+    void submit_missingMetrics_derivesFromTrackPoints() {
+        when(sportRecordMapper.selectByRequestId("req-1")).thenReturn(null);
+        stubInsertReturnsId();
+        stubPublishSuccess();
+
+        RecordSubmitDTO req = dto(1, 1);
+        req.setStartTime(null);
+        req.setEndTime(null);
+        req.setDistance(null);
+        req.setDuration(null);
+        req.setPoints(List.of(
+                pt(0, "0", "0", 1_700_000_000_000L),
+                pt(1, "0", "0.001", 1_700_000_001_000L)));
+
+        inTx(() -> assertEquals(RecordStatus.VERIFYING.getCode(), service.submit(req).getStatus()), true);
+
+        ArgumentCaptor<SportRecord> captor = ArgumentCaptor.forClass(SportRecord.class);
+        verify(sportRecordMapper).insert(captor.capture());
+        SportRecord inserted = captor.getValue();
+        assertEquals(LocalDateTime.ofInstant(Instant.ofEpochMilli(1_700_000_000_000L), ZoneOffset.UTC),
+                inserted.getStartTime(), "startTime = 首点 ts（UTC 墙钟）");
+        assertEquals(LocalDateTime.ofInstant(Instant.ofEpochMilli(1_700_000_001_000L), ZoneOffset.UTC),
+                inserted.getEndTime(), "endTime = 末点 ts（UTC 墙钟）");
+        assertEquals(Integer.valueOf(1), inserted.getDuration(), "时长 = 首末点毫秒差 / 1000");
+        assertEquals(new BigDecimal("0.11"), inserted.getDistance(),
+                "赤道 0.001° ≈ 111.195 m → 0.111195 km 保留两位 = 0.11");
+    }
+
+    /** 绿 R2b：部分字段缺失 → 只推导缺失项，显式提供项原样落库 */
+    @Test
+    void submit_partialMissingMetrics_derivesOnlyMissing() {
+        when(sportRecordMapper.selectByRequestId("req-1")).thenReturn(null);
+        stubInsertReturnsId();
+        stubPublishSuccess();
+
+        LocalDateTime start = LocalDateTime.now().minusDays(1);
+        LocalDateTime end = start.plusMinutes(30);
+        RecordSubmitDTO req = dto(1, 1);
+        req.setStartTime(start);
+        req.setEndTime(end);
+        req.setDistance(null);
+        req.setDuration(null);
+        req.setPoints(List.of(
+                pt(0, "0", "0", 1_700_000_000_000L),
+                pt(1, "0", "0.001", 1_700_000_001_000L)));
+
+        inTx(() -> service.submit(req), true);
+
+        ArgumentCaptor<SportRecord> captor = ArgumentCaptor.forClass(SportRecord.class);
+        verify(sportRecordMapper).insert(captor.capture());
+        SportRecord inserted = captor.getValue();
+        assertEquals(start, inserted.getStartTime(), "显式 startTime 不被推导覆盖");
+        assertEquals(end, inserted.getEndTime(), "显式 endTime 不被推导覆盖");
+        assertEquals(Integer.valueOf(1), inserted.getDuration(), "缺失时长由轨迹推导");
+        assertEquals(new BigDecimal("0.11"), inserted.getDistance(), "缺失距离由轨迹推导");
+    }
+
+    /** 绿 R2c：四字段全显式提供 → 原样落库（不做推导，也不触发缺字段推导路径） */
+    @Test
+    void submit_explicitMetrics_persistedAsIs() {
+        when(sportRecordMapper.selectByRequestId("req-1")).thenReturn(null);
+        stubInsertReturnsId();
+        stubPublishSuccess();
+
+        LocalDateTime start = LocalDateTime.now().minusDays(1);
+        LocalDateTime end = start.plusMinutes(30);
+        RecordSubmitDTO req = dto(2, 1);
+        req.setStartTime(start);
+        req.setEndTime(end);
+        req.setDistance(new BigDecimal("12.34"));
+        req.setDuration(1800);
+
+        inTx(() -> service.submit(req), true);
+
+        ArgumentCaptor<SportRecord> captor = ArgumentCaptor.forClass(SportRecord.class);
+        verify(sportRecordMapper).insert(captor.capture());
+        SportRecord inserted = captor.getValue();
+        assertEquals(start, inserted.getStartTime());
+        assertEquals(end, inserted.getEndTime());
+        assertEquals(new BigDecimal("12.34"), inserted.getDistance());
+        assertEquals(Integer.valueOf(1800), inserted.getDuration());
+    }
+
+    /** 红 R2d：轨迹首末点 ts 倒流（首点晚于末点）→ 推导后 startTime > endTime 拒绝，不落库 */
+    @Test
+    void submit_reversedPointTimestamps_rejected() {
+        when(sportRecordMapper.selectByRequestId("req-1")).thenReturn(null);
+        RecordSubmitDTO req = dto(1, 1);
+        req.setStartTime(null);
+        req.setEndTime(null);
+        req.setDistance(null);
+        req.setDuration(null);
+        req.setPoints(List.of(
+                pt(0, "0", "0", 1_700_000_001_000L),
+                pt(1, "0", "0.001", 1_700_000_000_000L)));
+
+        IllegalArgumentException e = assertThrows(IllegalArgumentException.class, () -> service.submit(req));
+        assertEquals("开始时间不能晚于结束时间", e.getMessage());
+        verify(sportRecordMapper, never()).insert(any(SportRecord.class));
+    }
+
+    /** 红 R2e：轨迹点 ts 指向未来 → 推导 startTime 为未来时间拒绝（UTC 帧比对，跨时区确定） */
+    @Test
+    void submit_futurePointTimestamps_rejected() {
+        when(sportRecordMapper.selectByRequestId("req-1")).thenReturn(null);
+        long futureTs = System.currentTimeMillis() + 86_400_000L; // 明天
+        RecordSubmitDTO req = dto(1, 1);
+        req.setStartTime(null);
+        req.setEndTime(null);
+        req.setDistance(null);
+        req.setDuration(null);
+        req.setPoints(List.of(
+                pt(0, "0", "0", futureTs),
+                pt(1, "0", "0.001", futureTs + 1000)));
+
+        IllegalArgumentException e = assertThrows(IllegalArgumentException.class, () -> service.submit(req));
+        assertEquals("开始时间不能为未来时间", e.getMessage());
+        verify(sportRecordMapper, never()).insert(any(SportRecord.class));
+    }
+
+    /** 红 R2f：需推导时间但轨迹首末点缺 ts → 明确拒绝，不落库 */
+    @Test
+    void submit_missingPointTsForDerivation_rejected() {
+        when(sportRecordMapper.selectByRequestId("req-1")).thenReturn(null);
+        RecordSubmitDTO req = dto(1, 1);
+        req.setStartTime(null);
+        req.setEndTime(null);
+        req.setDistance(null);
+        req.setDuration(null);
+        TrackPointDTO p0 = pt(0, "0", "0", 1_700_000_000_000L);
+        p0.setTs(null);
+        req.setPoints(List.of(p0));
+
+        IllegalArgumentException e = assertThrows(IllegalArgumentException.class, () -> service.submit(req));
+        assertEquals("轨迹点缺少时间戳（ts），无法推导开始/结束时间与时长", e.getMessage());
+        verify(sportRecordMapper, never()).insert(any(SportRecord.class));
     }
 
     // ==================== 状态机中间态（回调） ====================

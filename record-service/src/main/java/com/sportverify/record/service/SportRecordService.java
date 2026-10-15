@@ -47,9 +47,11 @@ import org.springframework.transaction.support.TransactionSynchronizationManager
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
+import java.time.Instant;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.LocalTime;
+import java.time.ZoneOffset;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -176,6 +178,35 @@ public class SportRecordService {
         // 1.2 可见性解析：缺省（null）回退 PUBLIC（历史 & 新记录默认公开）；枚举外取值拒绝（TASK-221）
         Integer visibility = resolveVisibility(dto.getVisibility());
 
+        // 1.3 关键字段物理推导与合理性校验（TASK-234）：
+        //     - startTime / endTime / duration / distance 未显式提供且 points 非空时，服务端基于
+        //       轨迹首末点毫秒推导时间与时长（UTC 墙钟，与 GenSamples/前端 toISOString 同口径）、
+        //       相邻点 Haversine 累加推导距离（公里保留两位，对齐 sport_record.distance DECIMAL(8,2)），
+        //       根除库内关键字段存 NULL 的破窗；
+        //     - 推导或显式后的 startTime/endTime 均存在时不得倒流，startTime 不得为未来时间。
+        List<TrackPointDTO> points = dto.getPoints();
+        LocalDateTime startTime = dto.getStartTime();
+        LocalDateTime endTime = dto.getEndTime();
+        BigDecimal distance = dto.getDistance();
+        Integer duration = dto.getDuration();
+        if (points != null && !points.isEmpty()
+                && (startTime == null || endTime == null || duration == null || distance == null)) {
+            DerivedTrackMetrics derived = deriveTrackMetrics(points);
+            if (startTime == null) {
+                startTime = derived.startTime();
+            }
+            if (endTime == null) {
+                endTime = derived.endTime();
+            }
+            if (duration == null) {
+                duration = derived.durationSeconds();
+            }
+            if (distance == null) {
+                distance = derived.distanceKm();
+            }
+        }
+        validateTimeRationality(startTime, endTime, startTime != null && dto.getStartTime() == null);
+
         // 2. 落 sport_record 主表（单表）：首次提交直接 INSERT status=VERIFYING / version=0，
         //    不再先 INSERT SUBMITTED 再在同一事务里 UPDATE——那条 UPDATE 只写了其他连接
         //    从未可见的中间态（规范「提交事务不落不可见中间态」）；SUBMITTED 保留为
@@ -184,10 +215,10 @@ public class SportRecordService {
         record.setRequestId(dto.getRequestId());
         record.setUserId(dto.getUserId());
         record.setSportType(sportType);
-        record.setStartTime(dto.getStartTime());
-        record.setEndTime(dto.getEndTime());
-        record.setDistance(dto.getDistance());
-        record.setDuration(dto.getDuration());
+        record.setStartTime(startTime);
+        record.setEndTime(endTime);
+        record.setDistance(distance);
+        record.setDuration(duration);
         record.setStatus(RecordStatus.VERIFYING.getCode());
         record.setVisibility(visibility);
         record.setVersion(0);
@@ -209,7 +240,6 @@ public class SportRecordService {
         // 3. 轨迹点分片落库：ShardingSphere 按 user_id 自动路由到 track_point_{user_id%16}
         //    （WHERE/INSERT 必须携带分片键 user_id；id 由 MP 雪花算法生成）
         long tTrack = System.nanoTime();
-        List<TrackPointDTO> points = dto.getPoints();
         if (points != null && !points.isEmpty()) {
             if (batchInsertEnabled) {
                 insertPointsBatch(record, points);
@@ -894,6 +924,76 @@ public class SportRecordService {
             throw new BizException(ResultCode.SPORT_TYPE_INVALID, "未知可见性：" + code);
         }
         return visibility.getCode();
+    }
+
+    // ==================== 物理推导与合理性校验（TASK-234） ====================
+
+    /** 地球平均半径（米，与 verify-service GeoUtils 同口径）。 */
+    private static final double EARTH_RADIUS_M = 6_371_000;
+
+    /** 轨迹推导结果（TASK-234）：首末点时间/时长（UTC 墙钟）+ 相邻点 Haversine 距离（公里，两位小数）。 */
+    private record DerivedTrackMetrics(LocalDateTime startTime, LocalDateTime endTime,
+                                       int durationSeconds, BigDecimal distanceKm) {
+    }
+
+    /**
+     * 由轨迹点推导关键字段（TASK-234）：时间与时长取首末点毫秒 ts（UTC 墙钟，
+     * 与 GenSamples/前端 toISOString 同口径，跨时区确定）；距离按相邻点 Haversine
+     * 逐段累加（与 verify-service GeoUtils 同公式），换算公里后保留两位小数
+     * （对齐 sport_record.distance DECIMAL(8,2) 存储精度）。
+     *
+     * @throws IllegalArgumentException 首末点缺少 ts（无法推导时间/时长）时拒绝
+     */
+    private DerivedTrackMetrics deriveTrackMetrics(List<TrackPointDTO> points) {
+        Long firstTs = points.get(0).getTs();
+        Long lastTs = points.get(points.size() - 1).getTs();
+        if (firstTs == null || lastTs == null) {
+            throw new IllegalArgumentException("轨迹点缺少时间戳（ts），无法推导开始/结束时间与时长");
+        }
+        LocalDateTime start = LocalDateTime.ofInstant(Instant.ofEpochMilli(firstTs), ZoneOffset.UTC);
+        LocalDateTime end = LocalDateTime.ofInstant(Instant.ofEpochMilli(lastTs), ZoneOffset.UTC);
+        int durationSeconds = (int) ((lastTs - firstTs) / 1000);
+        double meters = 0;
+        for (int i = 1; i < points.size(); i++) {
+            meters += haversineMeters(points.get(i - 1), points.get(i));
+        }
+        BigDecimal distanceKm = BigDecimal.valueOf(meters / 1000.0).setScale(2, RoundingMode.HALF_UP);
+        return new DerivedTrackMetrics(start, end, durationSeconds, distanceKm);
+    }
+
+    /** 相邻点球面距离（米，Haversine 公式；与 verify-service GeoUtils 同公式同常数）。 */
+    private static double haversineMeters(TrackPointDTO a, TrackPointDTO b) {
+        double lat1 = a.getLat().doubleValue();
+        double lng1 = a.getLng().doubleValue();
+        double lat2 = b.getLat().doubleValue();
+        double lng2 = b.getLng().doubleValue();
+        double radLat1 = Math.toRadians(lat1);
+        double radLat2 = Math.toRadians(lat2);
+        double dLat = radLat2 - radLat1;
+        double dLng = Math.toRadians(lng2) - Math.toRadians(lng1);
+        double s = Math.sin(dLat / 2) * Math.sin(dLat / 2)
+                + Math.cos(radLat1) * Math.cos(radLat2) * Math.sin(dLng / 2) * Math.sin(dLng / 2);
+        return 2 * EARTH_RADIUS_M * Math.asin(Math.sqrt(s));
+    }
+
+    /**
+     * 时间合理性校验（TASK-234）：startTime 与 endTime 均存在时不得倒流；
+     * startTime 不得为未来时间——显式入参按服务器本地墙钟比对（客户端同帧假设），
+     * 轨迹推导值按 UTC 墙钟比对（推导帧自洽），两帧各自成立。
+     *
+     * @param startTimeDerived startTime 是否由轨迹推导（决定未来校验的墙钟帧）
+     */
+    private void validateTimeRationality(LocalDateTime startTime, LocalDateTime endTime,
+                                         boolean startTimeDerived) {
+        if (startTime != null && endTime != null && startTime.isAfter(endTime)) {
+            throw new IllegalArgumentException("开始时间不能晚于结束时间");
+        }
+        if (startTime != null) {
+            LocalDateTime now = startTimeDerived ? LocalDateTime.now(ZoneOffset.UTC) : LocalDateTime.now();
+            if (startTime.isAfter(now)) {
+                throw new IllegalArgumentException("开始时间不能为未来时间");
+            }
+        }
     }
 
     /**
