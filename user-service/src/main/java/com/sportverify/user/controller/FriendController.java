@@ -60,6 +60,22 @@ public class FriendController {
     }
 
     /**
+     * 收到的待处理好友申请（TASK-235 add-friend-requests）：查询当前登录用户
+     * 收到的 {@code PENDING(0)} 申请列表（to_user=本人），按创建时间倒序分页——
+     * 前端「收到的好友申请」卡片据此渲染一键「同意」/「拒绝」，终结线下报
+     * requestId 手工敲数字的交互。身份认定同 {@link #resolveUserId}（auth=true
+     * 以网关注入 X-User-Id 为准；false 降级显式携带 userId）。
+     */
+    @GetMapping("/requests")
+    public Result<PageResult<FriendRequestDTO>> listRequests(
+            @RequestParam(value = "userId", required = false) Long userId,
+            @RequestParam(defaultValue = "1") long page,
+            @RequestParam(defaultValue = "20") long size,
+            HttpServletRequest request) {
+        return Result.success(friendService.listPendingRequests(resolveUserId(request, userId), page, size));
+    }
+
+    /**
      * 同意申请（规范差异「申请状态机」）：PENDING → ACCEPTED 并落 friendship；
      * 非 PENDING 流转 → 5002。归属校验（TASK-204）：true 时以网关注入的 X-User-Id
      * 为调用者，服务层断言调用者==申请 to_user；false 时 caller=null 降级旧行为。

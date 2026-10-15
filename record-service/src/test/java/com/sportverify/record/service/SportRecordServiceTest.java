@@ -1729,6 +1729,46 @@ class SportRecordServiceTest {
                 paramValues, "status 过滤参数值必须恰为 {PASSED, RE_PASSED}，不得混入其他状态");
     }
 
+    /**
+     * TASK-235 时间口径判别式：myStreak 归自然日优先取 startTime、null 回退 createdAt——
+     * 离线补传（活动前日、上传今日）与跨零点上传（活动 23:50 昨日、上传 00:10 今日）
+     * 一律按运动开始时间断签，不再按上传时间误判；输出由真实 StreakCalculator 计算连续天数。
+     */
+    @Test
+    @SuppressWarnings("unchecked")
+    void myStreak_prefersStartTime_overCreatedAt() {
+        TableInfoHelper.initTableInfo(
+                new MapperBuilderAssistant(new MybatisConfiguration(), ""), SportRecord.class);
+        LocalDate today = LocalDate.now();
+        SportRecord crossMidnight = new SportRecord(); // 活动 23:50 昨日、上传 00:10 今日 → 归昨日
+        crossMidnight.setUserId(200L);
+        crossMidnight.setStatus(RecordStatus.PASSED.getCode());
+        crossMidnight.setStartTime(today.minusDays(1).atTime(23, 50));
+        crossMidnight.setCreatedAt(today.atTime(0, 10));
+        SportRecord todayRun = new SportRecord();
+        todayRun.setUserId(200L);
+        todayRun.setStatus(RecordStatus.PASSED.getCode());
+        todayRun.setStartTime(today.atTime(8, 0));
+        todayRun.setCreatedAt(today.atTime(8, 5));
+        SportRecord backfill = new SportRecord(); // 离线补传：活动前日、上传今日 → 归前日
+        backfill.setUserId(200L);
+        backfill.setStatus(RecordStatus.RE_PASSED.getCode());
+        backfill.setStartTime(today.minusDays(2).atTime(7, 0));
+        backfill.setCreatedAt(today.atTime(9, 0));
+        SportRecord noStartTime = new SportRecord(); // startTime null → 回退 createdAt
+        noStartTime.setUserId(200L);
+        noStartTime.setStatus(RecordStatus.PASSED.getCode());
+        noStartTime.setCreatedAt(today.minusDays(3).atTime(8, 0));
+        when(sportRecordMapper.selectList(any())).thenReturn(
+                List.of(crossMidnight, todayRun, backfill, noStartTime));
+
+        MyStreakDTO out = service.myStreak(200L);
+
+        assertEquals(4, out.getCurrent(),
+                "跨零点归昨日/今日/补传归前日/回退归前前日 → 连续 4 天（不得按上传时间误断签）");
+        assertEquals(4, out.getLongest());
+    }
+
     // ==================== 个人核心统计 my/stats（TASK-231） ====================
 
     /** 统计聚合用行（归属人固定 200；distance/status/createdAt 为统计口径三要素） */
@@ -1741,24 +1781,18 @@ class SportRecordServiceTest {
         return row;
     }
 
-    /** 窗口投影行（selectDailyDistanceSince 结果）：只带 createdAt / distance 两列 */
-    private RecordAggDTO dailyRow(SportRecord row) {
-        RecordAggDTO agg = new RecordAggDTO();
-        agg.setCreatedAt(row.getCreatedAt());
-        agg.setDistance(row.getDistance());
-        return agg;
-    }
-
     /**
-     * R1/R2 判别式（TASK-232 SQL 聚合下推）——全量指标由单行聚合查询承担、日粒度由
-     * created_at 时间窗投影承担，不再把该用户全部记录拉到 JVM：
+     * R1/R2 判别式（TASK-232 SQL 聚合下推 + TASK-235 时间口径对齐）——全量指标由单行聚合查询承担、
+     * 日粒度由 COALESCE(start_time, created_at) 活动时间窗投影承担，不再把该用户全部记录拉到 JVM：
      * (a) 聚合入参恰为 user_id=200 与通过终态码集 {PASSED(2), RE_PASSED(5)}（与 RecordStatus 枚举同源）；
-     * (b) 窗口入参恰为 user_id=200 与 today-29 00:00（与 30 键窗口同源）；窗口查询必带 created_at
-     *     下界（idx_user_time 复合索引范围扫描的判别式，且窗口外行不进日粒度）；
-     * (c) myStats 不再调用 selectList（全量行拉取已消灭）；
+     * (b) 窗口入参恰为 user_id=200 与 COALESCE(start_time, created_at) >= today-29 00:00
+     *     （TASK-235：窗口下界由 created_at 改为活动时间口径，与 TASK-234 目标服务统一，
+     *     离线补传/跨零点上传记录按运动时间归日；时间窗收窄，窗口外行不进日粒度）；
+     * (c) 下推判别式：全量指标由 selectAggByUserId 恰一次承担，日粒度仅窗口收窄投影
+     *     （不再全量拉取；selectList 只投影窗口行）；
      * (d) totalCount/totalDistance/passCount/passRate 为全量口径（含窗口外记录）；
      * (e) dailyDistances 恒 30 键且升序，窗口内按自然日汇总（同日多条累加）、无记录日补 0；
-     * (f) 防御性：投影行 createdAt 为 null 时跳过，不抛 NPE。
+     * (f) 防御性：投影行时间锚点（start_time/created_at 均 null）为 null 时跳过，不抛 NPE。
      */
     @Test
     @SuppressWarnings("unchecked")
@@ -1780,12 +1814,12 @@ class SportRecordServiceTest {
         agg.setPassCount(5L);
         when(sportRecordMapper.selectAggByUserId(any(), any())).thenReturn(agg);
 
-        // 近 30 天窗口投影（DB 端已按 created_at >= windowStart 排除窗口外行）
-        RecordAggDTO nullCreatedAtRow = new RecordAggDTO(); // 防御性：无 createdAt 的行必须被跳过
-        nullCreatedAtRow.setDistance(new BigDecimal("9.9"));
-        when(sportRecordMapper.selectDailyDistanceSince(any(), any()))
-                .thenReturn(List.of(dailyRow(passedToday), dailyRow(rePassedToday), dailyRow(rejectedToday),
-                        dailyRow(passedYesterday), dailyRow(windowEdge), dailyRow(nullDistance), nullCreatedAtRow));
+        // 近 30 天窗口投影（服务端按 COALESCE(start_time, created_at) >= windowStart 排除窗口外行；
+        // 时间锚点缺失（start_time 与 created_at 均 null）的行必须被跳过）
+        SportRecord noAnchorRow = statsRow(RecordStatus.PASSED.getCode(), "9.9", null);
+        when(sportRecordMapper.selectList(any()))
+                .thenReturn(List.of(passedToday, rePassedToday, rejectedToday,
+                        passedYesterday, windowEdge, nullDistance, noAnchorRow));
 
         MyStatsDTO out = service.myStats(200L);
 
@@ -1812,25 +1846,37 @@ class SportRecordServiceTest {
         assertEquals(List.of(RecordStatus.PASSED.getCode(), RecordStatus.RE_PASSED.getCode()),
                 statusCaptor.getValue(), "通过终态码集必须与 RecordStatus 枚举同源（PASSED/RE_PASSED）");
 
-        // (b) 窗口入参：归属人 + created_at 下界（今日-29 00:00）
-        ArgumentCaptor<LocalDateTime> windowCaptor = ArgumentCaptor.forClass(LocalDateTime.class);
-        verify(sportRecordMapper).selectDailyDistanceSince(eq(200L), windowCaptor.capture());
-        assertEquals(today.minusDays(29).atStartOfDay(), windowCaptor.getValue(),
-                "日粒度查询必须带 created_at >= windowStart（idx_user_time 范围扫描）");
+        // (b) 窗口入参（TASK-235 活动时间口径）：归属人 + COALESCE(start_time, created_at) >= 今日-29 00:00
+        @SuppressWarnings("unchecked")
+        ArgumentCaptor<LambdaQueryWrapper<SportRecord>> windowCaptor = ArgumentCaptor.forClass(LambdaQueryWrapper.class);
+        verify(sportRecordMapper).selectList(windowCaptor.capture());
+        String windowSegment = windowCaptor.getValue().getSqlSegment();
+        assertTrue(windowSegment.contains("user_id ="), "日粒度窗口必须按归属人过滤：" + windowSegment);
+        assertTrue(windowSegment.contains("COALESCE"),
+                "窗口下界必须按活动时间口径（COALESCE(start_time, created_at)）：" + windowSegment);
+        assertTrue(windowSegment.contains("start_time"), "窗口下界必须读 start_time：" + windowSegment);
+        assertTrue(windowSegment.contains("created_at"), "窗口下界必须回退 created_at：" + windowSegment);
+        java.util.Collection<Object> windowParams = windowCaptor.getValue().getParamNameValuePairs().values();
+        assertTrue(windowParams.contains(today.minusDays(29).atStartOfDay()),
+                "窗口下界参数 = 今日-29 00:00（30 键窗口起点），实测=" + windowParams);
 
-        // (c) 下推判别式：myStats 路径不再有全量行拉取
-        verify(sportRecordMapper, never()).selectList(any());
+        // (c) 下推判别式：全量指标仍由 DB 单行聚合承担（恰一次），日粒度仅窗口收窄投影
+        //     （不再全量拉取用户全部记录；窗口按 COALESCE 活动时间收窄，非全表行投影）
+        verify(sportRecordMapper, times(1)).selectAggByUserId(eq(200L), any());
+        verify(sportRecordMapper, times(1)).selectList(any());
     }
 
     /** R2 空态：无记录 → totalCount/passCount 为 0、总里程 0.00、passRate="0%"、日粒度仍 30 键全 0 */
     @Test
     void myStats_emptyReturnsZeroStatsWithFullDailyWindow() {
+        TableInfoHelper.initTableInfo(
+                new MapperBuilderAssistant(new MybatisConfiguration(), ""), SportRecord.class);
         RecordAggDTO emptyAgg = new RecordAggDTO();
         emptyAgg.setTotalCount(0L);
         emptyAgg.setTotalDistance(BigDecimal.ZERO);
         emptyAgg.setPassCount(0L);
         when(sportRecordMapper.selectAggByUserId(any(), any())).thenReturn(emptyAgg);
-        when(sportRecordMapper.selectDailyDistanceSince(any(), any())).thenReturn(List.of());
+        when(sportRecordMapper.selectList(any())).thenReturn(List.of());
 
         MyStatsDTO out = service.myStats(200L);
 
@@ -1847,8 +1893,10 @@ class SportRecordServiceTest {
     /** R3 防御性：聚合行缺失（null）时回退零值，不抛 NPE，日粒度仍为完整 30 键 */
     @Test
     void myStats_nullAggregateRowFallsBackToZero() {
+        TableInfoHelper.initTableInfo(
+                new MapperBuilderAssistant(new MybatisConfiguration(), ""), SportRecord.class);
         when(sportRecordMapper.selectAggByUserId(any(), any())).thenReturn(null);
-        when(sportRecordMapper.selectDailyDistanceSince(any(), any())).thenReturn(List.of());
+        when(sportRecordMapper.selectList(any())).thenReturn(List.of());
 
         MyStatsDTO out = service.myStats(200L);
 
@@ -1857,6 +1905,51 @@ class SportRecordServiceTest {
         assertEquals(0L, out.getPassCount());
         assertEquals("0%", out.getPassRate());
         assertEquals(30, out.getDailyDistances().size());
+    }
+
+    /**
+     * TASK-235 日粒度时间口径判别式：窗口行按 startTime 归自然日（null 回退 createdAt）——
+     * 跨零点记录（startTime 昨日 23:50、createdAt 今日 00:10）归昨日；离线补传
+     * （startTime 前日、createdAt 今日）归前日；startTime 缺失回退 createdAt 归今日。
+     */
+    @Test
+    @SuppressWarnings("unchecked")
+    void myStats_dailyWindow_prefersStartTime() {
+        TableInfoHelper.initTableInfo(
+                new MapperBuilderAssistant(new MybatisConfiguration(), ""), SportRecord.class);
+        LocalDate today = LocalDate.now();
+        RecordAggDTO agg = new RecordAggDTO();
+        agg.setTotalCount(3L);
+        agg.setTotalDistance(new BigDecimal("10.00"));
+        agg.setPassCount(3L);
+        when(sportRecordMapper.selectAggByUserId(any(), any())).thenReturn(agg);
+
+        SportRecord crossMidnight = new SportRecord(); // startTime 昨日 23:50、createdAt 今日 00:10
+        crossMidnight.setUserId(200L);
+        crossMidnight.setDistance(new BigDecimal("5.00"));
+        crossMidnight.setStartTime(today.minusDays(1).atTime(23, 50));
+        crossMidnight.setCreatedAt(today.atTime(0, 10));
+        SportRecord backfill = new SportRecord(); // 离线补传：startTime 前日、createdAt 今日
+        backfill.setUserId(200L);
+        backfill.setDistance(new BigDecimal("2.00"));
+        backfill.setStartTime(today.minusDays(2).atTime(7, 0));
+        backfill.setCreatedAt(today.atTime(9, 0));
+        SportRecord noStartTime = new SportRecord(); // startTime null → 回退 createdAt
+        noStartTime.setUserId(200L);
+        noStartTime.setDistance(new BigDecimal("3.00"));
+        noStartTime.setCreatedAt(today.atTime(8, 0));
+        when(sportRecordMapper.selectList(any())).thenReturn(List.of(crossMidnight, backfill, noStartTime));
+
+        MyStatsDTO out = service.myStats(200L);
+
+        assertEquals(new BigDecimal("5.00"), out.getDailyDistances().get(today.minusDays(1).toString()),
+                "跨零点记录按 startTime 归昨日，不得误记今日");
+        assertEquals(new BigDecimal("2.00"), out.getDailyDistances().get(today.minusDays(2).toString()),
+                "离线补传按 startTime 归前日，不得误记今日");
+        assertEquals(new BigDecimal("3.00"), out.getDailyDistances().get(today.toString()),
+                "startTime null 回退 createdAt 归今日");
+        assertEquals(new BigDecimal("0.00"), out.getDailyDistances().get(today.minusDays(3).toString()),
+                "其余日期无记录补 0");
     }
 
     // ==================== 记录删除级联与缓存清理（TASK-223） ====================

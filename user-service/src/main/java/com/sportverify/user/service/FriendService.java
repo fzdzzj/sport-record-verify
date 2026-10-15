@@ -241,6 +241,35 @@ public class FriendService {
         }
     }
 
+    // ==================== 待处理申请列表（TASK-235） ====================
+
+    /**
+     * 当前用户收到的待处理好友申请（TASK-235 add-friend-requests）：查询
+     * {@code to_user = 本人} 且 {@code status = PENDING(0)} 的申请单，按创建时间倒序分页返回。
+     *
+     * <p>仅供「被申请人」视角：申请入口是 {@link #createRequest}（关注 from_user），
+     * 同意/拒绝入口是 {@link #accept}/{@link #reject}（关注 to_user）——本方法补齐
+     * to_user 侧的待办列表，前端「收到的好友申请」卡片据此渲染一键同意/拒绝按钮，
+     * 终结线下报 requestId 手工敲数字的交互。非 PENDING（ACCEPTED/REJECTED）天然不进列表。</p>
+     *
+     * @param userId 当前登录用户（控制器按身份语义解析，非空）
+     * @param page   页码（下限 1 由控制器降级语义承担）
+     * @param size   每页条数
+     * @return 待处理申请分页结果（元素按 createdAt 倒序）
+     */
+    public PageResult<FriendRequestDTO> listPendingRequests(Long userId, long page, long size) {
+        if (userId == null) {
+            throw new IllegalArgumentException("userId 不能为空");
+        }
+        Page<FriendRequest> result = friendRequestMapper.selectPage(new Page<>(page, size),
+                new LambdaQueryWrapper<FriendRequest>()
+                        .eq(FriendRequest::getToUser, userId)
+                        .eq(FriendRequest::getStatus, FriendRequestStatus.PENDING.getCode())
+                        .orderByDesc(FriendRequest::getCreatedAt));
+        List<FriendRequestDTO> records = result.getRecords().stream().map(this::toDto).toList();
+        return new PageResult<>(result.getCurrent(), result.getSize(), result.getTotal(), records);
+    }
+
     // ==================== 好友列表 ====================
 
     /**

@@ -1,6 +1,7 @@
 package com.sportverify.verify.service;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.baomidou.mybatisplus.core.conditions.update.UpdateWrapper;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.github.benmanes.caffeine.cache.Cache;
 import com.sportverify.api.record.RecordApi;
@@ -254,6 +255,17 @@ public class VerifyService {
         appeal.setStatus(targetStatus);
         appeal.setOperator(dto.getOperator());
         appeal.setRecheckResult(dto.getRecheckResult());
+
+        // 判定主表回写（TASK-235 申诉判定回写闭环）：终审改判通过（RE_PASSED）或维持原判（RE_CONFIRMED）
+        // 均显式把 verdict 落到 verification_result（record_id 主键），并主动失效本地 Caffeine 缓存——
+        // 此前终判只动 appeal 表与 record 状态，verification_result 仍留初判旧值且缓存可能命中旧结果，
+        // 前端详情与判定查询接口（getVerificationResult）长时间不同步。recheck_result 详细结论存于
+        // appeal 表（updateAppealAndEvent 已写），verification_result 表无该列（sql/03-verify-db.sql 实证），
+        // 故此处仅回写 verdict。
+        verificationResultMapper.update(null, new UpdateWrapper<VerificationResult>()
+                .eq("record_id", appeal.getRecordId())
+                .set("verdict", verdict.getCode()));
+        caffeineCache.invalidate(RESULT_CACHE_PREFIX + appeal.getRecordId());
 
         // 回调 record 迁移（先取最新版本作为乐观锁条件；必须处于 APPEALING）
         SportRecordDTO record = recordApi.getRecord(appeal.getRecordId()).getData();

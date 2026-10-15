@@ -15,6 +15,7 @@ import com.sportverify.leaderboard.entity.LeaderboardDailySummary;
 import com.sportverify.leaderboard.mapper.LeaderboardContributionMapper.UserMileage;
 import com.sportverify.leaderboard.mapper.LeaderboardDailySummaryMapper;
 import com.sportverify.leaderboard.mapper.SportRecordMapper;
+import org.apache.ibatis.annotations.Update;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.redisson.api.RLock;
@@ -26,6 +27,7 @@ import org.springframework.data.redis.core.ZSetOperations.TypedTuple;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.lang.reflect.Method;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Set;
@@ -33,6 +35,7 @@ import java.util.concurrent.TimeUnit;
 import java.util.stream.IntStream;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
@@ -675,5 +678,27 @@ class LeaderboardServiceTest {
         row.setUserId(userId);
         row.setTotalDistance(new BigDecimal(distance));
         return row;
+    }
+
+    // ==================== 结算标记 SQL 契约（TASK-235 时间窗口修复） ====================
+
+    /**
+     * R1 判别式：markSettled 的 @Update SQL 必须带 {@code settled_at IS NULL}——
+     * 只对尚未结算的 ACTIVE 贡献行盖戳，绝不覆盖既有历史结算时间。若重复结算会覆盖
+     * 历史行 settled_at，则 selectRangeSummaries 的今日/本周/本月窗口全部失真
+     * （历史行被卷进错误周期）；本测试守卫注解 SQL 文本，真实 SQL 行为由库表约束兜底。
+     */
+    @Test
+    void markSettled_sqlOnlyStampsUnsettledRows() throws Exception {
+        Method m = LeaderboardContributionMapper.class.getMethod("markSettled",
+                Integer.class, LocalDateTime.class);
+
+        Update update = m.getAnnotation(Update.class);
+        assertNotNull(update, "markSettled 应为 @Update 注解 SQL");
+        String sql = String.join(" ", update.value());
+        assertTrue(sql.contains("settled_at IS NULL"),
+                "仅对尚未结算的行盖戳（不得覆盖历史结算时间），实测 SQL=" + sql);
+        assertTrue(sql.contains("SET settled_at"), "结算时间戳写入仍在 SET 子句，实测 SQL=" + sql);
+        assertTrue(sql.contains("WHERE status"), "ACTIVE 状态过滤保留，实测 SQL=" + sql);
     }
 }

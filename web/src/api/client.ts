@@ -327,6 +327,11 @@ export async function createFriendRequest(targetUserId: number): Promise<Result<
   return api.post('/user/api/friends/requests', { targetUserId })
 }
 
+/** 收到的待处理好友申请（GET /user/api/friends/requests，TASK-235）：仅 PENDING(0)、to_user=当前登录用户，按创建时间倒序分页；auth 会话下 userId 由网关注入，前端不传。 */
+export async function listFriendRequests(page = 1, size = 20): Promise<Result<PageResult<FriendRequestDTO>>> {
+  return api.get('/user/api/friends/requests', { params: { page, size } })
+}
+
 export async function acceptFriendRequest(id: number): Promise<Result<FriendRequestDTO>> {
   return api.post(`/user/api/friends/requests/${id}/accept`)
 }

@@ -755,11 +755,14 @@ public class SportRecordService {
      * 我的连续打卡统计（TASK-220 个人仪表盘数据面，归属即身份）。
      *
      * <p>统计口径（与 {@link com.sportverify.api.record.dto.MyStreakDTO} 一致）：
-     * 仅计入通过终态（PASSED / RE_PASSED）的记录——单列投影只取 createdAt（个人量级，
-     * 无分页）；映射为自然日 {@code toLocalDate()} 后去重（同一天多条算一天）；
-     * 交由 {@link StreakCalculator} 计算当前/最长连续天数，today 取服务器时钟
-     * {@code LocalDate.now()}。归属过滤即身份：以控制器解析出的 {@code userId} 作为
-     * 唯一查询条件（{@code WHERE user_id=?}），构造上天然无越权。</p>
+     * 仅计入通过终态（PASSED / RE_PASSED）的记录——单列投影只取
+     * (start_time, created_at)（个人量级，无分页）；映射为自然日
+     * {@code toLocalDate()} 时<b>优先取 startTime 归日、null 回退 createdAt</b>
+     * （TASK-235 时间口径对齐，与 TASK-234 目标服务 COALESCE 口径统一——
+     * 离线补传/跨零点上传记录按运动开始时间归属自然日，不再按上传时间误判断签）；
+     * 同日多条去重后交由 {@link StreakCalculator} 计算当前/最长连续天数，
+     * today 取服务器时钟 {@code LocalDate.now()}。归属过滤即身份：以控制器解析出
+     * 的 {@code userId} 作为唯一查询条件（{@code WHERE user_id=?}），构造上天然无越权。</p>
      *
      * @param userId 归属用户（控制器按身份语义解析，非空）
      * @return 连续打卡统计（current 当前连续天数 / longest 历史最长连续天数）
@@ -767,12 +770,18 @@ public class SportRecordService {
     public MyStreakDTO myStreak(Long userId) {
         List<LocalDate> checkinDates = sportRecordMapper.selectList(
                         new LambdaQueryWrapper<SportRecord>()
-                                .select(SportRecord::getCreatedAt)
+                                .select(SportRecord::getStartTime, SportRecord::getCreatedAt)
                                 .eq(SportRecord::getUserId, userId)
                                 .in(SportRecord::getStatus,
                                         List.of(RecordStatus.PASSED.getCode(), RecordStatus.RE_PASSED.getCode())))
                 .stream()
-                .map(record -> record.getCreatedAt().toLocalDate())
+                .map(record -> {
+                    // 时间口径（TASK-235）：startTime 优先，null 回退 createdAt；双 null 防御性跳过
+                    LocalDateTime anchor = record.getStartTime() != null
+                            ? record.getStartTime() : record.getCreatedAt();
+                    return anchor == null ? null : anchor.toLocalDate();
+                })
+                .filter(Objects::nonNull)
                 .distinct()
                 .toList();
         int[] streak = StreakCalculator.compute(checkinDates, LocalDate.now());
@@ -789,17 +798,20 @@ public class SportRecordService {
      * <b>不过滤状态、不分页</b>——totalCount / totalDistance / passCount 覆盖该用户全部记录，
      * 修掉了此前前端「size=500 单次拉取 + 浏览器内存聚合」的截断与翻页耦合两处技术债。</p>
      *
-     * <p>查询形态（TASK-232 SQL 聚合下推）：全量指标由 {@code selectAggByUserId} 单行聚合
-     * （{@code COUNT(*)} / {@code COALESCE(SUM(distance),0)} / {@code COUNT(CASE WHEN status IN
-     * (PASSED,RE_PASSED) THEN 1 END)}）在数据库端算出，不再把该用户全部记录投影到 JVM 内存汇总；
-     * 近 30 天日粒度只查 {@code user_id=? AND created_at>=windowStart}（命中
-     * {@code idx_user_time} 复合索引、时间窗收窄），仅对窗口内行做内存按日累加。</p>
+     * <p>查询形态（TASK-232 SQL 聚合下推 + TASK-235 时间口径对齐）：全量指标由
+     * {@code selectAggByUserId} 单行聚合（{@code COUNT(*)} / {@code COALESCE(SUM(distance),0)} /
+     * {@code COUNT(CASE WHEN status IN (PASSED,RE_PASSED) THEN 1 END)}）在数据库端算出，
+     * 不再把该用户全部记录投影到 JVM 内存汇总；近 30 天日粒度只查
+     * {@code user_id=? AND COALESCE(start_time, created_at) >= windowStart}（时间窗收窄，
+     * 仅窗口内行做内存按日累加——窗口口径由 created_at 改为活动时间，与 TASK-234
+     * 目标服务统一，离线补传/跨零点上传记录按运动时间归日、不再误判断签）。</p>
      *
      * <p>口径：totalDistance 与 dailyDistances 各值保留两位小数（HALF_UP，null 距离按 0 计）；
      * passCount 仅计通过终态 PASSED(2) / RE_PASSED(5)（与 {@link #myStreak} 同款入账口径）；
      * passRate 为 {@code "%.1f%%"} 格式化串，无记录时为 {@code 0%}；dailyDistances 以服务器时钟
      * {@code LocalDate.now()} 为窗口右端，恒返回 {@link #STATS_DAILY_WINDOW_DAYS} 个自然日
-     * （升序、无记录日补 0），按 createdAt 落入自然日汇总，窗口外的记录只计入总量。</p>
+     * （升序、无记录日补 0），按 COALESCE(start_time, created_at) 落入自然日汇总，
+     * 窗口外的记录只计入总量。</p>
      *
      * @param userId 归属用户（控制器按身份语义解析，非空）
      * @return 个人核心统计（全量口径）
@@ -818,16 +830,24 @@ public class SportRecordService {
             daily.put(windowStart.plusDays(i).toString(), BigDecimal.ZERO);
         }
 
-        // 3. 日粒度：只取窗口内 (created_at, distance) 投影（idx_user_time 范围扫描），
-        //    窗口外记录不参与日粒度（已由时间窗条件在 SQL 端排除），仅计入第 1 步总量
-        List<RecordAggDTO> windowRows =
-                sportRecordMapper.selectDailyDistanceSince(userId, windowStart.atStartOfDay());
-        for (RecordAggDTO row : windowRows) {
-            LocalDateTime createdAt = row.getCreatedAt();
-            if (createdAt == null) {
+        // 3. 日粒度：窗口内 (start_time, created_at, distance) 投影，窗口下界按活动时间口径
+        //    COALESCE(start_time, created_at) >= windowStart（TASK-235 与 myStreak/目标服务统一）——
+        //    离线补传/跨零点上传记录按运动开始时间归属自然日，不再按上传时间误判断签；
+        //    窗口行仍受时间窗收窄（非全量拉取），窗口外记录仅计入第 1 步总量
+        List<SportRecord> windowRows = sportRecordMapper.selectList(
+                new LambdaQueryWrapper<SportRecord>()
+                        .select(SportRecord::getStartTime, SportRecord::getCreatedAt,
+                                SportRecord::getDistance)
+                        .eq(SportRecord::getUserId, userId)
+                        .apply("COALESCE(start_time, created_at) >= {0}",
+                                windowStart.atStartOfDay()));
+        for (SportRecord row : windowRows) {
+            // 时间口径（TASK-235）：startTime 优先，null 回退 createdAt；双 null 防御性跳过
+            LocalDateTime anchor = row.getStartTime() != null ? row.getStartTime() : row.getCreatedAt();
+            if (anchor == null) {
                 continue;
             }
-            String dayKey = createdAt.toLocalDate().toString();
+            String dayKey = anchor.toLocalDate().toString();
             if (daily.containsKey(dayKey)) {
                 BigDecimal distance = row.getDistance() == null ? BigDecimal.ZERO : row.getDistance();
                 daily.put(dayKey, daily.get(dayKey).add(distance));

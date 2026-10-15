@@ -1,5 +1,6 @@
 package com.sportverify.verify.service;
 
+import com.baomidou.mybatisplus.core.conditions.update.UpdateWrapper;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
 import com.github.benmanes.caffeine.cache.Cache;
@@ -288,7 +289,7 @@ class VerifyServiceTest {
         verify(outboxMapper, never()).insert(any(VerifyEventOutbox.class));
     }
 
-    /** 终判乐观锁冲突（影响 0 行）→ 3006，且不给未生效的终判排事件行 */
+    /** 终判乐观锁冲突（影响 0 行）→ 3006，且不给未生效的终判排事件行、不回写判定主表、不失效缓存 */
     @Test
     void reviewAppeal_conflict_zeroRows_throws() {
         Appeal appeal = new Appeal();
@@ -304,6 +305,57 @@ class VerifyServiceTest {
                 () -> service.reviewAppeal(9L, dto(true)));
         assertEquals(ResultCode.APPEAL_STATUS_INVALID.getCode(), e.getCode());
         verify(outboxMapper, never()).insert(any(VerifyEventOutbox.class));
+        verify(verificationResultMapper, never()).update(eq(null), any(UpdateWrapper.class));
+        verify(caffeineCache, never()).invalidate(anyString());
+    }
+
+    /** 终判改判通过（pass=true）：判定主表 verdict 显式回写 PASSED + 本地缓存失效（TASK-235 回写闭环） */
+    @Test
+    @SuppressWarnings("unchecked")
+    void reviewAppeal_rePassed_writesBackVerdictAndInvalidatesCache() {
+        stubAppeal(AppealStatus.RE_PASSED.getCode());
+        AppealReviewDTO dto = new AppealReviewDTO();
+        dto.setPass(true);
+        dto.setOperator("admin");
+        dto.setRecheckResult("复核通过");
+
+        service.reviewAppeal(9L, dto);
+
+        ArgumentCaptor<UpdateWrapper<VerificationResult>> wrapper =
+                ArgumentCaptor.forClass(UpdateWrapper.class);
+        verify(verificationResultMapper).update(eq(null), wrapper.capture());
+        String sqlSet = wrapper.getValue().getSqlSet();
+        assertTrue(sqlSet.contains("verdict"), "判定主表必须回写 verdict，实测 SET=" + sqlSet);
+        java.util.Collection<Object> params = wrapper.getValue().getParamNameValuePairs().values();
+        assertTrue(params.contains(Verdict.PASSED.getCode()),
+                "改判通过 → verdict 回写为 PASSED(1)，实测参数=" + params);
+        assertTrue(wrapper.getValue().getSqlSegment().contains("record_id ="),
+                "回写须按 record_id 主键定位");
+        verify(caffeineCache).invalidate("verify:result:5");
+    }
+
+    /** 终判维持原判（pass=false）：判定主表 verdict 显式回写 REJECTED + 本地缓存失效（TASK-235 回写闭环） */
+    @Test
+    @SuppressWarnings("unchecked")
+    void reviewAppeal_reConfirmed_writesBackVerdictAndInvalidatesCache() {
+        stubAppeal(AppealStatus.RE_CONFIRMED.getCode());
+        AppealReviewDTO dto = new AppealReviewDTO();
+        dto.setPass(false);
+        dto.setOperator("admin");
+        dto.setRecheckResult("复核驳回");
+
+        service.reviewAppeal(9L, dto);
+
+        ArgumentCaptor<UpdateWrapper<VerificationResult>> wrapper =
+                ArgumentCaptor.forClass(UpdateWrapper.class);
+        verify(verificationResultMapper).update(eq(null), wrapper.capture());
+        // 注意：MP 的 paramNameValuePairs 在 getSqlSet()/getSqlSegment() 渲染时才填充，须先渲染
+        String sqlSet = wrapper.getValue().getSqlSet();
+        assertTrue(sqlSet.contains("verdict"), "判定主表必须回写 verdict，实测 SET=" + sqlSet);
+        java.util.Collection<Object> params = wrapper.getValue().getParamNameValuePairs().values();
+        assertTrue(params.contains(Verdict.REJECTED.getCode()),
+                "维持原判 → verdict 回写为 REJECTED(2)，实测参数=" + params);
+        verify(caffeineCache).invalidate("verify:result:5");
     }
 
     private AppealReviewDTO dto(boolean pass) {

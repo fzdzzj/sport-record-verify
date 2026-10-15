@@ -41,10 +41,16 @@ public interface LeaderboardContributionMapper extends BaseMapper<LeaderboardCon
                      @Param("toStatus") Integer toStatus);
 
     /**
-     * 结算标记：批量为 ACTIVE 行盖 settled_at 时间戳（对账已覆盖本行口径）。
+     * 结算标记：批量为 ACTIVE 且<b>尚未结算</b>（{@code settled_at IS NULL}）的贡献行
+     * 盖 settled_at 时间戳（TASK-235 时间窗口修复）。
+     *
+     * <p>「仅对未结算行盖戳」是 {@code selectRangeSummaries} 今日/本周/本月窗口的前提：
+     * 若重复结算会覆盖既有历史结算时间，则同一行被多次盖戳后按 {@code settled_at}
+     * 归期失效（历史行被卷进错误周期），榜单长期失真。追加 {@code AND settled_at IS NULL}
+     * 后历史行结算时间只写一次，窗口归属自此自洽（对账已覆盖本行口径）。</p>
      */
     @Update("UPDATE leaderboard_contribution SET settled_at = #{settledAt} " +
-            "WHERE status = #{status}")
+            "WHERE status = #{status} AND settled_at IS NULL")
     int markSettled(@Param("status") Integer status,
                     @Param("settledAt") LocalDateTime settledAt);
 
