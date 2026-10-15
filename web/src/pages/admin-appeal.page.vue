@@ -25,6 +25,11 @@
         <a-alert v-if="result" type="success" class="mt-4">
           终判成功: id={{ result.id }} recordId={{ result.recordId }} status={{ result.status }} operator={{ result.operator }}
           <div v-if="result.recheckResult">结论: {{ result.recheckResult }}</div>
+          <div v-if="result.recordId" class="mt-2 text-xs">
+            <router-link :to="`/verdict?id=${result.recordId}`" class="text-blue-600 hover:underline">
+              查看记录最新判定结果 &rarr;
+            </router-link>
+          </div>
         </a-alert>
         <a-alert v-if="error" type="error" :message="error" class="mt-4" />
 
@@ -37,16 +42,26 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed } from 'vue'
+import { ref, computed, onMounted } from 'vue'
+import { useRoute } from 'vue-router/auto'
 import { getRole } from '@/utils/token'
 import { reviewAppeal } from '@/api/client'
 
+const route = useRoute()
 const role = computed(() => getRole() || '')
 
 const form = ref({ id: '', operator: 'admin', recheckResult: '' })
 const loading = ref(false)
 const result = ref<any>(null)
 const error = ref('')
+
+// B8：挂载时自动读取 query.id / query.appealId 回填表单，消除手工盲打 ID。
+onMounted(() => {
+  const qId = route.query.id || route.query.appealId
+  if (qId) {
+    form.value.id = String(qId)
+  }
+})
 
 async function onReview(pass: boolean) {
   if (!form.value.id || !form.value.operator) {

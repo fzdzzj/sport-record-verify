@@ -32,8 +32,8 @@
         </a-form-item>
 
         <a-form-item label="requestId (幂等键，自动生成)">
-          <a-input v-model:value="requestId" placeholder="demo-xxx" />
-          <a-button @click="genRequestId" class="mt-1">重新生成</a-button>
+          <a-input v-model:value="requestId" placeholder="demo-xxx" :disabled="submitting" />
+          <a-button @click="genRequestId" class="mt-1" :disabled="submitting">重新生成</a-button>
         </a-form-item>
 
         <a-form-item>
@@ -50,10 +50,14 @@
           <div v-if="submitResult.message">{{ submitResult.message }}</div>
           <a-button size="small" class="mt-2" @click="saveToSession(submitResult.recordId)">保存到本会话 (sessionStorage)</a-button>
           <a-button size="small" class="mt-2 ml-2" @click="goToVerdict(submitResult.recordId)">去判定页</a-button>
+          <a-button v-if="!submitResult.duplicated" size="small" class="mt-2 ml-2" @click="prepareNextRecord">准备提交下一条（刷新 requestId）</a-button>
         </template>
       </a-alert>
 
-      <a-alert v-if="submitError" type="error" :message="submitError" class="mt-4" />
+      <a-alert v-if="submitError" type="error" class="mt-4">
+        <template #message>{{ submitError }}</template>
+        <template #description>网络抖动或失败：请保持当前 requestId 不变，直接再次点击提交可安全重试（服务端将做幂等防重，不会产生重复记录）。</template>
+      </a-alert>
     </a-card>
 
     <a-card title="本会话记录 (sessionStorage 快捷入口；服务端持久化列表见首页「我的记录」)" class="mb-4">
@@ -107,6 +111,8 @@ const duration = ref(0)
 const distance = ref(0)
 
 function genRequestId() {
+  // B9 防空防窜：请求在途（网络飞包）期间禁止轮换 requestId，保持幂等键稳定
+  if (submitting.value) return
   requestId.value = `demo-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
 }
 
@@ -159,6 +165,10 @@ function sumHaversineKm(pts: TrackPointDTO[]): number {
 }
 
 async function onSubmit() {
+  // B9 防空：提交前确保 requestId 非空有效，缺失则生成（服务端 3004 依赖键稳定）
+  if (!requestId.value || !requestId.value.trim()) {
+    genRequestId()
+  }
   submitting.value = true
   submitError.value = ''
   submitResult.value = null
@@ -181,13 +191,25 @@ async function onSubmit() {
       saveToSession(res.data.recordId, false)
     }
   } catch (e: any) {
-    submitError.value = e.code ? `[${e.code}] ${e.message}` : (e.message || '提交失败')
-    if (e.code === 3004 && e.data) {
-      submitResult.value = e.data
+    // B9 重试固化/3004 友好反馈：失败保持当前 requestId 不变；3004 为幂等命中（重复提交拦截）
+    if (e.code === 3004) {
+      submitError.value = '重复提交拦截（幂等命中，返回原记录）'
+      if (e.data) {
+        submitResult.value = { ...e.data, duplicated: true }
+      }
+    } else {
+      submitError.value = e.code ? `[${e.code}] ${e.message}` : (e.message || '提交失败')
     }
   } finally {
     submitting.value = false
   }
+}
+
+// B9 下一条轮换：成功后刷新 requestId 并清空提交结果，避免后续提交撞 3004
+function prepareNextRecord() {
+  genRequestId()
+  submitResult.value = null
+  submitError.value = ''
 }
 
 const SESSION_KEY = 'sports_record_ids'

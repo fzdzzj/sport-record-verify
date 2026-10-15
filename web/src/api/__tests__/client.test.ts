@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { AxiosError, type AxiosResponse } from 'axios'
 import api from '@/api/client'
 import { getAccessToken, setAuthFailHandler, setTokens } from '@/utils/token'
-import { deleteGoal, delRecord, getFeed, getLikesBatch, getMyGoals, getMyRecords, getMyStats, upsertGoal } from '@/api/client'
+import { deleteGoal, delRecord, getFeed, getLikesBatch, getMyGoals, getMyRecords, getMyStats, reviewAppeal, submitAppeal, upsertGoal } from '@/api/client'
 
 
 // adapter 注入范式：替换 api.defaults.adapter 为 vi.fn 模拟传输层，
@@ -400,5 +400,80 @@ describe('client.ts getMyStats（TASK-231）', () => {
     expect(call.url).toBe('/record/api/records/my/stats')
     expect(call.method?.toLowerCase() || 'get').toBe('get')
     expect(call.params).toBeUndefined()
+  })
+})
+
+// ===== 申诉管理与终判契约（TASK-241） =====
+describe('client.ts submitAppeal（TASK-241）', () => {
+  // R1：submitAppeal 请求打 POST /record/api/records/{id}/appeal 且载荷（recordId + reason）正确
+  it('R1 submitAppeal hits POST /record/api/records/{id}/appeal with payload', async () => {
+    const appealBody = {
+      code: 0,
+      message: 'ok',
+      data: { id: 88, recordId: 7, status: 'PENDING' },
+    }
+    adapter.mockImplementationOnce((config: unknown) => Promise.resolve(ok(config, appealBody)))
+
+    const res = await submitAppeal(7, '这是一条申诉理由')
+
+    expect(res.data.id).toBe(88)
+    expect(adapter).toHaveBeenCalledTimes(1)
+    const call = adapter.mock.calls[0][0] as { url: string; method?: string; data?: string }
+    expect(call.url).toBe('/record/api/records/7/appeal')
+    expect(call.method?.toLowerCase()).toBe('post')
+    expect(JSON.parse(call.data || '{}')).toEqual({ recordId: 7, reason: '这是一条申诉理由' })
+  })
+
+  // R2：字符串 recordId 也被规范化进 URL 与 body
+  it('R2 submitAppeal accepts string recordId and normalizes to number in body', async () => {
+    const appealBody = { code: 0, message: 'ok', data: { id: 99, recordId: 12, status: 'PENDING' } }
+    adapter.mockImplementationOnce((config: unknown) => Promise.resolve(ok(config, appealBody)))
+
+    await submitAppeal('12', '理由')
+
+    const call = adapter.mock.calls[0][0] as { url: string; data?: string }
+    expect(call.url).toBe('/record/api/records/12/appeal')
+    expect(JSON.parse(call.data || '{}')).toEqual({ recordId: 12, reason: '理由' })
+  })
+})
+
+describe('client.ts reviewAppeal（TASK-241）', () => {
+  // R1：reviewAppeal 请求打 POST /admin/api/appeals/{id}/review 且载荷正确
+  it('R1 reviewAppeal hits POST /admin/api/appeals/{id}/review with payload', async () => {
+    const reviewBody = {
+      code: 0,
+      message: 'ok',
+      data: { id: 88, recordId: 7, status: 'RE_PASSED', operator: 'admin' },
+    }
+    adapter.mockImplementationOnce((config: unknown) => Promise.resolve(ok(config, reviewBody)))
+
+    const res = await reviewAppeal(88, { operator: 'admin', pass: true, recheckResult: '复核通过' })
+
+    expect(res.data.status).toBe('RE_PASSED')
+    expect(adapter).toHaveBeenCalledTimes(1)
+    const call = adapter.mock.calls[0][0] as { url: string; method?: string; data?: string }
+    expect(call.url).toBe('/admin/api/appeals/88/review')
+    expect(call.method?.toLowerCase()).toBe('post')
+    expect(JSON.parse(call.data || '{}')).toEqual({
+      operator: 'admin',
+      pass: true,
+      recheckResult: '复核通过',
+    })
+  })
+
+  // R2：pass=false 且无 recheckResult 时载荷正确
+  it('R2 reviewAppeal omits recheckResult when undefined and passes pass=false', async () => {
+    const reviewBody = {
+      code: 0,
+      message: 'ok',
+      data: { id: 90, recordId: 9, status: 'REJECTED', operator: 'admin' },
+    }
+    adapter.mockImplementationOnce((config: unknown) => Promise.resolve(ok(config, reviewBody)))
+
+    await reviewAppeal('90', { operator: 'admin', pass: false })
+
+    const call = adapter.mock.calls[0][0] as { url: string; data?: string }
+    expect(call.url).toBe('/admin/api/appeals/90/review')
+    expect(JSON.parse(call.data || '{}')).toEqual({ operator: 'admin', pass: false })
   })
 })

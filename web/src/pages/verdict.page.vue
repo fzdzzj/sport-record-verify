@@ -35,7 +35,16 @@
       <a-card v-if="verifyResult && verifyResult.verdict === 2" title="申诉 (仅 REJECTED)" size="small">
         <a-textarea v-model:value="appealReason" placeholder="申诉理由（必填，≤500字）" :rows="3" />
         <a-button :loading="appealing" @click="onAppeal" class="mt-2" :disabled="!appealReason.trim()">提交申诉</a-button>
-        <a-alert v-if="appealResult" type="success" :message="`申诉已提交 (id: ${appealResult.id || 'n/a'})`" class="mt-2" />
+        <a-alert v-if="appealResult" type="success" class="mt-2">
+          <template #message>
+            <div class="flex items-center justify-between">
+              <span>申诉已提交 (id: {{ appealResult.id || 'n/a' }})</span>
+              <router-link v-if="appealResult.id" :to="`/admin-appeal?id=${appealResult.id}`" class="text-blue-600 hover:underline text-xs">
+                去管理后台审核 &rarr;
+              </router-link>
+            </div>
+          </template>
+        </a-alert>
         <a-alert v-if="appealError" type="error" :message="appealError" class="mt-2" />
       </a-card>
 
