@@ -8,17 +8,22 @@
 
 ## 1. 当前代码基线与外部状态
 
-- **当前分支与 HEAD**：`main` 分支，最新实施提交为 `86be2d8`（C-01）与 `f0ea149`（C-02），封盘笔随本提交闭环。
+- **当前分支与 HEAD**：`main` 分支，最新实施提交为 `8f7601d`（C-01）与 `a6cd2c1`（C-02），封盘笔随本提交闭环。
 - **外部 CI 门槛状态**：GitHub Actions run `38692154084`（`web` ✓30s / `build` ✓12m10s 全绿）。
-- **工作树状态**：TASK-240 独立复核全绿，在途文件已完成台账归档。
-- **当前在途任务数**：`0` 个在途（历史任务至 TASK-240 全部已闭环收口）。
+- **工作树状态**：TASK-241 独立复核全绿，在途文件已完成台账归档。
+- **当前在途任务数**：`0` 个在途（历史任务至 TASK-241 全部已闭环收口）。
 
 ---
 
 ## 2. 上一会话交付成果
 
 - **刚闭环事项**：
-  1. 落地 **TASK-240**（存储性能与网络吞吐双重优化——friendship 表 user_high 索引补齐与动态流 Feed 点赞态批量下推，MEDIUM 档）：
+  1. 落地 **TASK-241**（前台交互闭环与客户端幂等防重——申诉管理直达自动回填与运动记录提交表单requestId固化加固，MEDIUM 档）：
+     - B8 申诉管理闭环与自动回填：`verdict.page.vue` 申诉成功 Alert 内渲染直通链接直达 `/admin-appeal?id=...`；`admin-appeal.page.vue` 挂载自动读取 `query.id` 或 `appealId` 回填 `form.id`，终判成功卡片提供直通链接直达 `/verdict?id=...`，形成端到端完整闭环；
+     - B9 提交表单客户端 requestId 固化加固：`record-submit.page.vue` 在途防篡改（`:disabled="submitting"` + 短路）、提交防空有效性保障、失败重试保持 requestId 与防重指引、下一条轮换按钮（`prepareNextRecord` 刷新 requestId 并重置结果）、3004 友好拦截提示；
+     - 测试强化：`client.test.ts` 新增 `submitAppeal`（2 例）与 `reviewAppeal`（2 例）契约单测；
+     - 生产代码白名单外 100% 零触碰，零新外部依赖。
+  2. 落地 **TASK-240**（存储性能与网络吞吐双重优化——friendship 表 user_high 索引补齐与动态流 Feed 点赞态批量下推，MEDIUM 档）：
      - B6 存储慢查消灭：`sql/01-user-db.sql` 为 `friendship` 补齐 `KEY idx_user_high (user_high)` 并新建幂等迁移 `sql/migrations/add-idx-friendship-user-high.sql`，消除 `listFriends` 在较大用户 ID 维度的全表扫描，支持 MySQL `index_merge`；
      - B7 服务端批量下推：`LikeController.java` 新增 `POST /api/records/likes/batch`；`RecordLikeService.java` 实现 `getLikesBatch`（空入参安全、去重保序、`assertCanView` 安全过滤、`executePipelined` 单次往返批量获取点赞数与状态、缓存 miss 回退 `readCount`）；
      - B7 前端单请求直出：`web/src/api/client.ts` 导出 `getLikesBatch`；`web/src/pages/feed.page.vue` 重构 `loadLikes()` 为单次批量请求，动态流 20 次并发 HTTP 压至 1 次；
@@ -66,10 +71,8 @@
 ## 4. 下一个主 Agent 的唯一推荐动作
 
 - **推荐动作**：
-  1. 执行 `git push origin main` 批量推送已封盘批次触发 GitHub Actions 远端全量 CI 外部终验（当前本地领先 origin/main 9 笔提交）；
-  2. 或推进 **B8（拟立项 TASK-241：申诉管理端闭环与自动回填）**，消除用户在申诉提交后需盲打 ID 的断层体验；
-  3. 或推进 **B9（拟立项 TASK-242：提交表单客户端幂等加固）**，消除弱网重发重复记录破窗；
-  4. 或推进 **H2（E5 生产部署姿态演练）**。
+  1. 执行 `git push origin main` 批量推送已封盘批次触发 GitHub Actions 远端全量 CI 外部终验（当前本地领先 origin/main 13 笔提交）；
+  2. 或推进 **H2（E5 生产部署姿态演练）**。
 - **开工准备**：按 `docs/internal/AGENTS.md` 的「极简任务派发包模板」为子 Agent 派发。
 
 ---

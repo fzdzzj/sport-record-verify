@@ -2,7 +2,7 @@
 
 ## 当前进度与外部基线
 
-- **最新代码基线与分支**：`main` 分支，最新已封盘至 **TASK-240**（HEAD `86be2d8` / `f0ea149`）。
+- **最新代码基线与分支**：`main` 分支，最新已封盘至 **TASK-241**（HEAD `8f7601d` / `a6cd2c1`）。
 - **会话无缝交接看板**：新主 Agent 接手状态与下一步动作见 [HANDOVER.md](HANDOVER.md)（原地滚动更新，免建新交接文档）。
 - **CI 外部门槛状态**：GitHub Actions run `38692154084`（HEAD `b1c0e3a`，web ✓30s / build ✓12m10s 全 job 绿）。包含全模块 clean verify、Checkstyle/SpotBugs/PMD 静态门、Docker 镜像构建与 Trivy 依赖扫描。
 - **历史记录归档索引**：早期 100+ 笔验收记录（TASK-001 至 TASK-210）已完整归档至 [PLAN-history-001-210.md](archive/PLAN-history-001-210.md)。各任务的原始契约与回传留存见 `work/mailbox/tasks/TASK-xxx/`。
@@ -439,5 +439,20 @@
 | 是否到达外部门槛 | **未到达**：C-01/C-02 已提交，待指导侧统一提交台账闭环笔并随批推送触发 CI 外部终验 |
 | 独立复核结论与裁决 | 指导侧独立四块核验全过（总体 **PASS**，BLOCKER 0，偏差 D1 台账自指约定合规）：8 个实施文件 + 2 个两件套严丝合缝全等白名单；后端 284 测与前端 33 测及契约门禁独立实测稳定全绿；B6 索引消除了核心社交表隐蔽慢查风险，B7 Pipeline 批量下推大幅降低网关与前端并发压力，容错降级与权限隔离设计严谨；终审裁定 **ACCEPT 予以封盘** |
 | 状态 | TASK-240 本地闭环，指导侧终裁 **ACCEPT 予以封盘** |
+ 
+## 验收记录：`TASK-241`（前台交互闭环与客户端幂等防重——申诉管理直达自动回填与运动记录提交表单requestId固化加固，MEDIUM 档，2026-10-15）
+
+| 项 | 内容 |
+| --- | --- |
+| 开工基线 | `92df499`（main 分支，工作树干净，TASK-240 封盘笔与交接看板更新） |
+| C-01 实施笔 | `8f7601d` `feat(web): TASK-241 申诉管理自动回填与记录提交幂等固化（C-01 实施笔）`（恰 4 文件，+130/−9） |
+| C-02 任务两件套 | `a6cd2c1` `docs(mailbox): TASK-241 申诉闭环与表单幂等加固验收与台账闭环（C-02 台账笔）`（恰 2 文件，+190/−0） |
+| 任务内容与白名单 | 相对开工基线恰 6 文件 = 白名单全等（实施 4 文件 + 任务两件套 2 文件）；生产后端代码、网关、pom.xml、package.json 及红线文件 100% 零触碰，零新外部依赖 |
+| 核心实现 | ① B8 申诉管理闭环与自动回填：`web/src/pages/verdict.page.vue` 申诉成功 Alert 内渲染直通链接（`router-link` 到 `/admin-appeal?id=${appealResult.id}`，文案「去管理后台审核 &rarr;」）；`web/src/pages/admin-appeal.page.vue` 引入 `useRoute` 与 `onMounted`，挂载时自动读取 `route.query.id` 或 `route.query.appealId` 并回填至 `form.id`，彻底消除盲打 ID；终判成功卡片渲染直通链接直达 `/verdict?id=${result.recordId}`（文案「查看记录最新判定结果 &rarr;」），形成端到端完整闭环；② B9 记录提交表单客户端 requestId 固化加固：`web/src/pages/record-submit.page.vue` 在途防篡改（`submitting=true` 期间 `requestId` 输入框与「重新生成」按钮添加 `:disabled="submitting"` 绑定，且 `genRequestId()` 在途短路）、`onSubmit()` 开头提交防空校验（`if (!requestId.value || !requestId.value.trim()) genRequestId()`）、失败重试保持（catch 分支严格保留当前 `requestId` 不变，并在 `submitError` 提示区引导用户安全重试）、下一条轮换（提供 `prepareNextRecord()`「准备提交下一条（刷新 requestId）」按钮并重置提交结果，避免后续提交撞 3004）、3004 语义清晰化（捕获 3004 时提示「重复提交拦截（幂等命中，返回原记录）」并安全回填）；③ 测试全套强化：`web/src/api/__tests__/client.test.ts` 新增 `submitAppeal`（2 例）与 `reviewAppeal`（2 例）路由契约单测 |
+| 本机门禁 | 前端 `pnpm run type-check` 0 错误（rc=0）；前端单元测试 4 套 37 测全过（rc=0）；契约门 `mailbox-contract.sh --baseline=92df499` 退出码 0（判据 A 两件套齐 + 判据 B 清单一致，0 在途） |
+| 是否到达外部门槛 | **未到达**：C-01/C-02 已提交，待指导侧统一提交台账闭环笔并随批推送触发 CI 外部终验 |
+| 独立复核结论与裁决 | 独立复核子 Agent 实跑全过（总体 **PASS**，BLOCKER 0，三权分立严格履行）：6 个白名单文件严丝合缝；前端类型与 37 测及契约门禁独立实测稳定全绿；B8 彻底打通了申诉提交与后台审核的双向通道，B9 强化了前端表单在弱网重发下的幂等稳定性；终审裁定 **ACCEPT 予以封盘** |
+| 状态 | TASK-241 本地闭环，指导侧终裁 **ACCEPT 予以封盘** |
+
 
 

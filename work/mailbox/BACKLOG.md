@@ -32,15 +32,13 @@
 | B5 | 好友榜高并发查询优化 | topFriends 全量遍历 ZSet 性能灾难，改为基于好友 ID 的 Redis Pipeline 批量 ZSCORE 检索 | 高吞吐接口性能与服务稳定性 | MEDIUM | **已封盘 TASK-239（2026-10-15，3cf0406 / 7c6d9ef 绿）** |
 | B6 | 好友关系表 user_high 索引补齐 | friendship 仅联合主键 (user_low, user_high)，listFriends 在 user_high 侧全表扫描 | 消除核心社交慢 SQL，触发 index_merge 优化 | LIGHT | **已封盘 TASK-240（2026-10-15，86be2d8 / f0ea149 绿）** |
 | B7 | 动态流 Feed 点赞态批量下推 | feed.page.vue 单页 20 条记录并发发起 20 次 getLike HTTP，网络与网关开销大 | 20 次 HTTP 合并为 1 次，吞吐与首屏性能提升 | MEDIUM | **已封盘 TASK-240（2026-10-15，86be2d8 / f0ea149 绿）** |
-| B8 | 申诉复核管理后台端到端闭环 | verdict 提交后仅展示 ID，admin-appeal 需盲打 ID；无自动回填与直达链接 | 消除断层体验，完成审核管理闭环 | LIGHT | 候选（高性价比） |
-| B9 | 提交表单客户端幂等加固 | 前端仅靠局部 loading 锁，弱网重试未带固定 requestId，可能产生重复单号 | 端到端网络闪断重试幂等防重 | LIGHT | 候选 |
+| B8 | 申诉复核管理后台端到端闭环 | verdict 提交后仅展示 ID，admin-appeal 需盲打 ID；无自动回填与直达链接 | 消除断层体验，完成审核管理闭环 | LIGHT | **已封盘 TASK-241（2026-10-15，8f7601d / a6cd2c1 绿）** |
+| B9 | 提交表单客户端幂等加固 | 前端仅靠局部 loading 锁，弱网重试未带固定 requestId，可能产生重复单号 | 端到端网络闪断重试幂等防重 | LIGHT | **已封盘 TASK-241（2026-10-15，8f7601d / a6cd2c1 绿）** |
 | H2 | E5 生产部署姿态演练 | TASK-205 后置议题长期在册（CORS 真实注入/跨域 cookie/TLS 终止协同） | 上生产前必做 | MEDIUM 零代码 | 候选 |
 
 推荐序：
-1. **推送与远端 CI**：批量推送触发 GitHub Actions 外部终验（当前领先 9 笔提交）；
-2. **B8（拟立项 TASK-241：申诉管理端闭环与自动回填）**：管理交互全流程无缝打通（verdict 提交后提供跳转链接，admin-appeal 支持 query 参数自动回填申诉 ID）；
-3. **B9（拟立项 TASK-242：提交表单客户端幂等加固）**：表单在网络异常/超时重试时保持 requestId 不变，消除弱网重发重复记录破窗；
-4. **H2（E5 生产部署姿态演练）**：CORS 真实注入/跨域 cookie/TLS 终止协同演练。
+1. **推送与远端 CI**：批量推送触发 GitHub Actions 外部终验（当前领先 13 笔提交）；
+2. **H2（E5 生产部署姿态演练）**：CORS 真实注入/跨域 cookie/TLS 终止协同演练。
 
 
 
