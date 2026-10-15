@@ -56,9 +56,26 @@
 | B29 | 轨迹可视化起终点特征高亮 | SVG 轨迹全点单一红圈，无法分辨行进起止方向 | 首点绿色起点（🟢）与末点红色终点（🔴）特征高亮 | LIGHT | **已封盘 TASK-245（2026-10-15，23f58e3 / 5a275ab 绿）** |
 | H2 | E5 生产部署姿态演练 | TASK-205 后置议题长期在册（CORS 真实注入/跨域 cookie/TLS 终止协同） | 上生产前必做 | MEDIUM | **已封盘 TASK-247（2026-10-16，89ba3d1 / 47f1ecb 绿，CI run 38782194561 外部终验达成）** |
 
+## 2026-10-16 批（D 系只读立项侦察产出，指导侧证据抽查 8/8 坐实）
+
+| 编号 | 方向 | 依据 | 价值 | 预估档 | 状态 |
+| --- | --- | --- | --- | --- | --- |
+| D1 | 总榜二级缓存与入榜/回滚一致性 | `@Cacheable leaderboard:overall` 双层 TTL=5min（CacheConfig L49），`applyVerified`/`rollbackOnRejected` 改 ZSet 后从不 evict——删除/驳回回撤后总榜最长 5min 显示旧里程，新入榜最长 5min 不出现 | 高 | MEDIUM | 候选（推荐与 D3 合批） |
+| D2 | appeal 待审队列 status 索引补齐 | `appeal` 表仅 id PK + uk_record，`listPendingAppeals` WHERE status=PENDING ORDER BY id 全表扫描（对比 outbox 表已有 idx_status_id） | 中 | LIGHT | 候选 |
+| D3 | 结算对账 scan 游标续用 | `settleAndReconcile` 清残留成员每页重开 `opsForZSet().scan()` 不续 Redis cursor，总榜上万成员时 O(N²) 重复全量扫描隐患 | 中 | LIGHT/MEDIUM | 候选（推荐与 D1 合批） |
+| D4 | 改密全量吊销 KEYS 扫描替换 | `AuthService.java:418` `stringRedisTemplate.keys(auth:refresh:{uid}:*)` 全 keyspace 阻塞扫描，宜改 SCAN 渐进迭代 | 中 | LIGHT | 候选 |
+| D5 | WS STOMP 端点 Origin 纵深 | `WebSocketNotificationConfig.java:46` `addEndpoint` 未 setAllowedOrigins；CONNECT 帧鉴权兜底非数据泄露，属纵深加固 + 生产姿态验证项 | 中 | LIGHT | 候选 |
+| D6 | mapmatch 候选集数量上限防护 | `MapMatchService.java:88-99,135-148` 跨大片区域 bbox 过宽时 ST_DWithin 候选边可能巨量全拉 JVM 逐点垂距，无上限/耗时防护 | 低-中 | MEDIUM 小 | 候选 |
+| D7 | 点赞对账全表拉取分批化 | `RecordLikeService.java:514` `selectRecordLikePairs()` 每 10min 整表 (record_id,user_id) 拉进 JVM 内存 | 低 | LIGHT | 候选 |
+| D8 | R5 降级窗口可观测告警 | `R5OffRoadRule.java:67-77` mapmatch 熔断期降级「不命中」为有意 tradeoff 非缺陷；建议补「R5 降级期间通过率突变」监控告警防误判 | 低（提示） | LIGHT | 候选 |
+
+> 侦察排除声明（防重复立项）：Outbox 毒丸隔离、规则灰度一致性、verify 判定幂等 + record 状态机乐观锁、好友并发互加/解除、点赞幂等、网关鉴权/CORS/治理凭证、track_point 分片索引、前端契约/WS 队列名均已逐文件核审无问题；D 系静态推论项（D2/D3/D6/D7）真实影响需立项后 EXPLAIN/压测确认。
+
 推荐序：
-1. **B23 覆盖增强 → 已封盘 TASK-248**（2026-10-16，C-01 `1ed6f57` / C-02 `d7fa60d`，MEDIUM 档纯测试新增，指导亲核 PASS，批次推送后 CI 外部终验收口）：空榜不缓存显式单测断言已补齐（R1 降级空榜不缓存+恢复立即可见 / R2 无好友空榜同口径）；
-2. **新批次立项侦察**：F/B/H 系列既有候选已全部封盘，待指导侧开展新一轮全仓代码与业务常理侦察挖掘后续课题（沿 2026-10-15 批审计先例）。
+1. **D1+D3 leaderboard 一致性与对账治理批**（MEDIUM）：总榜缓存 evict/失效联动 + 结算 scan 游标续用，同处 `LeaderboardService`/`CacheConfig` 合批减少重复触达，数据一致性优先；
+2. **D2 申诉待审索引**（LIGHT）：纯 SQL 幂等迁移即可，独立小课题；
+3. **D6 mapmatch 候选集上限**（MEDIUM 小）：提升型防护，非 P0；
+4. **D4+D5+D7+D8 卫生与纵深批**（LIGHT）：SCAN 替换 + WS Origin + 点赞对账分批 + R5 降级告警，可合并一批。
 
 
 
