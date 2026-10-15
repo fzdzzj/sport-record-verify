@@ -1,5 +1,5 @@
 import { expect, Page, Route } from '@playwright/test'
-import { createRecordStore, PAGE_SIZE } from './fixtures/records'
+import { createRecordStore, myStats, PAGE_SIZE } from './fixtures/records'
 import { createFeedStore } from './fixtures/feed'
 import { createGoalStore, type GoalUpsert } from './fixtures/goals'
 import { NOTIFICATION_LIST, NOTIFICATION_PREFERENCES, UNREAD_COUNT } from './fixtures/notifications'
@@ -96,6 +96,11 @@ async function handleRecord(route: Route, ctx: ApiCtx, stores: Stores): Promise<
     const size = Number(url.searchParams.get('size') || String(PAGE_SIZE))
     const { records, total } = stores.records.pageFiltered(page, size, url.searchParams)
     route.fulfill(okPage(records, total, page, size))
+    return
+  }
+  if (p === '/record/api/records/my/stats' && method === 'GET') {
+    // TASK-233：补齐 /my/stats 契约 mock（此前落入 404 兜底 → 前端回退 0 值致统计卡断言失败）
+    route.fulfill(ok(myStats()))
     return
   }
   if (p === '/record/api/records/my/streak' && method === 'GET') {

@@ -51,9 +51,10 @@ test.describe('提交表单校验与提交（route-mock）', () => {
     await page.getByRole('main').getByRole('button', { name: /提交记录/ }).click()
 
     // 结果反馈：a-alert 仅渲染 message 槽（默认槽在本版 antdv 不透出，status/duplicated 文本不落屏，
-    // 见 handoff 未覆盖/发现项）；recordId 由「本会话记录」列表承载
+    // 见 handoff 未覆盖/发现项）；recordId 由「本会话记录」列表承载。
+    // TASK-233：Alert 详情插槽与历史会话列表均含 recordId: 9001 → 须限定在 .ant-alert 容器内消 strict mode 冲突。
     await expect(page.locator('.ant-alert-message', { hasText: '提交结果' })).toBeVisible()
-    await expect(page.getByText('recordId: 9001')).toBeVisible()
+    await expect(page.locator('.ant-alert').getByText('recordId: 9001')).toBeVisible()
 
     // POST 载荷断言：sportType=2（骑行的选择真实随请求下发）
     expect(ctx.submitBodies).toHaveLength(1)

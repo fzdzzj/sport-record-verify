@@ -1,6 +1,6 @@
 import { test, expect } from '@playwright/test'
 import { assertNoUnhandled, createApiCtx, createStores, installRouteMocks, seedSession } from './helpers'
-import { pageOneDistanceSum } from './fixtures/records'
+import { totalDistanceSum } from './fixtures/records'
 
 // ② 记录列表渲染：登录态首页统计卡 + 记录表格（route-mock 返回 25 条 / 第 1 页 20 条）。
 test.describe('记录列表渲染（route-mock）', () => {
@@ -13,9 +13,10 @@ test.describe('记录列表渲染（route-mock）', () => {
 
     const myCard = page.locator('.ant-card', { hasText: '我的记录 / 个人统计' }).first()
     await expect(myCard.getByText('记录数')).toBeVisible()
+    // 统计卡与近 30 天里程来自 /my/stats 全量聚合（TASK-231/233）：总里程 = 25 条累加、通过率 = 6/25 = 24.0%
     await expect(myCard.getByText('25', { exact: true })).toBeVisible()
-    await expect(myCard.getByText(pageOneDistanceSum().toFixed(2), { exact: true })).toBeVisible()
-    await expect(myCard.getByText('25.0%', { exact: true })).toBeVisible()
+    await expect(myCard.getByText(totalDistanceSum().toFixed(2), { exact: true })).toBeVisible()
+    await expect(myCard.getByText('24.0%', { exact: true })).toBeVisible()
     await expect(myCard.getByText('当前 5 天 · 最长 12 天')).toBeVisible()
 
     // 表格 20 行；首行 id 1000（可见性 2 → 仅自己 标签）

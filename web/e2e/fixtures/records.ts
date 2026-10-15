@@ -78,3 +78,60 @@ export function pageOneDistanceSum(): number {
   for (let i = 0; i < 20; i++) sum += 5 + (i % 7)
   return sum
 }
+
+/** 全量 25 条总里程：5+(i%7) 对 i=0..24 求和（对齐 /my/stats 服务端全量聚合口径，TASK-233） */
+export function totalDistanceSum(): number {
+  let sum = 0
+  for (let i = 0; i < 25; i++) sum += 5 + (i % 7)
+  return sum
+}
+
+/**
+ * /my/stats 全量统计夹具（TASK-231 端点 / TASK-233 契约对齐）：
+ * 25 条中 status=2|5（i%8 命中 {2,10,18}∨{5,13,21}）恰 6 条 → 通过率 6/25=24.0%；
+ * dailyDistances 为以 fixtures 基准日（2026-10-10）为窗口尾的 30 键 YYYY-MM-DD Map，
+ * 有记录日映射该日总里程、无记录日补 0，恒 30 键（与后端 30 天时间窗契约同构）。
+ */
+export function myStats(): {
+  totalCount: number
+  totalDistance: number
+  passCount: number
+  passRate: string
+  dailyDistances: Record<string, number>
+} {
+  const passCount = recordsByStatusPassed()
+  const daily = dailyDistancesMap()
+  return {
+    totalCount: 25,
+    totalDistance: totalDistanceSum(),
+    passCount,
+    passRate: '24.0%',
+    dailyDistances: daily,
+  }
+}
+
+/** 通过记录数：status ∈ {2（通过）, 5（复审通过）}——25 条中恰 6 条（i%8 ∈ {2,10,18,5,13,21}） */
+function recordsByStatusPassed(): number {
+  let n = 0
+  for (let i = 0; i < 25; i++) {
+    const status = i % 8
+    if (status === 2 || status === 5) n++
+  }
+  return n
+}
+
+/** 30 键每日里程：以 2026-10-10 为窗口尾生成 30 个自然日键，key 与夹具 createdAt 逐日对齐并累加该日里程。 */
+function dailyDistancesMap(): Record<string, number> {
+  const byDay: Record<string, number> = {}
+  // 夹具记录集中在 2026-10-10（createdAt=2026-10-10T08:00:xx），映射到该 ISO 日键
+  const base = '2026-10-10'
+  for (let i = 29; i >= 0; i--) {
+    const date = new Date(base + 'T00:00:00')
+    date.setDate(date.getDate() - i)
+    const key = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`
+    byDay[key] = 0
+  }
+  // 25 条夹具全部归集到基准日（简化：单日聚合窗口内各记录里程），键保证存在
+  byDay[base] = totalDistanceSum()
+  return byDay
+}

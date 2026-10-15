@@ -149,9 +149,12 @@ class TimingHikariDataSourceWiringTest {
             long firstCloseMs = (System.nanoTime() - t0) / 1_000_000;
             wrapper.close();
             long doubleCloseMs = (System.nanoTime() - t0) / 1_000_000;
-            assertTrue(firstCloseMs < 1000,
+            // 放宽至 3000ms（TASK-233）：缺陷实现若把取连接挪进包装类锁会被拖过 30s（远超本线），
+            // 3000ms 仍完整保留反阻塞缺陷识别力；仅消除宿主/CI 高负载调度偶发抖动红
+            // （此前 1000ms 阈值曾被仅越线 1.2% 的 1012ms 偶发命中）。
+            assertTrue(firstCloseMs < 3000,
                     "close 被等待线程的池内等待拖住 " + firstCloseMs + "ms——不得持包装类生命周期锁等待数据库连接");
-            assertTrue(doubleCloseMs < 1000, "重复 close 同样不得被池内等待阻塞（" + doubleCloseMs + "ms）");
+            assertTrue(doubleCloseMs < 3000, "重复 close 同样不得被池内等待阻塞（" + doubleCloseMs + "ms）");
             assertTrue(inner.isClosed(), "重复 close 后内层池必须已关闭");
             wrapper.close();
             waiter.join(TimeUnit.SECONDS.toMillis(5));
