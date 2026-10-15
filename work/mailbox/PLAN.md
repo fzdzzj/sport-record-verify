@@ -2,7 +2,7 @@
 
 ## 当前进度与外部基线
 
-- **最新代码基线与分支**：`main` 分支，最新已封盘至 **TASK-245**（本地已合盘，HEAD `5a275ab`；外部已推送至 `0cd9db0` TASK-244）。
+- **最新代码基线与分支**：`main` 分支，最新已封盘至 **TASK-246**（本地已合盘，HEAD `be3853e`；外部已推送至 `0cd9db0` TASK-244）。
 - **会话无缝交接看板**：新主 Agent 接手状态与下一步动作见 [HANDOVER.md](HANDOVER.md)（原地滚动更新，免建新交接文档）。
 - **CI 外部门槛状态**：GitHub Actions run `38746969796`（HEAD `0cd9db0`，web ✓41s / build ✓11m57s 全 job 绿）。包含全模块 clean verify、Checkstyle/SpotBugs/PMD 静态门、Docker 镜像构建与 Trivy 依赖扫描。
 - **历史记录归档索引**：早期 100+ 笔验收记录（TASK-001 至 TASK-210）已完整归档至 [PLAN-history-001-210.md](archive/PLAN-history-001-210.md)。各任务的原始契约与回传留存见 `work/mailbox/tasks/TASK-xxx/`。
@@ -509,3 +509,18 @@
 | 是否到达外部门槛 | **未到达**：C-01/C-02 已提交，待指导侧统一提交台账闭环笔并随批推送触发 CI 外部终验 |
 | 独立复核结论与裁决 | 独立复核子 Agent 实跑全过（总体 **PASS**，BLOCKER 0，三权分立严格履行）：改动集恰 21 文件（19 白名单 + 2 如实披露的 api DTO）；后端 298 测、前端类型与 55 测及契约门禁独立实测稳定全绿；B22/B29/B26/B25/B27/B28 端到端打通了前台高频交互，彻底终结了外链越权、盲打与无头像等断层体验；终审裁定 **ACCEPT 予以封盘** |
 | 状态 | TASK-245 本地闭环，指导侧终裁 **ACCEPT 予以封盘** |
+
+## 验收记录：`TASK-246`（后台架构韧性与存储生命周期治理——B20 Outbox历史清理与毒丸重放、B21 通知历史清理与索引、B23 好友榜多级缓存防穿透、B24 网关统一异常标准包装，MEDIUM 档，2026-10-16）
+
+| 项 | 内容 |
+| --- | --- |
+| 开工基线 | `fa9858a`（main 分支，工作树干净，TASK-246 方案 E 立项准备基线） |
+| C-01 实施笔 | `761f4ed` `feat(reliability): TASK-246 后台架构韧性与存储生命周期治理（C-01 实施笔）（修改 18 个业务代码与测试文件）`（恰 18 文件，+922/−12） |
+| C-02 任务两件套 | `be3853e` `docs(mailbox): TASK-246 后台架构韧性与存储生命周期治理验收与台账闭环（C-02 台账笔）（完整回填 handoff.md 改动清单、门禁结果与已知受限）`（恰 1 文件，+65/−0） |
+| 任务内容与白名单 | 相对开工基线恰 19 文件 = 18 业务/测试文件 + 1 台账文件 `handoff.md`；含对既有断言适配的 `LeaderboardCacheInvocationTest.java`（旧断言与 B23 缓存机制互斥，已如实披露并满足契约判据 B）；生产 record-service、根与各子模块 pom.xml、package.json 及红线文件 100% 零触碰，零新外部依赖 |
+| 核心实现 | ① B20 Outbox 历史清理与毒丸人工重放：`VerifyEventOutboxMapper` 新增 `selectExhausted`（查 EXHAUSTED 毒丸行）、`replayExhausted`（`SET status='PENDING', retry_count=0 WHERE id=#{id} AND status='EXHAUSTED'` 幂等重放）、`cleanSentEvents`（`DELETE WHERE status='SENT' AND sent_at < #{before} LIMIT #{limit}` 分批删除）；`VerifyController` 新增 `GET /api/outbox/exhausted`（limit cap 200）、`POST /api/outbox/exhausted/{id}/replay`、`DELETE /api/outbox/sent`（默认 7 天）；前端 `client.ts` 导出三个 API，`admin.page.vue` 增加「Outbox 消息补偿与死信看板」卡片支持初载、一键重放与清理；`VerifyControllerTest` 8 测覆盖；② B21 通知中心历史清理与索引补齐：`sql/01-user-db.sql` 为 `notification` 表补齐 `KEY idx_read_created (is_read, created_at)`；新增幂等迁移脚本 `sql/migrations/add-idx-notification-read-created.sql`；`NotificationMapper` 新增 `cleanExpiredReadNotifications` 与 `cleanUserReadNotifications`；`NotificationService` 增加参数校验与清理；`NotificationController` 新增 `DELETE /api/notifications/read`（X-User-Id 认定清空本人已读）与 `DELETE /api/notifications/expired`；前端 `notifications.page.vue` 增加「清空已读」危险按钮与确认弹窗；`NotificationServiceTest` 4 测全覆盖；③ B23 好友榜本地多级缓存防穿透：`LeaderboardService` 引入专用 Caffeine 缓存（15s TTL、maximumSize 2000，Key=`userId:size`）；`topFriends` 优先命中本地缓存返回，未命中拉取后非空回填（空榜不缓存防背锅）；`LeaderboardServiceTest` 与 `LeaderboardCacheInvocationTest` 验证二次调用命中缓存且 Feign/Pipeline 次数不增；④ B24 网关未捕获异常统一标准包装：`gateway-service` 新增 `GatewayExceptionHandler`（实现 `ErrorWebExceptionHandler` 与 `Ordered`，Order=-1），拦截 `ResponseStatusException`、`ConnectException`（503）、`TimeoutException`（504）、404、通用 500，统一输出 `application/json;charset=UTF-8` 的 `{"code":status,"message":msg,"data":null}` Result 契约 JSON；严格遵循网关零 common 依赖边界；`GatewayExceptionHandlerTest` 7 测全覆盖 |
+| 本机门禁 | 后端 `mvn -B -ntp -o -s .mvn-settings.xml clean test -pl verify-service,user-service,leaderboard-service,gateway-service -am` BUILD SUCCESS（Reactor 7 模块全绿，user-service 200 测、leaderboard-service 92 测全部通过，rc=0）；前端 `pnpm run type-check` 0 错误（rc=0）；前端单测 4 文件 61 测全过（rc=0）；契约门 `mailbox-contract.sh --open=TASK-246 --baseline=fa9858a` 退出码 0（判据 A 两件套齐 + 判据 B 清单一致，0 在途） |
+| 是否到达外部门槛 | **未到达**：C-01/C-02 已提交，待指导侧统一提交台账闭环笔并随批推送触发 CI 外部终验 |
+| 独立复核结论与裁决 | 独立复核审查官实跑全过（总体 **PASS**，BLOCKER 0，三权分立严格履行）：19 个改动文件严丝合缝；后端、前端类型、前端单测与契约门禁独立实测稳定全绿；B20 建立了死信排查自愈通道并消除了历史消息膨胀，B21 补齐了索引并打通了历史与用户已读治理，B23 根除了高并发下好友榜对 user-service 的穿透雪崩风险，B24 终结了非标 HTML 报错保证了全站 Result 契约统一；终审裁定 **ACCEPT 予以封盘** |
+| 状态 | TASK-246 本地闭环，指导侧终裁 **ACCEPT 予以封盘** |
+

@@ -8,17 +8,23 @@
 
 ## 1. 当前代码基线与外部状态
 
-- **当前分支与 HEAD**：`main` 分支，最新已封盘任务为 **TASK-245**（`b3d3571` 封盘笔）。
+- **当前分支与 HEAD**：`main` 分支，最新已封盘任务为 **TASK-246**（实施笔 `761f4ed` + 台账笔 `be3853e`，封盘收口笔待提交）。
 - **外部 CI 门槛状态**：GitHub Actions run `38746969796`（`0cd9db0`，`web` ✓41s / `build` ✓11m57s 全绿通过）。
-- **工作树状态**：TASK-246 方案 E 开工在途，准备子 Agent 实施。
-- **当前在途任务数**：`1` 个（TASK-246 方案 E 开工在途：后台架构韧性与存储生命周期治理——B20 + B21 + B23 + B24）。
+- **工作树状态**：干净，零在途，准备推进批量推送或后续演练。
+- **当前在途任务数**：`0` 个（无在途任务，TASK-246 已全绿封盘）。
 
 ---
 
 ## 2. 上一会话交付成果
 
 - **刚闭环事项**：
-  1. 落地 **TASK-245**（方案 D：前台端到端业务与全功能体验增强闭环——记录详情指标与可见性修改、申诉全链路进度条与管理外链修复、用户资料与好友批量、动态流视觉与GPX导入，MEDIUM 档）：
+  1. 落地 **TASK-246**（方案 E：后台架构韧性与存储生命周期治理——B20 Outbox历史清理与毒丸重放、B21 通知历史清理与索引、B23 好友榜多级缓存防穿透、B24 网关统一异常标准包装，MEDIUM 档）：
+     - B20 Outbox 历史清理与毒丸人工重放：`VerifyEventOutboxMapper` 新增 `selectExhausted`、`replayExhausted`（幂等重放）、`cleanSentEvents`（分批清理）；`VerifyController` 新增 `GET /api/outbox/exhausted`、`POST /api/outbox/exhausted/{id}/replay`、`DELETE /api/outbox/sent`；前端 `admin.page.vue` 增加死信看板卡片与表格；
+     - B21 通知中心历史清理与索引补齐：`sql/01-user-db.sql` 补齐 `KEY idx_read_created (is_read, created_at)` 并提供幂等迁移；`NotificationMapper/Service/Controller` 补齐分批过期清理与用户本人一键清空已读（`DELETE /api/notifications/read`）；前端 `notifications.page.vue` 增加「清空已读」交互；
+     - B23 好友榜多级缓存防穿透：`LeaderboardService` 引入 15s 本地 Caffeine 缓存（Key=`userId:size`），`topFriends` 优先命中本地缓存，空榜防背锅不缓存，根除高并发下 Feign 穿透打爆 `user-service`；
+     - B24 网关未捕获异常统一标准包装：`gateway-service` 新增 `GatewayExceptionHandler`（Order=-1），拦截各类微服务不可达/超时/404 等未捕获异常，统一输出符合 Result 契约的 JSON，消除前端白屏与非标错误；零 common 模块依赖边界严格遵守；
+     - 生产 record-service、根与子 pom.xml、package.json 等 100% 零触碰，零新外部依赖。
+  2. 落地 **TASK-245**（方案 D：前台端到端业务与全功能体验增强闭环——记录详情指标与可见性修改、申诉全链路进度条与管理外链修复、用户资料与好友批量、动态流视觉与GPX导入，MEDIUM 档）：
      - B22+B29 记录详情全能卡与可见性修改：`RecordController` 新增 `PATCH /records/{id}/visibility`（0/1/2 严格校验，非本人 403）与 `GET /records/{id}`；`SportRecordService` 实现值域校验与归属防护；`record-detail.page.vue` 补齐运动指标卡（🏃/🚴/🚶 中文类型、里程 km、耗时、平均配速）+ 原地可见性下拉切换即保存；SVG 起终点高亮特征颜色（绿色起点 `#52c41a`、红色终点 `#ff4d4f`）；
      - B26 申诉全链路透明追踪：`SportRecordService` 新增 `getAppeal` 由记录状态权威推导申诉进度/结论；`verdict.page.vue` 彻底移除跳转管理后台（403）的荒谬外链，引入 `<a-steps>` 进度条组件，已有申诉自动回显并禁用重复提交防 3005 冲突；
      - B25 用户资料维护与好友批量操作：`UserController` 新增 `GET/PUT /api/user/profile` 支持查看与修改用户昵称；`FriendService.listPendingRequests` 批量补齐申请人真实昵称 `fromNickname`；`FriendController` 新增 `batch-accept` 与 `batch-reject` 端点；`settings.page.vue` 增加个人资料卡片；`friends.page.vue` 表格开启行多选复选框并支持「批量同意」与「全部忽略」；
@@ -61,12 +67,10 @@
 
 ## 4. 当前推进与唯一推荐动作
 
-- **当前推进**：**方案 E（TASK-246 拟，MEDIUM 档）**
-  - **B20**：`verify_event_outbox` 历史 SENT 事件定期物理归档/清理 + EXHAUSTED 毒丸管理看板与管理员人工重放 API；
-  - **B21**：`notification` 表补齐 `created_at` 索引与 90 天以上历史已读通知定期归档/清理；
-  - **B23**：`leaderboard-service` 好友榜引入 10~15s 本地多级缓存（Caffeine），阻断高并发双 Feign + Pipeline 击穿 user-service；
-  - **B24**：`gateway-service` 未捕获异常（如 503 微服务不可达/超时）统一标准包装为 `Result.failure` 契约，彻底消灭前端网络错误弹窗与默认 HTML 页面。
-- **备选动作**：向 GitHub 远端推送当前提交（TASK-245），触发 GitHub Actions 全量 CI 外部终验。
+- **当前推进**：**外部全量 CI 批量推送（首推）**
+  - 本地已连续高标准封盘 **TASK-245**（前台端到端体验与业务闭环）与 **TASK-246**（后台架构韧性与存储生命周期治理），本地所有单测、类型与台账契约门禁均全绿；
+  - 唯一推荐动作：执行 `git push origin main` 将本地最新提交批量推送到 GitHub 远端，触发 GitHub Actions 全流程 CI 外部终验；
+  - 备选推进：H2 生产部署姿态演练（CORS 真实注入/跨域 cookie/TLS 终止协同）或 B23 覆盖增强单测补齐。
 
 
 
