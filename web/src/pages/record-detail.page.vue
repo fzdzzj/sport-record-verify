@@ -67,7 +67,18 @@
         坐标经 min-max 归一化投影，固定留边，非真实地理底图。
       </p>
 
-      <div v-if="points.length" class="mt-2">
+      <div v-if="points.length" class="mt-2 flex items-center gap-2">
+        <a-tooltip :title="likeTip">
+          <a-button
+            size="small"
+            :type="likeInfo?.liked ? 'primary' : 'default'"
+            :disabled="likeDisabled"
+            :loading="likeLoading"
+            @click="toggleLike"
+          >
+            {{ likeLabel }}
+          </a-button>
+        </a-tooltip>
         <a-button size="small" @click="exportGpx">导出 GPX</a-button>
       </div>
 
@@ -115,14 +126,20 @@
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue'
 import { useRoute } from 'vue-router/auto'
+import { message } from 'ant-design-vue'
 import {
   getRecordPoints,
   getVerifyResult,
+  getRecordLike,
+  likeRecord,
+  unlikeRecord,
   type TrackPointDTO,
   type VerificationResultDTO,
+  type LikeDTO,
 } from '@/api/client'
 import { generateGpx } from '@/utils/gpx'
 import { computePaceSeries, formatPace, isDrawablePace } from '@/utils/pace'
+import { hasAccessToken } from '@/utils/token'
 
 const route = useRoute()
 
@@ -133,6 +150,30 @@ const summaryDegraded = ref(false)
 const loading = ref(false)
 const loadError = ref('')
 const permError = ref(false)
+
+// ===== 点赞交互（TASK-236）：加载时并发调取点赞态，失败静默降级；点击一键切换 =====
+const likeInfo = ref<LikeDTO | null>(null)
+const likeLoading = ref(false)
+
+const loggedIn = computed(() => hasAccessToken())
+
+/** 防呆：未登录置灰；verdict 已知且非 PASSED 时置灰（verdict=1 覆盖 通过/复审通过 记录） */
+const likeDisabled = computed(() => {
+  if (!loggedIn.value) return true
+  const v = verifyResult.value
+  return v !== null && v.verdict !== 1
+})
+
+const likeTip = computed(() => {
+  if (!loggedIn.value) return '请先登录'
+  if (verifyResult.value !== null && verifyResult.value.verdict !== 1) return '未通过校验的记录不可点赞'
+  return ''
+})
+
+const likeLabel = computed(() => {
+  if (!likeInfo.value) return '赞 …'
+  return likeInfo.value.liked ? `已赞 (${likeInfo.value.likeCount})` : `赞 (${likeInfo.value.likeCount})`
+})
 
 // 固定 viewBox 与留边；lat/lng 各自 min-max 归一化后按比例铺入内层区。
 const W = 800
@@ -282,17 +323,28 @@ async function load() {
   permError.value = false
   verifyResult.value = null
   summaryDegraded.value = false
+  likeInfo.value = null
   try {
     // size=500 单次拉取（沿用 my-records 同口径；>500 为已知部分轨迹限制）
     const res = await getRecordPoints(recordId.value, 1, 500)
     points.value = (res.data && res.data.records) || []
-    // 摘要头：既有 verify-result 端点，仅展示性信息；失败不影响轨迹展示
-    try {
-      const vr = await getVerifyResult(recordId.value)
-      verifyResult.value = vr.data
-    } catch {
-      summaryDegraded.value = true
-    }
+    // 摘要头 + 点赞态：并发调取，任一失败静默降级（403 权限/非通过 6001/摘要缺失均不阻断轨迹渲染）
+    await Promise.allSettled([
+      getVerifyResult(recordId.value)
+        .then((vr) => {
+          verifyResult.value = vr.data
+        })
+        .catch(() => {
+          summaryDegraded.value = true
+        }),
+      getRecordLike(recordId.value)
+        .then((res2) => {
+          likeInfo.value = res2.data
+        })
+        .catch(() => {
+          // 静默降级：点赞态不可用不影响轨迹与配速渲染
+        }),
+    ])
   } catch (e: any) {
     points.value = []
     // 服务端归属校验为权威：403/1002 → 权限错误态（不做本地 userId 判断）
@@ -317,6 +369,35 @@ function exportGpx() {
   a.download = `record-${recordId.value}.gpx`
   a.click()
   URL.revokeObjectURL(url)
+}
+
+/** 点赞切换（TASK-236）：与动态流同构，点击一键点赞/取消，成功后以服务端计数同步本地态 */
+async function toggleLike() {
+  if (likeLoading.value) return
+  if (!loggedIn.value) {
+    message.warning('请先登录')
+    return
+  }
+  if (likeDisabled.value) {
+    message.warning('未通过校验的记录不可点赞')
+    return
+  }
+  likeLoading.value = true
+  try {
+    const isLiked = likeInfo.value?.liked
+    const res = isLiked ? await unlikeRecord(recordId.value) : await likeRecord(recordId.value)
+    likeInfo.value = res.data
+  } catch (e: any) {
+    message.error(
+      e.code === 6001
+        ? '[6001] 未通过校验的记录不可点赞'
+        : e.code
+          ? `[${e.code}] ${e.message}`
+          : (e.message || '操作失败'),
+    )
+  } finally {
+    likeLoading.value = false
+  }
 }
 
 onMounted(() => {

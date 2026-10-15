@@ -28,8 +28,19 @@
               <span class="text-gray-500">{{ statusLabel(item.status) }}</span>
               <span class="text-gray-400 ml-auto">{{ relativeTime(item.createdAt) }}</span>
             </div>
-            <div class="mt-2">
-              <a-button size="small" @click="goTrack(item.id)">查看详情</a-button>
+            <div class="mt-2 flex items-center gap-2">
+              <a-tooltip :title="likeTip(item)">
+                <a-button
+                  size="small"
+                  :type="likeMap[item.id]?.liked ? 'primary' : 'default'"
+                  :disabled="likeDisabled(item)"
+                  :loading="likeLoadingMap[item.id] === true"
+                  @click="toggleLike(item)"
+                >
+                  {{ likeLabel(item) }}
+                </a-button>
+              </a-tooltip>
+              <a-button size="small" class="ml-auto" @click="goTrack(item.id)">查看详情</a-button>
             </div>
           </a-card>
         </div>
@@ -56,7 +67,8 @@
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue'
 import { useRouter } from 'vue-router/auto'
-import { getFeed, type FeedItemDTO } from '@/api/client'
+import { message } from 'ant-design-vue'
+import { getFeed, getRecordLike, likeRecord, unlikeRecord, type FeedItemDTO } from '@/api/client'
 import { hasAccessToken } from '@/utils/token'
 
 const router = useRouter()
@@ -70,6 +82,10 @@ const rowsMessage = ref('')
 const page = ref(1)
 const size = ref(20)
 const total = ref(0)
+
+// ===== 点赞交互（TASK-236）：per-card 点赞态 Map + loading 锁，列表加载后异步拉取 =====
+const likeMap = ref<Record<number, { liked: boolean; likeCount: number }>>({})
+const likeLoadingMap = ref<Record<number, boolean>>({})
 
 /** 作者昵称缺失（user-service 软降级空）→ 回退 authorUserId 字符串（R4 fail-safe 口径） */
 function authorName(item: FeedItemDTO): string {
@@ -115,6 +131,64 @@ function goTrack(id: number) {
   router.push({ path: '/record-detail', query: { id: String(id) } })
 }
 
+/** 点赞防呆：未登录或记录未通过（status 非 2/5）置灰，消除 6001 破窗 */
+function likeDisabled(item: FeedItemDTO): boolean {
+  if (!loggedIn.value) return true
+  return item.status !== 2 && item.status !== 5
+}
+
+function likeTip(item: FeedItemDTO): string {
+  if (!loggedIn.value) return '请先登录'
+  if (item.status !== 2 && item.status !== 5) return '未通过校验的记录不可点赞'
+  return ''
+}
+
+function likeLabel(item: FeedItemDTO): string {
+  const info = likeMap.value[item.id]
+  if (!info) return '赞 …'
+  return info.liked ? `已赞 (${info.likeCount})` : `赞 (${info.likeCount})`
+}
+
+/** 列表加载完毕后异步拉取当前页可见记录的点赞态；单条失败不影响整页渲染与列表可用性 */
+async function loadLikes() {
+  const ids = rows.value.map((r) => r.id)
+  const results = await Promise.allSettled(ids.map((id) => getRecordLike(id)))
+  results.forEach((r, i) => {
+    if (r.status === 'fulfilled') {
+      likeMap.value[ids[i]] = { liked: r.value.data.liked, likeCount: r.value.data.likeCount }
+    }
+    // rejected：单条点赞态查询失败静默跳过（容错降级）
+  })
+}
+
+async function toggleLike(item: FeedItemDTO) {
+  if (likeLoadingMap.value[item.id]) return
+  if (!loggedIn.value) {
+    message.warning('请先登录')
+    return
+  }
+  if (likeDisabled(item)) {
+    message.warning('未通过校验的记录不可点赞')
+    return
+  }
+  likeLoadingMap.value[item.id] = true
+  try {
+    const info = likeMap.value[item.id]
+    const res = info?.liked ? await unlikeRecord(item.id) : await likeRecord(item.id)
+    likeMap.value[item.id] = { liked: res.data.liked, likeCount: res.data.likeCount }
+  } catch (e: any) {
+    message.error(
+      e.code === 6001
+        ? '[6001] 未通过校验的记录不可点赞'
+        : e.code
+          ? `[${e.code}] ${e.message}`
+          : (e.message || '操作失败'),
+    )
+  } finally {
+    likeLoadingMap.value[item.id] = false
+  }
+}
+
 async function loadList() {
   if (!loggedIn.value) return
   loading.value = true
@@ -128,6 +202,7 @@ async function loadList() {
     rows.value = [...rows.value].sort((a, b) =>
       String(b.createdAt).localeCompare(String(a.createdAt)),
     )
+    loadLikes()
     if (!rows.value.length) rowsMessage.value = '暂无动态（没有本人或好友的可见记录）。'
   } catch (e: any) {
     rows.value = []

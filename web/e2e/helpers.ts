@@ -48,10 +48,17 @@ export interface Stores {
   records: ReturnType<typeof createRecordStore>
   feed: ReturnType<typeof createFeedStore>
   goals: ReturnType<typeof createGoalStore>
+  /** 点赞态记忆（TASK-236）：key=recordId → { liked, likeCount }，POST +1 / DELETE -1 / GET 返回当前态 */
+  likes: Map<number, { liked: boolean; likeCount: number }>
 }
 
 export function createStores(): Stores {
-  return { records: createRecordStore(), feed: createFeedStore(), goals: createGoalStore() }
+  return {
+    records: createRecordStore(),
+    feed: createFeedStore(),
+    goals: createGoalStore(),
+    likes: new Map(),
+  }
 }
 
 export async function installRouteMocks(page: Page, ctx: ApiCtx, stores: Stores): Promise<void> {
@@ -148,7 +155,21 @@ async function handleRecord(route: Route, ctx: ApiCtx, stores: Stores): Promise<
   }
   const like = p.match(/^\/record\/api\/records\/(\d+)\/like$/)
   if (like) {
-    route.fulfill(ok({ recordId: Number(like[1]), likeCount: 2, liked: method === 'POST' }))
+    // 动态状态记忆（TASK-236）：POST 赞 +1、DELETE 踩 -1、GET 返回当前态；
+    // 未记忆初始态 = 0 赞/未赞，避免固定 mock 导致连续点赞/取消断言失败
+    const id = Number(like[1])
+    const prev = stores.likes.get(id)
+    let likeCount = prev?.likeCount ?? 0
+    let liked = prev?.liked ?? false
+    if (method === 'POST') {
+      liked = true
+      likeCount += 1
+    } else if (method === 'DELETE') {
+      liked = false
+      likeCount = Math.max(0, likeCount - 1)
+    }
+    stores.likes.set(id, { liked, likeCount })
+    route.fulfill(ok({ recordId: id, likeCount, liked }))
     return
   }
   route.fulfill({ status: 404, contentType: 'application/json', body: JSON.stringify({ code: 9999, message: 'mock unmapped: ' + p }) })
