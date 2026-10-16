@@ -220,7 +220,7 @@ stderr 打出"按口径记为未覆盖"的提示，台账须照此记录，不�
 - **我的记录端点与个人统计面板（TASK-211）**：`GET /record/api/records/my?page&size` 分页返回本人记录概要（`RecordSummaryDTO`：id/sportType/distance/status/createdAt），归属即身份——auth.enabled=true 时从网关 `X-User-Id` 解析（缺→1001/401），false 时必填 `userId` 查询参数（缺→400 PARAM），过滤即身份无越权；page 下限 1、size 默认 20 上限 500。Web 首页（`/index`）登录态显示个人仪表盘：总里程/记录数/通过率（PASSED+RE_PASSED 口径）统计卡 + 近 30 天每日里程迷你条形图（纯 CSS 高度比例、零新依赖）+ 最近记录前 10 条，均来自单次 size=500 拉取（超 500 条为已知部分统计限制）；未登录态首页保留原欢迎链接
 - **记录轨迹查看（TASK-213）**：Web 新增 `/record-detail` 页，经既有 `GET /record/api/records/{id}/points`（分页 size=500 单次拉取）读取轨迹，用 min-max 归一化把 lat/lng 投影到固定 viewBox 的 SVG（polyline + 起点绿/终点红标记 + 逐点悬停 seq/speed/ts）；入口在首页「最近记录」行「查看轨迹」（recordId 经路由 query 传递）；归属由服务端 TASK-204 归属校验裁决（非本人 → 403/1002 权限错误态，前端不做本地身份判断、不绕过）；零新依赖（纯 SVG），真实地图底图（Leaflet + OSM 瓦片）因需外部瓦片源决策而延后；>500 点为已知部分轨迹限制
 - **登录锁定双维度**：单 (phone,ip) 组合失败达阈值锁该组合（机主本人 IP 无感）；跨 IP 累计达兜底阈值锁全账号（防分布式爆破）；IP 取 X-Forwarded-For 尾段（网关注入，前置段不可信）
-- **登录失败锁定**（add-login-lockout）：窗口（15min）内连续登录失败达阈值（5）→ 写 `auth:lock:{phone}`
+- **登录失败锁定**（add-login-lockout）：窗口（15min）内同一 (phone,ip) 组合连续失败达组合阈值（5）锁该组合、跨 IP 累计达全账号兜底阈值（20）锁全账号 → 写 `auth:lock:{phone}`
   （Redis，TTL=锁定时长），登录入口前置检查直接拒绝（403/1002「账号已临时锁定」，不校验密码、防撞库 + 省 BCrypt）；
   到期自动解锁、登录成功清零计数与锁定；`app.auth.lock.*` 可配，`enabled=false` 回退仅计数告警，Redis 故障降级仅告警不阻断登录（见 ADR-0007）。
 

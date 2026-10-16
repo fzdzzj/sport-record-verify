@@ -1,9 +1,11 @@
 package com.sportverify.user.controller;
 
+import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
 import com.sportverify.api.user.dto.UserDTO;
 import com.sportverify.common.exception.BizException;
 import com.sportverify.common.result.Result;
 import com.sportverify.common.result.ResultCode;
+import com.sportverify.user.entity.User;
 import com.sportverify.user.mapper.UserMapper;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
@@ -86,13 +88,17 @@ public class UserController {
         if (user == null) {
             throw new BizException(ResultCode.USER_NOT_FOUND);
         }
-        user.setNickname(nickname);
-        userMapper.updateById(user);
+        // E30（TASK-256）：昵称单列 UPDATE，不整行回写 password_hash/role/status 等
+        // （实体全字段非空触发整行 UPDATE 曾与改密/撤销管理员并发的毫秒级窗口可回写旧值，
+        // 单 UPDATE 天然原子，无需 @Transactional/@Version）
+        userMapper.update(null, new LambdaUpdateWrapper<User>()
+                .eq(User::getId, userId)
+                .set(User::getNickname, nickname));
 
         UserDTO dto = new UserDTO();
         dto.setId(user.getId());
+        dto.setNickname(nickname); // 局部变量携带新昵称（不整行回写）
         dto.setPhone(user.getPhone());
-        dto.setNickname(user.getNickname());
         dto.setStatus(user.getStatus());
         dto.setCreatedAt(user.getCreatedAt());
         return Result.success(dto);

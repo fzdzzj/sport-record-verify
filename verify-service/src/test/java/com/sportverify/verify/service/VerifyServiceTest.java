@@ -358,6 +358,21 @@ class VerifyServiceTest {
         verify(caffeineCache).invalidate("verify:result:5");
     }
 
+    /** 终判 pass 为 null（防御兜底，E22 TASK-256）：service 层 null→false 作维持拒绝，
+     *  权威拦截在 Controller 的 @Valid（漏传返回 400），此处仅保证不 NPE、不静默作改判通过。 */
+    @Test
+    void reviewAppeal_passNull_defensiveReject() {
+        stubAppeal(AppealStatus.RE_CONFIRMED.getCode());
+        AppealReviewDTO dto = new AppealReviewDTO();
+        dto.setOperator("admin");
+        dto.setRecheckResult("复核驳回"); // pass 未设置 → null
+
+        AppealDTO result = service.reviewAppeal(9L, dto);
+
+        assertEquals(AppealStatus.RE_CONFIRMED.getCode(), result.getStatus(), "pass=null 防御性按维持拒绝处理");
+        assertEquals(RecordVerifyEvents.TAG_REJECTED, captureOutboxRow().getTag());
+    }
+
     private AppealReviewDTO dto(boolean pass) {
         AppealReviewDTO d = new AppealReviewDTO();
         d.setPass(pass);

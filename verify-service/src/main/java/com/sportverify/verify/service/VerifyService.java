@@ -254,8 +254,8 @@ public class VerifyService {
         if (appeal.getStatus() != AppealStatus.PENDING.getCode()) {
             throw new BizException(ResultCode.APPEAL_STATUS_INVALID, "仅 PENDING 申诉单可终判");
         }
-        int targetStatus = dto.isPass() ? AppealStatus.RE_PASSED.getCode() : AppealStatus.RE_CONFIRMED.getCode();
-        Verdict verdict = dto.isPass() ? Verdict.PASSED : Verdict.REJECTED;
+        int targetStatus = Boolean.TRUE.equals(dto.getPass()) ? AppealStatus.RE_PASSED.getCode() : AppealStatus.RE_CONFIRMED.getCode();
+        Verdict verdict = Boolean.TRUE.equals(dto.getPass()) ? Verdict.PASSED : Verdict.REJECTED;
         // 终判行更新 + 事件待发行行同事务（任一失败整体回滚；影响 0 行只表示并发冲突）
         int rows = verifyOutboxService.updateAppealAndEvent(appealId, AppealStatus.PENDING.getCode(),
                 targetStatus, dto.getOperator(), dto.getRecheckResult(),
@@ -287,7 +287,7 @@ public class VerifyService {
             throw new BizException(ResultCode.RECORD_STATUS_INVALID, "记录不在 APPEALING 状态");
         }
         callbackStatus(appeal.getRecordId(), RecordStatus.APPEALING.getCode(),
-                dto.isPass() ? RecordStatus.RE_PASSED.getCode() : RecordStatus.RE_CONFIRMED.getCode(),
+                Boolean.TRUE.equals(dto.getPass()) ? RecordStatus.RE_PASSED.getCode() : RecordStatus.RE_CONFIRMED.getCode(),
                 record.getVersion());
 
         return toDto(appeal);

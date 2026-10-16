@@ -74,8 +74,9 @@ app:
     lock:
       # 锁定开关：false=仅计数告警不真正锁定（兼容旧行为）
       enabled: true
-      # 失败阈值：窗口内连续失败达此数触发锁定（对齐 AuthService 原 FAIL_THRESHOLD）
-      threshold: 5
+      # 全账号兜底阈值（TASK-193 语义）：跨 IP 累计达此数锁全账号（与代码默认 20 对齐）
+      # 单 (phone,ip) 组合阈值由 ip-threshold（默认 5）承载，yml 未显式覆盖走代码默认生效
+      threshold: 20
       # 失败计数窗口（分钟）：窗口滑动，窗口内持续 INCR
       window-minutes: 15
       # 锁定时长（分钟）：到达锁定时长后 auth:lock:{phone} TTL 到期自然解锁

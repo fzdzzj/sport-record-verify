@@ -6,11 +6,15 @@ import com.sportverify.common.result.Result;
 import com.sportverify.verify.entity.VerifyEventOutbox;
 import com.sportverify.verify.mapper.VerifyEventOutboxMapper;
 import com.sportverify.verify.service.VerifyService;
+import jakarta.validation.ConstraintViolation;
+import jakarta.validation.Validation;
+import jakarta.validation.Validator;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.Set;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -72,6 +76,20 @@ class VerifyControllerTest {
         assertEquals(0, out.getCode());
         assertEquals(appeal, out.getData());
         verify(verifyService).reviewAppeal(9L, dto);
+    }
+
+    /** E22（TASK-256）：终判缺 pass → @Valid 校验 400（漏传不再静默默认维持拒绝） */
+    @Test
+    void review_missingPass_failsBeanValidation() {
+        AppealReviewDTO dto = new AppealReviewDTO();
+        dto.setOperator("admin"); // pass 未设置 → null
+
+        Validator validator = Validation.buildDefaultValidatorFactory().getValidator();
+        Set<ConstraintViolation<AppealReviewDTO>> violations = validator.validate(dto);
+
+        assertEquals(1, violations.size(), "仅 pass 一处 @NotNull 违规");
+        assertEquals("pass",
+                violations.iterator().next().getPropertyPath().toString());
     }
 
     // ==================== B20 Outbox 死信/重放/清理 ====================

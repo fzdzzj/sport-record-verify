@@ -10,6 +10,7 @@ import org.springframework.web.server.ServerWebExchange;
 import reactor.core.publisher.Mono;
 
 import java.util.UUID;
+import java.util.regex.Pattern;
 
 /**
  * 网关请求 ID 过滤器（WebFlux GlobalFilter，非 Servlet Filter）。
@@ -46,8 +47,15 @@ public class RequestIdGlobalFilter implements GlobalFilter, Ordered {
             return newId();
         }
         String trimmed = incoming.trim();
-        return trimmed.isEmpty() ? newId() : trimmed;
+        return (!trimmed.isEmpty() && VALID_INCOMING_ID.matcher(trimmed).matches())
+                ? trimmed : newId();
     }
+
+    /** 入站 ID 沿用规则（E28 TASK-256）：长度 1..64 且字符仅限字母/数字/下划线/连字符才沿用，
+     *  否则重新生成（不拒绝请求、不打断链路）。与 common TraceIds 双实现同规则镜像
+     *  （网关零 common 依赖边界不变）。净化正则字面量仅落本代码与 TraceIds，见任务书词面门。 */
+    private static final Pattern VALID_INCOMING_ID =
+            Pattern.compile("^[A-Za-z0-9_-]{1,64}$");
 
     private static String newId() {
         return UUID.randomUUID().toString().replace("-", "");

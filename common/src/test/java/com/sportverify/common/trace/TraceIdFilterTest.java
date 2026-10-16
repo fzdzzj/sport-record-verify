@@ -7,6 +7,7 @@ import org.springframework.mock.web.MockHttpServletResponse;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -36,6 +37,41 @@ class TraceIdFilterTest {
     @Test
     void resolveOrCreate_keepsIncoming() {
         assertEquals("client-1", TraceIds.resolveOrCreate(" client-1 "));
+    }
+
+    /** E28（TASK-256）：合法既有形态沿用（32 位十六进制） */
+    @Test
+    void resolveOrCreate_validLengthAndChars_reused() {
+        String hex32 = "0123456789abcdef0123456789abcdef";
+        assertEquals(hex32, TraceIds.resolveOrCreate(hex32));
+    }
+
+    /** E28：边界——64 字符（上限）与 1 字符（下限）合规沿用 */
+    @Test
+    void resolveOrCreate_boundary64And1_reused() {
+        String len64 = "a".repeat(64);
+        assertEquals(len64, TraceIds.resolveOrCreate(len64));
+        assertEquals("a", TraceIds.resolveOrCreate("a"));
+        String len64Mixed = "Ab-1_z".repeat(10) + "Wxyz"; // 60+4=64，含字母/数字/下划线/连字符
+        assertEquals(64, len64Mixed.length());
+        assertEquals(len64Mixed, TraceIds.resolveOrCreate(len64Mixed));
+    }
+
+    /** E28：超长（65 字符）入站 ID 重新生成（不沿用，防放大日志） */
+    @Test
+    void resolveOrCreate_tooLong_regenerates() {
+        String tooLong = "x".repeat(65);
+        String out = TraceIds.resolveOrCreate(tooLong);
+        assertFalse(tooLong.equals(out), "65 字符超长 ID 应重新生成");
+        assertFalse(out.isBlank());
+    }
+
+    /** E28：非法字符（空格/中文/控制字符）重新生成（防挂他人链路/日志注入） */
+    @Test
+    void resolveOrCreate_invalidChars_regenerate() {
+        assertNotEquals("abc def", TraceIds.resolveOrCreate("abc def"), "含空格非法，应重新生成");
+        assertNotEquals("中文id", TraceIds.resolveOrCreate("中文id"), "含中文非法，应重新生成");
+        assertNotEquals("a\nb", TraceIds.resolveOrCreate("a\nb"), "含控制字符非法，应重新生成");
     }
 
     @Test

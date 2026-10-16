@@ -9,6 +9,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.apache.rocketmq.client.producer.SendCallback;
 import org.apache.rocketmq.client.producer.SendResult;
 import org.apache.rocketmq.spring.core.RocketMQTemplate;
+import org.springframework.messaging.Message;
 import org.springframework.messaging.support.MessageBuilder;
 import org.springframework.stereotype.Component;
 
@@ -42,6 +43,37 @@ public class RecordEventProducer {
     }
 
     /**
+     * 同步发布 SUBMITTED 事件（补偿路径专用，E18 TASK-256）。
+     *
+     * <p>与异步变体共享事件构造与 traceId header 装配（见 {@link #buildMessage}），但用
+     * {@code syncSend} 等待 Broker 返回结果，返回值真实反映提交结果：成功 true、
+     * 异常 log.error 后 false（不抛出）——Broker 不可达不再被异步回调晚于 return 求值
+     * 掩盖成「已提交」假成功。</p>
+     *
+     * @return 是否成功提交至 Broker（false 由调用方走降级转人工）
+     */
+    public boolean publishSubmittedSync(Long recordId, Long userId) {
+        VerifyEventDTO event = new VerifyEventDTO(
+                UUID.randomUUID().toString(),
+                recordId,
+                userId,
+                RecordVerifyEvents.EVENT_SUBMITTED,
+                LocalDateTime.now());
+        String traceId = TraceIds.current();
+        try {
+            String payload = objectMapper.writeValueAsString(event);
+            Message<?> message = buildMessage(payload, traceId);
+            String destination = RecordVerifyEvents.TOPIC + ":" + RecordVerifyEvents.TAG_SUBMITTED;
+            rocketMQTemplate.syncSend(destination, message);
+            log.info("已同步发布 SUBMITTED 事件：recordId={}, userId={}, traceId={}", recordId, userId, traceId);
+            return true;
+        } catch (Exception e) {
+            log.error("同步发布 SUBMITTED 事件失败：recordId={}, userId={}", recordId, userId, e);
+            return false;
+        }
+    }
+
+    /**
      * 异步发布 SUBMITTED 事件。调用线程立即返回，不阻塞等待 Broker ACK。
      *
      * @param recordId  记录ID
@@ -60,13 +92,10 @@ public class RecordEventProducer {
         String traceId = TraceIds.current();
         try {
             String payload = objectMapper.writeValueAsString(event);
-            var builder = MessageBuilder.withPayload(payload);
-            if (traceId != null && !traceId.isBlank()) {
-                builder.setHeader(TraceIds.HEADER, traceId);
-            }
+            Message<?> message = buildMessage(payload, traceId);
             String destination = RecordVerifyEvents.TOPIC + ":" + RecordVerifyEvents.TAG_SUBMITTED;
             // Tag 区分事件类型；消息体为 JSON；traceId 经 header → RocketMQ userProperty
-            rocketMQTemplate.asyncSend(destination, builder.build(), new SendCallback() {
+            rocketMQTemplate.asyncSend(destination, message, new SendCallback() {
                 @Override
                 public void onSuccess(SendResult sendResult) {
                     runWithTrace(traceId, () ->
@@ -93,6 +122,18 @@ public class RecordEventProducer {
                 onFailure.run();
             }
         }
+    }
+
+    /**
+     * 装配 SUBMITTED 消息体与 traceId header（异步/同步变体共用，防重复）；
+     * traceId 经 header → RocketMQ userProperty，仅非空时写入。
+     */
+    private Message<?> buildMessage(String payload, String traceId) {
+        MessageBuilder<?> builder = MessageBuilder.withPayload(payload);
+        if (traceId != null && !traceId.isBlank()) {
+            builder.setHeader(TraceIds.HEADER, traceId);
+        }
+        return builder.build();
     }
 
     /** 异步线程恢复 / 清理 MDC，避免线程池复用串号 */

@@ -1,7 +1,13 @@
 package com.sportverify.user.config;
 
+import com.sportverify.user.auth.util.JwtUtil;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
+import org.springframework.messaging.Message;
+import org.springframework.messaging.MessagingException;
+import org.springframework.messaging.support.MessageBuilder;
+import org.springframework.messaging.simp.stomp.StompCommand;
+import org.springframework.messaging.simp.stomp.StompHeaderAccessor;
 import org.springframework.messaging.simp.config.ChannelRegistration;
 import org.springframework.messaging.simp.config.MessageBrokerRegistry;
 import org.springframework.messaging.simp.config.SimpleBrokerRegistration;
@@ -14,6 +20,7 @@ import java.util.List;
 import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.mock;
@@ -128,5 +135,52 @@ class WebSocketNotificationConfigTest {
     @Test
     void stompTaskScheduler_isAvailable() {
         assertNotNull(config.stompTaskScheduler(), "心跳调度 TaskScheduler 应可实例化");
+    }
+
+    // ==================== E20（TASK-256）：STOMP 强制 type=ACCESS ====================
+
+    private static final String DEMO_SECRET = "sport-verify-hs256-secret-key-0123456789abcdef";
+    private static final String BEARER = "Bearer ";
+
+    private final JwtUtil jwtUtil = new JwtUtil(DEMO_SECRET, 15, 7, false);
+    private final StompConnectAuthInterceptor authInterceptor =
+            new StompConnectAuthInterceptor(jwtUtil);
+
+    private Message<?> connectFrame(String authHeader) {
+        StompHeaderAccessor accessor = StompHeaderAccessor.create(StompCommand.CONNECT);
+        if (authHeader != null) {
+            accessor.setNativeHeader("Authorization", authHeader);
+        }
+        return MessageBuilder.createMessage(new byte[0], accessor.getMessageHeaders());
+    }
+
+    /** E20：refresh token 建会话被拒（凭证窗口不得放大——刷新凭证不能当 access 用） */
+    @Test
+    void stompConnect_refreshToken_rejected() {
+        String refresh = jwtUtil.issueRefreshToken(1001L);
+
+        assertThrows(MessagingException.class,
+                () -> authInterceptor.preSend(connectFrame(BEARER + refresh), null),
+                "refresh token 不能替代 access 建立 WS 会话");
+    }
+
+    /** E20：access token 通过且 Principal 正确（userId 来自网关注入身份语义） */
+    @Test
+    void stompConnect_accessToken_acceptsAndSetsPrincipal() {
+        String access = jwtUtil.issueAccessToken(1001L, "USER");
+
+        Message<?> result = authInterceptor.preSend(connectFrame(BEARER + access), null);
+
+        assertNotNull(result);
+        var accessor = StompHeaderAccessor.wrap(result);
+        assertNotNull(accessor.getUser(), "access 通过须绑定会话身份");
+        assertEquals("1001", accessor.getUser().getName(), "Principal 应为签发 userId");
+    }
+
+    /** E20：无效 token 拒绝（签名/时效失败不入站） */
+    @Test
+    void stompConnect_invalidToken_rejected() {
+        assertThrows(MessagingException.class,
+                () -> authInterceptor.preSend(connectFrame(BEARER + "invalid.jwt.token"), null));
     }
 }

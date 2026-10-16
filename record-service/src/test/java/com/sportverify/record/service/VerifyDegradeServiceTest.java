@@ -120,12 +120,12 @@ class VerifyDegradeServiceTest {
                 .thenReturn(List.of(rec(1L, RecordStatus.VERIFYING.getCode())))
                 .thenReturn(List.of()); // 第二轮 MANUAL_REVIEW 查询为空
         when(verifyApi.health()).thenReturn(Result.success());
-        when(recordEventProducer.publishSubmitted(1L, 100L)).thenReturn(true);
+        when(recordEventProducer.publishSubmittedSync(1L, 100L)).thenReturn(true);
         when(sportRecordMapper.updateStatus(anyLong(), anyInt(), anyInt(), anyInt())).thenReturn(1);
 
         service.compensateStuckVerifying();
 
-        verify(recordEventProducer).publishSubmitted(1L, 100L);
+        verify(recordEventProducer).publishSubmittedSync(1L, 100L);
         // 探活成功的补判路径：只重发事件，不转人工、不迁 MANUAL_REVIEW
         verify(sportRecordMapper, never()).updateStatus(anyLong(), anyInt(), anyInt(), anyInt());
     }
@@ -153,7 +153,7 @@ class VerifyDegradeServiceTest {
                 .thenReturn(List.of(rec(1L, RecordStatus.VERIFYING.getCode())))
                 .thenReturn(List.of());
         when(verifyApi.health()).thenReturn(Result.success());
-        when(recordEventProducer.publishSubmitted(1L, 100L)).thenReturn(false);
+        when(recordEventProducer.publishSubmittedSync(1L, 100L)).thenReturn(false);
         when(sportRecordMapper.selectById(1L)).thenReturn(rec(1L, RecordStatus.VERIFYING.getCode()));
         when(sportRecordMapper.updateStatus(anyLong(), anyInt(), anyInt(), anyInt())).thenReturn(1);
 
@@ -170,10 +170,10 @@ class VerifyDegradeServiceTest {
                 .thenReturn(List.of())  // 无滞留 VERIFYING
                 .thenReturn(List.of(rec(2L, RecordStatus.MANUAL_REVIEW.getCode())));
         when(verifyApi.health()).thenReturn(Result.success());
-        when(recordEventProducer.publishSubmitted(2L, 100L)).thenReturn(true);
+        when(recordEventProducer.publishSubmittedSync(2L, 100L)).thenReturn(true);
 
         service.compensateStuckVerifying();
 
-        verify(recordEventProducer).publishSubmitted(2L, 100L);
+        verify(recordEventProducer).publishSubmittedSync(2L, 100L);
     }
 }

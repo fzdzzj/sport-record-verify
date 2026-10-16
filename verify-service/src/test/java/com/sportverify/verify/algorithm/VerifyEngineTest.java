@@ -23,6 +23,8 @@ import java.util.Random;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
@@ -127,6 +129,53 @@ class VerifyEngineTest {
         assertTrue(r.getHits().stream().anyMatch(
                 h -> "R2_ACCEL".equals(h.getRule()) && h.getLevel() == RuleLevel.SOFT));
         assertEquals(Verdict.REJECTED, r.getVerdict());
+    }
+
+    // ==================== E25（TASK-256）：R2 首区间伪尖峰净化 ====================
+
+    private final R2AccelRule r2 = new R2AccelRule();
+
+    /** 构造 R2 输入：seq 递增的 Point（speed/dtSeconds 直接给定，模拟预处理产物；
+     *  首点 speed=0/dt=0 为未计算哨兵，与 TrackPreprocessor 首点不回填语义一致）。 */
+    private static List<Point> accelPoints(double... speedAndDt) {
+        List<Point> list = new ArrayList<>(speedAndDt.length / 2);
+        for (int i = 0; i < speedAndDt.length; i += 2) {
+            list.add(new Point(i / 2, 0, 0, 0, speedAndDt[i], speedAndDt[i + 1]));
+        }
+        return list;
+    }
+
+    private RuleHit r2evaluate(List<Point> points) {
+        VerifyProperties props = new VerifyProperties();
+        return r2.evaluate(points, props.getRules(),
+                props.getRules().threshold(SportType.RUNNING));
+    }
+
+    /** E25 判别一：首区间伪尖峰不计入——首点哨兵的疑似尖峰(5-0)/1 被跳过，
+     *  其余真实区间均 ≤3 → 计数 0，不返回命中（旧循环会把首区间伪尖峰计入虚增门槛）。 */
+    @Test
+    void r2_firstIntervalPseudoSpike_notCounted() {
+        // [0]:哨兵(speed=0,dt=0)；[1]:(5,1)→首区间伪尖峰(5-0)/1=5；[2,3]:真实区间 a≤3
+        List<Point> points = accelPoints(0, 0, 5, 1, 5.5, 1, 5.5, 1);
+        assertNull(r2evaluate(points), "仅首区间伪尖峰不得触发 R2");
+    }
+
+    /** E25 判别二：三真实尖峰仍命中——真实区间三处 a>3（无伪尖峰掺入）→ 命中（不误杀） */
+    @Test
+    void r2_threeRealSpikes_stillHits() {
+        // [0]:哨兵；[1]:(5,1)；[2,3,4]:真实区间 a=5,5,5 >3
+        List<Point> points = accelPoints(0, 0, 5, 1, 10, 1, 15, 1, 20, 1);
+        assertNotNull(r2evaluate(points), "三真实尖峰仍应命中 R2");
+    }
+
+    /** E25 判别三：两真实尖峰 + 一首区间伪尖峰不命中（门槛恢复）——旧循环把伪尖峰计入
+     *  恰好凑满 minCount=3 误命中，净化后仅 2 真实尖峰不足阈 → 不命中。 */
+    @Test
+    void r2_twoRealPlusFirstPseudo_notCounted_thresholdRestored() {
+        // [0]:哨兵；[1]:(5,1)→首区间伪尖峰(5)；[2]:(5,1) a=0；[3]:(9,1) a=4 真实；
+        // [4]:(9,1) a=0；[5]:(13,1) a=4 真实 → 仅 2 真实尖峰
+        List<Point> points = accelPoints(0, 0, 5, 1, 5, 1, 9, 1, 9, 1, 13, 1);
+        assertNull(r2evaluate(points), "两真实+一首区间伪尖峰不达 minCount=3，门槛恢复");
     }
 
     /** 判定聚合：仅 SOFT 命中且配置宽松策略 → PASSED（带可疑命中记录） */

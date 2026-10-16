@@ -82,6 +82,9 @@ class FriendServiceTest {
         // 注意：构造参数顺序与 @RequiredArgsConstructor 字段声明顺序一致
         service = new FriendService(requestMapper, friendshipMapper, userMapper, redissonClient,
                 notificationService);
+        // E19（TASK-256）：self 自代理字段在纯 JVM 单测中无 Spring 容器注入，置为 service 本体，
+        // 使批量路径经 self 委托等价今日直调语义（真实容器经 @Autowired @Lazy 注入代理）。
+        service.self = service;
         // MP 单测惯用初始化（与 NotificationServiceTest:46 / SportRecordServiceTest:762 同源）：
         // 注册 Friendship 实体列缓存，使 LambdaQuery wrapper 的 lambda 列名可渲染而不需真 Spring 上下文
         TableInfoHelper.initTableInfo(
@@ -521,6 +524,24 @@ class FriendServiceTest {
         assertEquals(0, service.batchAccept(List.of(), 2001L));
         assertEquals(0, service.batchReject(null, 2001L));
         verifyNoInteractions(requestMapper);
+    }
+
+    /** E19（TASK-256）结构断言：批量流转须经 self 代理委托 accept/reject（证明代理路径存在） */
+    @Test
+    void batchTransition_delegatesThroughSelfProxy() {
+        FriendService proxy = mock(FriendService.class);
+        service.self = proxy;
+
+        service.batchAccept(List.of(5L, 6L), 2001L);
+        service.batchReject(List.of(9L), 1002L);
+
+        // batchAccept 逐条经 self.accept 委托；batchReject 经 self.reject
+        verify(proxy).accept(5L, 2001L);
+        verify(proxy).accept(6L, 2001L);
+        verify(proxy).reject(9L, 1002L);
+        // 委托至代理路径后，批量本体不再直触 mapper（真实 accept 逻辑由代理承载）
+        verify(requestMapper, never()).selectById(anyLong());
+        verify(friendshipMapper, never()).insert(any(Friendship.class));
     }
 
     // ==================== 好友列表 ====================

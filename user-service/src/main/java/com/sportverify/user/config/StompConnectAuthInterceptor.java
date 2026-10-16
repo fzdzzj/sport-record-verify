@@ -1,7 +1,6 @@
 package com.sportverify.user.config;
 
 import com.sportverify.user.auth.util.JwtUtil;
-import io.jsonwebtoken.Claims;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.messaging.Message;
@@ -60,8 +59,8 @@ public class StompConnectAuthInterceptor implements ChannelInterceptor {
                 : auth.trim();
         final Long userId;
         try {
-            Claims claims = jwtUtil.parse(token);
-            userId = Long.valueOf(claims.getSubject());
+            // E20（TASK-256）：强制 type=ACCESS，与网关 AuthGlobalFilter 同口径拒绝 refresh 建会话
+            userId = jwtUtil.parseAccess(token);
         } catch (Exception e) {
             log.warn("STOMP CONNECT 鉴权失败，拒绝会话：{}", e.getMessage());
             throw new MessagingException("STOMP CONNECT 携带的 access token 无效或已过期，拒绝会话建立");

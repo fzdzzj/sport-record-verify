@@ -116,7 +116,7 @@ public class VerifyDegradeService {
                 for (SportRecord record : stuck) {
                     try {
                         verifyApi.health().getData(); // 探活：verify 不可用时经 Fallback 抛 4001
-                        if (recordEventProducer.publishSubmitted(record.getId(), record.getUserId())) {
+                        if (recordEventProducer.publishSubmittedSync(record.getId(), record.getUserId())) {
                             republished++;
                             log.info("滞留记录已重发校验事件：recordId={}", record.getId());
                         } else {
@@ -143,7 +143,7 @@ public class VerifyDegradeService {
                     return;
                 }
                 for (SportRecord record : manual) {
-                    if (recordEventProducer.publishSubmitted(record.getId(), record.getUserId())) {
+                    if (recordEventProducer.publishSubmittedSync(record.getId(), record.getUserId())) {
                         republished++;
                         log.info("转人工记录已重放（等待 verify 终判对账收敛）：recordId={}", record.getId());
                     }

@@ -19,6 +19,8 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.redisson.api.RLock;
 import org.redisson.api.RedissonClient;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.context.annotation.Lazy;
 import org.springframework.dao.DuplicateKeyException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -60,6 +62,17 @@ public class FriendService {
     private static final long LOCK_WAIT_SECONDS = 5;
     /** 锁持有上限（秒，审批版 §7.5：好友并发互加 10s 可重入锁） */
     private static final long LOCK_LEASE_SECONDS = 10;
+
+    /**
+     * 同类自代理（E19，TASK-256）。批量流转 {@link #batchTransition} 经本字段委托
+     * {@link #accept}/{@link #reject}，使每次调用经 Spring 事务代理——@Transactional 的
+     * accept 在批量路径下同样获得「申请状态更新 + friendship 插入」两写原子性。
+     * 同类直调不过代理，批量两写将失原子。{@code @Lazy} 避开早期循环依赖；
+     * 纯 JVM 单测因无 Spring 容器，显式将本字段置为 service 本体等价今日直调语义。
+     */
+    @Autowired
+    @Lazy
+    FriendService self;
 
     // ==================== 好友申请创建 + 幂等去重 ====================
 
@@ -297,9 +310,9 @@ public class FriendService {
         for (Long id : requestIds) {
             try {
                 if (accept) {
-                    accept(id, caller);
+                    self.accept(id, caller);
                 } else {
-                    reject(id, caller);
+                    self.reject(id, caller);
                 }
                 ok++;
             } catch (BizException e) {

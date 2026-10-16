@@ -122,6 +122,20 @@ public class JwtUtil {
         return new ParsedRefresh(Long.valueOf(claims.getSubject()), claims.getId());
     }
 
+    /**
+     * 校验 access token：签名/时效 + type=ACCESS，返回 userId（sub）。
+     * 与 {@link #parseRefresh} 对称——type 不符（拿 refresh 来建业务会话）与签名/时效失败
+     * 一律视为无效 → 1001。网关 {@code AuthGlobalFilter} 与 STOMP 建会话均强制 type=ACCESS
+     * （E20 TASK-256：堵 refresh 替代 access 放大凭证窗口）。
+     */
+    public Long parseAccess(String token) {
+        Claims claims = parse(token);
+        if (!TokenType.ACCESS.name().equals(claims.get(CLAIM_TYPE, String.class))) {
+            throw new JwtException("token 类型错误：非 access token");
+        }
+        return Long.valueOf(claims.getSubject());
+    }
+
     /** 签发（sub=userId；jti 唯一，refresh 存活键用它；role 仅 access 携带，refresh 传 null 不写） */
     private String issue(Long userId, String role, TokenType type, long ttlMillis) {
         Date now = new Date();
