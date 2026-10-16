@@ -8,16 +8,22 @@
 
 ## 1. 当前代码基线与外部状态
 
-- **当前分支与 HEAD**：`main` 分支，最新已封盘任务为 **TASK-248**（B23 覆盖增强，CI run `38790795113` 全绿，外部终验达成）；**当前在途任务为 TASK-249**（D 系推荐序 ①②③ 合并——D1 总榜缓存失效联动 + D3 结算 scan 单遍重构 + D2 appeal 索引 + D6 mapmatch 查询防护，FULL 档，已立项待实施派发）。
-- **外部 CI 门槛状态**：TASK-248 封盘批次（5 笔：补记笔 `c975f24` + 立项笔 `770fc40` + C-01 `1ed6f57` + C-02 `d7fa60d` + 封盘笔 `8b5f01f`）已推至 `origin/main` 且 CI run `38790795113` 全绿（`web` ✓27s / `build` ✓12m00s），外部终验达成。
-- **工作树状态**：干净（本地保留 TASK-248 补记笔 + D 系归档笔 + TASK-249 立项笔共 3 笔未推送，随 TASK-249 批次统一推送，禁单独推送）。
-- **当前在途任务数**：`1` 个（TASK-249）。
+- **当前分支与 HEAD**：`main` 分支，最新已封盘任务为 **TASK-249**（D 系推荐序 ①②③ 合并——D1 总榜缓存失效联动 + D3 结算 scan 单遍重构 + D2 appeal 索引 + D6 mapmatch 查询防护，FULL 档；C-01 `f9405d8` / C-02 `91c10c2` / 封盘笔即本批次末笔；TASK-248 补记笔 `5ae9ae9` 与 D 系归档笔 `125a49c` 随本批次统一推送）。
+- **外部 CI 门槛状态**：TASK-249 封盘批次（6 笔：`5ae9ae9` + `125a49c` + `5212bc3` + `f9405d8` + `91c10c2` + 封盘笔）已推送 `origin/main`，CI 外部终验观察中；上一批次 TASK-248 CI run `38790795113` 全绿。
+- **工作树状态**：干净（TASK-249 封盘批次 6 笔已推送；本地无未推送提交）。
+- **当前在途任务数**：`0` 个。
 
 ---
 
 ## 2. 上一会话交付成果
 
 - **刚闭环事项**：
+  1. 落地 **TASK-249**（D 系推荐序 ①②③ 合并——D1 总榜缓存失效联动 + D3 结算 scan 单遍重构 + D2 appeal 待审索引 + D6 mapmatch 候选集查询防护，FULL 档多模块）：
+     - R1（D1）：`LeaderboardService` 注入 `CacheManager` + best-effort `evictOverallCache()`（异常仅 warn），三调用点恰各一次（`applyVerified` credit=true / `rollbackOnRejected` rows==1 / `settleAndReconcile` 纠偏完成），幂等路径不调用；**刻意不引入 @CacheEvict/@Cacheable 代理注解**（ADR-0009 哨兵保持零代理），显式经管理器清 L1+L2——修复「驳回/删除回撤后总榜最长 5min 显示旧里程」一致性盲区；
+     - R2（D3）：结算残留清理重写为单次 `Cursor` try-with-resources 单遍迭代 + 批式 flush，删除 `scanPage()` 启发式——**修复成员 ≥500 时推进判据恒真的不可终止循环（潜伏 P1）**，语义（stale 判据/批 500/pruned/锁边界）逐项保持；
+     - R3（D2）：`appeal` 表补 `KEY idx_status_id (status, id)`（03-verify-db.sql 建表 + 幂等迁移脚本双路径），零 Java 改动；
+     - R4（D6）：`MatchProperties` 新增 `maxQuerySpanMeters=2000`/`maxCandidateEdges=2000`，`fetchCandidates` 自适应中点二分递归（子块并集超集等价），候选超限仅告警严禁 LIMIT 截断；
+     - 改动恰 13 文件白名单全等；后端全模块 rc=0（leaderboard 94→104、mapmatch 26→29，只增不减）+ 前端 61 测 + 契约/token（2011→2014 只增不减）/词面门全过；指导亲核三块 PASS + 独立复核审查官五块全 PASS（零阻断项，N1-N4 非阻断登记，受限口径三项如实登记）；受限声明：多实例 L1 不广播沿单实例口径、D2 收益静态推论、D6 仅 mock 层验证。
   1. 落地 **TASK-248**（B23 覆盖增强——好友榜 15s 本地缓存「空榜不缓存防背锅」机制补齐显式单测断言，MEDIUM 档纯测试新增）：
      - R1 `emptyBoardFromDegradation_isNotCached_secondCallRefreshesOnRecovery`（核心防背锅语义）：`listFriends` 首次 `thenThrow` → 第一调断空榜；沿 `LeaderboardServiceTest` L380 先例以 `doReturn(...).when(...)` 重打桩恢复 → 第二调断非空；`verify(userApi, times(2))` 锁定「降级空榜未进缓存、两次均真实穿透 Feign」——若误去掉 `isEmpty` 判定即断言失败；Pipeline 计数按实际执行路径校正 `times(1)`（首次降级未触达 Pipeline，经用户确认登记 handoff §4）；
      - R2 `emptyBoardFromNoFriends_isNotCached_secondCallPenetratesAgain`：无好友空页（total=0）连续两调均空、`times(2)` 同口径穿透；
@@ -71,7 +77,7 @@
 3. **挂账候选事项**：
    - `TASK-247` 补记笔（CI run `38782194561` 外部终验登记，`c975f24`）已随 TASK-248 封盘批次统一推送（2026-10-16）；
    - `B23 覆盖增强`（好友榜缓存空榜防背锅的显式单测断言）：已封盘 **TASK-248**（2026-10-16，`1ed6f57` / `d7fa60d`，指导亲核 PASS；CI run `38790795113` 全绿，外部终验达成，读数由补记笔登记）；
-   - **D 系新批次候选已归档**（2026-10-16 只读立项侦察产出 8 项，指导侧证据抽查 8/8 坐实，D4 行号订正为 `AuthService.java:418`）：D1 总榜缓存一致性 / D2 appeal 索引 / D3 结算 scan 游标 / D4 KEYS→SCAN / D5 WS Origin 纵深 / D6 mapmatch 候选集上限 / D7 点赞对账分批 / D8 R5 降级告警，详见 `BACKLOG.md` 2026-10-16 批；
+   - **D 系新批次候选**：D1/D2/D3/D6 已封盘 **TASK-249**（2026-10-16，C-01 `f9405d8` / C-02 `91c10c2`，独立复核五块 PASS）；剩余候选 **D4**（改密 KEYS→SCAN）/ **D5**（WS Origin 纵深）/ **D7**（点赞对账分批）/ **D8**（R5 降级告警）为推荐序第 1 位，待用户拍板立项；
    - **CI runner 预警**：GitHub `ubuntu-latest` 将于 2026-10-19 起迁移至 Ubuntu 26（当前 run 已附 deprecation 注解：Node 20 actions 强制跑于 Node 24、`actions/setup-java@v4` 停更），迁移后首个 CI run 需重点观察，若红按环境签名归因登记，不盲目重试刷绿；
    - 申诉审核意见（verify_db）透出限制：受限与 verify-service 红线，当前前台申诉进度条由记录状态推导，结论权威可靠。
 
@@ -79,11 +85,9 @@
 
 ## 4. 当前推进与唯一推荐动作
 
-- **当前推进**：**TASK-249（在途 1）：D 系推荐序 ①②③ 合并——D1 总榜缓存失效联动 + D3 结算 scan 单遍重构 + D2 appeal 索引 + D6 mapmatch 查询防护（FULL 档，已立项，待用户派发实施子agent）**
-  - **唯一推荐动作**：用户亲自派发 TASK-249 实施子agent（任务书 `work/mailbox/tasks/TASK-249/spec.md`，白名单恰 13 文件，FULL 档全量逐位门禁 + 独立复核）；本地 3 笔未推送随本批次统一推送；
-  - **关键设计约束**：D1 禁 @CacheEvict 注解（ADR-0009 哨兵），走构造器注入 CacheManager 手动 evict；D3 定级升级为不可终止循环（潜伏 P1）；D6 严禁 LIMIT 截断；
-  - **关注项**：2026-10-19 `ubuntu-latest` → Ubuntu 26 runner 迁移对 CI 的影响（迁移后首个 run 需重点观察，红则按环境签名归因登记，不盲目重试刷绿）；
-  - **下一候选**：D4+D5+D7+D8 卫生与纵深批（LIGHT），待 TASK-249 封盘后立项。
+- **当前推进**：**无在途任务（TASK-249 已封盘：D 系推荐序 ①②③ 合并治理——D1 总榜缓存失效联动 + D3 结算 scan 单遍重构 + D2 appeal 索引 + D6 mapmatch 查询防护，FULL 档，指导亲核 + 独立复核五块 PASS，终裁 ACCEPT）**
+  - **唯一推荐动作**：观察 TASK-249 封盘批次（6 笔）CI 外部终验结果，绿则收口达成、读数随后续批次补记（沿先例）；本批次为 2026-10-19 `ubuntu-latest` → Ubuntu 26 runner 迁移前的最后批次之一，迁移后首个 run 需重点观察（红则按环境签名归因，不盲目重试刷绿）；
+  - **下一候选**：D4+D5+D7+D8 卫生与纵深批（LIGHT：SCAN 替换 + WS Origin + 点赞对账分批 + R5 降级告警），待用户拍板立项。
 
 
 
