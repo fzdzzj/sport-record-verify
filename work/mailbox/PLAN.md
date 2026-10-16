@@ -580,3 +580,17 @@
 | 是否到达外部门槛 | **已到达**：随封盘批次推送后经 GitHub Actions CI run `38849720261`（HEAD `b0a6cbb`，`web` ✓29s / `build` ✓12m12s）conclusion=success 全 job 绿，外部终验达成（本行由补记笔落库，读数时点 2026-10-16） |
 | 状态 | TASK-250 完整闭环（外部终验达成），指导侧终裁 **ACCEPT 予以封盘** |
 
+## 验收记录：`TASK-251`（E 系批1——认证/鉴权面三处破口治理 E1+E2+E3，FULL 档，2026-10-16）
+
+| 项 | 内容 |
+| --- | --- |
+| 开工基线 | `0af833a`（main 分支，工作树干净，TASK-252 立项笔；串行批1） |
+| C-01 实施笔 | `124c93e` `fix(gateway,user): 网关剥离internal凭证与拒绝internal路径及改密迁出白名单与通知清理收敛ADMIN（TASK-251）`（恰 9 文件，+339/−18） |
+| C-02 任务两件套 | `fd14459` `docs(mailbox): 登记TASK-251实施完成与门禁回填（TASK-251）`（恰 2 文件，占位符回填 `0af833a` + handoff 五节回填） |
+| 任务内容与白名单 | 相对开工基线恰 11 文件 = 9 业务/测试/基建 + 2 台账两件套，与白名单 14 项减去 3 个未触碰条件项（`AuthControllerTest.java` / `web/src/api/client.ts` / `.env.example`（仓内不存在））双向全等；record/verify/leaderboard/mapmatch Java 与测试、common 全 Java、user application.yml、pom.xml、package.json、`scripts/verify/*`、`sql/`、PLAN/HANDOVER 100% 零触碰，零新外部依赖；本地 `.env` 补 INTERNAL_API_TOKEN 一行（未跟踪不入库）；**token 门 3 项各 −1 为课题目标性口径替换（`/api/auth/**` 整段白名单模式、`/actuator/**` 叙述行、README 旧 curl 演示串），经用户显式追认**（SUM 1405→1488 只增、无清零） |
+| 核心实现 | ① R1（E3 通知清理收敛 ADMIN）：网关 admin.paths 追加精确串 `/user/api/notifications/expired` + 服务层 `requireAdmin`（X-Role ≠ ADMIN 或头缺失一律 FORBIDDEN 失败关闭、服务零触达）双层防线；② R2（E2 改密迁出白名单）：whitelist 由 `/api/auth/**` 收窄为 register/login/refresh/logout 四端点精确清单（logout 公开理由：`logout(refresh)` 不读 X-User-Id），change-password 走鉴权分支由网关注入 X-User-Id，`resolveUserId` 零改动即通；前端 client.ts 零改动核实成立；③ R3（E1 internal 凭证剥离+路径拒绝+密钥必填）：入口清理段追加 `headers.remove(HEADER_INTERNAL_TOKEN)` 覆盖全分支（gateway 为 common 零依赖叶子模块，采用包内等值常量 + Javadoc 同步义务注释，偏差⑤追认），`hasInternalPathSegment` 逐段谓词先于白名单/鉴权分支 404 拒绝（不泄露存在性），compose 四消费服务 `${INTERNAL_API_TOKEN:?...}` 必填插值（实测缺键 rc=1 失败关闭），ci.yml Provision 步骤补占位行，README/ADR-0007 补记式订正 |
+| 本机门禁 | 后端全模块 `mvn-verify.sh --mode=offline test` rc=0 BUILD SUCCESS 9/9，surefire 52/71/205/300/182/104/29（gateway 62→71 +9、user 202→205 +3，全仓 986 只增不减）；compose config rc=0 + `--env-file` 缺键实证 rc=1 必填门；前端 type-check rc=0 + 4 文件 61 测全过；**契约门收口态 rc=1 属工具对非 ASCII 路径 `docs/adr/0007-鉴权设计.md` 的提取表达缺口**（判据 A 通过、未声明项恰 1 条，等价判据 `git -c core.quotePath=false diff --name-only 0af833a` 恰 11 条与清单逐行全等，指导侧与复核官双验）；token 门 29 项 `git grep -cF` 基线 1405 → 收口 1488 SUM 只增（3 减项为目标性替换经用户追认，handoff §3.5 逐项登记）；词面门 CI 权威口径零命中 + 探针阳性 rc=0（指导侧亲跑）；`git diff --check` 净、9 改动文件保基线行尾形态无混合 |
+| 指导亲核与裁决 | FULL 档全流程；指导亲核三块 PASS（Git 摘要恰 6 笔 / 高风险抽查：R3 双 remove+先拒绝后白名单+逐段谓词、契约门 CJK 缺口亲验 rc=1 与等价判据 11 条亲跑全等、词面门 CI 口径亲跑零命中解 §6/§3.6 矛盾表述存疑 / 一致性裁决）；token 门 3 项 −1 与「只增不减」硬约束冲突系立项门禁条款设计疏漏，报请用户追认后按授权口径复核；独立复核五块全 PASS（Git 链 / 红线与高风险含二分表亲验、断言零删弱 / 双端门禁全亲跑含 compose 必填门 / 证据链 / 只改清单程序化全等 11=14−3），零阻断项，非阻断 N1-N4（§0 quotePath 陈旧叙述、compose 显式 5 处 vs 叙述四服务、token 29 项清单无追踪定义、token 台账记账粒度 1-2 计数出入——均登记不阻断）；终审裁定 **ACCEPT 予以封盘** |
+| 是否到达外部门槛 | 待观察：封盘批次推送后 CI 外部终验（读数由补记笔落库；`ubuntu-latest` → Ubuntu 26 迁移窗口 2026-10-19 起，红则按签名归因不盲目重试刷绿） |
+| 状态 | TASK-251 本地闭环，指导侧终裁 **ACCEPT 予以封盘**（N1 §0 陈旧叙述已随封盘笔订正） |
+

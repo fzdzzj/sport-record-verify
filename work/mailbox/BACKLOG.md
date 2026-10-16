@@ -79,9 +79,9 @@
 
 | 编号 | 方向 | 依据 | 价值 | 预估档 | 状态 |
 | --- | --- | --- | --- | --- | --- |
-| E1 | 内部接口凭证经网关可达 → 自助提权 | 网关仅清治理头与 X-User-Id/X-Role、从不清 `X-Internal-Token`（AuthGlobalFilter L129-132/229-238）；route-user `StripPrefix=1` 使 `/user/internal/**` 落上游 internal 面（六处「网关无 /internal 路由」书面前提被证伪）；密钥默认字面量 + strict=false 不拒启（InternalApiAuthFilter L43-50）；`/internal/auth/grant-admin` 外部自授 ADMIN，README curl 自证走网关 8080 | 高 | MEDIUM | **进行中 TASK-251（2026-10-16 立项；FULL 档：网关鉴权安全语义禁止降级；指导侧亲验坐实）** |
-| E2 | 自助改密经网关恒 401 主链路不可用 | `/api/auth/**` 白名单分支 stripIdentityHeaders 删 X-User-Id（AuthGlobalFilter L149-151），改密端点强制取该头缺失即 401（AuthController L150-168）→ authEnabled 真假两条路径均失败；测试面自行 addHeader 从不过网关掩盖 | 高 | FULL | **进行中 TASK-251（2026-10-16 立项；FULL 档：auth 主链路；指导侧亲验坐实）** |
-| E3 | 通知清理端点零鉴权跨用户物理删除 | `DELETE /api/notifications/expired` 全控制器唯一不 resolveUserId 不判角色（NotificationController L173-177），mapper 全表 DELETE 无 user_id（L42），治理面清单不含该路径 → 任意 token 可清空全平台已读通知 | 高 | FULL | **进行中 TASK-251（2026-10-16 立项；FULL 档：跨用户数据删除安全语义；指导侧亲验坐实）** |
+| E1 | 内部接口凭证经网关可达 → 自助提权 | 网关仅清治理头与 X-User-Id/X-Role、从不清 `X-Internal-Token`（AuthGlobalFilter L129-132/229-238）；route-user `StripPrefix=1` 使 `/user/internal/**` 落上游 internal 面（六处「网关无 /internal 路由」书面前提被证伪）；密钥默认字面量 + strict=false 不拒启（InternalApiAuthFilter L43-50）；`/internal/auth/grant-admin` 外部自授 ADMIN，README curl 自证走网关 8080 | 高 | MEDIUM | **已封盘 TASK-251（2026-10-16，C-01 `124c93e` / C-02 `fd14459`，独立复核五块 PASS 零阻断，FULL 档终裁 ACCEPT）：网关全分支剥离 X-Internal-Token + internal 路径段 404 拒绝 + compose 密钥必填插值** |
+| E2 | 自助改密经网关恒 401 主链路不可用 | `/api/auth/**` 白名单分支 stripIdentityHeaders 删 X-User-Id（AuthGlobalFilter L149-151），改密端点强制取该头缺失即 401（AuthController L150-168）→ authEnabled 真假两条路径均失败；测试面自行 addHeader 从不过网关掩盖 | 高 | FULL | **已封盘 TASK-251（2026-10-16）：whitelist 收窄为 register/login/refresh/logout 四端点，change-password 走鉴权分支网关注入 X-User-Id，前端零改动核实成立** |
+| E3 | 通知清理端点零鉴权跨用户物理删除 | `DELETE /api/notifications/expired` 全控制器唯一不 resolveUserId 不判角色（NotificationController L173-177），mapper 全表 DELETE 无 user_id（L42），治理面清单不含该路径 → 任意 token 可清空全平台已读通知 | 高 | FULL | **已封盘 TASK-251（2026-10-16）：网关 admin.paths 精确串 + 服务层 requireAdmin 失败关闭双层防线** |
 | E4 | CI runner 迁移预备 ★时间窗硬约束 | 5 个 action 全 node20 代 @v4 被强制跑 Node 24（checkout/setup-java/cache/setup-node ≥v5、upload-artifact ≥v6），ubuntu-latest 2026-10-19 起→Ubuntu 26（逃生开关已下线）；无 workflow_dispatch（无法 dry-run）/concurrency/timeout-minutes；Docker 链三处（compose config/6 镜像构建/Trivy）为迁移红风险面 | 高 | MEDIUM | **进行中 TASK-252（2026-10-16 立项；MEDIUM 档免独立复核，串行第二批 TASK-251 收口后开工；与本机 CI annotations 互证坐实）** |
 | E5 | record 4 个 @Scheduled 共用单线程调度器 | 全仓无 spring.task.scheduling.pool.size 配置走 Boot 默认单线程；archiveSweep 无 initialDelay 启动即占唯一线程（单记录点数无上限），可饿死 5s flush 与对账、compensateStuckVerifying 逐条 Feign 探活进一步阻塞 | 高 | LIGHT | 候选（批3） |
 | E6 | 申诉终判跨服务非原子 record 永久卡 APPEALING | 先提交 appeal→RE_PASSED+outbox（VerifyService L260）后 Feign 回调 record（L282-291），②③④任一失败即写偏斜；重试被 3006 拒绝、reconcileCallback 只补 VERIFYING/MANUAL_REVIEW 不含 APPEALING，无补偿路径 | 高 | MEDIUM | 候选（批3） |
@@ -115,7 +115,7 @@
 > E 系诚实声明：◎ 标注为侦察代理行号级证据未经二次复核（立项前须复验，尤其 E13/E14/E17/E26/E29 需 EXPLAIN/真实库/真实网关复验，E16 需实测 Sentinel 库回调语义）；Nacos 运行时配置全部未核（影响 E15 适用性与 E16/E17 触发前提）；未启动任何服务，全部结论为静态阅读；E7/E17/E30 触发概率未量化；warehouse DDL 实况、api 枚举与 TINYINT 码位、Feign Fallback 分支、gateway/common IT 盲区、STOMP 越权订阅运行态均未核。
 
 推荐序（E 系批次建议）：
-1. **批1 已立项 TASK-251（FULL 档，先行执行）**：E1+E2+E3 认证/鉴权面三处破口——网关 internal 凭证剥离+路径拒绝、改密迁出白名单、通知清理收敛 ADMIN；共用网关/通知面测试基座；
+1. **批1 已封盘 TASK-251（FULL 档，2026-10-16）**：E1+E2+E3 认证/鉴权面三处破口已收口（C-01 `124c93e` / C-02 `fd14459`，独立复核五块 PASS 零阻断，终裁 ACCEPT，CI 观察中）；
 2. **批2 已立项 TASK-252（MEDIUM 档，串行第二批）**：E4+E31 CI runner 迁移预备——钉 ubuntu-24.04 + actions 升 Node 24 代 + workflow_dispatch/probe-ubuntu26 试跑通道 + concurrency/timeout + trivyignore 治理；**开工前提：TASK-251 完整收口（含 CI 绿）**；受 2026-10-19 ubuntu-latest→Ubuntu 26 开窗硬约束；
 3. **批3（数据一致性，待立项）**：E5（LIGHT 一行配置低风险开场）+E6+E7（共用并发/失败注入测试基座；E7 立项前需并发复验）+E9（纯 SQL 可并行）；
 4. **批4（纵深与测试债，待立项）**：4a 配置与性能（E10/E11/E12/E16/E17/E21/E23/E24/E27/E29）、4b 测试与可观测（E8/E13/E14/E15/E18/E19/E20/E22/E25/E26/E28/E30）；◎ 标注项立项前需 EXPLAIN/真实库/真实网关复验再定级。

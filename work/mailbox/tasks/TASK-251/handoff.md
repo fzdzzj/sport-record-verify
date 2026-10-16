@@ -3,14 +3,14 @@
 > **TASK**：E 系批1——认证/鉴权面三处破口治理（E1 internal 凭证经网关可达 + E2 改密经网关恒 401 + E3 通知清理端点零鉴权，FULL 档）
 > **开工基线**：`0af833a`（main HEAD = TASK-252 立项笔 `0af833ace3a6e6bfc0bb115aeac3ad7263d6463e`；开工时 `git status --porcelain` 空）
 > **方案**：2026-10-16 E 系只读立项侦察产出，用户拍板批1（E1+E2+E3）FULL 档，与批2（TASK-252）串行执行、批1先行
-> **状态**：已实施（R1/R2/R3 三判别式全落地，七门禁全过，待独立复核）
+> **状态**：已封盘（独立复核五块全 PASS 零阻断、非阻断 N1-N4 登记，指导侧终裁 **ACCEPT 予以封盘**，2026-10-16；CI 外部终验读数由补记笔落库）
 
 ## 0. 时点与复现须知
 
 本台账与 spec 均为 **LF、无 BOM、单末尾换行**（仓内台账惯例）。两笔落库后**工作树干净**（`git status --porcelain` 空）。
 
-- **复现路径读数须关 git 路径引号转义**：本课题改动集含非 ASCII 路径 `docs/adr/0007-鉴权设计.md`，而 git 默认 `core.quotePath=true` 会把 `git diff --name-only` 的该行输出为八进制转义 + 双引号形态，使 `scripts/verify/mailbox-contract.sh` 提取到的 token 与清单里的 UTF-8 路径字面不等（该工具的正则只取 `[A-Za-z0-9_./-]`）。故本机已设仓库级 `git config core.quotePath false`（**仅 `.git/config` 本地配置，非仓内文件、不在改动集内**），契约门即 rc=0；等价复现命令：`git -c core.quotePath=false diff --name-only 0af833a`（输出恰 11 条、含该路径原文）。
-- **未推送**：两笔仅本机提交，不含 push/PR。
+- **复现路径读数须关 git 路径引号转义**：本课题改动集含非 ASCII 路径 `docs/adr/0007-鉴权设计.md`，而 git 默认 `core.quotePath=true` 会把 `git diff --name-only` 的该行输出为八进制转义 + 双引号形态，使 `scripts/verify/mailbox-contract.sh` 提取到的 token 与清单里的 UTF-8 路径字面不等（该工具的正则只取 `[A-Za-z0-9_./-]`）。曾临时设仓库级 `git config core.quotePath false` 复跑验证（仅 `.git/config` 本地配置，非仓内文件、不在改动集内），**该配置已回退**——收口态实测 `git config --get core.quotePath` 为空、契约门 rc=1（该配置仅修复 ACTUAL 侧转义 token 形态，提取正则的 ASCII 字符类缺口依旧，见 §6 阻断说明）；等价复现命令：`git -c core.quotePath=false diff --name-only 0af833a`（输出恰 11 条、含该路径原文）。（本条曾误述为「已设该配置且契约门 rc=0」，系 C-01 时点陈旧叙述，经独立复核 N1 指正随封盘笔订正，2026-10-16）
+- **未推送（收口时点如实记录）**：实施侧两笔仅本机提交，不含 push/PR；封盘批次推送由指导侧随封盘笔执行（见 HANDOVER §1）。
 
 ## 1. 实施摘要
 
