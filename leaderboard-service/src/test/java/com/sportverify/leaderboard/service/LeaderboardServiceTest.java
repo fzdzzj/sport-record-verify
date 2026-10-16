@@ -49,6 +49,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyDouble;
 import static org.mockito.ArgumentMatchers.anyInt;
+import static org.mockito.ArgumentMatchers.anyList;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.argThat;
@@ -1049,5 +1050,104 @@ class LeaderboardServiceTest {
             return 0L;
         }).when(zSetOps).remove(anyString(), any(Object[].class));
         return removed;
+    }
+
+    // ==================== R3/E7 结算 ZREM 二次复核（TASK-253） ====================
+
+    /** ① 候选复核时已在 DB（结算 SELECT 后、scan 期间新入榜）→ 保留不 ZREM */
+    @Test
+    void settleAndReconcile_staleCandidateFoundInDb_keptNotZrem() {
+        UserMileage m = new UserMileage();
+        m.setUserId(100L);
+        m.setTotalDistance(new BigDecimal("42.50"));
+        when(contributionMapper.selectActiveSummaries(ContributionStatus.ACTIVE.getCode()))
+                .thenReturn(List.of(m));
+        Cursor<TypedTuple<String>> cur = cursor(new LinkedHashSet<>(tuples("100", 42.5, "999", 30.0)));
+        when(zSetOps.scan(anyString(), any(ScanOptions.class))).thenReturn(cur);
+        // 复核命中：999 的 ACTIVE 贡献行已在 DB 落定（applyVerified 先写 DB 后 ZINCRBY）
+        when(contributionMapper.selectActiveUserIds(eq(ContributionStatus.ACTIVE.getCode()), anyList()))
+                .thenReturn(List.of(999L));
+        List<String> removed = recordRemovedMembers();
+
+        service.settleAndReconcile();
+
+        // 复核命中 → 保留：零 ZREM（不误删竞态窗口内新入榜成员）
+        assertTrue(removed.isEmpty());
+        verify(contributionMapper).selectActiveUserIds(eq(ContributionStatus.ACTIVE.getCode()),
+                eq(List.of(999L)));
+    }
+
+    /** ② 复核仍缺（真残留）→ ZREM 执行，清理计数正确 */
+    @Test
+    void settleAndReconcile_staleStillMissing_zremWithCorrectCount() {
+        when(contributionMapper.selectActiveSummaries(ContributionStatus.ACTIVE.getCode()))
+                .thenReturn(List.of());
+        Cursor<TypedTuple<String>> cur = cursor(new LinkedHashSet<>(tuples("999", 30.0, "888", 20.0)));
+        when(zSetOps.scan(anyString(), any(ScanOptions.class))).thenReturn(cur);
+        // 复核仍缺：DB 无任何 ACTIVE 行 → 全部是真残留
+        when(contributionMapper.selectActiveUserIds(eq(ContributionStatus.ACTIVE.getCode()), anyList()))
+                .thenReturn(List.of());
+        List<String> removed = recordRemovedMembers();
+
+        service.settleAndReconcile();
+
+        assertEquals(2, removed.size());
+        assertEquals(2, removed.stream().distinct().count());
+        verify(zSetOps).remove(LeaderboardService.OVERALL_ZSET_KEY, "999", "888");
+    }
+
+    /** ③ 复核查询异常 → 保守跳过本批 ZREM（宁漏删不误删），其余结算步骤照常 */
+    @Test
+    void settleAndReconcile_recheckException_skipsBatchZrem() {
+        when(contributionMapper.selectActiveSummaries(ContributionStatus.ACTIVE.getCode()))
+                .thenReturn(List.of());
+        Cursor<TypedTuple<String>> cur = cursor(new LinkedHashSet<>(tuples("999", 30.0)));
+        when(zSetOps.scan(anyString(), any(ScanOptions.class))).thenReturn(cur);
+        when(contributionMapper.selectActiveUserIds(eq(ContributionStatus.ACTIVE.getCode()), anyList()))
+                .thenThrow(new RuntimeException("DB 抖动"));
+
+        service.settleAndReconcile();
+
+        // 零 ZREM（漏删者下轮收敛）
+        verify(zSetOps, never()).remove(anyString(), any(Object[].class));
+        // 其余结算步骤照常：容量截断 / 报表写入
+        verify(zSetOps).removeRange(eq(LeaderboardService.OVERALL_ZSET_KEY), eq(0L), anyLong());
+        verify(dailySummaryMapper).upsertFromActiveContributions(ContributionStatus.ACTIVE.getCode());
+    }
+
+    /** ④ 二次复核启用下，孤儿回滚 / 汇总覆盖 / 容量截断 / settled 标记 / 报表断言全保持 */
+    @Test
+    void settleAndReconcile_recheckKeepsOrphanAndReportChain() {
+        UserMileage orphan = new UserMileage();
+        orphan.setUserId(200L);
+        orphan.setRecordId(500L);
+        orphan.setTotalDistance(new BigDecimal("18.00"));
+        when(contributionMapper.selectOrphanContributions(ContributionStatus.ACTIVE.getCode()))
+                .thenReturn(List.of(orphan));
+        UserMileage m = new UserMileage();
+        m.setUserId(100L);
+        m.setTotalDistance(new BigDecimal("42.50"));
+        when(contributionMapper.selectActiveSummaries(ContributionStatus.ACTIVE.getCode()))
+                .thenReturn(List.of(m));
+        Cursor<TypedTuple<String>> cur = cursor(new LinkedHashSet<>(tuples("100", 42.5, "999", 30.0)));
+        when(zSetOps.scan(anyString(), any(ScanOptions.class))).thenReturn(cur);
+        // 999 复核仍缺 → 出榜；100 在 target 不入 stale
+        when(contributionMapper.selectActiveUserIds(eq(ContributionStatus.ACTIVE.getCode()), anyList()))
+                .thenReturn(List.of());
+
+        service.settleAndReconcile();
+
+        // 孤儿回滚 + 汇总覆盖（仅 100，不含孤儿 200）+ 残留清理（999）+ 截断 + settled + 报表
+        verify(contributionMapper).updateStatus(500L,
+                ContributionStatus.ACTIVE.getCode(),
+                ContributionStatus.ROLLED_BACK.getCode());
+        verify(zSetOps).add(eq(LeaderboardService.OVERALL_ZSET_KEY),
+                argThat((Set<TypedTuple<String>> set) -> set.size() == 1
+                        && set.iterator().next().getValue().equals("100")));
+        verify(zSetOps).remove(LeaderboardService.OVERALL_ZSET_KEY, "999");
+        verify(zSetOps).removeRange(eq(LeaderboardService.OVERALL_ZSET_KEY), eq(0L), anyLong());
+        verify(contributionMapper).markSettled(eq(ContributionStatus.ACTIVE.getCode()),
+                any(LocalDateTime.class));
+        verify(dailySummaryMapper).upsertFromActiveContributions(ContributionStatus.ACTIVE.getCode());
     }
 }

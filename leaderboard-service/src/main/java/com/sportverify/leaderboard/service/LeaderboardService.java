@@ -32,6 +32,7 @@ import java.nio.charset.StandardCharsets;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
@@ -441,7 +442,9 @@ public class LeaderboardService {
      *   <li>批量为 ACTIVE 行盖 settled_at（快照口径）。</li>
      * </ol>
      *
-     * <p>已知权衡：结算期间并发的事件消费增量会被下一轮结算覆盖收敛
+     * <p>已知权衡（TASK-253 R3/E7 收窄）：结算期间并发的事件消费增量经 ZREM 二次复核保住——
+     * scan 候选在出榜前以贡献表复核，仍缺 ACTIVE 贡献才 ZREM，竞态窗口由结算期（秒级）
+     * 收窄为复核 SELECT 与 ZREM 之间（毫秒级）；窗口内残余仍由下一轮结算覆盖收敛
      * （汇总 SELECT 与 ZADD 之间无全局锁）——这正是「最终一致」的定义；
      * Redis 键整体丢失也由本任务从 contribution 重建（自愈）。</p>
      */
@@ -558,17 +561,40 @@ public class LeaderboardService {
         }
     }
 
-    /** B18：累积的残留成员分批 ZREM 出榜，返回已移除条数 */
+    /**
+     * B18/D3 + TASK-253 R3/E7：残留成员分批出榜前先经贡献表二次复核——
+     * 仍缺 ACTIVE 贡献者才 ZREM，复核命中者保留（结算 SELECT 后、scan 期间新入榜的成员
+     * DB 必已落行——{@code applyVerified} 先写 DB 后 ZINCRBY——复核可保住主竞态窗口，
+     * 避免成员掉榜至下一轮才收敛）；复核查询异常 → 保守跳过本批 ZREM
+     * （宁漏删不误删，漏删者下轮收敛）。返回已移除条数。
+     */
     private int flushStale(List<String> staleBatch) {
         if (staleBatch.isEmpty()) {
             return 0;
         }
-        Object[] batch = new String[staleBatch.size()];
-        staleBatch.toArray(batch);
-        stringRedisTemplate.opsForZSet().remove(OVERALL_ZSET_KEY, batch);
-        int n = staleBatch.size();
-        staleBatch.clear();
-        return n;
+        try {
+            List<Long> candidateIds = staleBatch.stream().map(Long::valueOf).toList();
+            List<Long> activeIds = contributionMapper.selectActiveUserIds(
+                    ContributionStatus.ACTIVE.getCode(), candidateIds);
+            Set<Long> active = new HashSet<>(activeIds == null ? List.of() : activeIds);
+            List<String> stillStale = staleBatch.stream()
+                    .filter(id -> !active.contains(Long.valueOf(id)))
+                    .toList();
+            if (stillStale.isEmpty()) {
+                staleBatch.clear();
+                return 0;
+            }
+            Object[] batch = stillStale.toArray(new String[0]);
+            stringRedisTemplate.opsForZSet().remove(OVERALL_ZSET_KEY, batch);
+            int n = stillStale.size();
+            staleBatch.clear();
+            return n;
+        } catch (Exception e) {
+            // 复核查询异常（DB 抖动等）：保守跳过本批 ZREM，宁漏删不误删，漏删者下轮收敛
+            log.warn("结算 ZREM 二次复核查询异常，保守跳过本批清理：batchSize={}", staleBatch.size(), e);
+            staleBatch.clear();
+            return 0;
+        }
     }
 
     // ==================== 每日报表只读查询 ====================

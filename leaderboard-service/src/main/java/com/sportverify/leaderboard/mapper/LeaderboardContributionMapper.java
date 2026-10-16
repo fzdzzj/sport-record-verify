@@ -100,6 +100,28 @@ public interface LeaderboardContributionMapper extends BaseMapper<LeaderboardCon
                                            @Param("size") int size);
 
     /**
+     * 结算 ZREM 二次复核（TASK-253 R3/E7）：批量确认候选成员当前是否仍有 ACTIVE 贡献行。
+     *
+     * <p>背景：{@code settleAndReconcile} 以 {@link #selectActiveSummaries} 采 DB target 后 scan
+     * ZSet 比对，对「target 缺失」成员批式 ZREM；竞态窗口内 {@code applyVerified}（先写 DB 后
+     * ZINCRBY）新入榜的成员 DB 必已落行——复核命中者不得被 ZREM 误删（掉榜至下一轮才收敛），
+     * 仍缺失者才是真残留。IN 构造沿仓内既有 {@code <script>}/{@code foreach} 注解模式。</p>
+     *
+     * @param status  ACTIVE 状态码
+     * @param userIds 待复核候选（ZSet 成员，非空；调用方保证）
+     * @return 当前仍有 ACTIVE 贡献的用户 id 集合（DISTINCT，去重）
+     */
+    @Select("<script>" +
+            "SELECT DISTINCT user_id FROM leaderboard_contribution " +
+            "WHERE status = #{status} AND user_id IN " +
+            "<foreach collection='list' item='userId' open='(' separator=',' close=')'>" +
+            "#{userId}" +
+            "</foreach>" +
+            "</script>")
+    List<Long> selectActiveUserIds(@Param("status") Integer status,
+                                   @Param("list") java.util.Collection<Long> userIds);
+
+    /**
      * 结算对账聚合行（user_id + 累计 pass 里程），列别名与属性对齐映射。
      */
     class UserMileage {
