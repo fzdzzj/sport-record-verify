@@ -622,3 +622,17 @@
 | 是否到达外部门槛 | **已到达**：随封盘批次推送后经 GitHub Actions CI run `38879776160`（HEAD `d791b7a`，`web` ✓27s / `build` ✓11m15s）conclusion=success 全 job 绿，外部终验达成（本行由补记笔落库，读数时点 2026-10-16；**probe-ubuntu26 job skipped = workflow_dispatch if 门禁正确生效旁证**——非 dispatch 触发的常规 push 不跑 probe） |
 | 状态 | TASK-253 完整闭环（外部终验达成），指导侧终裁 **ACCEPT 予以封盘**（实施回报 / 指导亲核 / 独立复核三方闭环一致） |
 
+## 验收记录：`TASK-254`（E 系批4a-1——网关与高危簇 E10+E11+E12+E16+两顺手项，FULL 档，2026-10-16）
+
+| 项 | 内容 |
+| --- | --- |
+| 开工基线 | `9ce65b7`（main 分支 TASK-254 立项笔，工作树干净；本地领先含 TASK-253 补记笔 `8c8e631`，随本封盘批次统一推送） |
+| C-01 实施笔 | `342bd9a` `fix(gateway,verify,record): 网关HTTP客户端超时与Sentinel空集护栏及规则快照校验与引擎隔离和likes批量上限与顺手项订正（TASK-254）`（恰 13 文件 +334/−14，1 新增 12 改） |
+| C-02 任务两件套 | `fb34665` `docs(mailbox): 登记TASK-254实施完成与门禁回填（TASK-254）`（spec/handoff 回填：头部占位符回填 `9ce65b7` + handoff §1-§7 含 §6 契约门阻断说明；收口最终 HEAD） |
+| 任务内容与白名单 | 相对开工基线恰 15 文件与白名单双向全等（工具判据 + 等价判据双通道：契约门判据 B 因 `docs/项目速览手册.md` CJK 路径提取缺口 rc=1 恰 1 条未声明——TASK-251 N1 同型，`git -c core.quotePath=false diff --name-only 9ce65b7` 恰 15 条逐行全等）；零触碰面 LikeController/VerifyProperties/RuleVersionCreateRequest/RuleVersionController/AuthGlobalFilter/api/common/全部 pom/web/scripts/verify/scripts/db/sql/.github/三看板 100% 未动 |
+| 核心实现 | ① R1（E10）：gateway yml `spring.cloud.gateway.httpclient` 段 connect-timeout 3000 / response-timeout 10s + `GatewayProbeTest.httpclientTimeoutsConfigured` 资源断言；② R2（E11 前半）：`RuleVersionService.createVersion` 入口 `validateSnapshotRules` 程序化校验（vDrift>0 + legacy r1-r4 与 bySportType 同套 + R5 全套，违规抛 BizException(RULE_VERSION_CONFLICT) 含字段路径与实际值，rules=null 行为不变），VerifyProperties/DTO/Controller 零改动；③ R3（E11 后半）：`VerifyEngine` 规则链 per-rule try/catch（log.error 含规则类名+摘要+堆栈后跳过，聚合不受影响，fail-open 权衡由 R2 前置校验+告警补偿）；④ R4（E12）：`getLikesBatch` 入口去重前 size>50 拒绝式 BizException(SPORT_TYPE_INVALID)（record 域既有码，common 零触碰不可加码），50 推定值未改；⑤ R5（E16）：`toGatewayFlowRules` 空列表 → log.warn + return null（沿解析失败「保持上一版」语义，可见性 private→包私有 C-02 登记）+ 新建 `SentinelGatewayRuleConfigTest` 三用例；⑥ R6 顺手项：RecordLikeMapper L64/L73 Javadoc 订正键集分页游标口径 + healthcheck.sh internal 两行改公开只读路由 + 速览手册 L77/L197/L198 同款订正 |
+| 本机门禁 | 后端全模块 offline test rc=0（surefire common 52 / gateway 75 / user 205 / record 302 / verify 195 / leaderboard 108 / mapmatch 29——gateway 71→75 +4、record 300→302 +2、verify 188→195 +7 只增不减）；compose config -q rc=0；前端 type-check 0 错 + 4 文件 61 测全绿；契约门 `--open=TASK-254 --baseline=9ce65b7` 判据 A 过 / 判据 B rc=1 恰 1 条 CJK 路径（工具缺口，等价判据 15 条全等）；token 门 29 项逐位持平无一减少（SUM 口径差异登记 N2：实施侧行命中 1989 / 复核侧文件出现次数 2017，红线一致）；词面门 ZERO_HIT + 探针阳性对照；`git diff --check` 净 + 双笔 `git show --check` 净，新文件纯 LF + 完整末尾换行 |
+| 指导亲核与独立复核 | FULL 档双环节全 PASS：指导亲核三块（①Git 摘要：porcelain 空、提交链正确、本地领先恰 4 笔、C-01 13 文件 +334/−14 对上白名单、累积 diff 15 条；②高风险定向抽查 2 处：VerifyEngine per-rule try/catch 恰围 rule.evaluate + Sentinel 空集护栏 warn+null 与解析失败同语义；③回报一致性裁决：测试增量算术吻合、契约门 rc=1 归因与 TASK-251 N1 同型、两偏差授权链齐备，零矛盾）；独立复核子agent五块全 PASS（Git 状态与提交链 / 红线抽查零触碰面全零 diff 含行尾 / 双端门禁 7 门全量复跑逐位一致 / 证据链五处定向抽查与 D1-D3 授权链核对 / 只改清单 15 项双向全等双通道），零阻断项，N1-N3 非阻断登记（N1 任务书两处零触碰面路径描述性笔误（filter/AuthGlobalFilter→auth/、model/VerifyProperties→config/）实存均零 diff、N2 token SUM 计数口径差异建议后续统一、N3 契约门 CJK 工具缺口确认沿 TASK-251 N1 处置），只读自证 `git status --porcelain` 空 |
+| 是否到达外部门槛 | **未到达**：封盘批次（5 笔：TASK-253 补记笔 `8c8e631` + TASK-254 立项笔 `9ce65b7` + C-01 `342bd9a` + C-02 `fb34665` + 封盘笔）推送后待 GitHub Actions CI 权威核验（conclusion=success 全 job 绿方达外部终验；本行由补记笔翻转，读数时点以补记笔为准） |
+| 状态 | TASK-254 已终裁 ACCEPT 予以封盘（实施回报 / 指导亲核 / 独立复核三方闭环一致；外部 CI 终验进行中，读数由补记笔落库） |
+
