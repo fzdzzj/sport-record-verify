@@ -27,6 +27,8 @@ import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyInt;
+import static org.mockito.ArgumentMatchers.anyList;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.doReturn;
@@ -107,17 +109,18 @@ class RecordLikeServiceTraceIdTest {
         assertNull(TraceIds.current(), "异常传播时出口 finally 必须清理 MDC");
     }
 
-    /** 对账轮内 MDC traceId 非空（权威源查询调用点实测），出口 finally 清理。 */
+    /** 对账轮内 MDC traceId 非空（分页第一段权威源查询调用点实测），出口 finally 清理。 */
     @Test
     void reconcile_mdcNonEmptyDuringSummaryRead_andClearedAfter() {
         RecordLike pair = new RecordLike();
         pair.setRecordId(1L);
         pair.setUserId(100L);
         AtomicReference<String> seenDuringRead = new AtomicReference<>();
-        when(recordLikeMapper.selectRecordLikePairs()).thenAnswer(inv -> {
+        when(recordLikeMapper.selectDistinctRecordIdsAfter(anyLong(), anyInt())).thenAnswer(inv -> {
             seenDuringRead.set(TraceIds.current());
-            return List.of(pair);
+            return List.of(1L);
         });
+        when(recordLikeMapper.selectPairsByRecordIds(anyList())).thenReturn(List.of(pair));
 
         service.reconcileLikeCounts();
 
@@ -129,7 +132,7 @@ class RecordLikeServiceTraceIdTest {
     /** 对账权威源查询抛错（异常传播路径）：出口 finally 仍清理 MDC。 */
     @Test
     void reconcile_mapperThrows_mdcStillCleared() {
-        when(recordLikeMapper.selectRecordLikePairs())
+        when(recordLikeMapper.selectDistinctRecordIdsAfter(anyLong(), anyInt()))
                 .thenThrow(new RuntimeException("db down"));
 
         assertThrows(RuntimeException.class, () -> service.reconcileLikeCounts());

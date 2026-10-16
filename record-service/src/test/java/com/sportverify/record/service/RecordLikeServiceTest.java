@@ -13,6 +13,7 @@ import com.sportverify.record.mq.LikeEventProducer;
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.mockito.ArgumentCaptor;
 import org.redisson.api.RLock;
 import org.redisson.api.RedissonClient;
 import org.springframework.data.redis.core.ListOperations;
@@ -25,6 +26,7 @@ import org.springframework.transaction.TransactionDefinition;
 import org.springframework.transaction.TransactionStatus;
 import org.springframework.transaction.support.SimpleTransactionStatus;
 
+import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.TimeUnit;
 
@@ -33,6 +35,8 @@ import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyInt;
+import static org.mockito.ArgumentMatchers.anyList;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
@@ -447,30 +451,75 @@ class RecordLikeServiceTest {
     // ==================== 对账纠偏（最终一致） ====================
 
     /**
-     * 规范差异「对账纠偏」判别式：一次批量取全表 (record_id, user_id)，内存分组后写 Redis。
-     * 旧 N+1 实现对每条 record 调一次 selectUserIdsByRecordId（两条记录 = 2 次）；
-     * 改后逐 record 查询为 0 次、批量查询恰 1 次，且 Redis 纠正结果与原逐条实现一致。
+     * 规范差异「对账纠偏」判别式：键集分页第一段取 distinct record_id、第二段按批 IN 取完整 pairs，
+     * 内存分组后写 Redis。旧全表单查（selectRecordLikePairs）与逐 record 成员查询均为 0 次，
+     * 分页两段各恰 1 次，且 Redis 纠正结果与原实现一致。
      */
     @Test
     void reconcile_singleBatchQuery_fixesRedisFromDb() {
-        // 批量查询打桩（改后的唯一数据源）
-        when(recordLikeMapper.selectRecordLikePairs()).thenReturn(List.of(
+        // 分页第一段：单批返回全部 distinct record_id（2 < 批量上限 500 → 本轮完成）
+        when(recordLikeMapper.selectDistinctRecordIdsAfter(0L, 500)).thenReturn(List.of(1L, 2L));
+        // 分页第二段：按批 IN 取完整 pairs
+        when(recordLikeMapper.selectPairsByRecordIds(List.of(1L, 2L))).thenReturn(List.of(
                 likeRow(1L, 100L), likeRow(1L, 101L), likeRow(2L, 200L)));
-        // 旧 N+1 路径打桩：仅为让基线实现完整走一遍逐 record 查询，
-        // 使红相呈现「selectUserIdsByRecordId 被调 2 次」；改后这些打桩不再被使用（宽松模式无害）
-        when(recordLikeMapper.selectDistinctRecordIds()).thenReturn(List.of(1L, 2L));
-        when(recordLikeMapper.selectUserIdsByRecordId(1L)).thenReturn(List.of(100L, 101L));
-        when(recordLikeMapper.selectUserIdsByRecordId(2L)).thenReturn(List.of());
 
         service.reconcileLikeCounts();
 
-        // 判别式：逐 record 成员查询 0 次（旧实现为每条 record 一次）、DISTINCT 扫描 0 次、批量查询恰 1 次
+        // 判别式：分页两段各恰 1 次；旧全表单查、DISTINCT 全扫、逐 record 成员查询均 0 次
+        verify(recordLikeMapper, never()).selectRecordLikePairs();
         verify(recordLikeMapper, never()).selectUserIdsByRecordId(anyLong());
         verify(recordLikeMapper, never()).selectDistinctRecordIds();
-        verify(recordLikeMapper, times(1)).selectRecordLikePairs();
+        verify(recordLikeMapper, times(1)).selectDistinctRecordIdsAfter(0L, 500);
+        verify(recordLikeMapper, times(1)).selectPairsByRecordIds(List.of(1L, 2L));
         // pipeline 提交验证（TASK-180：对账 Redis 往返 pipeline 化分批提交）
         verify(redis, atLeastOnce()).executePipelined(
                 any(RedisCallback.class));
+    }
+
+    /** 多批分页：游标按本批最大 record_id 严格推进，两批各 1 次 IN 查询，合并纠偏正确 */
+    @Test
+    void reconcile_multiBatch_advancesCursorAndMergesCorrectly() {
+        // 第一批满批（500 条）触发继续；第二批短批（2 条）结束
+        List<Long> batch1 = new ArrayList<>();
+        for (long id = 1L; id <= 500L; id++) {
+            batch1.add(id);
+        }
+        List<Long> batch2 = List.of(501L, 502L);
+        when(recordLikeMapper.selectDistinctRecordIdsAfter(0L, 500)).thenReturn(batch1);
+        when(recordLikeMapper.selectDistinctRecordIdsAfter(500L, 500)).thenReturn(batch2);
+
+        List<RecordLike> pairs1 = new ArrayList<>();
+        for (Long id : batch1) {
+            pairs1.add(likeRow(id, 1L));
+        }
+        when(recordLikeMapper.selectPairsByRecordIds(batch1)).thenReturn(pairs1);
+        when(recordLikeMapper.selectPairsByRecordIds(batch2)).thenReturn(List.of(
+                likeRow(501L, 1L), likeRow(501L, 2L), likeRow(502L, 7L)));
+
+        service.reconcileLikeCounts();
+
+        // 游标推进参数序列：0 → 500（本批最大 record_id），无跨页劈裂
+        ArgumentCaptor<Long> cursor = ArgumentCaptor.forClass(Long.class);
+        verify(recordLikeMapper, times(2)).selectDistinctRecordIdsAfter(cursor.capture(), eq(500));
+        assertEquals(List.of(0L, 500L), cursor.getAllValues(), "游标应按本批最大 record_id 严格推进");
+        // 两批各 1 次 IN 查询
+        verify(recordLikeMapper, times(2)).selectPairsByRecordIds(anyList());
+        verify(recordLikeMapper, never()).selectRecordLikePairs();
+        verify(redis, atLeastOnce()).executePipelined(any(RedisCallback.class));
+    }
+
+    /** 空表分页：首查空批 → 零 IN 查询、零 Redis 写（不产生任何纠偏命令） */
+    @Test
+    void reconcile_emptyTable_noInQueryNoRedisWrite() {
+        when(recordLikeMapper.selectDistinctRecordIdsAfter(0L, 500)).thenReturn(List.of());
+
+        service.reconcileLikeCounts();
+
+        verify(recordLikeMapper, times(1)).selectDistinctRecordIdsAfter(0L, 500);
+        verify(recordLikeMapper, never()).selectPairsByRecordIds(anyList());
+        verify(recordLikeMapper, never()).selectRecordLikePairs();
+        verify(redis, never()).executePipelined(any(RedisCallback.class));
+        verify(valueOps, never()).set(anyString(), anyString());
     }
 
     /** 对账锁未获取 → 本轮跳过：不扫描、不写 Redis（多实例防重语义保持） */
@@ -480,7 +529,8 @@ class RecordLikeServiceTest {
 
         service.reconcileLikeCounts();
 
-        verify(recordLikeMapper, never()).selectRecordLikePairs();
+        verify(recordLikeMapper, never()).selectDistinctRecordIdsAfter(anyLong(), anyInt());
+        verify(recordLikeMapper, never()).selectPairsByRecordIds(anyList());
         verify(valueOps, never()).set(anyString(), anyString());
         verify(lock, never()).unlock();
     }

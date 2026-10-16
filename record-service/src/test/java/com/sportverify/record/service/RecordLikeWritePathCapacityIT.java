@@ -508,8 +508,9 @@ class RecordLikeWritePathCapacityIT {
         long heapAfter = usedHeapBytes();
 
         List<Event> events = recorder.snapshot();
-        PairsPayload pairs = null;
-        long loadNanos = -1;
+        long pairsLoaded = 0;
+        long distinctRecords = 0;
+        long loadNanos = 0;
         long setCount = 0;
         long setNanos = 0;
         long deleteCount = 0;
@@ -519,9 +520,11 @@ class RecordLikeWritePathCapacityIT {
         long saddMembers = 0;
         for (Event e : events) {
             switch (e.type()) {
-                case "mapper.selectRecordLikePairs" -> {
-                    pairs = (PairsPayload) e.payload();
-                    loadNanos = e.durNanos();
+                case "mapper.selectPairsByRecordIds" -> {
+                    PairsPayload p = (PairsPayload) e.payload();
+                    pairsLoaded += p.size();
+                    distinctRecords += p.distinctRecords();
+                    loadNanos += e.durNanos();
                 }
                 case "value.set" -> {
                     setCount++;
@@ -542,9 +545,7 @@ class RecordLikeWritePathCapacityIT {
                 }
             }
         }
-        long pairsLoaded = pairs == null ? -1 : pairs.size();
-        long distinctRecords = pairs == null ? -1 : pairs.distinctRecords();
-        double loadMs = pairs == null ? -1 : ms(loadNanos);
+        double loadMs = ms(loadNanos);
 
         List<Map<String, Object>> samples = new ArrayList<>();
         boolean samplesOk = true;
@@ -728,12 +729,15 @@ class RecordLikeWritePathCapacityIT {
                         case "batchInsertIgnore", "batchDelete" ->
                                 rec.note("mapper." + method.getName(), start, end,
                                         new AffectedPayload(((List<?>) args[0]).size(), (Integer) result));
-                        case "selectRecordLikePairs" -> {
+                        case "selectDistinctRecordIdsAfter" ->
+                                rec.note("mapper.selectDistinctRecordIdsAfter", start, end,
+                                        new DistinctPayload(((List<?>) result).size()));
+                        case "selectPairsByRecordIds", "selectRecordLikePairs" -> {
                             List<?> pairs = (List<?>) result;
                             long distinct = pairs.stream()
                                     .map(l -> ((RecordLike) l).getRecordId())
                                     .distinct().count();
-                            rec.note("mapper.selectRecordLikePairs", start, end,
+                            rec.note("mapper." + method.getName(), start, end,
                                     new PairsPayload(pairs.size(), distinct));
                         }
                         default -> rec.note("mapper." + method.getName(), start, end, null);
@@ -891,6 +895,9 @@ class RecordLikeWritePathCapacityIT {
     }
 
     private record PairsPayload(long size, long distinctRecords) {
+    }
+
+    private record DistinctPayload(int size) {
     }
 
     private record SeedPair(long recordId, long userId, String action) {

@@ -15,12 +15,15 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.dao.DuplicateKeyException;
+import org.springframework.data.redis.core.Cursor;
+import org.springframework.data.redis.core.ScanOptions;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.data.redis.core.script.DefaultRedisScript;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.stereotype.Service;
 
 import java.time.LocalDateTime;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
 import java.util.concurrent.TimeUnit;
@@ -63,6 +66,15 @@ public class AuthService {
     /** refresh token 存活键前缀（key=auth:refresh:{userId}:{jti}，TTL 与 refresh 时效一致） */
     @Value("${app.auth.refresh.redis-prefix:auth:refresh:}")
     private String refreshPrefix = "auth:refresh:";
+
+    /**
+     * 改密吊销 refresh 存活键时的 SCAN 单批提示值（count hint）。
+     *
+     * <p>SCAN 为渐进式游标迭代：每批仅取一批键返回，<b>不阻塞 Redis 主线程</b>（对比 KEYS 的
+     * O(全库键数) 一次性阻塞）；count 只是每批提示，实际批量由 Redis 决定。定档 500：
+     * 单批往返与客户端内存占用均衡，且远大于单用户存活 refresh 键基数。</p>
+     */
+    private static final long SCAN_BATCH = 500L;
 
     // ===== 登录失败锁定配置（app.auth.lock.*，见 ADR-0007；field 默认值保证非 Spring 直造也可用） =====
     /** 锁定开关：false=仅计数告警不真正锁定（灰度兼容旧行为） */
@@ -380,8 +392,8 @@ public class AuthService {
      *   <li>BCrypt matches(旧密码, 库 hash) 失败 → 401（1001），与登录失败统一，不泄漏用户存在性；</li>
      *   <li>旧密码 == 新密码 → 400（PARAM）：改密语义要求「变更」，无变化即非法输入（预注册决策）；</li>
      *   <li>否则 encode 新密码哈希、经 userMapper.updateById 落库（仅改 passwordHash），
-     *       <b>随后依法删该用户所有 refresh 存活键</b>（keys(pattern) 取该用户全部 jti 前缀再批量删除；
-     *       单用户存活 refresh 键基数极小，无需 SCAN 语义；空集 no-op）。</li>
+     *       <b>随后依法删该用户所有 refresh 存活键</b>（SCAN 游标渐进枚举
+     *       auth:refresh:{userId}:* 前缀键后批量删除，不阻塞 Redis 主线程；空集 no-op）。</li>
      * </ol>
      *
      * <p>时效口径（TASK-202）：改密即全量吊销——所有已签发 refresh 即刻作废（此后轮换 401，
@@ -414,9 +426,20 @@ public class AuthService {
         update.setPasswordHash(passwordEncoder.encode(newPassword));
         userMapper.updateById(update);
         // —— 5. 全量吊销该用户所有存活 refresh（auth:refresh:{userId}:*；空集 no-op）
+        //    用 SCAN 渐进游标枚举（非 KEYS）：KEYS 是 O(全库键数) 阻塞命令会卡住 Redis 单线程，
+        //    SCAN 每批仅扫一小段并返回游标，语义与 KEYS 快照枚举一致但不阻塞主线程
         try {
-            Set<String> liveKeys = stringRedisTemplate.keys(refreshUserPrefix(userId) + "*");
-            if (liveKeys != null && !liveKeys.isEmpty()) {
+            Set<String> liveKeys = new HashSet<>();
+            try (Cursor<String> cursor = stringRedisTemplate.scan(
+                    ScanOptions.scanOptions()
+                            .match(refreshUserPrefix(userId) + "*")
+                            .count(SCAN_BATCH)
+                            .build())) {
+                while (cursor.hasNext()) {
+                    liveKeys.add(cursor.next());
+                }
+            }
+            if (!liveKeys.isEmpty()) {
                 stringRedisTemplate.delete(liveKeys);
             }
         } catch (Exception e) {

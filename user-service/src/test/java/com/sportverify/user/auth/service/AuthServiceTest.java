@@ -11,6 +11,7 @@ import io.jsonwebtoken.JwtException;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
+import org.springframework.data.redis.core.Cursor;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.data.redis.core.ValueOperations;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
@@ -485,7 +486,8 @@ class AuthServiceTest {
         String oldKey2 = "auth:refresh:1:jti-b";
         store.put(oldKey1, "1");
         store.put(oldKey2, "1");
-        when(redis.keys("auth:refresh:1:*")).thenReturn(new HashSet<>(List.of(oldKey1, oldKey2)));
+        Cursor<String> scanCursor = cursorOf(oldKey1, oldKey2);
+        when(redis.scan(any())).thenReturn(scanCursor);
 
         assertDoesNotThrow(() -> service.changePassword(1L, GOOD_PASSWORD, "new-secret-123"));
 
@@ -499,14 +501,14 @@ class AuthServiceTest {
         assertFalse(new BCryptPasswordEncoder().matches(GOOD_PASSWORD, updated.getPasswordHash()),
                 "新 hash 不应再匹配旧密码");
 
-        // 全量吊销：auth:refresh:1:* 两键被批量删除
-        verify(redis).keys("auth:refresh:1:*");
+        // 全量吊销：auth:refresh:1:* 两键经 SCAN 游标枚举后批量删除
+        verify(redis).scan(any());
         verify(redis).delete(any(Set.class));
         assertFalse(store.containsKey(oldKey1), "旧 refresh 键应被删除");
         assertFalse(store.containsKey(oldKey2), "旧 refresh 键应被删除");
     }
 
-    /** R1b 红：旧密码错误 → 1001；hash 不变、refresh 键保留（不求 keys/delete） */
+    /** R1b 红：旧密码错误 → 1001；hash 不变、refresh 键保留（不求 scan/delete） */
     @Test
     void R1b_changePassword_wrongOldThrows1001_keepsHashAndKeys() {
         when(userMapper.selectById(1L)).thenReturn(user());
@@ -518,7 +520,7 @@ class AuthServiceTest {
         assertEquals(ResultCode.UNAUTHORIZED.getCode(), e.getCode(), "旧密码错误应 1001");
 
         verify(userMapper, never()).updateById(any(User.class));
-        verify(redis, never()).keys(anyString());
+        verify(redis, never()).scan(any());
         verify(redis, never()).delete(any(Set.class));
         assertTrue(store.containsKey(oldKey), "失败时 refresh 键应保留");
     }
@@ -530,7 +532,7 @@ class AuthServiceTest {
         assertThrows(IllegalArgumentException.class,
                 () -> service.changePassword(1L, GOOD_PASSWORD, GOOD_PASSWORD));
         verify(userMapper, never()).updateById(any(User.class));
-        verify(redis, never()).keys(anyString());
+        verify(redis, never()).scan(any());
     }
 
     /** R1d 红：status=0 用户 → 401（1001 口径，与 refresh 封禁校验同） */
@@ -558,7 +560,8 @@ class AuthServiceTest {
         when(userMapper.selectById(1L)).thenReturn(pre);
         String deadJti = "jti-prechange";
         store.put("auth:refresh:1:" + deadJti, "1");
-        when(redis.keys("auth:refresh:1:*")).thenReturn(new HashSet<>(List.of("auth:refresh:1:" + deadJti)));
+        Cursor<String> scanCursor = cursorOf("auth:refresh:1:" + deadJti);
+        when(redis.scan(any())).thenReturn(scanCursor);
         when(jwtUtil.parseRefresh("pre-change-refresh")).thenReturn(new JwtUtil.ParsedRefresh(1L, deadJti));
 
         // 1. 改密成功（全量吊销）
@@ -610,5 +613,19 @@ class AuthServiceTest {
         dto.setPhone(phone);
         dto.setPassword(password);
         return dto;
+    }
+
+    /**
+     * 构造 mock 游标（模拟 SCAN 渐进迭代结果）：按序吐出入参键，耗尽后 hasNext=false。
+     * try-with-resources 的 close() 由 mock 默认空实现承担。
+     */
+    @SuppressWarnings("unchecked")
+    private static Cursor<String> cursorOf(String... keys) {
+        Cursor<String> cursor = mock(Cursor.class);
+        List<String> ordered = List.of(keys);
+        int[] index = {0};
+        when(cursor.hasNext()).thenAnswer(inv -> index[0] < ordered.size());
+        when(cursor.next()).thenAnswer(inv -> ordered.get(index[0]++));
+        return cursor;
     }
 }

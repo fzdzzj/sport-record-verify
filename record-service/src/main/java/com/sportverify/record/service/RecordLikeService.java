@@ -170,6 +170,14 @@ public class RecordLikeService {
     private static final long LOCK_WAIT_SECONDS = 3;
     /** 对账 Redis pipeline 分批提交大小（TASK-180 定档：默认 500）。 */
     private static final int PIPELINE_BATCH_SIZE = 500;
+    /**
+     * 对账键集分页单批记录数（distinct record_id 上限，TASK-250 D7）。
+     *
+     * <p>分页仅降单轮内存峰值与单次 I/O 上界，<b>不缩覆盖面</b>（一次调度仍遍历全表，
+     * 空批或短批即完成）。定档 500 与 pipeline 分批提交大小同量级：单批「distinct id +
+     * IN pairs」两次往返，内存可控。</p>
+     */
+    private static final int RECONCILE_RECORD_BATCH_SIZE = 500;
 
     /** 计数重建锁键前缀（per-record 互斥回源，防击穿 F17） */
     static final String COUNT_INIT_LOCK_PREFIX = "lock:like:count-init:";
@@ -490,10 +498,16 @@ public class RecordLikeService {
 
     /**
      * 对账纠偏（规范差异「对账纠偏」）：以 record_like 行为<b>权威源</b>，
-     * 单次批量取全表 (record_id, user_id) 对、内存按 record_id 分组
-     * （替代 DISTINCT record_id + 逐 record 查成员的 N+1 扫描），
+     * <b>键集分页</b>逐批取 distinct record_id（每批 {@value #RECONCILE_RECORD_BATCH_SIZE} 条）
+     * → 按批 IN 取完整 (record_id, user_id) 对 → 内存按 record_id 分组，
      * 以 DB 行数覆盖 Redis 计数、按 DB 用户集合重建成员集（恢复幂等防重能力）。
      * 进程重启丢 Redis 计数/成员集后由本任务兜底收敛。
+     *
+     * <p><b>分页只降单轮内存峰值/I-O 上界，不缩覆盖面</b>：一次调度仍遍历全表（游标严格
+     * 递增——取本批最大 record_id 作下一批起点，DISTINCT + ORDER BY 保证无跨页劈裂；
+     * 空批或短批即本轮完成，无死循环）。per-record 纠偏三元组（SET 计数 + DEL 成员集 +
+     * SADD 成员）与 pipeline 分批提交逻辑不变；对账锁 {@code tryLock(3, -1)} 走 Redisson
+     * 看门狗自动续期，适配更长运行无锁过期风险。</p>
      *
      * <p>已知权衡：pending 尚未落库的操作（窗口内）会被 DB 权威值覆盖，下一轮 flush +
      * 再下一轮对账后收敛——这正是「最终一致」的定义，写路径从不等待落库。</p>
@@ -510,64 +524,64 @@ public class RecordLikeService {
                 return;
             }
             try {
-                // 一次批量取全表 (record_id, user_id)，内存按 record 分组
-                List<RecordLike> pairs = recordLikeMapper.selectRecordLikePairs();
-                Map<Long, List<Long>> usersByRecord = new LinkedHashMap<>();
-                for (RecordLike pair : pairs) {
-                    usersByRecord.computeIfAbsent(pair.getRecordId(),
-                            k -> new ArrayList<>()).add(pair.getUserId());
-                }
                 int corrected = 0;
                 List<Consumer<RedisConnection>> chunk = new ArrayList<>();
-                for (Map.Entry<Long, List<Long>> entry : usersByRecord.entrySet()) {
-                    Long recordId = entry.getKey();
-                    List<Long> userIds = entry.getValue();
-                    // 1) 构造段：逐 record 生成命令三元组（含空成员只 DEL）
-                    byte[] countKeyBytes =
-                            countKey(recordId).getBytes(StandardCharsets.UTF_8);
-                    byte[] countValBytes = String.valueOf(userIds.size())
-                            .getBytes(StandardCharsets.UTF_8);
-                    chunk.add(conn -> conn.stringCommands().set(
-                            countKeyBytes, countValBytes));
-
-                    String usersKey = usersKey(recordId);
-                    byte[] usersKeyBytes =
-                            usersKey.getBytes(StandardCharsets.UTF_8);
-                    chunk.add(conn -> conn.keyCommands().del(usersKeyBytes));
-
-                    if (!userIds.isEmpty()) {
-                        byte[][] memberBytes = userIds.stream()
-                                .map(id -> String.valueOf(id)
-                                        .getBytes(StandardCharsets.UTF_8))
-                                .toArray(byte[][]::new);
-                        chunk.add(conn -> conn.setCommands().sAdd(
-                                usersKeyBytes, memberBytes));
+                long cursor = 0L;
+                while (true) {
+                    // 分页第一段：取本批去重 record_id（严格大于 cursor，升序）
+                    List<Long> recordIds = recordLikeMapper
+                            .selectDistinctRecordIdsAfter(cursor, RECONCILE_RECORD_BATCH_SIZE);
+                    if (recordIds == null || recordIds.isEmpty()) {
+                        break;   // 空批：本轮对账完成
                     }
-                    corrected++;
+                    // 分页第二段：按批 IN 取完整 pairs，内存按 record 分组（无跨页劈裂）
+                    List<RecordLike> pairs = recordLikeMapper.selectPairsByRecordIds(recordIds);
+                    Map<Long, List<Long>> usersByRecord = new LinkedHashMap<>();
+                    for (RecordLike pair : pairs) {
+                        usersByRecord.computeIfAbsent(pair.getRecordId(),
+                                k -> new ArrayList<>()).add(pair.getUserId());
+                    }
+                    for (Map.Entry<Long, List<Long>> entry : usersByRecord.entrySet()) {
+                        Long recordId = entry.getKey();
+                        List<Long> userIds = entry.getValue();
+                        // 1) 构造段：逐 record 生成命令三元组（含空成员只 DEL）
+                        byte[] countKeyBytes =
+                                countKey(recordId).getBytes(StandardCharsets.UTF_8);
+                        byte[] countValBytes = String.valueOf(userIds.size())
+                                .getBytes(StandardCharsets.UTF_8);
+                        chunk.add(conn -> conn.stringCommands().set(
+                                countKeyBytes, countValBytes));
 
-                    // 2) 提交段：累积至 PIPELINE_BATCH_SIZE 即 executePipelined
-                    if (chunk.size() >= PIPELINE_BATCH_SIZE) {
-                        List<Consumer<RedisConnection>> batch = chunk;
-                        stringRedisTemplate.executePipelined(
-                                (RedisCallback<Object>) connection -> {
-                                    for (Consumer<RedisConnection> cmd : batch) {
-                                        cmd.accept(connection);
-                                    }
-                                    return null;
-                                });
-                        chunk = new ArrayList<>();
+                        String usersKey = usersKey(recordId);
+                        byte[] usersKeyBytes =
+                                usersKey.getBytes(StandardCharsets.UTF_8);
+                        chunk.add(conn -> conn.keyCommands().del(usersKeyBytes));
+
+                        if (!userIds.isEmpty()) {
+                            byte[][] memberBytes = userIds.stream()
+                                    .map(id -> String.valueOf(id)
+                                            .getBytes(StandardCharsets.UTF_8))
+                                    .toArray(byte[][]::new);
+                            chunk.add(conn -> conn.setCommands().sAdd(
+                                    usersKeyBytes, memberBytes));
+                        }
+                        corrected++;
+
+                        // 2) 提交段：累积至 PIPELINE_BATCH_SIZE 即 executePipelined
+                        if (chunk.size() >= PIPELINE_BATCH_SIZE) {
+                            flushReconcileChunk(chunk);
+                            chunk = new ArrayList<>();
+                        }
+                    }
+                    // 游标推进到本批最大 record_id（DISTINCT + ORDER BY 保证），严格递增
+                    cursor = recordIds.get(recordIds.size() - 1);
+                    if (recordIds.size() < RECONCILE_RECORD_BATCH_SIZE) {
+                        break;   // 短批：无更多记录，本轮对账完成
                     }
                 }
                 // 循环尾提交余量
                 if (!chunk.isEmpty()) {
-                    List<Consumer<RedisConnection>> batch = chunk;
-                    stringRedisTemplate.executePipelined(
-                            (RedisCallback<Object>) connection -> {
-                                for (Consumer<RedisConnection> cmd : batch) {
-                                    cmd.accept(connection);
-                                }
-                                return null;
-                            });
+                    flushReconcileChunk(chunk);
                 }
                 log.info("点赞对账完成：纠正 {} 条记录的 Redis 计数与成员集", corrected);
             } finally {
@@ -576,6 +590,18 @@ public class RecordLikeService {
         } finally {
             TraceIds.clear();
         }
+    }
+
+    /** pipeline 分批提交一批对账命令（锁内调用；TASK-180 定档 {@link #PIPELINE_BATCH_SIZE}） */
+    private void flushReconcileChunk(List<Consumer<RedisConnection>> chunk) {
+        List<Consumer<RedisConnection>> batch = chunk;
+        stringRedisTemplate.executePipelined(
+                (RedisCallback<Object>) connection -> {
+                    for (Consumer<RedisConnection> cmd : batch) {
+                        cmd.accept(connection);
+                    }
+                    return null;
+                });
     }
 
     // ==================== 内部工具 ====================

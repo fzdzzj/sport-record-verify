@@ -23,6 +23,9 @@ import static org.assertj.core.api.Assertions.assertThat;
  *
  * <p>引擎级用例直接组装 VerifyEngine + R5，验证 R5 证据并入 hits 后
  * 走既有「HARD 即拒 / SOFT 计分」聚合（规范「判定聚合兼容」）。</p>
+ *
+ * <p>TASK-250 D8 增补：连续降级 streak 聚合与跨阈值告警语义（异常 / 空结果两分支共用同一
+ * 计数，成功评估归零，阈值内降级→成功→再降级正确重置）。</p>
  */
 class R5OffRoadRuleTest {
 
@@ -40,6 +43,32 @@ class R5OffRoadRuleTest {
                         offRoadRatio * 150, offRoadRatio * 200, n, n));
             }
         };
+    }
+
+    /** 桩：返回空数据体（result==null 降级分支）。 */
+    private static MapMatchApi nullResultApi() {
+        return new MapMatchApi() {
+            @Override
+            public com.sportverify.common.result.Result<MapMatchResultDTO> match(MapMatchRequestDTO request) {
+                return com.sportverify.common.result.Result.success();
+            }
+        };
+    }
+
+    /** 可切换桩：{@code fail=true} 抛异常降级，否则按 {@code ratio} 应答（用于降级/恢复序列断言）。 */
+    private static final class MutableApi implements MapMatchApi {
+        private boolean fail;
+        private double ratio = 0.05;
+
+        @Override
+        public com.sportverify.common.result.Result<MapMatchResultDTO> match(MapMatchRequestDTO request) {
+            if (fail) {
+                throw new RuntimeException("mapmatch down");
+            }
+            int n = request.getPoints().size();
+            return com.sportverify.common.result.Result.success(new MapMatchResultDTO(
+                    1 - ratio, ratio, ratio * 150, ratio * 200, n, n));
+        }
     }
 
     /** 造 n 个间隔 1s 的有效点：点距 0.00005°≈5.6m/s（低于漂移阈值 20m/s，预处理全部保留） */
@@ -119,6 +148,103 @@ class R5OffRoadRuleTest {
         VerdictResult result = engine.verify(trackPoints(20), new VerifyProperties());
         assertThat(result.getVerdict()).isEqualTo(com.sportverify.api.verify.Verdict.REJECTED);
         assertThat(result.getScore()).isEqualTo(70); // 50 + 20×1 个 HARD
+    }
+
+    // ==================== TASK-250 D8 连续降级可观测告警 ====================
+
+    /** 连续 3 次降级：每次返回 null（不抛异常），streak 逐次累加至 3 */
+    @Test
+    void 连续三次降级_streak累计且每次不命中() {
+        R5OffRoadRule rule = new R5OffRoadRule(stubApi(0, new RuntimeException("mapmatch down")));
+        for (int i = 1; i <= 3; i++) {
+            assertThat(rule.evaluate(toEnginePoints(trackPoints(20)), rules(), threshold())).isNull();
+            assertThat(rule.degradationStreak.get()).isEqualTo(i);
+        }
+    }
+
+    /** 连续 5 次降级：跨告警阈值不抛异常，streak 达阈值（error 告警恰触发一次，== 语义） */
+    @Test
+    void 连续五次降级_跨阈值不抛异常且streak达标() {
+        R5OffRoadRule rule = new R5OffRoadRule(stubApi(0, new RuntimeException("mapmatch down")));
+        for (int i = 1; i <= R5OffRoadRule.DEGRADATION_ALERT_THRESHOLD; i++) {
+            assertThat(rule.evaluate(toEnginePoints(trackPoints(20)), rules(), threshold())).isNull();
+        }
+        assertThat(rule.degradationStreak.get()).isEqualTo(R5OffRoadRule.DEGRADATION_ALERT_THRESHOLD);
+    }
+
+    /** result==null 降级分支与异常降级共用同一 streak（空结果同样计入连续降级） */
+    @Test
+    void 空结果降级_计入同一streak() {
+        R5OffRoadRule rule = new R5OffRoadRule(nullResultApi());
+        assertThat(rule.evaluate(toEnginePoints(trackPoints(20)), rules(), threshold())).isNull();
+        assertThat(rule.degradationStreak.get()).isEqualTo(1);
+    }
+
+    /** 降级后成功评估：streak 归零（恢复可见性），且成功本身不命中低离路轨迹 */
+    @Test
+    void 降级后成功_streak归零() {
+        MutableApi api = new MutableApi();
+        R5OffRoadRule rule = new R5OffRoadRule(api);
+        api.fail = true;
+        for (int i = 0; i < 3; i++) {
+            assertThat(rule.evaluate(toEnginePoints(trackPoints(20)), rules(), threshold())).isNull();
+        }
+        assertThat(rule.degradationStreak.get()).isEqualTo(3);
+
+        api.fail = false;
+        api.ratio = 0.05;
+        assertThat(rule.evaluate(toEnginePoints(trackPoints(20)), rules(), threshold())).isNull();
+        assertThat(rule.degradationStreak.get()).isZero();
+    }
+
+    /** 跨阈值降级后成功恢复：streak 归零（log.warn「R5 降级恢复」路径） */
+    @Test
+    void 跨阈值降级后成功_streak归零() {
+        MutableApi api = new MutableApi();
+        R5OffRoadRule rule = new R5OffRoadRule(api);
+        api.fail = true;
+        for (int i = 0; i < R5OffRoadRule.DEGRADATION_ALERT_THRESHOLD; i++) {
+            rule.evaluate(toEnginePoints(trackPoints(20)), rules(), threshold());
+        }
+        assertThat(rule.degradationStreak.get()).isEqualTo(R5OffRoadRule.DEGRADATION_ALERT_THRESHOLD);
+
+        api.fail = false;
+        rule.evaluate(toEnginePoints(trackPoints(20)), rules(), threshold());
+        assertThat(rule.degradationStreak.get()).isZero();
+    }
+
+    /** 阈值内降级 → 成功 → 再降级：streak 先归零再重新从 1 累计 */
+    @Test
+    void 阈值内降级_成功_再降级_streak正确重置() {
+        MutableApi api = new MutableApi();
+        R5OffRoadRule rule = new R5OffRoadRule(api);
+        api.fail = true;
+        for (int i = 0; i < 2; i++) {
+            rule.evaluate(toEnginePoints(trackPoints(20)), rules(), threshold());
+        }
+        assertThat(rule.degradationStreak.get()).isEqualTo(2);
+
+        api.fail = false;
+        rule.evaluate(toEnginePoints(trackPoints(20)), rules(), threshold());
+        assertThat(rule.degradationStreak.get()).isZero();
+
+        api.fail = true;
+        rule.evaluate(toEnginePoints(trackPoints(20)), rules(), threshold());
+        assertThat(rule.degradationStreak.get()).isEqualTo(1);
+    }
+
+    /** 点数不足早退不改变 streak：非成功评估亦非降级，不误清零/误累计 */
+    @Test
+    void 点数不足早退_不改变streak() {
+        MutableApi api = new MutableApi();
+        R5OffRoadRule rule = new R5OffRoadRule(api);
+        api.fail = true;
+        rule.evaluate(toEnginePoints(trackPoints(20)), rules(), threshold());
+        assertThat(rule.degradationStreak.get()).isEqualTo(1);
+
+        api.fail = false;
+        assertThat(rule.evaluate(toEnginePoints(trackPoints(4)), rules(), threshold())).isNull();
+        assertThat(rule.degradationStreak.get()).isEqualTo(1);
     }
 
     /** DTO 轨迹 → 引擎内部点模型（走真实预处理，speed/dt 逐点计算） */

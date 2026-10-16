@@ -14,6 +14,7 @@ import org.springframework.core.annotation.Order;
 import org.springframework.stereotype.Component;
 
 import java.util.List;
+import java.util.concurrent.atomic.AtomicInteger;
 
 /**
  * R5 离路规则（首个依赖外部空间服务的规则，规范「R5 离路规则」，见 ADR-0006）。
@@ -27,6 +28,11 @@ import java.util.List;
  * FallbackFactory 抛 4005）时 R5 降级为「不命中」返回 null——校验主链路是 ODR
  * 主路径，R5 是增强证据而非强依赖，宁可放过不可阻断；降级同时记 warn 供监控。</p>
  *
+ * <p><b>连续降级可观测告警</b>（TASK-250 D8）：逐次 warn 之外聚合「连续降级」计数——
+ * 连续达 {@value #DEGRADATION_ALERT_THRESHOLD} 次时升级一次 error（可 grep 固定语
+ * 「R5 连续降级告警」），跨阈值后的恢复亦记 warn，避免长时间降级被误当 bug 排查或
+ * 被忽视。降级分支返回 null 不抛异常的语义不变。</p>
+ *
  * <p>级别说明：接口 {@link #level()} 返回固定级别供元数据用途，R5 默认 SOFT
  * （可灰度观察，复用 rule_version 机制）；极端偏离在 evaluate 内按阈值动态升级 HARD。</p>
  */
@@ -38,6 +44,20 @@ public class R5OffRoadRule implements Rule {
 
     /** 离路比例阈值取自 mapmatch 的 offRoadRatio 口径（0-1），超阈值才命中（边界值不命中防抖动） */
     private final MapMatchApi mapMatchApi;
+
+    /**
+     * 连续降级计数（catch 异常 / result==null 累加，成功评估归零；包内可见供测试断言与观测）。
+     */
+    final AtomicInteger degradationStreak = new AtomicInteger();
+
+    /**
+     * 连续降级告警阈值：达此连续次数升级一次 error 告警。
+     *
+     * <p>定档依据：5 次连续评估失败 ≈ 熔断窗口量级（短时间内整批记录同时失配），
+     * 既避免逐次告警噪音、又能及时暴露 mapmatch 长时间不可用；用 {@code ==} 而非
+     * {@code >=} 判定，确保每个降级窗口内告警恰一次、不刷屏。</p>
+     */
+    static final int DEGRADATION_ALERT_THRESHOLD = 5;
 
     @Override
     public String code() {
@@ -68,12 +88,18 @@ public class R5OffRoadRule implements Rule {
             result = mapMatchApi.match(request).getData();
         } catch (Exception e) {
             // 熔断降级：mapmatch 不可用 → R5 不命中，不阻断校验主链路（规范「服务不可用降级」）
-            log.warn("R5 降级不命中：mapmatch 不可用，cause={}", e.getMessage());
+            recordDegradation("异常：" + e.getMessage());
             return null;
         }
         if (result == null) {
-            log.warn("R5 降级不命中：mapmatch 返回空结果");
+            recordDegradation("返回空结果");
             return null;
+        }
+
+        // 成功评估：连续降级计数归零；跨阈值降级后的恢复记 warn 供观测
+        int prevStreak = degradationStreak.getAndSet(0);
+        if (prevStreak >= DEGRADATION_ALERT_THRESHOLD) {
+            log.warn("R5 降级恢复：连续降级 {} 次后 mapmatch 恢复可用", prevStreak);
         }
 
         double ratio = result.getOffRoadRatio();
@@ -91,6 +117,23 @@ public class R5OffRoadRule implements Rule {
             return new RuleHit(code(), level(), detail);
         }
         return null;
+    }
+
+    /**
+     * 记录一次降级并聚合连续降级信号（TASK-250 D8）：逐次 warn 附带 streak 计数；
+     * 连续达 {@link #DEGRADATION_ALERT_THRESHOLD} 次时恰一次升级 error（可 grep 固定语
+     * 「R5 连续降级告警」）。用 {@code ==} 判定防重复告警刷屏。
+     *
+     * @param cause 降级原因（异常消息 / 空结果）
+     */
+    private void recordDegradation(String cause) {
+        int streak = degradationStreak.incrementAndGet();
+        log.warn("R5 降级不命中：mapmatch 不可用（{}），连续降级 {} 次", cause, streak);
+        if (streak == DEGRADATION_ALERT_THRESHOLD) {
+            log.error("R5 连续降级告警：连续 {} 次降级不命中（{}）；降级窗口内悬浮伪造轨迹"
+                            + "不产生离路证据，请核查 mapmatch 服务健康度",
+                    DEGRADATION_ALERT_THRESHOLD, cause);
+        }
     }
 
     /** 引擎点模型 → mapmatch 契约点（经纬度直接透传，匹配服务不信任 speed 等客户端字段） */
