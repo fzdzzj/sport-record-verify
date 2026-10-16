@@ -5,26 +5,41 @@ on:
     branches: [main]
   pull_request:
     branches: [main]
+  # TASK-252 R3：Ubuntu 26 试跑通道开关。probe26 仅配合 workflow_dispatch 手动触发（default false）；
+  # ubuntu-26.04 标签 2026-10-19 起可用、此前禁触发 probe26=true（无 runner 必红）；日常 push/PR 零影响。
+  workflow_dispatch:
+    inputs:
+      probe26:
+        description: 触发 probe-ubuntu26 job 试跑 Ubuntu 26 Docker 链（2026-10-19 标签可用后）
+        type: boolean
+        default: false
+
+# TASK-252 R4：并发触发取消旧 run（同 workflow 同 ref 只保留最新），省 6 镜像重复构建与 Trivy 重扫。
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   build:
-    runs-on: ubuntu-latest
+    # TASK-252 R1：2026-10-19 ubuntu-latest→Ubuntu 26 迁移窗口止血钉扎；26 经 probe 通道验证通过后另课题平移。
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
     permissions:
       contents: read
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Set up JDK 21 (Temurin)
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@v5
         with:
           distribution: temurin
           java-version: '21'
 
       # 缓存 ~/.m2 加速：key 按依赖定义（parent + 各模块 pom）哈希变化自动失效
       - name: Cache Maven repository
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: ~/.m2/repository
           key: m2-${{ hashFiles('**/pom.xml') }}
@@ -62,7 +77,8 @@ jobs:
       # 流程分为两跑次：
       #   1. 输出跑次：--severity HIGH,CRITICAL 全量输出日志，登记当前依赖树 CVE 态势；
       #   2. 门禁跑次：--severity CRITICAL --exit-code 1 --ignore-unfixed --ignorefile .trivyignore，
-      #      基于首跑基线决策树分支 B，历史存量 13 项 CRITICAL 已登记于 .trivyignore，
+      #      基于首跑基线决策树分支 B，历史存量 2 项 CRITICAL 已登记于 .trivyignore
+      #      （CVE-2026-47892 / CVE-2026-47884；口径订正来源：E31 侦察 / TASK-252，原注 13 项为漂移），
       #      任何新增未豁免的 CRITICAL 级别漏洞将直接阻断 CI。
       - name: Trivy dependency vulnerability scan
         run: |
@@ -104,7 +120,7 @@ jobs:
 
       # 各模块 JaCoCo 覆盖率报告上传为 artifact 供下载查看
       - name: Upload JaCoCo reports
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: jacoco-reports
           path: |
@@ -116,16 +132,18 @@ jobs:
   # 前端门槛：类型检查 + 生产构建，并用严格安装把依赖漂移暴露出来（前端 api 层是近期改动热点）。
   # web/package.json 既无 packageManager 也无 engines 字段 → pnpm 版本必须由本文件显式提供。
   web:
-    runs-on: ubuntu-latest
+    # TASK-252 R1：同 build，2026-10-19 ubuntu-latest→Ubuntu 26 迁移窗口止血钉扎；26 经 probe 通道验证后再平移。
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
     permissions:
       contents: read
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Set up Node 22
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v5
         with:
           node-version: '22'
 
@@ -153,3 +171,50 @@ jobs:
       # 本地实测两次构建产物逐字节一致，该判据不抖；vue-router/auto 的类型由 src/vue-router-auto-shim.d.ts 供。
       - name: Generated router types match committed
         run: git diff --exit-code -- web/src/typed-router.d.ts
+
+  # TASK-252 R3：Ubuntu 26 试跑通道（probe）。ubuntu-26.04 标签 2026-10-19 起可用，
+  # 此前不得触发 probe26=true（无 runner 必红）；日常 push/PR 零影响（if 门禁）。
+  # 步骤对齐 build job 的 Docker 链三处（占位 env → compose config → 6 镜像构建 → Trivy 门禁跑次）。
+  probe-ubuntu26:
+    if: github.event_name == 'workflow_dispatch' && inputs.probe26 == true
+    runs-on: ubuntu-26.04
+    timeout-minutes: 45
+    permissions:
+      contents: read
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      # 与 build job 同款 JDK 步骤（spec §3 R3「JDK/checkout 步骤同款」）：兼验证 setup-java@v5 在 ubuntu-26.04 兼容性
+      - name: Set up JDK 21 (Temurin)
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      # 与 build job 同款占位 env：compose 的 INTERNAL_API_TOKEN 必填插值（:?），本地 .env 不入库，
+      # CI 上放占位值只为让编排可解析、镜像可构建（不用于起真服务）。
+      - name: Provision placeholder env for compose checks
+        run: |
+          cp scripts/verify/env.example .env
+          echo "INTERNAL_API_TOKEN=SvLocal-Internal-0000000000000000-ChangeMe" >> .env
+
+      - name: Compose files parse check
+        run: docker compose -f docker-compose.yml -f docker-compose.services.yml config -q
+
+      - name: Build all service images (6/6)
+        run: docker compose -f docker-compose.yml -f docker-compose.services.yml build gateway-service user-service record-service verify-service leaderboard-service mapmatch-service
+
+      # 门禁跑次（与 build job 门禁语义一致）：CRITICAL --exit-code 1 --ignorefile .trivyignore
+      - name: Trivy gate pass
+        run: |
+          docker create --name trivy_bin aquasec/trivy:0.60.0
+          sudo docker cp trivy_bin:/usr/local/bin/trivy /usr/local/bin/trivy
+          docker rm trivy_bin
+          trivy --version
+          SERVICES="gateway-service user-service record-service verify-service leaderboard-service mapmatch-service"
+          for svc in $SERVICES; do
+            img="sport-verify-${svc}:latest"
+            trivy image --severity CRITICAL --exit-code 1 --ignore-unfixed --ignorefile .trivyignore "${img}"
+          done

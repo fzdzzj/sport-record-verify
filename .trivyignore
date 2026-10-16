@@ -10,9 +10,11 @@
 # org.springframework:spring-webflux:6.1.5
 # 影响镜像：gateway-service
 # 来源：Spring Cloud Gateway 4.1.2 依赖传递引入 WebFlux
+# 复核期限 2027-04：届时重扫，确认上游修复即删除本条
 CVE-2026-47892
 
 # org.springframework:spring-webmvc:6.1.5
 # 影响镜像：user-service, record-service, verify-service, leaderboard-service, mapmatch-service
 # 来源：Spring Boot Starter Web 3.2.4 依赖传递引入 Spring MVC
+# 复核期限 2027-04：届时重扫，确认上游修复即删除本条
 CVE-2026-47884
