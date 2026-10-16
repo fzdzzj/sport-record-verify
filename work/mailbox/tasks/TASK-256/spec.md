@@ -4,7 +4,7 @@
 > **开工基线**：`e1776aa`（main，立项笔 `e1776aa` 后工作树干净）
 > **方案**：2026-10-16 E 系批4b 指导侧立项侦察（12 项逐项亲验全部坐实），用户拍板「批4b 测试可观测」立项；批4b 切分为 4b-1 后端八项（本课题）+ 4b-2 前端三项（TASK-257，串行第二批）+ E13 拆出（真实 PostGIS 库复验另立课题，拟 TASK-258）
 > **档位**：FULL（E15/E20 触碰认证锁定与 WS 会话凭证安全语义、E22 触碰 api 模块契约面与终判不可逆路径、E28 触碰网关+common 全链路追踪头、E19 触碰好友关系两写原子性——禁降级；多模块 api/common/gateway/user/record/verify；离线全量逐位门禁 + 独立复核五块）
-> **状态**：已实施（C-01 实施笔 + C-02 台账笔落库，七门禁全绿，待指导侧终裁）
+> **状态**：已终裁封盘（2026-10-16：实施 R1-R8 全落地七门禁全绿 + 指导亲核三块 PASS + 独立复核五块全 PASS 零阻断、4 项非阻断登记（token 口径差异 / 契约门收口态固有语义 / §2 计数笔误封盘笔订正 / Nacos 离线噪音），指导侧终裁 **ACCEPT**；CI 外部终验读数由补记笔落库）
 
 ## 1. 背景与侦察结论（2026-10-16 指导侧亲验，八项全部坐实）
 
@@ -17,9 +17,9 @@
 - **E28 坐实（追踪头零校验）**：common `TraceIds.resolveOrCreate`（L33-39）与 gateway `RequestIdGlobalFilter.resolveOrCreate`（L44-50，网关私有镜像实现）均仅 null/trim/空判——客户端可控任意长度/任意字符的 X-Request-Id 经网关透传至全部 MVC 服务、MQ userProperty 与全链日志（挂他人链路/放大日志/日志注入面）；既有契约测试固化「原样复用」。
 - **E30 坐实（整行回写丢失更新）**：`UserController.updateProfile` L85-90 `selectById → setNickname → updateById(user)`——实体全字段非空触发整行 UPDATE 回写 password_hash/role/status 等，与改密/撤销管理员并发的毫秒级窗口可回写旧密码哈希或旧 ADMIN（无 @Transactional 无 @Version，失败模式为安全语义回退）。
 
-## 2. 改动文件白名单（22 项，双向全等硬约束）
+## 2. 改动文件白名单（25 项，双向全等硬约束；封盘笔订正：原立项笔标题「22 项/业务测试 20 项」为计数笔误，判别式全集实为业务/测试 23 文件 + 台账 2 项）
 
-业务/测试 20 项：
+业务/测试 23 项（原列表 22 项 + 封盘笔追认补录第 23 项，见尾部订正注）：
 
 1. user-service/src/main/resources/application.yml（E15 R1）
 2. README.md（E15 R1 文档口径同步 L223）
@@ -43,8 +43,11 @@
 20. gateway-service/src/test/java/com/sportverify/gateway/trace/RequestIdGlobalFilterTest.java（E28 R7 适配+扩展）
 21. user-service/src/main/java/com/sportverify/user/controller/UserController.java（E30 R8 单列更新）
 22. user-service/src/test/java/com/sportverify/user/controller/UserControllerTest.java（E30 R8，新建）
+23. verify-service/src/test/java/com/sportverify/verify/controller/VerifyControllerTest.java（E22 R5 缺 pass→400 用例——**封盘笔追认补录**：立项笔 §2 清单漏列而 §3 R5 明文要求其扩展，属 §2/§3 内部矛盾；实施侧按判别式执行正确，独立复核 N-a 核证净 +18 行纯 R5 用例零夹带，指导侧终裁追认入白名单）
 
 台账 2 项（C-02 阶段）：work/mailbox/tasks/TASK-256/spec.md、work/mailbox/tasks/TASK-256/handoff.md。
+
+> **封盘笔订正注（2026-10-16）**：本 §2 原标题「22 项」与「业务/测试 20 项」均系立项笔计数笔误（列表实列 22 行、判别式全集实为 23 文件）；实施 C-01 实改 23 文件与 §3 判别式全集全等（复核块五 25 项双向全等成立），原「20 项」文字不影响判别式实质。
 
 零触碰声明（白名单外全仓零 diff）：**AuthService.java（E15 仅 yml/文档/新测试，代码默认 20 已正确）**、AuthController 与其余七个含局部 BizException handler 的 controller、FriendController（批量端点签名不变）、FriendService.reject 方法本体（单写无事务需求现状保留）、RecordEventProducer 既有异步 publishSubmitted 两变体签名与行为（主提交路径 best-effort 约定不动）、VerifyEngine 规则链与其余规则（R1/R3/R4/R5）、TrackPreprocessor.java（E25 修在 R2 消费侧，预处理零改动）、WebSocketNotificationConfig.java（端点/Origin 白名单/心跳零改动）、NotificationController/FriendController/UserController 其余端点、verify/leaderboard/mapmatch 服务业务代码、全部 pom.xml、web/、sql/、scripts/、docker-compose*、.github/、PLAN.md、HANDOVER.md、BACKLOG.md（子 agent 禁改三看板）。
 

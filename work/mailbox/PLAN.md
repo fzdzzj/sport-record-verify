@@ -650,3 +650,17 @@
 | 是否到达外部门槛 | **已到达**（补记笔翻转，2026-10-16）：封盘批次（5 笔：TASK-254 补记笔 `8612d2b` + TASK-255 立项笔 `f39e693` + C-01 `ce4aa4a` + C-02 `1ac8c60` + 封盘笔 `f1b0dcf`）推送后 GitHub Actions CI run **`38903763620`** 权威核验 conclusion=**success** 全 job 绿（`build` ✓ / `web` ✓ / `probe-ubuntu26` skipped=if 门禁正确生效旁证），headSha `f1b0dcf` 与封盘批次匹配，外部终验达成完整闭环 |
 | 状态 | TASK-255 已终裁 **ACCEPT 予以封盘**（实施回报 / 指导亲核 / 独立复核三方闭环一致；CI run `38903763620` 全绿外部终验达成，读数已由补记笔落库登记） |
 
+## 验收记录：`TASK-256`（E 系批4b-1——后端治理八项 E15+E18+E19+E20+E22+E25+E28+E30，FULL 档，2026-10-16）
+
+| 项 | 内容 |
+| --- | --- |
+| 开工基线 | `e1776aa`（main 分支批4b 立项笔，工作树干净；本地领先含 TASK-255 补记笔 `48457c0`，随本封盘批次统一推送） |
+| C-01 实施笔 | `a89d095` `fix(user,record,verify,common,gateway,api): E系批4b-1后端治理八项（TASK-256）`（恰 23 文件 +542/−32：2 新建测试 LoginLockoutConfigTest/UserControllerTest + 21 改，含 VerifyControllerTest +18 行 N-a 追认项见下行） |
+| C-02 任务两件套 | `2a2f11f` `docs(mailbox): 登记TASK-256实施完成与门禁回填（TASK-256）`（spec 开工基线回填 + 状态更新 + handoff 七节回填；封盘笔补登 C-02 哈希 + spec §2 计数订正与第 23 项追认补录） |
+| 任务内容与白名单 | 相对开工基线恰 25 文件（23 业务/测试 + 2 台账）与白名单双向全等（契约门 C-01 窗口 rc=0，收口态 rc=1 属 C-02 台账笔固有语义、等价判据 25 条全等成立）；**N-a 白名单偏差追认**：VerifyControllerTest.java 不在原 §2 列表（立项笔清单漏列而 §3 R5 明文要求其扩展，§2/§3 内部矛盾），复核核证净 +18 行纯 R5 用例零夹带，终裁追认入白名单；**N-c 计数笔误封盘笔订正**：原 §2「22 项/业务测试 20 项」实为 23 文件；零触碰面 AuthService/TrackPreprocessor/异步两变体/VerifyEngine 规则链/FriendService.reject 本体/三看板等全零 diff（复核目录级核证无「路径不存在」假阴性） |
+| 核心实现 | ① R1（E15）：yml threshold 5→20 + 注释全账号兜底口径 + README L223 双维度数值 + LoginLockoutConfigTest 资源断言（YamlPropertySourceLoader+Binder 断 threshold==20，不断言 ip-threshold）；② R2（E18）：publishSubmittedSync（buildMessage 共用抽段 + syncSend try/catch 真值）+ VerifyDegradeService L119/L146 改调，既有异步两变体零改动；③ R3（E19）：@Autowired @Lazy self（保留 @RequiredArgsConstructor）+ batchTransition 经 self.accept/reject 委托 + mock self 结构断言；④ R4（E20）：JwtUtil.parseAccess（type==ACCESS 与 parseRefresh 对称）+ 拦截器 L63 改调 + refresh 拒/access 过/无效拒三用例；⑤ R5（E22）：DTO Boolean+@NotNull + VerifyService 三处 Boolean.TRUE.equals + 缺 pass→Bean Validation 400；⑥ R6（E25）：R2 循环自 i=2 跳首区间（首点哨兵前提开工复验坐实）+ 三判别用例（首区间伪尖峰不计/三真实命中/两真实+一伪不命中）；⑦ R7（E28）：TraceIds 与网关双实现同规则镜像净化（长度 1..64 且字母/数字/下划线/连字符否则 newId，不拒绝请求；正则字面量仅落 Java 代码）+ 双侧四类对称用例 + 既有「原样复用」翻转为「重新生成」；⑧ R8（E30）：updateProfile LambdaUpdateWrapper 单列 set(nickname) + UserControllerTest（TableInfoHelper 预注册 + 单列断言） |
+| 本机门禁 | 后端七模块 offline test rc=0（surefire common 63 / gateway 78 / user 215 / record 302 / verify 200 / leaderboard 108 / mapmatch 35——对基线 59/75/205/302/195/108/35：+4/+3/+10/持平/+5/持平/持平只增不减；record 持平 N-b：VerifyDegradeServiceTest 为纯 mock 面平移改调适配、无删测无断言弱化）；token 门 29 项 BASE==HEAD 逐位相等、改动集零命中（SUM 台账 1353 vs 复核 2017 属行命中/文件出现次数口径差异，非阻断登记）；词面门 ZERO_HIT + 探针阳性对照；checkstyle delta=0（record 4 项 pre-existing 于零触碰文件）；diff --check / show --check 净，新文件纯 LF + 末字节 0x0A；执行路径旁注 N-d：bin\bash.exe 因 WSL ext4.vhdx 挂载故障改经 usr\bin\bash.exe --login 同安装等效执行，离线入口语义不变 |
+| 指导亲核与独立复核 | FULL 档双环节全 PASS：指导亲核三块（①Git 摘要：porcelain 空、链 e1776aa→a89d095→2a2f11f、C-01 23 文件 +542/−32 对上；②高风险定向抽查 2 处：E15 yml/README 与 spec R1 逐字吻合、E28 双实现镜像同规则且正则字面量仅落代码；③回报一致性裁决：坐实 N-a 根因为立项笔 §2 漏列、N-b record 持平为适配性改动、N-c 计数笔误，零矛盾）；独立复核五块全 PASS（Git 链 / 红线零触碰 / 七门全量复跑逐位一致 / 八判别式逐条符合 / 25 项双向全等），零阻断项，4 项非阻断登记（token 口径 / 契约门收口态固有语义 / §2 计数笔误 / Nacos 离线噪音），N-a~N-d 定向核证全部成立，只读自证 porcelain 空 |
+| 是否到达外部门槛 | **未到达**：封盘批次（5 笔：TASK-255 补记笔 `48457c0` + 批4b 立项笔 `e1776aa` + C-01 `a89d095` + C-02 `2a2f11f` + 封盘笔）推送后待 GitHub Actions CI 权威核验（conclusion=success 全 job 绿方达外部终验；本行由补记笔翻转，读数时点以补记笔为准） |
+| 状态 | TASK-256 已终裁 **ACCEPT 予以封盘**（实施回报 / 指导亲核 / 独立复核三方闭环一致；外部 CI 终验进行中，读数由补记笔落库） |
+
