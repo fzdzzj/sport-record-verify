@@ -31,7 +31,12 @@ spring:
   datasource:
     driver-class-name: org.postgresql.Driver
     # 宿主机 5432 被本机 PostgreSQL 占用时，compose 侧设 POSTGRES_PORT=5433，服务侧注入同名变量即可
-    url: jdbc:postgresql://127.0.0.1:${POSTGRES_PORT:5432}/road_db?stringtype=unspecified
+    # 超时三件套（E17）：
+    #   connectTimeout=3s / socketTimeout=5s 为 PostgreSQL JDBC 连接/socket 读超时（单位秒，见 R1）；
+    #   hikari.connection-timeout=5000ms 为池获连接上限；spring.jdbc.template.query-timeout=2s 为
+    #   JdbcTemplate 候选边查询服务端超时（锁等待/挂死场景 fail-fast，socketTimeout 须 > query-timeout
+    #   使服务端取消优先于本地读超时生效——见 verify-service Feign 显式超时对照）
+    url: jdbc:postgresql://127.0.0.1:${POSTGRES_PORT:5432}/road_db?stringtype=unspecified&connectTimeout=3&socketTimeout=5
     username: postgres
     # 数据源口令经环境变量注入（与 compose .env 变量同名）；默认 postgres 仅限本地未导出环境时
     password: ${POSTGRES_PASSWORD:postgres}
@@ -39,6 +44,11 @@ spring:
     # 配合 verify 侧 R5 熔断降级，匹配库故障不拖垮校验主链路
     hikari:
       initialization-fail-timeout: -1
+      connection-timeout: 5000
+  jdbc:
+    template:
+      # JdbcTemplate 声明式查询超时（秒，见 R1）：候选边查询服务端 2s 取消，PostGIS 挂死/锁等待 fail-fast
+      query-timeout: 2
 
 # 匹配算法参数（add-mapmatch-service 提案「匹配限制在固定采样点数防超时」）：
 # R5 同步调用本服务，参数收敛决定校验链路延迟上界；Nacos mapmatch-service.yml 可覆盖

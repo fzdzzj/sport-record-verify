@@ -2,13 +2,17 @@ package com.sportverify.common.exception;
 
 import com.sportverify.common.result.Result;
 import com.sportverify.common.result.ResultCode;
+import jakarta.servlet.http.HttpServletResponse;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.dao.DuplicateKeyException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.converter.HttpMessageNotReadableException;
 import org.springframework.transaction.TransactionSystemException;
+import org.springframework.web.HttpMediaTypeNotAcceptableException;
+import org.springframework.web.HttpMediaTypeNotSupportedException;
 import org.springframework.web.HttpRequestMethodNotSupportedException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
+import org.springframework.web.bind.MissingRequestHeaderException;
 import org.springframework.web.bind.MissingServletRequestParameterException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.ResponseStatus;
@@ -21,9 +25,12 @@ import org.springframework.web.servlet.NoHandlerFoundException;
  *
  * <p>统一拦截六类异常：</p>
  * <ul>
- *   <li>{@link BizException}：业务异常 → 返回对应错误码与可读信息；</li>
+ *   <li>{@link BizException}：业务异常 → 返回对应错误码与可读信息；按业务码映射 HTTP 状态
+ *       （1001→401、1002→403、3001→404，其余维持 200）——与各服务局部 handler 先例及网关
+ *       AuthGlobalFilter 口径对齐；</li>
  *   <li>参数校验异常（@Valid + @RequestBody / @RequestParam）→ 400 + 校验提示；</li>
- *   <li>HTTP 契约异常（畸形 JSON / 类型不匹配 / 缺参 / 404 / 405）→ 400/404/405 + 结构化错误体；</li>
+ *   <li>HTTP 契约异常（畸形 JSON / 类型不匹配 / 缺参 / 缺头 / 404 / 405 / 415 / 406）→
+ *       对应状态码 + 结构化错误体；</li>
  *   <li>数据库异常（唯一键冲突 / 事务系统异常）→ 409/500 + 友好提示；</li>
  *   <li>非法参数（业务侧主动校验失败）→ 400；</li>
  *   <li>未预期异常 → 记日志（含堆栈），对外只返回 9999 系统错误，不泄漏内部细节。</li>
@@ -35,11 +42,57 @@ public class GlobalExceptionHandler {
 
     /**
      * 业务异常：错误码与提示由业务侧指定。
+     *
+     * <p>E21 R4 状态码契约（与局部 handler 先例仅覆盖 Leaderboard/Goal 等局部场景对齐到公共层）：
+     * 1001（UNAUTHORIZED）→ 401、1002（FORBIDDEN）→ 403、3001（RECORD_NOT_FOUND）→ 404，
+     * 其余业务码不写状态（维持 200）——与网关 AuthGlobalFilter（1001→401/1002→403）及
+     * 前端 web/client.ts 响应拦截器单次 refresh 流程静态核对成立（见 spec §1 E21-③）。</p>
      */
     @ExceptionHandler(BizException.class)
-    public Result<Void> handleBizException(BizException e) {
+    public Result<Void> handleBizException(BizException e, HttpServletResponse response) {
         log.warn("业务异常：code={}, message={}", e.getCode(), e.getMessage());
-        return Result.failure(e.getCode(), e.getMessage());
+        int code = e.getCode();
+        if (code == ResultCode.UNAUTHORIZED.getCode()) {
+            response.setStatus(401);
+        } else if (code == ResultCode.FORBIDDEN.getCode()) {
+            response.setStatus(403);
+        } else if (code == ResultCode.RECORD_NOT_FOUND.getCode()) {
+            response.setStatus(404);
+        }
+        return Result.failure(code, e.getMessage());
+    }
+
+    /**
+     * 请求体媒体类型不支持（Content-Type 与 @RequestBody 不匹配）→ 415。
+     * 原会落入 Exception 兜底返回 500，属调用方入参问题，统一映射 415 + 结构化错误体。
+     */
+    @ExceptionHandler(HttpMediaTypeNotSupportedException.class)
+    @ResponseStatus(HttpStatus.UNSUPPORTED_MEDIA_TYPE)
+    public Result<Void> handleMediaTypeNotSupported(HttpMediaTypeNotSupportedException e) {
+        log.warn("请求 Content-Type 不支持：{}", e.getContentType());
+        return Result.failure(415, "请求 Content-Type 不支持");
+    }
+
+    /**
+     * 响应媒体类型不可接受（Accept 头与服务可产出的表示无法满足）→ 406。
+     * 原会落入 Exception 兜底返回 500，属调用方 Accept 声明问题，统一映射 406 + 结构化错误体。
+     */
+    @ExceptionHandler(HttpMediaTypeNotAcceptableException.class)
+    @ResponseStatus(HttpStatus.NOT_ACCEPTABLE)
+    public Result<Void> handleMediaTypeNotAcceptable(HttpMediaTypeNotAcceptableException e) {
+        log.warn("请求 Accept 头无法满足：{}", e.getMessage());
+        return Result.failure(406, "请求 Accept 头无法满足");
+    }
+
+    /**
+     * 缺少必需请求头（@RequestHeader 必填未提供）→ 400。
+     * 原会落入 Exception 兜底返回 500，属调用方缺头问题，统一映射 400 + 缺头提示。
+     */
+    @ExceptionHandler(MissingRequestHeaderException.class)
+    @ResponseStatus(HttpStatus.BAD_REQUEST)
+    public Result<Void> handleMissingRequestHeader(MissingRequestHeaderException e) {
+        log.warn("缺少必需请求头：{}", e.getHeaderName());
+        return Result.failure(400, "缺少必需请求头：" + e.getHeaderName());
     }
 
     /**

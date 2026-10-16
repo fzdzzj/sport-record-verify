@@ -18,13 +18,20 @@ import java.util.Map;
  *
  * <p>输入：Overpass API 下载的 OSM XML 路网切片（node + way）；
  * 输出：stdout 打印 road_edge 表的批量 INSERT SQL，由导入脚本经
- * {@code docker exec psql} 灌入 PostGIS。用法：{@code java OsmImporter.java <osm文件>}。</p>
+ * {@code docker exec psql} 灌入 PostGIS。用法：{@code java OsmImporter.java <osm文件> [目标表名]}。</p>
+ *
+ * <p>表名参数化（E17-② 影子表导入）：第二个命令行参数为导入目标表名，缺省 {@code road_edge}
+ * 保持向后兼容。表名仅由 {@code import-road-network.sh} 内部常量传入（影子表
+ * {@code road_edge_staging}），<b>非用户输入</b>——不并发走该入口，故无 SQL 注入面。</p>
  *
  * <p>为什么自写解析器而不用 osm2pgsql：osm2pgsql 面向国家级全量数据，产出表结构
  * （planet_osm_line 等）冗余且需额外镜像；单城市切片只有 node/way 两类元素，
  * StAX 流式解析 + 多值 INSERT 就够了，仓库零新增依赖、脚本可读可改（见 ADR-0006）。</p>
  */
 public class OsmImporter {
+
+    /** 缺省导入目标表名（E17-②：第二个命令行参数可覆盖为影子表，见脚本内部常量） */
+    private static final String DEFAULT_TARGET_TABLE = "road_edge";
 
     /** OSM highway 标签 → 道路等级（1=高速/快速 2=主干 3=次干 4=支路/居住 5=步行/骑行） */
     private static final Map<String, Integer> ROAD_LEVEL = Map.ofEntries(
@@ -46,9 +53,11 @@ public class OsmImporter {
         // GBK 字节，psql 侧按 UTF8 校验直接报 invalid byte sequence（实测踩坑 0xc4 0xcf）
         System.setOut(new PrintStream(new FileOutputStream(FileDescriptor.out), true, StandardCharsets.UTF_8));
         if (args.length < 1) {
-            System.err.println("用法：java OsmImporter.java <osm切片文件.xml>");
+            System.err.println("用法：java OsmImporter.java <osm切片文件.xml> [目标表名，缺省 road_edge]");
             System.exit(2);
         }
+        // E17-②：导入目标表名（第二个参数），缺省 road_edge 向后兼容；仅脚本内部常量传入，非用户输入
+        String targetTable = args.length >= 2 ? args[1] : DEFAULT_TARGET_TABLE;
         // StAX 流式解析：node 全量进内存（单城市切片十万点级，内存可控），
         // way 先攒元数据与 nd 引用序列，解析完成后统一生成 SQL（way 引用的 node 必已入表）
         Map<Long, double[]> nodes = new HashMap<>(1 << 18);   // nodeId -> [lat, lon]
@@ -118,7 +127,8 @@ public class OsmImporter {
         for (int i = 0; i < wayIds.size(); i++) {
             if (inBatch == 0) {
                 batch.setLength(0);
-                batch.append("INSERT INTO road_edge (osm_way_id, name, highway_type, road_level, geom) VALUES ");
+                batch.append("INSERT INTO ").append(targetTable)
+                        .append(" (osm_way_id, name, highway_type, road_level, geom) VALUES ");
             } else {
                 batch.append(',');
             }

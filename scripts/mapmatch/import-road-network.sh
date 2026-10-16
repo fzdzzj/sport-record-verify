@@ -3,11 +3,12 @@
 # OSM 路网导入脚本（mapmatch-service 路网匹配，见 ADR-0006）
 #
 # 流程：下载单城市 OSM 路网切片（Overpass API，默认上海·人民广场周边）
-#       → PostGIS 建表 + GIST 索引（幂等 IF NOT EXISTS）
-#       → TRUNCATE 重灌道路边表 → 抽样自验
+#       → PostGIS 建表 + GIST 索引（幂等 IF NOT EXISTS，含影子表克隆）
+#       → 影子表重灌（主表零锁）+ 单事务 RENAME 原子切换 → 抽样自验
 #
-# 幂等口径：建表幂等（IF NOT EXISTS）；数据重跑 = TRUNCATE 后覆盖刷新；
-# 切片文件已存在则跳过下载（FORCE=1 强制重下）。整个脚本可反复执行。
+# 幂等口径：建表幂等（IF NOT EXISTS）；数据重跑 = 影子表 TRUNCATE 后覆盖刷新 + RENAME
+# 原子切换（E17-②，替代原主表 TRUNCATE+重灌的分钟级阻塞窗口——RENAME 只持毫秒级字典锁，
+# 读侧对该表零感知）；切片文件已存在则跳过下载（FORCE=1 强制重下）。整个脚本可反复执行。
 #
 # 用法：
 #   bash scripts/mapmatch/import-road-network.sh
@@ -58,13 +59,21 @@ else
   echo "      复用既有切片：$OSM_FILE"
 fi
 
-echo "[3/4] 建表 + GIST 索引（幂等），TRUNCATE 后重灌道路边表 ..."
+echo "[3/4] 影子表原子切换导入（E17-②，替代原 TRUNCATE+重灌分钟级窗口）..."
+# 幂等建表（road_schema.sql，IF NOT EXISTS）→ 克隆影子表（结构含 GIST 全量克隆）→
+# 清影子表（主表 road_edge 零锁）→ 导入器灌影子表 → 单事务 RENAME 原子切换
+STAGING_TABLE="road_edge_staging"
 psql < "$SCRIPT_DIR/road_schema.sql" > /dev/null
-psql -c "TRUNCATE road_edge RESTART IDENTITY;" > /dev/null
-# 单文件源码启动跑导入器，SQL 直接管道进 psql（零中间文件）
-"$JAVA_BIN" "$SCRIPT_DIR/OsmImporter.java" "$OSM_FILE" | psql > /dev/null
+psql -c "CREATE TABLE IF NOT EXISTS $STAGING_TABLE (LIKE road_edge INCLUDING ALL);" > /dev/null
+psql -c "TRUNCATE $STAGING_TABLE RESTART IDENTITY;" > /dev/null
+# 单文件源码启动跑导入器（目标表 = 影子表），SQL 直接管道进 psql（零中间文件）
+"$JAVA_BIN" "$SCRIPT_DIR/OsmImporter.java" "$OSM_FILE" "$STAGING_TABLE" | psql > /dev/null
+# 单事务原子切换：RENAME 持字典锁毫秒级，替代原 TRUNCATE+重灌的 ACCESS EXCLUSIVE 分钟级窗口，
+# 读侧对该表零阻塞感知。serial 序列随 RENAME 归属迁移（owned sequence 自动改名并更新默认值引用），
+# 自验段查切换后新表 road_edge 语义不变即为归属正确运行时实证。
+psql -c "BEGIN; ALTER TABLE road_edge RENAME TO road_edge_old; ALTER TABLE $STAGING_TABLE RENAME TO road_edge; ALTER TABLE road_edge_old RENAME TO $STAGING_TABLE; COMMIT;" > /dev/null
 
-echo "[4/4] 导入自验：路网表总量 + 按类型抽样 ..."
+echo "[4/4] 导入自验：路网表总量 + 按类型抽样（查切换后的 road_edge 新表）..."
 psql -c "SELECT count(*) AS edges, count(DISTINCT osm_way_id) AS ways, round(sum(ST_Length(geom::geography))) AS total_m FROM road_edge;"
 psql -c "SELECT highway_type, road_level, count(*) FROM road_edge GROUP BY highway_type, road_level ORDER BY count(*) DESC LIMIT 8;"
 echo "完成。可用 curl -s -X POST http://127.0.0.1:8085/match -H 'Content-Type: application/json' -d '{...}' 验证匹配（需 mapmatch-service 已启动）"

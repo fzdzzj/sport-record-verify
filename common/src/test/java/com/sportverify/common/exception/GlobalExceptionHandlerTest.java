@@ -7,10 +7,14 @@ import org.junit.jupiter.api.Test;
 import org.springframework.core.MethodParameter;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.converter.HttpMessageNotReadableException;
+import org.springframework.mock.web.MockHttpServletResponse;
 import org.springframework.validation.BeanPropertyBindingResult;
 import org.springframework.validation.FieldError;
+import org.springframework.web.HttpMediaTypeNotAcceptableException;
+import org.springframework.web.HttpMediaTypeNotSupportedException;
 import org.springframework.web.HttpRequestMethodNotSupportedException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
+import org.springframework.web.bind.MissingRequestHeaderException;
 import org.springframework.web.bind.MissingServletRequestParameterException;
 import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
@@ -127,11 +131,82 @@ class GlobalExceptionHandlerTest {
     @Test
     void bizException_preservesCode() {
         BizException ex = new BizException(ResultCode.RECORD_NOT_FOUND);
+        MockHttpServletResponse resp = new MockHttpServletResponse();
 
-        Result<Void> result = handler.handleBizException(ex);
+        Result<Void> result = handler.handleBizException(ex, resp);
 
         assertEquals(ResultCode.RECORD_NOT_FOUND.getCode(), result.getCode());
         assertEquals(ResultCode.RECORD_NOT_FOUND.getMessage(), result.getMessage());
+    }
+
+    // ==================== E21 R4 全局业务异常状态码契约 ====================
+
+    @Test
+    void bizException_unauthorized_maps401() {
+        assertStatusMap(ResultCode.UNAUTHORIZED, 401);
+    }
+
+    @Test
+    void bizException_forbidden_maps403() {
+        assertStatusMap(ResultCode.FORBIDDEN, 403);
+    }
+
+    @Test
+    void bizException_recordNotFound_maps404() {
+        assertStatusMap(ResultCode.RECORD_NOT_FOUND, 404);
+    }
+
+    @Test
+    void bizException_otherCode_keepsDefault200() {
+        // 其余业务码（如 SYSTEM_ERROR 9999）不写状态 → 维持 200
+        assertStatusMap(ResultCode.SYSTEM_ERROR, 200);
+    }
+
+    /** 断言某业务码经 handleBizException 后写入的 HTTP 状态与 Result body code 一致。 */
+    private void assertStatusMap(ResultCode rc, int expectedHttpStatus) {
+        MockHttpServletResponse resp = new MockHttpServletResponse();
+        Result<Void> result = handler.handleBizException(new BizException(rc), resp);
+        assertEquals(rc.getCode(), result.getCode());
+        assertEquals(expectedHttpStatus, resp.getStatus());
+    }
+
+    // ==================== E21 R4 框架异常 → 415 / 406 / 400 ====================
+
+    @Test
+    void mediaTypeNotSupported_returns415() {
+        HttpMediaTypeNotSupportedException ex =
+                new HttpMediaTypeNotSupportedException("application/xml");
+
+        Result<Void> result = handler.handleMediaTypeNotSupported(ex);
+
+        assertEquals(415, result.getCode());
+        assertTrue(result.getMessage().contains("Content-Type"));
+        assertEquals(HttpStatus.UNSUPPORTED_MEDIA_TYPE, responseStatus("handleMediaTypeNotSupported",
+                HttpMediaTypeNotSupportedException.class).value());
+    }
+
+    @Test
+    void mediaTypeNotAcceptable_returns406() {
+        HttpMediaTypeNotAcceptableException ex = new HttpMediaTypeNotAcceptableException("not acceptable");
+
+        Result<Void> result = handler.handleMediaTypeNotAcceptable(ex);
+
+        assertEquals(406, result.getCode());
+        assertTrue(result.getMessage().contains("Accept"));
+        assertEquals(HttpStatus.NOT_ACCEPTABLE, responseStatus("handleMediaTypeNotAcceptable",
+                HttpMediaTypeNotAcceptableException.class).value());
+    }
+
+    @Test
+    void missingRequestHeader_returns400() {
+        MissingRequestHeaderException ex = new MissingRequestHeaderException("X-Trace-Id", null);
+
+        Result<Void> result = handler.handleMissingRequestHeader(ex);
+
+        assertEquals(400, result.getCode());
+        assertTrue(result.getMessage().contains("X-Trace-Id"));
+        assertEquals(HttpStatus.BAD_REQUEST, responseStatus("handleMissingRequestHeader",
+                MissingRequestHeaderException.class).value());
     }
 
     @Test

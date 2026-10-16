@@ -3,7 +3,6 @@ package com.sportverify.record.mapper;
 import com.baomidou.mybatisplus.core.mapper.BaseMapper;
 import com.sportverify.record.dto.RecordAggDTO;
 import com.sportverify.record.entity.SportRecord;
-import java.time.LocalDateTime;
 import java.util.List;
 import org.apache.ibatis.annotations.Param;
 import org.apache.ibatis.annotations.Select;
@@ -59,23 +58,4 @@ public interface SportRecordMapper extends BaseMapper<SportRecord> {
             + "</script>")
     RecordAggDTO selectAggByUserId(@Param("userId") Long userId,
                                    @Param("passStatus") List<Integer> passStatus);
-
-    /**
-     * 近 N 天窗口内的 (created_at, distance) 投影（TASK-232 窗口收窄）。
-     *
-     * <p>WHERE 同时带 {@code user_id} 与 {@code created_at >= ?}，两列恰为
-     * {@code idx_user_time (user_id, created_at)} 复合索引的完整键序，走范围扫描，
-     * 不再全用户回表拉取历史行。</p>
-     *
-     * <p>只投影两列：日粒度按自然日汇总与补 0 由服务层完成（SQL 不引入 {@code DATE()}
-     * 以保持跨库方言无关）。</p>
-     *
-     * @param userId              归属用户
-     * @param windowStartDateTime 窗口下界（含），取 {@code today - (窗口天数-1)} 的 00:00
-     * @return 窗口内记录投影（无记录时为空列表）
-     */
-    @Select("SELECT created_at, distance FROM sport_record "
-            + "WHERE user_id = #{userId} AND created_at >= #{windowStartDateTime}")
-    List<RecordAggDTO> selectDailyDistanceSince(@Param("userId") Long userId,
-                                                @Param("windowStartDateTime") LocalDateTime windowStartDateTime);
 }

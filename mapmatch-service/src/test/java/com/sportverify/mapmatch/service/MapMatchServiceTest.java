@@ -285,6 +285,102 @@ class MapMatchServiceTest {
         assertThat(out.stream().distinct().collect(Collectors.toList())).hasSameSizeAs(out);
     }
 
+    // ==================== E17-③ thin 下界防御（R3） ====================
+
+    @Test
+    void 抽稀_上限配0_按首尾两点采样不抛异常() {
+        List<Integer> src = List.of(0, 1, 2, 3, 4, 5, 6);
+        // max=0：旧实现（max-1=0 除零）会抛 ArithmeticException / 空列表；新实现按至少首尾 2 点
+        List<Integer> out = MapMatchService.thin(src, 0);
+        assertThat(out).hasSize(2);
+        assertThat(out).containsExactly(0, 6);
+    }
+
+    @Test
+    void 抽稀_上限配1_按首尾两点采样不抛异常() {
+        List<Integer> src = List.of(0, 1, 2, 3, 4, 5, 6);
+        List<Integer> out = MapMatchService.thin(src, 1);
+        assertThat(out).hasSize(2);
+        assertThat(out).containsExactly(0, 6);
+    }
+
+    @Test
+    void 抽稀_正常上限走等比采样序列不变() {
+        // 正常 ≥2 配置下有效上限==配置上限，采样序列与既有实现逐位一致（首尾保留、等间隔、无重复）
+        List<Integer> src = List.of(0, 1, 2, 3, 4, 5, 6, 7, 8, 9);
+        List<Integer> out = MapMatchService.thin(src, 5);
+        assertThat(out).hasSize(5);
+        assertThat(out).containsExactly(0, 2, 4, 6, 9);
+    }
+
+    // ==================== E29 候选边收集去重 + 累计判据 + WKT 预解析（R7） ====================
+
+    /**
+     * 分块递归子块空间重叠：同一候选边 WKT 在多个叶子块各返回一次 → LinkedHashSet 去重后
+     * 参与精算的候选集不重复（同边不在同一 block 内被重复精算）。断言聚合链路去重生效。
+     */
+    @Test
+    void 候选边去重_分块重叠同边仅计一次() {
+        // 两叶子块各返回一次 E1_WEST_NEAR（重叠区同边），其余边各一次
+        List<String> block1 = List.of(E1_WEST_NEAR, E2_EAST_FAR);
+        List<String> block2 = List.of(E1_WEST_NEAR, E3_INTERFERE);
+        // 参考点吸附到 E1（垂距 22.26m ≤ 阈值），去重后 E1 仍命中且 no 空
+        when(jdbcTemplate.queryForList(any(String.class), eq(String.class),
+                anyDouble(), anyDouble(), anyDouble(), anyDouble(), anyDouble()))
+                .thenReturn(block1, block2);
+        stubLegacyPointQueryEmpty();
+        props.setMaxQuerySpanMeters(0); // 强制块跨度超限 → 中点二分递归（子块重叠区造重复）
+
+        // 两叶子块：各块一次查询 → 往返 2 次
+        MapMatchResultDTO r = service.match(request(List.of(point(0, 31.2302, 121.4710), point(1, 31.2400, 121.4750))));
+        verifyTrajectoryPrefilter(2);
+        assertThat(r.getSampledPoints()).isEqualTo(2);
+        // 去重不破坏吸附判定：E1 垂距 22.26m ≤ 阈值 → 吸附计数正常（P0 命中）
+        assertThat(r.getMatchedRatio()).isGreaterThan(0.0);
+    }
+
+    /** 累计判据告警：分块累计去重后总量超上限即告警（无截断），报文含累计候选边数（去重后）。
+     *  <b>注</b>：既有 {@link #候选边超限_触发warn且不截断} 单点单块场景已覆盖累计判据（累计==单叶），
+     *  此处补充单块 2001 条仍不经截断的完整数断言，与新告警文案（「累计候选边数=2001」）对齐。 */
+    @Test
+    void 候选边超限_累计去重后总量触发告警() {
+        // 单块返回 2001 条（超过默认上限 2000）→ 累计去重后总量 2001 → 告警可观测且含完整数（未截断）
+        List<String> overLimit = new ArrayList<>();
+        for (int i = 0; i < 2001; i++) {
+            overLimit.add("LINESTRING(121.47" + i + "000 31.2300,121.47" + i + "000 31.2400)");
+        }
+        when(jdbcTemplate.queryForList(any(String.class), eq(String.class),
+                anyDouble(), anyDouble(), anyDouble(), anyDouble(), anyDouble())).thenReturn(overLimit);
+        stubLegacyPointQueryEmpty();
+
+        service.match(request(List.of(point(0, 31.2300, 121.4737))));
+
+        assertThat(warnCapture.list.stream()
+                .anyMatch(e -> e.getFormattedMessage().contains("候选边数超上限")
+                        && e.getFormattedMessage().contains("候选边数=2001"))).isTrue();
+    }
+
+    /** 预解析路径：同一输入的最近边索引与距离判定与既有实现逐位一致（行为等价硬约束）。 */
+    @Test
+    void 预解析几何_最近边索引与垂距逐位一致() {
+        double cap = props.getSearchRadiusMeters();
+        for (int i = 0; i < FIXTURE_POINTS.size(); i++) {
+            MapMatchPointDTO p = FIXTURE_POINTS.get(i);
+            //
+            double expectDist = GOLDEN_DIST[i];
+            int idx = MapMatchService.nearestEdgeIndex(p.getLat(), p.getLng(), NETWORK, cap);
+            if (idx < 0) {
+                // 无候选/全部超半径 → 封顶值
+                assertThat(expectDist).as("第 %d 点无候选封顶", i).isEqualTo(300.0);
+            } else {
+                assertThat(NETWORK.get(idx)).as("第 %d 点最佳边与黄金值", i).isEqualTo(GOLDEN_EDGE[i]);
+                // 预解析路径（match 内走 preparseCandidates + pointToCoordsMeters）与既有直调逐位一致
+                double d = MapMatchService.pointToLineStringMeters(p.getLat(), p.getLng(), NETWORK.get(idx));
+                assertThat(d).as("第 %d 点垂距与既有实现逐位一致", i).isCloseTo(expectDist, within(1e-9));
+            }
+        }
+    }
+
     // ==================== 红①：往返数判别 ====================
 
     @Test

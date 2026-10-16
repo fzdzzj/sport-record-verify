@@ -176,7 +176,9 @@ public class LeaderboardService {
                 credit = true; // 新锚点：首次入榜
             } else {
                 // 已有锚点：驳回（ROLLED_BACK）后再改判通过 → 重激活补加分；仍 ACTIVE → 重复事件幂等跳过
-                credit = contributionMapper.updateStatus(recordId,
+                // E24 R6：用 reactivate（SET status + settled_at = NULL）而非 updateStatus——重激活行清旧结算戳，
+                // 下轮 markSettled 重盖当期，改判里程归位当周/当月窗口（updateStatus 保留戳只用于回滚方向）
+                credit = contributionMapper.reactivate(recordId,
                         ContributionStatus.ROLLED_BACK.getCode(),
                         ContributionStatus.ACTIVE.getCode()) == 1;
             }

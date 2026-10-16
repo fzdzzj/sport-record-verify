@@ -147,7 +147,7 @@ class LeaderboardServiceTest {
     void applyVerified_duplicate_idempotent() {
         when(sportRecordMapper.selectById(1L)).thenReturn(record(RecordStatus.PASSED, "42.50"));
         when(contributionMapper.insertIgnore(eq(1L), eq(100L), any(), anyInt())).thenReturn(0);
-        when(contributionMapper.updateStatus(1L,
+        when(contributionMapper.reactivate(1L,
                 ContributionStatus.ROLLED_BACK.getCode(),
                 ContributionStatus.ACTIVE.getCode())).thenReturn(0);
 
@@ -156,18 +156,28 @@ class LeaderboardServiceTest {
         verify(zSetOps, never()).incrementScore(anyString(), anyString(), anyDouble());
     }
 
-    /** 驳回回滚后再改判通过：锚点 ROLLED_BACK → 重激活补加分（T8 前半段） */
+    /**
+     * E24 R6：驳回回滚后再改判通过——applyVerified 对 ROLLED_BACK 锚点（insertIgnore=0 mock）
+     * 走 {@code reactivate}（清 settled_at）而非 {@code updateStatus}：verify reactivate 被调、
+     * updateStatus 零调用；credit=true 走 ZINCRBY 补加分（既有断言复用）。
+     */
     @Test
     void applyVerified_reactivateAfterRollback_recredits() {
         when(sportRecordMapper.selectById(1L)).thenReturn(record(RecordStatus.RE_PASSED, "42.50"));
         when(contributionMapper.insertIgnore(eq(1L), eq(100L), any(), anyInt())).thenReturn(0);
-        when(contributionMapper.updateStatus(1L,
+        when(contributionMapper.reactivate(1L,
                 ContributionStatus.ROLLED_BACK.getCode(),
                 ContributionStatus.ACTIVE.getCode())).thenReturn(1);
 
         service.applyVerified(1L);
 
+        // 重激活补加分走 ZINCRBY
         verify(zSetOps).incrementScore(LeaderboardService.OVERALL_ZSET_KEY, "100", 42.5d);
+        // 判别式：重激活方向必须调 reactivate（清结算戳）而 updateStatus 零调用（保留戳只用于回滚方向）
+        verify(contributionMapper).reactivate(1L,
+                ContributionStatus.ROLLED_BACK.getCode(),
+                ContributionStatus.ACTIVE.getCode());
+        verify(contributionMapper, never()).updateStatus(anyLong(), anyInt(), anyInt());
     }
 
     /** 里程缺失（null/0）不入榜；记录不存在（脏事件）直接丢弃 */
@@ -888,7 +898,7 @@ class LeaderboardServiceTest {
     void applyVerified_idempotentSkip_doesNotEvictCache() {
         when(sportRecordMapper.selectById(1L)).thenReturn(record(RecordStatus.PASSED, "42.50"));
         when(contributionMapper.insertIgnore(eq(1L), eq(100L), any(), anyInt())).thenReturn(0);
-        when(contributionMapper.updateStatus(1L,
+        when(contributionMapper.reactivate(1L,
                 ContributionStatus.ROLLED_BACK.getCode(),
                 ContributionStatus.ACTIVE.getCode())).thenReturn(0);
 

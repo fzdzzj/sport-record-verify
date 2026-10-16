@@ -33,12 +33,34 @@ public interface LeaderboardContributionMapper extends BaseMapper<LeaderboardCon
     /**
      * 重新激活（申诉链路：PASSED→驳回回滚→再申诉改判通过 RE_PASSED 时复用锚点行）：
      * 仅 ROLLED_BACK → ACTIVE 可流转，影响行数 1 = 本次 ZINCRBY 生效方。
+     *
+     * <p><b>仅迁移状态、不清 settled_at</b>（保留历史结算戳）——用于回滚方向（ACTIVE→ROLLED_BACK，
+     * 见 {@link #reactivate} 反向说明）：回滚行不入 {@code selectRangeSummaries} 的 {@code settled_at}
+     * 窗口，旧戳保留无害。</p>
      */
     @Update("UPDATE leaderboard_contribution SET status = #{toStatus} " +
             "WHERE record_id = #{recordId} AND status = #{fromStatus}")
     int updateStatus(@Param("recordId") Long recordId,
                      @Param("fromStatus") Integer fromStatus,
                      @Param("toStatus") Integer toStatus);
+
+    /**
+     * 重激活（E24 R6，申诉改判通过方向 ROLLED_BACK → ACTIVE）：升级状态<b>并把 settled_at 置 NULL</b>。
+     *
+     * <p>缺陷链：旧实现 {@link #updateStatus} 只 SET status 不清 settled_at → 改判重激活后
+     * {@code settled_at} 仍保留第一次入榜结算的旧戳 T1 → {@code markSettled} 只盖
+     * {@code settled_at IS NULL} 行不再盖 → 改判里程永久归 T1 旧周期，当周/当月榜漏计。
+     * 本方法清戳后，下一轮 {@code markSettled} 重盖当期，改判里程归位当周/当月窗口。</p>
+     *
+     * <p>与 {@link #updateStatus} 的双向语义差异：<b>updateStatus 保留结算戳（回滚方向用）、
+     * reactivate 清结算戳（重激活方向用）</b>——回滚行不入窗故旧戳无害，重激活行须清零才能
+     * 让结算按当期重盖。</p>
+     */
+    @Update("UPDATE leaderboard_contribution SET status = #{toStatus}, settled_at = NULL " +
+            "WHERE record_id = #{recordId} AND status = #{fromStatus}")
+    int reactivate(@Param("recordId") Long recordId,
+                   @Param("fromStatus") Integer fromStatus,
+                   @Param("toStatus") Integer toStatus);
 
     /**
      * 结算标记：批量为 ACTIVE 且<b>尚未结算</b>（{@code settled_at IS NULL}）的贡献行

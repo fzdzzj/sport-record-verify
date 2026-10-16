@@ -10,6 +10,7 @@ import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 
 import java.util.ArrayList;
+import java.util.LinkedHashSet;
 import java.util.List;
 
 /**
@@ -88,7 +89,10 @@ public class MapMatchService {
         int chunkSize = Math.max(1, props.getPrefilterChunkPoints());
         for (int start = 0; start < sampled.size(); start += chunkSize) {
             List<MapMatchPointDTO> block = sampled.subList(start, Math.min(sampled.size(), start + chunkSize));
-            List<String> candidates = fetchCandidates(block);
+            List<String> candidateWkts = fetchCandidates(block);
+            // E29：候选 WKT 进入点匹配前一次性解析为坐标数组（每边一次），块内各点复用，
+            // 消除 O(点数×边数) 次重复 substring/split/parseDouble（告警不截断现状保留）
+            double[][][] candidates = preparseCandidates(candidateWkts);
             for (MapMatchPointDTO p : block) {
                 double dist = distanceToNearestRoad(p.getLat(), p.getLng(), candidates);
                 sumDist += dist;
@@ -114,16 +118,21 @@ public class MapMatchService {
     }
 
     /**
-     * 均匀抽稀：等间隔保留 max 个点（首尾必保留）。
+     * 均匀抽稀：等间隔保留 effectiveMax 个点（首尾必保留）。
      * 均匀抽样保持轨迹空间分布不失真——离路比例是占比指标，抽稀后仍无偏。
+     * <p>E17-③ 下界防御：{@code effectiveMax = Math.max(2, max)}——maxSampledPoints 配 0/1 时
+     * 不再退化为空列表（循环不执行 → n=0 → 0/0 NaN fail-open）或 {@code max-1=0} 除零
+     * ArithmeticException，按至少首尾 2 点采样；正常 ≥2 配置行为逐位不变（effectiveMax==max，
+     * 既有采样序列不变）。</p>
      */
     static <T> List<T> thin(List<T> points, int max) {
-        if (points.size() <= max) {
+        int effectiveMax = Math.max(2, max);
+        if (points.size() <= effectiveMax) {
             return points;
         }
-        List<T> out = new ArrayList<>(max);
-        for (int i = 0; i < max; i++) {
-            out.add(points.get(i * (points.size() - 1) / (max - 1)));
+        List<T> out = new ArrayList<>(effectiveMax);
+        for (int i = 0; i < effectiveMax; i++) {
+            out.add(points.get(i * (points.size() - 1) / (effectiveMax - 1)));
         }
         return out;
     }
@@ -139,13 +148,22 @@ public class MapMatchService {
      * 覆盖整条走廊，把 ST_DWithin 候选边巨量全拉进 JVM。</p>
      */
     private List<String> fetchCandidates(List<MapMatchPointDTO> block) {
-        List<String> candidates = new ArrayList<>();
-        collectCandidates(block, candidates);
-        return candidates;
+        // E29：集合容器由 List 改 LinkedHashSet——子块空间重叠区同边 WKT 去重（保序），
+        // 既消除候选集重复（同边在同一 block 内不再被多次精算），也保证块级候选集仍为各点
+        // 逐点候选集的超集（去重不改变合法性）；最终以不可变列表返回
+        LinkedHashSet<String> acc = new LinkedHashSet<>();
+        collectCandidates(block, acc);
+        if (acc.size() > props.getMaxCandidateEdges()) {
+            // 仅告警观测，严禁 LIMIT 截断（截断丢真近邻边 → 假离路 → R5 误判）；
+            // E29：判据由单叶 candidates.size() 改累计去重后总量（告警不截断现状保留）
+            log.warn("候选边数超上限（仅告警不截断，防丢真近邻边）：累计候选边数={}, 上限={}",
+                    acc.size(), props.getMaxCandidateEdges());
+        }
+        return List.copyOf(acc);
     }
 
     /** 自适应分块递归：块跨度超阈值即中点二分，叶子块执行一次 bbox 预筛并累加候选边。 */
-    private void collectCandidates(List<MapMatchPointDTO> block, List<String> acc) {
+    private void collectCandidates(List<MapMatchPointDTO> block, LinkedHashSet<String> acc) {
         double minLat = Double.MAX_VALUE;
         double maxLat = -Double.MAX_VALUE;
         double minLng = Double.MAX_VALUE;
@@ -167,11 +185,6 @@ public class MapMatchService {
         double radiusDeg = props.getSearchRadiusMeters() / DEG_FACTOR;
         List<String> candidates = jdbcTemplate.queryForList(CANDIDATE_SQL, String.class,
                 minLng, minLat, maxLng, maxLat, radiusDeg);
-        if (candidates != null && candidates.size() > props.getMaxCandidateEdges()) {
-            // 仅告警观测，严禁 LIMIT 截断（截断丢真近邻边 → 假离路 → R5 误判）
-            log.warn("候选边数超上限（仅告警不截断，防丢真近邻边）：块点数={}, 候选边数={}, 上限={}",
-                    block.size(), candidates.size(), props.getMaxCandidateEdges());
-        }
         if (candidates != null) {
             acc.addAll(candidates);
         }
@@ -187,11 +200,12 @@ public class MapMatchService {
     /**
      * 单点到候选边集合的最近垂距（米）：半径封顶 + 单调截断，语义与旧逐点 SQL 查询一致。
      * 无候选边（或候选边全部超半径）时按查询半径封顶返回（记为离路，指标有界）。
+     * E29：入参为预解析坐标数组（见 {@link #preparseCandidates}），距离计算复用解析结果。
      */
-    private double distanceToNearestRoad(double lat, double lng, List<String> candidates) {
+    private double distanceToNearestRoad(double lat, double lng, double[][][] candidates) {
         double cap = props.getSearchRadiusMeters();
         int best = nearestEdgeIndex(lat, lng, candidates, cap);
-        return best < 0 ? cap : pointToLineStringMeters(lat, lng, candidates.get(best));
+        return best < 0 ? cap : pointToCoordsMeters(lat, lng, candidates[best]);
     }
 
     /**
@@ -204,12 +218,16 @@ public class MapMatchService {
      * {@code d / 85,000 < cap / 85,000 = 半径(度)}（DEG_FACTOR 取值小于实际每度米数，
      * 故这是保守下界），说明它本就落在该点的度数半径内、必属逐点结果——与「多出」矛盾。
      * 于是多出的边垂距必 ≥ cap，被截断吞掉，两实现输出逐位一致。</p>
+     *
+     * <p>E29：本匹配循环对预解析坐标数组逐点计算（每边解析仅一次，见
+     * {@link #preparseCandidates}）；{@link #nearestEdgeIndex(double, double, List, double)}
+     * 为既有直调形态（测试/兼容入口），内部先整体解析再委托本方法，输出逐位一致。</p>
      */
-    static int nearestEdgeIndex(double lat, double lng, List<String> wkts, double capMeters) {
+    private static int nearestEdgeIndex(double lat, double lng, double[][][] coords, double capMeters) {
         int best = -1;
         double bestDist = capMeters;
-        for (int i = 0; i < wkts.size(); i++) {
-            double d = pointToLineStringMeters(lat, lng, wkts.get(i));
+        for (int i = 0; i < coords.length; i++) {
+            double d = pointToCoordsMeters(lat, lng, coords[i]);
             if (d < bestDist) {
                 bestDist = d;
                 best = i;
@@ -218,19 +236,48 @@ public class MapMatchService {
         return best;
     }
 
-    /** 点到 LINESTRING 的最小垂距（米）：逐线段投影取最小 */
-    static double pointToLineStringMeters(double lat, double lng, String wkt) {
+    /** 既有直调形态（测试/兼容）：入参为 WKT，内部整体预解析后委托坐标数组版本，行为逐位一致。 */
+    static int nearestEdgeIndex(double lat, double lng, List<String> wkts, double capMeters) {
+        return nearestEdgeIndex(lat, lng, preparseCandidates(wkts), capMeters);
+    }
+
+    /** E29：把候选 WKT 一次性解析为坐标数组（每边一次），供块内各点复用。 */
+    private static double[][][] preparseCandidates(List<String> wkts) {
+        double[][][] parsed = new double[wkts.size()][][];
+        for (int i = 0; i < wkts.size(); i++) {
+            parsed[i] = parseWkt(wkts.get(i));
+        }
+        return parsed;
+    }
+
+    /** WKT 解析：把 LINESTRING 拆成逐点经纬度坐标数组（lng/lat），仅文本解析，不含投影。 */
+    private static double[][] parseWkt(String wkt) {
         // WKT 形如 LINESTRING(lng lat,lng lat,...)，截掉头尾后按逗号分段
         String body = wkt.substring(wkt.indexOf('(') + 1, wkt.lastIndexOf(')'));
         String[] pts = body.split(",");
+        double[][] coords = new double[pts.length][2];
+        for (int i = 0; i < pts.length; i++) {
+            String[] c = pts[i].trim().split("\\s+");
+            coords[i][0] = Double.parseDouble(c[0]); // lng
+            coords[i][1] = Double.parseDouble(c[1]); // lat
+        }
+        return coords;
+    }
+
+    /** 点到 LINESTRING 的最小垂距（米）：逐线段投影取最小（解析一次后复用坐标数组） */
+    static double pointToLineStringMeters(double lat, double lng, String wkt) {
+        return pointToCoordsMeters(lat, lng, parseWkt(wkt));
+    }
+
+    /** 点到预解析坐标数组的最小垂距（米）：复用同一次解析结果，逐线段投影取最小 */
+    private static double pointToCoordsMeters(double lat, double lng, double[][] coords) {
         double metersPerDegLng = METERS_PER_DEG_LAT * Math.cos(Math.toRadians(lat));
         double best = Double.MAX_VALUE;
         double[] prev = null;
-        for (String pt : pts) {
-            String[] c = pt.trim().split("\\s+");
+        for (int i = 0; i < coords.length; i++) {
             // 局部等距圆柱投影：以当前点为原点把经纬度差转成米，小范围（几百米半径）误差厘米级
-            double[] cur = {(Double.parseDouble(c[0]) - lng) * metersPerDegLng,
-                    (Double.parseDouble(c[1]) - lat) * METERS_PER_DEG_LAT};
+            double[] cur = {(coords[i][0] - lng) * metersPerDegLng,
+                    (coords[i][1] - lat) * METERS_PER_DEG_LAT};
             if (prev != null) {
                 best = Math.min(best, pointToSegmentMeters(cur[0], cur[1], prev[0], prev[1]));
             }
