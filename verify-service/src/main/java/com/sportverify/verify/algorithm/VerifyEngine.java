@@ -76,9 +76,19 @@ public class VerifyEngine {
                     String.format("drift ratio %.1f%% > 30%%", pre.getDriftRatio() * 100)));
         }
         for (Rule rule : rules) {
-            RuleHit hit = rule.evaluate(pre.getValidPoints(), props.getRules(), threshold);
-            if (hit != null) {
-                hits.add(hit);
+            // TASK-254 E11 后半（R3）：单规则异常隔离——任意 RuntimeException 记 log.error（含
+            // 规则类名与异常摘要）+ 跳过该规则，其余规则照常评估、聚合评分不受影响、verify 正常
+            // 返回（误下发一条坏 ACTIVE 快照不再让全判定停摆进 DLQ）。预处理段与聚合段不在隔离
+            // 范围；坏规则被跳过属单规则 fail-open，由 E11 前半 R2 前置校验 + log.error 告警补偿
+            // （已知权衡登记 spec §5 预注册 3）。
+            try {
+                RuleHit hit = rule.evaluate(pre.getValidPoints(), props.getRules(), threshold);
+                if (hit != null) {
+                    hits.add(hit);
+                }
+            } catch (RuntimeException e) {
+                log.error("规则执行异常，跳过该规则：rule={}, msg={}",
+                        rule.getClass().getSimpleName(), e.getMessage(), e);
             }
         }
 

@@ -179,6 +179,13 @@ public class RecordLikeService {
      */
     private static final int RECONCILE_RECORD_BATCH_SIZE = 500;
 
+    /**
+     * likes/batch 单次入参上限（TASK-254 E12，spec §3 R4）：原始入参（去重与过滤 null 之前）
+     * 超过 50 拒绝式抛 BizException（非截断——防静默丢数据破坏「返回顺序与去重后可见记录顺序
+     * 一致」契约）。50 为 Feed 单页记录数量级推定值，数值调整需指导侧授权。
+     */
+    private static final int LIKES_BATCH_MAX_SIZE = 50;
+
     /** 计数重建锁键前缀（per-record 互斥回源，防击穿 F17） */
     static final String COUNT_INIT_LOCK_PREFIX = "lock:like:count-init:";
     /** 重建锁等待上限（秒）：等待持锁者完成回填，实际等待≈回填耗时 */
@@ -329,6 +336,12 @@ public class RecordLikeService {
      * @return 有序的 {@link LikeDTO} 列表，仅包含通过可见性校验的记录
      */
     public List<LikeDTO> getLikesBatch(List<Long> recordIds, Long userId) {
+        // TASK-254 E12（spec §3 R4）：入口原始入参（去重与过滤 null 之前）超上限拒绝式抛错，
+        // 非截断——防静默丢数据破坏「返回顺序与去重后可见记录顺序一致」契约
+        if (recordIds != null && recordIds.size() > LIKES_BATCH_MAX_SIZE) {
+            throw new BizException(ResultCode.SPORT_TYPE_INVALID,
+                    "批量查询记录 id 数量超过上限：" + recordIds.size() + " > " + LIKES_BATCH_MAX_SIZE);
+        }
         if (recordIds == null || recordIds.isEmpty()) {
             return Collections.emptyList();
         }

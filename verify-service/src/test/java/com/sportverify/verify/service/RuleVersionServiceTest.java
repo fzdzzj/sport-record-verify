@@ -240,6 +240,68 @@ class RuleVersionServiceTest {
         assertThrows(BizException.class, () -> service.updateGrayRatio(2L, 0));
     }
 
+    // ===== 规则快照程序化校验（TASK-254 E11 前半，spec §3 R2） =====
+
+    /** windowPoints=0 → 拒（R1SpeedRule 循环 i 从 window-1=-1 起取 windowAvg[-1] 数组越界隐患） */
+    @Test
+    void createVersion_windowPointsZero_rejected() {
+        VerifyProperties bad = new VerifyProperties();
+        bad.getRules().getR1().setWindowPoints(0);
+        BizException e = assertThrows(BizException.class,
+                () -> service.createVersion(request("v-bad", 0, bad)));
+        assertTrue(e.getMessage().contains("windowPoints"), e.getMessage());
+        assertTrue(e.getMessage().contains("0"), e.getMessage());
+    }
+
+    /** windowPoints=1 → 拒（R1SpeedRule sum/(window-1) 除零隐患，spec §1 E11 坐实） */
+    @Test
+    void createVersion_windowPointsOne_rejected() {
+        VerifyProperties bad = new VerifyProperties();
+        bad.getRules().getR1().setWindowPoints(1);
+        BizException e = assertThrows(BizException.class,
+                () -> service.createVersion(request("v-bad", 0, bad)));
+        assertTrue(e.getMessage().contains("windowPoints"), e.getMessage());
+    }
+
+    /** segmentRatio 越界（>1）→ 拒 */
+    @Test
+    void createVersion_segmentRatioOutOfRange_rejected() {
+        VerifyProperties bad = new VerifyProperties();
+        bad.getRules().getR3().setSegmentRatio(1.5);
+        BizException e = assertThrows(BizException.class,
+                () -> service.createVersion(request("v-bad", 0, bad)));
+        assertTrue(e.getMessage().contains("segmentRatio"), e.getMessage());
+    }
+
+    /** hardOffRoadRatio < offRoadRatio → 拒（HARD 阈值低于 SOFT 阈值语义颠倒） */
+    @Test
+    void createVersion_hardOffRoadBelowOffRoad_rejected() {
+        VerifyProperties bad = new VerifyProperties();
+        bad.getRules().getR5().setOffRoadRatio(0.5);
+        bad.getRules().getR5().setHardOffRoadRatio(0.3);
+        BizException e = assertThrows(BizException.class,
+                () -> service.createVersion(request("v-bad", 0, bad)));
+        assertTrue(e.getMessage().contains("hardOffRoadRatio"), e.getMessage());
+    }
+
+    /** 全合法默认阈值 → 创建通过（快照落库） */
+    @Test
+    void createVersion_validRules_accepted() {
+        when(mapper.countOtherSampling(null)).thenReturn(0L);
+        RuleVersion created = service.createVersion(request("v-valid", 0, new VerifyProperties()));
+        assertEquals(RuleVersionStatus.GRAY.getCode(), created.getStatus());
+        assertTrue(created.getRulesJson().contains("\"r1\""), "rules_json 须含规则快照");
+    }
+
+    /** rules=null → 行为不变（快照当前基线） */
+    @Test
+    void createVersion_rulesNull_usesBaselineSnapshot() {
+        when(mapper.countOtherSampling(null)).thenReturn(0L);
+        RuleVersion created = service.createVersion(request("v-null", 0, null));
+        assertEquals(RuleVersionStatus.GRAY.getCode(), created.getStatus());
+        assertTrue(created.getRulesJson().contains("\"r1\""), "rules_json 须含基线快照");
+    }
+
     // ===== 端到端（服务级全流程） =====
 
     /**

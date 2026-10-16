@@ -5,11 +5,14 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.sportverify.api.record.SportType;
 import com.sportverify.api.record.dto.TrackPointDTO;
 import com.sportverify.api.verify.Verdict;
+import com.sportverify.verify.algorithm.model.Point;
+import com.sportverify.verify.algorithm.model.RuleHit;
 import com.sportverify.verify.algorithm.model.VerdictResult;
 import com.sportverify.verify.algorithm.rule.R1SpeedRule;
 import com.sportverify.verify.algorithm.rule.R2AccelRule;
 import com.sportverify.verify.algorithm.rule.R3StayRule;
 import com.sportverify.verify.algorithm.rule.R4DistanceRule;
+import com.sportverify.verify.algorithm.rule.Rule;
 import com.sportverify.verify.config.VerifyProperties;
 import org.junit.jupiter.api.Test;
 
@@ -210,6 +213,39 @@ class VerifyEngineTest {
         assertTrue(node.get("preprocess").has("pointsTotal"));
         assertTrue(node.get("preprocess").has("driftRemoved"));
         assertTrue(node.get("preprocess").has("driftRatio"));
+    }
+
+    /** TASK-254 E11 后半（R3）：单规则异常隔离——stub 一条 evaluate 抛 RuntimeException 的规则
+     *  与 R1SpeedRule 并行：verify 正常返回、正常规则命中被收集、异常规则被跳过（不阻断规则链）。 */
+    @Test
+    void ruleChain_singleRuleRuntimeException_isolatedAndSkipped() {
+        Rule throwing = new Rule() {
+            @Override
+            public String code() {
+                return "THROWING";
+            }
+
+            @Override
+            public RuleLevel level() {
+                return RuleLevel.HARD;
+            }
+
+            @Override
+            public RuleHit evaluate(List<Point> points, VerifyProperties.Rules rules,
+                                    VerifyProperties.Rules.RuleThreshold typeThreshold) {
+                throw new RuntimeException("boom");
+            }
+        };
+        VerifyEngine engine = new VerifyEngine(new TrackPreprocessor(),
+                List.of(throwing, new R1SpeedRule()));
+        List<TrackPointDTO> points = track(0, 0, 200, 30.0, 5.0, 0.1); // 6 m/s 匀速 → R1 HARD
+        VerdictResult r = engine.verify(points, new VerifyProperties());
+
+        assertEquals(Verdict.REJECTED, r.getVerdict(), "异常规则被跳过后 verify 须正常返回");
+        assertTrue(r.getHits().stream().anyMatch(h -> "R1_SPEED".equals(h.getRule())),
+                "正常规则命中须被收集");
+        assertFalse(r.getHits().stream().anyMatch(h -> "THROWING".equals(h.getRule())),
+                "异常规则须被跳过、不得产生命中");
     }
 
     // ===== 轨迹构造工具 =====

@@ -6,5 +6,5 @@ for p in 8080 8081 8082 8083; do
   echo
 done
 echo "== gateway route smoke =="
-curl -s -m 5 "http://127.0.0.1:8080/user/internal/health" | head -c 200; echo
-curl -s -m 5 "http://127.0.0.1:8080/verify/internal/health" | head -c 200; echo
+# TASK-251 起网关对 internal 路径段一律 404（外部不可达语义），冒烟改走网关公开只读路由
+curl -s -m 5 "http://127.0.0.1:8080/leaderboard/api/leaderboard?type=overall" | head -c 200; echo

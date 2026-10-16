@@ -61,8 +61,9 @@ public interface RecordLikeMapper extends BaseMapper<RecordLike> {
     /**
      * 对账：某记录的点赞用户集合（用于重建 Redis 成员集，恢复幂等防重）。
      *
-     * <p>对账已改走 {@link #selectRecordLikePairs()} 单次批量扫描；
-     * 本方法保留，对账路径对其调用须保持 0 次（判别式测试约束）。</p>
+     * <p>对账已改走键集分页游标（{@link #selectDistinctRecordIdsAfter(Long, int)} +
+     * {@link #selectPairsByRecordIds(List)}，见类头注释现行口径）；本方法保留，
+     * 对账主路径对其调用须保持 0 次（判别式测试约束）。</p>
      */
     @Select("SELECT user_id FROM record_like WHERE record_id = #{recordId}")
     List<Long> selectUserIdsByRecordId(@Param("recordId") Long recordId);
@@ -70,8 +71,9 @@ public interface RecordLikeMapper extends BaseMapper<RecordLike> {
     /**
      * 对账：全表去重记录 ID 扫描（演示规模可直接全扫；生产可改增量游标/位图）。
      *
-     * <p>对账已改走 {@link #selectRecordLikePairs()} 单次批量扫描；
-     * 本方法保留，对账路径对其调用须保持 0 次（判别式测试约束）。</p>
+     * <p>对账已改走键集分页游标（{@link #selectDistinctRecordIdsAfter(Long, int)} +
+     * {@link #selectPairsByRecordIds(List)}，见类头注释现行口径）；本方法保留，
+     * 对账主路径对其调用须保持 0 次（判别式测试约束）。</p>
      */
     @Select("SELECT DISTINCT record_id FROM record_like")
     List<Long> selectDistinctRecordIds();

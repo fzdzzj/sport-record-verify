@@ -30,6 +30,8 @@ import java.util.Set;
  *   <li>兜底：若 Nacos 无该 dataId（首次）/解析失败，先落一份代码默认（{@code app.gateway.rate-limit.qps}
  *       =5000，对齐审批版 §8.3「Sentinel 限流 5k QPS」基线），保证限流不缺省；
  *       解析失败时 converter 返回 null 维持上一版规则不抖动；</li>
+ *   <li>TASK-254 E16：解析成功但为空列表同样返回 null（空规则集视为无效更新，保持上一版，
+ *       不静默清空兜底规则——合法空 JSON 数组不再覆盖 register2Property 属性）；</li>
  *   <li>阈值默认 5000；压测验证拦截链路时在 Nacos 把 count 调低（如 100），超限请求由
  *       Sentinel SCG adapter 以 HTTP 429 拒绝（见 application.yml {@code spring.cloud.sentinel.scg.fallback}），
  *       证明「改阈值 → 不重启 → 复测行为变化」。（scg adapter 的流控依赖
@@ -95,10 +97,21 @@ public class SentinelGatewayRuleConfig {
         return rules;
     }
 
-    /** Nacos JSON 数组 → Set<GatewayFlowRule>；解析失败返回 null（保持上一版规则，不因坏配置抖断限流） */
-    private Set<GatewayFlowRule> toGatewayFlowRules(String source) {
+    /**
+     * Nacos JSON 数组 → Set&lt;GatewayFlowRule&gt;；解析失败返回 null（保持上一版规则，
+     * 不因坏配置抖断限流）。TASK-254 E16：解析成功但列表为空同样返回 null（空规则集视为
+     * 无效更新，保持上一版——合法空数组不得静默清空 Nacos 缺省时落下的代码兜底规则）。
+     *
+     * <p>包私有（非 private）：SentinelGatewayRuleConfigTest 同包直调（TASK-254 R5，
+     * 可见性调整形态登记于 C-02）。</p>
+     */
+    Set<GatewayFlowRule> toGatewayFlowRules(String source) {
         try {
             List<GatewayFlowRule> list = MAPPER.readValue(source, new TypeReference<>() {});
+            if (list.isEmpty()) {
+                log.warn("解析 Nacos 网关流控规则为空列表，视为无效更新，保持上一版规则");
+                return null;
+            }
             return new HashSet<>(list);
         } catch (Exception e) {
             log.warn("解析 Nacos 网关流控规则失败，保持上一版规则：{}", e.getMessage());

@@ -822,6 +822,44 @@ class RecordLikeServiceTest {
         verify(redis, never()).executePipelined(any(RedisCallback.class));
     }
 
+    /** 判别式（TASK-254 E12）：原始入参 51 条（去重前）→ 拒绝式 BizException（非截断），
+     *  零 Pipeline、零 Mapper 触达 */
+    @Test
+    void getLikesBatch_over51RawInput_rejected() {
+        List<Long> ids = new ArrayList<>();
+        for (long i = 1; i <= 51; i++) {
+            ids.add(i);
+        }
+        BizException e = assertThrows(BizException.class, () -> service.getLikesBatch(ids, 100L));
+        assertTrue(e.getMessage().contains("51"), e.getMessage());
+        assertTrue(e.getMessage().contains("50"), e.getMessage());
+        verify(redis, never()).executePipelined(any(RedisCallback.class));
+        verify(sportRecordMapper, never()).selectById(anyLong());
+    }
+
+    /** 判别式（TASK-254 E12）：恰 50 条原始入参（含重复与 null）→ 正常，去重后走既有逻辑 */
+    @Test
+    void getLikesBatch_exactly50WithDuplicatesAndNull_ok() {
+        List<Long> ids = new ArrayList<>();
+        for (long i = 1; i <= 47; i++) {
+            ids.add(i); // 47 个互异
+        }
+        ids.add(null); // 48：null
+        ids.add(1L);   // 49：重复
+        ids.add(2L);   // 50：重复
+        assertEquals(50, ids.size(), "原始入参恰 50 条（含重复与 null）");
+        when(sportRecordMapper.selectById(1L)).thenReturn(record(RecordStatus.PASSED));
+        // 去重后 47 个 id，其中仅 1 存在；authorized 1 条 → userId 非空 2 个响应项
+        when(redis.executePipelined(any(RedisCallback.class))).thenReturn(List.of("3", Boolean.TRUE));
+
+        List<LikeDTO> dtos = service.getLikesBatch(ids, 100L);
+
+        assertEquals(1, dtos.size());
+        assertEquals(1L, dtos.get(0).getRecordId());
+        assertEquals(3L, dtos.get(0).getLikeCount());
+        verify(redis).executePipelined(any(RedisCallback.class));
+    }
+
     // ==================== 工具 ====================
 
     private SportRecord record(RecordStatus status) {

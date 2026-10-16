@@ -21,6 +21,7 @@ import org.springframework.transaction.support.TransactionSynchronizationManager
 
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
+import java.util.Map;
 import java.util.function.Supplier;
 
 /**
@@ -91,6 +92,12 @@ public class RuleVersionService {
      * 避免两个灰度版本争抢同一段 userId%100 采样桶；版本号唯一键兜底重复创建。</p>
      */
     public RuleVersion createVersion(RuleVersionCreateRequest request) {
+        // TASK-254 E11 前半（R2）：请求携带规则快照时先程序化校验（零约束零级联的历史缺陷——
+        // windowPoints=1 除零 / windowPoints=0 数组越界 / 越界比值等坏快照不得进灰度采样判定链路）；
+        // rules=null（快照当前基线）行为不变。校验不引注解级联（VerifyProperties/Request/Controller 零改动）。
+        if (request.getRules() != null) {
+            validateSnapshotRules(request.getRules());
+        }
         int grayRatio = request.getGrayRatio() == null ? 0 : request.getGrayRatio();
         if (grayRatio < 0 || grayRatio > 100) {
             throw new BizException(ResultCode.RULE_VERSION_CONFLICT, "灰度比例须在 0-100");
@@ -168,6 +175,78 @@ public class RuleVersionService {
     }
 
     // ===== 私有工具 =====
+
+    /**
+     * 规则快照程序化校验（TASK-254 E11 前半，spec §3 R2）：违规抛 BizException（参数错误类，
+     * message 含字段路径与实际值）。校验范围：vDrift &gt; 0；legacy 扁平 r1-r4 与 bySportType
+     * 每条目同一套 R1-R4 约束；通用 R5 约束。阈值对象有默认值（非 null），bySportType 条目值
+     * 为 null 视为违规（防 NPE 进判定链路）。
+     */
+    private void validateSnapshotRules(VerifyProperties props) {
+        VerifyProperties.Rules rules = props.getRules();
+        require(rules.getVDrift() > 0, "rules.vDrift", rules.getVDrift(), "> 0");
+        validateR1(rules.getR1(), "rules.r1");
+        validateR2(rules.getR2(), "rules.r2");
+        validateR3(rules.getR3(), "rules.r3");
+        validateR4(rules.getR4(), "rules.r4");
+        for (Map.Entry<String, VerifyProperties.Rules.RuleThreshold> entry
+                : rules.getBySportType().entrySet()) {
+            String path = "rules.bySportType." + entry.getKey();
+            if (entry.getValue() == null) {
+                throw new BizException(ResultCode.RULE_VERSION_CONFLICT,
+                        "规则参数非法：" + path + "=null，须为非空阈值集");
+            }
+            validateThreshold(entry.getValue(), path);
+        }
+        VerifyProperties.R5 r5 = rules.getR5();
+        require(r5.getOffRoadRatio() > 0 && r5.getOffRoadRatio() < 1,
+                "rules.r5.offRoadRatio", r5.getOffRoadRatio(), "∈ (0,1)");
+        require(r5.getHardOffRoadRatio() > 0 && r5.getHardOffRoadRatio() <= 1
+                        && r5.getHardOffRoadRatio() >= r5.getOffRoadRatio(),
+                "rules.r5.hardOffRoadRatio", r5.getHardOffRoadRatio(),
+                "∈ (0,1] 且 >= offRoadRatio(" + r5.getOffRoadRatio() + ")");
+        require(r5.getMinPoints() >= 1, "rules.r5.minPoints", r5.getMinPoints(), ">= 1");
+    }
+
+    /** 单类型阈值集 R1-R4 约束（legacy 与 bySportType 条目共用同一套） */
+    private void validateThreshold(VerifyProperties.Rules.RuleThreshold t, String path) {
+        validateR1(t.getR1(), path + ".r1");
+        validateR2(t.getR2(), path + ".r2");
+        validateR3(t.getR3(), path + ".r3");
+        validateR4(t.getR4(), path + ".r4");
+    }
+
+    private void validateR1(VerifyProperties.R1 r1, String path) {
+        require(r1.getSpeed() > 0, path + ".speed", r1.getSpeed(), "> 0");
+        require(r1.getWindowPoints() >= 2, path + ".windowPoints", r1.getWindowPoints(), ">= 2");
+        require(r1.getMinWindows() >= 1, path + ".minWindows", r1.getMinWindows(), ">= 1");
+    }
+
+    private void validateR2(VerifyProperties.R2 r2, String path) {
+        require(r2.getAccel() > 0, path + ".accel", r2.getAccel(), "> 0");
+        require(r2.getMinCount() >= 1, path + ".minCount", r2.getMinCount(), ">= 1");
+    }
+
+    private void validateR3(VerifyProperties.R3 r3, String path) {
+        require(r3.getMinMinutes() >= 1, path + ".minMinutes", r3.getMinMinutes(), ">= 1");
+        require(r3.getMaxMeters() > 0, path + ".maxMeters", r3.getMaxMeters(), "> 0");
+        require(r3.getSegmentRatio() > 0 && r3.getSegmentRatio() <= 1,
+                path + ".segmentRatio", r3.getSegmentRatio(), "∈ (0,1]");
+    }
+
+    private void validateR4(VerifyProperties.R4 r4, String path) {
+        require(r4.getMaxRatio() >= 1, path + ".maxRatio", r4.getMaxRatio(), ">= 1");
+        require(r4.getMinCumulativeMeters() >= 0, path + ".minCumulativeMeters",
+                r4.getMinCumulativeMeters(), ">= 0");
+    }
+
+    /** 统一违规抛出（参数错误类，message 含字段路径与实际值） */
+    private void require(boolean ok, String fieldPath, Object actual, String expectation) {
+        if (!ok) {
+            throw new BizException(ResultCode.RULE_VERSION_CONFLICT,
+                    "规则参数非法：" + fieldPath + "=" + actual + "，须满足 " + expectation);
+        }
+    }
 
     /**
      * 基线规则集：全量 ACTIVE 版本快照（「新版本变为基线」，全量后仍执行已验证的规则，

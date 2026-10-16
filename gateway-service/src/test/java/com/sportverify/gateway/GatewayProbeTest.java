@@ -89,4 +89,18 @@ class GatewayProbeTest {
         assertTrue(!line.contains("/actuator/health/**"), "禁止通配放行 actuator: " + line);
         assertTrue(!line.contains("/actuator/prometheus"), "prometheus 不经网关放行: " + line);
     }
+
+    /** TASK-254 E10：网关 HTTP 客户端超时资源断言——httpclient 段含 connect-timeout 3000ms
+     *  与 response-timeout 10s（SCG 默认 response-timeout 无截止，上游 hang 死连接无限占用，
+     *  见任务书 §3 R1；数值为静态推演值，调整须指导侧授权）。 */
+    @Test
+    void httpclientTimeoutsConfigured() throws IOException, URISyntaxException {
+        var url = getClass().getClassLoader().getResource("application.yml");
+        assertNotNull(url, "application.yml should be on classpath for test");
+        String content = Files.readString(Paths.get(url.toURI()));
+
+        assertTrue(content.contains("httpclient:"), "spring.cloud.gateway.httpclient 配置存在");
+        assertTrue(content.contains("connect-timeout: 3000"), "connect-timeout 须为 3000ms");
+        assertTrue(content.contains("response-timeout: 10s"), "response-timeout 须为 10s");
+    }
 }
