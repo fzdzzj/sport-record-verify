@@ -52,7 +52,7 @@ import java.time.Instant;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.LocalTime;
-import java.time.ZoneOffset;
+import java.time.ZoneId;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -181,7 +181,8 @@ public class SportRecordService {
 
         // 1.3 关键字段物理推导与合理性校验（TASK-234）：
         //     - startTime / endTime / duration / distance 未显式提供且 points 非空时，服务端基于
-        //       轨迹首末点毫秒推导时间与时长（UTC 墙钟，与 GenSamples/前端 toISOString 同口径）、
+        //       轨迹首末点毫秒推导时间与时长（按 BUSINESS_ZONE 东八墙钟落库，TASK-259 时区语义
+        //       统一；ts 本身为 UTC 纪元毫秒，与 GenSamples/前端 toISOString 同口径）、
         //       相邻点 Haversine 累加推导距离（公里保留两位，对齐 sport_record.distance DECIMAL(8,2)），
         //       根除库内关键字段存 NULL 的破窗；
         //     - 推导或显式后的 startTime/endTime 均存在时不得倒流，startTime 不得为未来时间。
@@ -1046,14 +1047,24 @@ public class SportRecordService {
     /** 地球平均半径（米，与 verify-service GeoUtils 同口径）。 */
     private static final double EARTH_RADIUS_M = 6_371_000;
 
-    /** 轨迹推导结果（TASK-234）：首末点时间/时长（UTC 墙钟）+ 相邻点 Haversine 距离（公里，两位小数）。 */
+    /**
+     * 全链业务时区（TASK-259 时区语义统一）：东八墙钟口径的唯一事实源——
+     * start_time/end_time 推导落库与推导帧未来时间比对均按本时区，与
+     * docker-compose.services.yml 六服务容器 TZ、mysql/postgis 中间件 TZ 及
+     * JDBC serverTimezone=Asia/Shanghai 同帧对齐（前端目标用户为东八）。
+     */
+    private static final ZoneId BUSINESS_ZONE = ZoneId.of("Asia/Shanghai");
+
+    /** 轨迹推导结果（TASK-234）：首末点时间/时长（东八墙钟，TASK-259 起）+ 相邻点 Haversine 距离（公里，两位小数）。 */
     private record DerivedTrackMetrics(LocalDateTime startTime, LocalDateTime endTime,
                                        int durationSeconds, BigDecimal distanceKm) {
     }
 
     /**
-     * 由轨迹点推导关键字段（TASK-234）：时间与时长取首末点毫秒 ts（UTC 墙钟，
-     * 与 GenSamples/前端 toISOString 同口径，跨时区确定）；距离按相邻点 Haversine
+     * 由轨迹点推导关键字段（TASK-234）：时间与时长取首末点毫秒 ts（UTC 纪元毫秒，
+     * 与 GenSamples/前端 toISOString 同口径，跨时区确定），按 BUSINESS_ZONE 东八
+     * 墙钟落库（TASK-259 时区语义统一：与 created_at/容器 TZ/JDBC serverTimezone
+     * 对齐，归日/周期窗口按东八日界）；距离按相邻点 Haversine
      * 逐段累加（与 verify-service GeoUtils 同公式），换算公里后保留两位小数
      * （对齐 sport_record.distance DECIMAL(8,2) 存储精度）。
      *
@@ -1065,8 +1076,8 @@ public class SportRecordService {
         if (firstTs == null || lastTs == null) {
             throw new IllegalArgumentException("轨迹点缺少时间戳（ts），无法推导开始/结束时间与时长");
         }
-        LocalDateTime start = LocalDateTime.ofInstant(Instant.ofEpochMilli(firstTs), ZoneOffset.UTC);
-        LocalDateTime end = LocalDateTime.ofInstant(Instant.ofEpochMilli(lastTs), ZoneOffset.UTC);
+        LocalDateTime start = LocalDateTime.ofInstant(Instant.ofEpochMilli(firstTs), BUSINESS_ZONE);
+        LocalDateTime end = LocalDateTime.ofInstant(Instant.ofEpochMilli(lastTs), BUSINESS_ZONE);
         int durationSeconds = (int) ((lastTs - firstTs) / 1000);
         double meters = 0;
         for (int i = 1; i < points.size(); i++) {
@@ -1094,7 +1105,9 @@ public class SportRecordService {
     /**
      * 时间合理性校验（TASK-234）：startTime 与 endTime 均存在时不得倒流；
      * startTime 不得为未来时间——显式入参按服务器本地墙钟比对（客户端同帧假设），
-     * 轨迹推导值按 UTC 墙钟比对（推导帧自洽），两帧各自成立。
+     * 轨迹推导值按 BUSINESS_ZONE 东八墙钟比对（推导帧自洽，TASK-259 与推导落库同帧；
+     * 修前比对帧为 UTC，推导改区后若不同帧则 8 小时内真实提交被误判未来时间），
+     * 两帧各自成立。
      *
      * @param startTimeDerived startTime 是否由轨迹推导（决定未来校验的墙钟帧）
      */
@@ -1104,7 +1117,8 @@ public class SportRecordService {
             throw new IllegalArgumentException("开始时间不能晚于结束时间");
         }
         if (startTime != null) {
-            LocalDateTime now = startTimeDerived ? LocalDateTime.now(ZoneOffset.UTC) : LocalDateTime.now();
+            LocalDateTime now = startTimeDerived
+                    ? LocalDateTime.now(BUSINESS_ZONE) : LocalDateTime.now();
             if (startTime.isAfter(now)) {
                 throw new IllegalArgumentException("开始时间不能为未来时间");
             }

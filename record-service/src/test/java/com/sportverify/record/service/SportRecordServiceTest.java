@@ -42,11 +42,12 @@ import org.springframework.transaction.support.TransactionSynchronization;
 import org.springframework.transaction.support.TransactionSynchronizationManager;
 
 import java.math.BigDecimal;
+import java.time.DayOfWeek;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.LocalTime;
-import java.time.ZoneOffset;
+import java.time.ZoneId;
 import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -527,10 +528,12 @@ class SportRecordServiceTest {
         ArgumentCaptor<SportRecord> captor = ArgumentCaptor.forClass(SportRecord.class);
         verify(sportRecordMapper).insert(captor.capture());
         SportRecord inserted = captor.getValue();
-        assertEquals(LocalDateTime.ofInstant(Instant.ofEpochMilli(1_700_000_000_000L), ZoneOffset.UTC),
-                inserted.getStartTime(), "startTime = 首点 ts（UTC 墙钟）");
-        assertEquals(LocalDateTime.ofInstant(Instant.ofEpochMilli(1_700_000_001_000L), ZoneOffset.UTC),
-                inserted.getEndTime(), "endTime = 末点 ts（UTC 墙钟）");
+        assertEquals(LocalDateTime.ofInstant(Instant.ofEpochMilli(1_700_000_000_000L),
+                        ZoneId.of("Asia/Shanghai")),
+                inserted.getStartTime(), "startTime = 首点 ts（东八墙钟，TASK-259 口径）");
+        assertEquals(LocalDateTime.ofInstant(Instant.ofEpochMilli(1_700_000_001_000L),
+                        ZoneId.of("Asia/Shanghai")),
+                inserted.getEndTime(), "endTime = 末点 ts（东八墙钟，TASK-259 口径）");
         assertEquals(Integer.valueOf(1), inserted.getDuration(), "时长 = 首末点毫秒差 / 1000");
         assertEquals(new BigDecimal("0.11"), inserted.getDistance(),
                 "赤道 0.001° ≈ 111.195 m → 0.111195 km 保留两位 = 0.11");
@@ -589,6 +592,200 @@ class SportRecordServiceTest {
         assertEquals(end, inserted.getEndTime());
         assertEquals(new BigDecimal("12.34"), inserted.getDistance());
         assertEquals(Integer.valueOf(1800), inserted.getDuration());
+    }
+
+    // ==================== 时区语义边界（TASK-259：全链东八墙钟口径） ====================
+    // 以下用例一律「固定 Instant + 显式 ZoneId」构造期望值，与 runner 默认时区无关；
+    // 修前口径：推导按 ZoneOffset.UTC 墙钟落库，东八宿主机/容器下归日系统性偏移 8h。
+
+    /** R4-1 跨日提交：UTC 前一日 16:00Z 恰为东八当日 00:00 → start_time 归东八当日（修前 UTC 墙钟归前一日 16:00）。 */
+    @Test
+    void submit_tzCrossDayBoundary_utcPrevDay1600DerivesEastEightMidnight() {
+        when(sportRecordMapper.selectByRequestId("req-1")).thenReturn(null);
+        stubInsertReturnsId();
+        stubPublishSuccess();
+
+        RecordSubmitDTO req = dto(0, 1);
+        req.setStartTime(null);
+        req.setEndTime(null);
+        req.setDistance(null);
+        req.setDuration(null);
+        req.setPoints(List.of(pt(0, "0", "0",
+                Instant.parse("2026-03-14T16:00:00Z").toEpochMilli())));
+
+        inTx(() -> service.submit(req), true);
+
+        ArgumentCaptor<SportRecord> captor = ArgumentCaptor.forClass(SportRecord.class);
+        verify(sportRecordMapper).insert(captor.capture());
+        assertEquals(LocalDateTime.of(2026, 3, 15, 0, 0), captor.getValue().getStartTime(),
+                "UTC 前一日 16:00Z = 东八 2026-03-15 00:00 → 归东八当日（修前归 03-14 16:00）");
+    }
+
+    /** R4-2 东八 23:59 日界两侧：23:59 提交归当天、+2 分钟（东八次日 00:01）归次日。 */
+    @Test
+    void submit_tzBoundary2359SameDay_plus2minNextDay() {
+        when(sportRecordMapper.selectByRequestId("req-tz-2359")).thenReturn(null);
+        when(sportRecordMapper.selectByRequestId("req-tz-0001")).thenReturn(null);
+        stubInsertReturnsId();
+        stubPublishSuccess();
+
+        RecordSubmitDTO before = dto(0, 1);
+        before.setRequestId("req-tz-2359");
+        before.setStartTime(null);
+        before.setEndTime(null);
+        before.setDistance(null);
+        before.setDuration(null);
+        before.setPoints(List.of(pt(0, "0", "0",
+                Instant.parse("2026-03-15T15:59:00Z").toEpochMilli())));
+        inTx(() -> service.submit(before), true);
+
+        RecordSubmitDTO after = dto(0, 1);
+        after.setRequestId("req-tz-0001");
+        after.setStartTime(null);
+        after.setEndTime(null);
+        after.setDistance(null);
+        after.setDuration(null);
+        after.setPoints(List.of(pt(0, "0", "0",
+                Instant.parse("2026-03-15T16:01:00Z").toEpochMilli())));
+        inTx(() -> service.submit(after), true);
+
+        ArgumentCaptor<SportRecord> captor = ArgumentCaptor.forClass(SportRecord.class);
+        verify(sportRecordMapper, times(2)).insert(captor.capture());
+        List<SportRecord> inserted = captor.getAllValues();
+        assertEquals(LocalDate.of(2026, 3, 15), inserted.get(0).getStartTime().toLocalDate(),
+                "东八 23:59:00 提交 → 归当天 03-15");
+        assertEquals(LocalDateTime.of(2026, 3, 15, 23, 59), inserted.get(0).getStartTime());
+        assertEquals(LocalDate.of(2026, 3, 16), inserted.get(1).getStartTime().toLocalDate(),
+                "+2 分钟 = 东八次日 00:01 → 归次日 03-16（修前 UTC 墙钟归 03-15 16:01）");
+        assertEquals(LocalDateTime.of(2026, 3, 16, 0, 1), inserted.get(1).getStartTime());
+    }
+
+    /** R4-3 晨跑归日：东八 07:00（= UTC 前一日 23:00Z）→ start_time 归东八当日 07:00（修前 UTC 墙钟形态为前一日 23:00，myStreak 会误断签）。 */
+    @Test
+    void submit_tzMorningRun0700_derivesEastEightSameDay() {
+        when(sportRecordMapper.selectByRequestId("req-1")).thenReturn(null);
+        stubInsertReturnsId();
+        stubPublishSuccess();
+
+        RecordSubmitDTO req = dto(0, 1);
+        req.setStartTime(null);
+        req.setEndTime(null);
+        req.setDistance(null);
+        req.setDuration(null);
+        req.setPoints(List.of(pt(0, "0", "0",
+                Instant.parse("2026-03-15T23:00:00Z").toEpochMilli())));
+
+        inTx(() -> service.submit(req), true);
+
+        ArgumentCaptor<SportRecord> captor = ArgumentCaptor.forClass(SportRecord.class);
+        verify(sportRecordMapper).insert(captor.capture());
+        assertEquals(LocalDateTime.of(2026, 3, 16, 7, 0), captor.getValue().getStartTime(),
+                "UTC 前一日 23:00Z = 东八 2026-03-16 07:00 晨跑 → 归东八当日（修前归 03-15 23:00）");
+    }
+
+    /**
+     * R4-3 伴言（myStreak 消费链）：同一晨跑按东八墙钟锚（03-16 07:00，R4-3 推导产物）归东八当日，
+     * 与同日下午场同日去重 → longest=1；修前 UTC 墙钟锚（03-15 23:00）会把晨跑归前一日，
+     * 与下午场构成 2 天假连击。归日值取自 start_time（显式 ZoneId 构造），与 runner 时区无关。
+     */
+    @Test
+    @SuppressWarnings("unchecked")
+    void myStreak_eastEightMorningAnchors_attributesSameDay() {
+        TableInfoHelper.initTableInfo(
+                new MapperBuilderAssistant(new MybatisConfiguration(), ""), SportRecord.class);
+        SportRecord morning = new SportRecord();
+        morning.setUserId(200L);
+        morning.setStatus(RecordStatus.PASSED.getCode());
+        morning.setStartTime(LocalDateTime.of(2026, 3, 16, 7, 0));
+        morning.setCreatedAt(LocalDateTime.of(2026, 3, 15, 23, 10));
+        SportRecord afternoon = new SportRecord();
+        afternoon.setUserId(200L);
+        afternoon.setStatus(RecordStatus.PASSED.getCode());
+        afternoon.setStartTime(LocalDateTime.of(2026, 3, 16, 15, 0));
+        afternoon.setCreatedAt(LocalDateTime.of(2026, 3, 16, 15, 30));
+        when(sportRecordMapper.selectList(any())).thenReturn(List.of(morning, afternoon));
+
+        MyStreakDTO out = service.myStreak(200L);
+
+        assertEquals(1, out.getLongest(),
+                "两场均归东八 03-16 → 同日去重 longest=1（修前 UTC 墙钟锚晨跑归 03-15 → 假连击 2）");
+    }
+
+    /**
+     * R4-4 周/月窗口对齐（记录侧供数）：东八周一 00:00 与月初 00:00 整点跨界 → start_time
+     * 落入新周/新月首日。GoalService 周期窗口与周期榜按 COALESCE(start_time, created_at)
+     * 于东八日界过滤（窗口界 LocalDate.now() 经容器 TZ 统一后为东八墙钟），记录侧供数在
+     * 周界/月界瞬间的归属正确是窗口对齐的前提。
+     */
+    @Test
+    void submit_tzWeekAndMonthBoundary_derivesNewWindowDay() {
+        when(sportRecordMapper.selectByRequestId("req-tz-week")).thenReturn(null);
+        when(sportRecordMapper.selectByRequestId("req-tz-month")).thenReturn(null);
+        stubInsertReturnsId();
+        stubPublishSuccess();
+
+        RecordSubmitDTO week = dto(0, 1);
+        week.setRequestId("req-tz-week");
+        week.setStartTime(null);
+        week.setEndTime(null);
+        week.setDistance(null);
+        week.setDuration(null);
+        week.setPoints(List.of(pt(0, "0", "0",
+                Instant.parse("2026-03-15T16:00:00Z").toEpochMilli())));
+        inTx(() -> service.submit(week), true);
+
+        RecordSubmitDTO month = dto(0, 1);
+        month.setRequestId("req-tz-month");
+        month.setStartTime(null);
+        month.setEndTime(null);
+        month.setDistance(null);
+        month.setDuration(null);
+        month.setPoints(List.of(pt(0, "0", "0",
+                Instant.parse("2026-03-31T16:00:00Z").toEpochMilli())));
+        inTx(() -> service.submit(month), true);
+
+        ArgumentCaptor<SportRecord> captor = ArgumentCaptor.forClass(SportRecord.class);
+        verify(sportRecordMapper, times(2)).insert(captor.capture());
+        LocalDateTime weekStart = captor.getAllValues().get(0).getStartTime();
+        assertEquals(LocalDateTime.of(2026, 3, 16, 0, 0), weekStart,
+                "2026-03-15T16:00Z = 东八周一 00:00 → 归新周首日（修前 UTC 墙钟归周日 16:00）");
+        assertEquals(DayOfWeek.MONDAY, weekStart.getDayOfWeek());
+        LocalDateTime monthStart = captor.getAllValues().get(1).getStartTime();
+        assertEquals(LocalDateTime.of(2026, 4, 1, 0, 0), monthStart,
+                "2026-03-31T16:00Z = 东八月初 00:00 → 归新月首日（修前 UTC 墙钟归 3-31 16:00）");
+        assertEquals(1, monthStart.getDayOfMonth());
+    }
+
+    /**
+     * R4-5 推导帧自洽回归（TASK-259）：刚结束（约 30 分钟前）的轨迹推导 start_time 为东八墙钟，
+     * 未来时间比对必须同帧 now(BUSINESS_ZONE)——修前推导值按 UTC 墙钟落库故比对帧同为 UTC；
+     * 改区后若比对仍停留 UTC 墙钟（修前 validateTimeRationality 形态），东八墙钟恒超前 8h，
+     * 8 小时内结束的真实提交会被误判「开始时间不能为未来时间」而拒绝。
+     */
+    @Test
+    void submit_justFinishedTrack_derivedStartNotRejectedAsFuture() {
+        when(sportRecordMapper.selectByRequestId("req-1")).thenReturn(null);
+        stubInsertReturnsId();
+        stubPublishSuccess();
+
+        Instant start = Instant.now().minusSeconds(30 * 60);
+        RecordSubmitDTO req = dto(0, 1);
+        req.setStartTime(null);
+        req.setEndTime(null);
+        req.setDistance(null);
+        req.setDuration(null);
+        req.setPoints(List.of(
+                pt(0, "0", "0", start.toEpochMilli()),
+                pt(1, "0", "0.001", start.plusSeconds(300).toEpochMilli())));
+
+        inTx(() -> assertEquals(RecordStatus.VERIFYING.getCode(),
+                service.submit(req).getStatus()), true);
+
+        ArgumentCaptor<SportRecord> captor = ArgumentCaptor.forClass(SportRecord.class);
+        verify(sportRecordMapper).insert(captor.capture());
+        assertEquals(LocalDateTime.ofInstant(Instant.ofEpochMilli(start.toEpochMilli()),
+                        ZoneId.of("Asia/Shanghai")),
+                captor.getValue().getStartTime(), "start_time = 首点 ts 东八墙钟，且不被误判未来时间");
     }
 
     /** 红 R2d：轨迹首末点 ts 倒流（首点晚于末点）→ 推导后 startTime > endTime 拒绝，不落库 */
