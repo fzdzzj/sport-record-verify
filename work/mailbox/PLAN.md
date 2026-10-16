@@ -664,3 +664,17 @@
 | 是否到达外部门槛 | **已到达**（补记笔翻转，2026-10-17）：封盘批次（5 笔：TASK-255 补记笔 `48457c0` + 批4b 立项笔 `e1776aa` + C-01 `a89d095` + C-02 `2a2f11f` + 封盘笔 `1772102`）推送后 GitHub Actions CI run **`38917734857`** 权威核验 conclusion=**success** 全 job 绿（`build` ✓ 10m56s / `web` ✓ 21s / `probe-ubuntu26` skipped=if 门禁正确生效旁证；两条 varargs annotations 为既有测试文件 javac 警告非阻断），headSha `1772102` 与封盘批次匹配，外部终验达成完整闭环 |
 | 状态 | TASK-256 已终裁 **ACCEPT 予以封盘**（实施回报 / 指导亲核 / 独立复核三方闭环一致；CI run `38917734857` 全绿外部终验达成，读数已由补记笔落库登记） |
 
+## 验收记录：`TASK-257`（E 系批4b-2——前端测试可观测三项 E8+E14+E26，MEDIUM 档，2026-10-17）
+
+| 项 | 内容 |
+| --- | --- |
+| 开工基线 | `1772102`（TASK-256 封盘笔 main HEAD；开工自证 rev-parse 全哈希 + porcelain 空，实施侧回填 spec 与 handoff） |
+| C-01 实施笔 | `033110a` `fix(web): E系批4b-2前端测试可观测三项（TASK-257）`（恰 18 文件 +431/−37 = spec §2 白名单 10 项 + 条件项 8 文件；条件项三块均 C-01 前定档并登记于提交体） |
+| C-02 任务两件套 | `5788184` `docs(mailbox): 登记TASK-257实施完成与门禁回填（TASK-257）`（首笔 6e30a81 因契约判据 B 要求 handoff 清单节逐行列全改动集 amend，台账未推送双提交不变量保持；§2 逐行 20 项清单供判据 B 机器比对 → 收口态 rc=0） |
+| 任务内容与白名单 | 相对开工基线恰 20 文件（18 业务/测试 + 2 台账）与白名单+条件项双向全等；条件项三块：①既有 8 个 e2e 文件接入 assertNoUnmocked（spec §2 明文豁免 + §3 R2「接入全部用例」，12 调用点各 1-2 行）②基线红订正 3 断言（1772102 纯净 worktree 实测复现非本笔引入：feed 'RUNNING' 自 TASK-245 B27 徽标化起基线即红→订正 '🏃 跑步'、goal-card '32.5/50' 自 TASK-242 B19 两位小数起基线即红→订正 '32.50/50.00'，亲核对照页面实况坐实属向演进同步断言）③unmocked 清障补 mock 三端点（likes/batch、friends/requests、user/profile 此前静默兜底 404）；零触碰面后端全模块/api/typed-router/package.json/playwright.config/三看板全零 diff |
+| 核心实现 | ①R1（E8）：client.ts 模块级单例 refreshPromise（sharedRefresh——首个 401 发起 refresh、并发 401 await 同一 Promise、settled finally 清引用），/api/auth/* 跳过清单与 _retry 单请求单次语义不变，triggerAuthFail 幂等；client.test.ts 新增两用例（两并发 401 恰一次 refresh 均以新 token 重试成功 / refresh 失败两败者不重试 auth-fail 各一次）；README L51/L61 同步；②R2（E14）：ApiCtx 增 unmocked 列表 + assertNoUnmocked 断言接入全部用例；fixtures/notifications.ts 改 createNotificationStore 状态记忆（未读 3=id 55/50/49 派生、第 1 页恰 1 未读保 top-nav strict）；补 batch-read 与清空已读两写端点 mock；新建 notifications.e2e.ts（列表渲染 + 三按钮真实点击、徽标 3→2→0 收敛 + 清空后空态）；③R3（E26）：leaderboard/feed/index/notifications 四页面加载函数内联请求序号守卫（前置自增捕获、不一致丢弃数据态/错误态/不清 loading、finally 仅当前序号清 loading、错误分支同守卫、不抽 composable）；leaderboard 快速切换 E2E 用例（首 zset 延迟 3s vs 后发即时，断言终态为后发数据，实测 4.2s 稳定未触发 §5 时序降级；落点 notifications.e2e.ts L56-58 注释登记白名单约束下落点理由） |
+| 本机门禁 | 后端 offline 七模块 rc=0（surefire 63/78/215/302/200/108/35 与开工基线逐位持平——白名单零后端文件 + 实测复核双证；派发覆盖口径：spec §4 所记 59/75/205/302/195/108/35 为立项时点旧值）；type-check 0 错；vitest 4 文件 63 测全绿（61+2）；E2E 14/14（既有 12 + 新增 2）48.1s 零真实网络断言保持；契约门 C-01 窗口 rc=0 + C-02 后收口复跑 rc=0（判据 B 20=20）；token 门 29 项 SUM 2017 逐位持平零减少、改动集零命中；词面门 ZERO_HIT + 探针阳性对照（首探针误用 .tmp 被 gitignore 忽略致假阴性、换 .txt 坐实）；diff --check / show --check 净，新文件纯 LF + 末字节 0x0A；执行路径旁注：usr\bin\bash.exe --login（沿 TASK-256 N-d 先例）+ pnpm build/E2E 需 TEMP 重定向仓内 .trae/tmp（C 盘用户 Temp esbuild EACCES 环境级，零仓库触碰） |
+| 指导亲核 | MEDIUM 档亲核三块全 PASS：①Git 摘要（porcelain 空、恰 2 笔、C-01 18 文件 +431/−37 对上）；②高风险定向抽查 3 处（E8 sharedRefresh 与 spec R1 逐条吻合含 withCredentials 注释保留；基线红订正 3 断言与 feed.page.vue L137 '🏃 跑步'（B27）、index.page.vue L470 toFixed(2)（B19）页面实况逐字吻合且订正最小面恰 3 断言行；notifications.e2e.ts 落点注释完整）；③回报一致性裁决（vitest +2 与提交体两用例一致、E2E 14=12+2、token SUM 2017 与 TASK-256 复核口径一致、契约收口 rc=0 由 handoff 逐行清单支撑 amend 原因自洽；条件项三块提交体+handoff 双登记；受限声明三项与 spec §5 预注册对应），零矛盾 |
+| 是否到达外部门槛 | **未到达**：封盘批次（4 笔：TASK-256 补记笔 `1dd8ab8` + C-01 `033110a` + C-02 `5788184` + 封盘笔）推送后待 GitHub Actions CI 权威核验（conclusion=success 全 job 绿方达外部终验；本行由补记笔翻转，读数时点以补记笔为准） |
+| 状态 | TASK-257 已亲核通过（MEDIUM 档：实施回报 + 指导亲核两方闭环一致，CI 外部终验即收口；读数由补记笔落库） |
+
