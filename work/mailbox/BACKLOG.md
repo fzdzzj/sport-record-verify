@@ -63,17 +63,17 @@
 | D1 | 总榜二级缓存与入榜/回滚一致性 | `@Cacheable leaderboard:overall` 双层 TTL=5min（CacheConfig L49），`applyVerified`/`rollbackOnRejected` 改 ZSet 后从不 evict——删除/驳回回撤后总榜最长 5min 显示旧里程，新入榜最长 5min 不出现 | 高 | MEDIUM | **已封盘 TASK-249（2026-10-16，`f9405d8` / `91c10c2`，独立复核五块 PASS）** |
 | D2 | appeal 待审队列 status 索引补齐 | `appeal` 表仅 id PK + uk_record，`listPendingAppeals` WHERE status=PENDING ORDER BY id 全表扫描（对比 outbox 表已有 idx_status_id） | 中 | LIGHT | **已封盘 TASK-249（2026-10-16，`f9405d8` / `91c10c2`，独立复核五块 PASS）** |
 | D3 | 结算对账 scan 游标续用 | `settleAndReconcile` 清残留成员每页重开 `opsForZSet().scan()` 不续 Redis cursor；**立项侦察升级定级：成员 ≥500 时推进判据永不满足，为不可终止循环（潜伏 P1）** | 中→高 | LIGHT/MEDIUM | **已封盘 TASK-249（2026-10-16，`f9405d8` / `91c10c2`，独立复核五块 PASS；不可终止循环已修复）** |
-| D4 | 改密全量吊销 KEYS 扫描替换 | `AuthService.java:418` `stringRedisTemplate.keys(auth:refresh:{uid}:*)` 全 keyspace 阻塞扫描，宜改 SCAN 渐进迭代 | 中 | LIGHT | **进行中 TASK-250（2026-10-16 立项；立项定级 FULL：auth 凭证路径生产代码，安全语义改动禁止降级）** |
-| D5 | WS STOMP 端点 Origin 纵深 | `WebSocketNotificationConfig.java:46` `addEndpoint` 未 setAllowedOrigins；CONNECT 帧鉴权兜底非数据泄露，属纵深加固 + 生产姿态验证项 | 中 | LIGHT | **进行中 TASK-250（2026-10-16 立项；立项定级 FULL：WS 访问控制安全语义）** |
+| D4 | 改密全量吊销 KEYS 扫描替换 | `AuthService.java:418` `stringRedisTemplate.keys(auth:refresh:{uid}:*)` 全 keyspace 阻塞扫描，宜改 SCAN 渐进迭代 | 中 | LIGHT | **已封盘 TASK-250（2026-10-16，`32c1d8f` / `f1dd3e4`，独立复核五块 PASS；立项定级 FULL：auth 凭证路径生产代码）** |
+| D5 | WS STOMP 端点 Origin 纵深 | `WebSocketNotificationConfig.java:46` `addEndpoint` 未 setAllowedOrigins；CONNECT 帧鉴权兜底非数据泄露，属纵深加固 + 生产姿态验证项 | 中 | LIGHT | **已封盘 TASK-250（2026-10-16，`32c1d8f` / `f1dd3e4`，独立复核五块 PASS；立项定级 FULL：WS 访问控制安全语义）** |
 | D6 | mapmatch 候选集数量上限防护 | `MapMatchService.java:88-99,135-148` 跨大片区域 bbox 过宽时 ST_DWithin 候选边可能巨量全拉 JVM 逐点垂距，无上限/耗时防护 | 低-中 | MEDIUM 小 | **已封盘 TASK-249（2026-10-16，`f9405d8` / `91c10c2`，独立复核五块 PASS）** |
-| D7 | 点赞对账全表拉取分批化 | `RecordLikeService.java:514` `selectRecordLikePairs()` 每 10min 整表 (record_id,user_id) 拉进 JVM 内存 | 低 | LIGHT | **进行中 TASK-250（2026-10-16 立项；并入 FULL 档多模块批，键集分页 500/批）** |
-| D8 | R5 降级窗口可观测告警 | `R5OffRoadRule.java:67-77` mapmatch 熔断期降级「不命中」为有意 tradeoff 非缺陷；建议补「R5 降级期间通过率突变」监控告警防误判 | 低（提示） | LIGHT | **进行中 TASK-250（2026-10-16 立项；并入 FULL 档多模块批，连续 5 次降级恰一次 error 告警）** |
+| D7 | 点赞对账全表拉取分批化 | `RecordLikeService.java:514` `selectRecordLikePairs()` 每 10min 整表 (record_id,user_id) 拉进 JVM 内存 | 低 | LIGHT | **已封盘 TASK-250（2026-10-16，`32c1d8f` / `f1dd3e4`，独立复核五块 PASS；并入 FULL 档多模块批，键集分页 500/批）** |
+| D8 | R5 降级窗口可观测告警 | `R5OffRoadRule.java:67-77` mapmatch 熔断期降级「不命中」为有意 tradeoff 非缺陷；建议补「R5 降级期间通过率突变」监控告警防误判 | 低（提示） | LIGHT | **已封盘 TASK-250（2026-10-16，`32c1d8f` / `f1dd3e4`，独立复核五块 PASS；连续 5 次降级恰一次 error 告警）** |
 
 > 侦察排除声明（防重复立项）：Outbox 毒丸隔离、规则灰度一致性、verify 判定幂等 + record 状态机乐观锁、好友并发互加/解除、点赞幂等、网关鉴权/CORS/治理凭证、track_point 分片索引、前端契约/WS 队列名均已逐文件核审无问题；D 系静态推论项（D2/D3/D6/D7）真实影响需立项后 EXPLAIN/压测确认。
 
 推荐序：
-1. **D4+D5+D7+D8 卫生与纵深批**已立项 **TASK-250**（2026-10-16）：改密吊销 SCAN 化 + WS Origin 纵深 + 点赞对账键集分页 + R5 连续降级告警；**立项定级 FULL 档**（高于侦察预估 LIGHT：D4 auth 凭证路径生产代码 + D5 WS 访问控制安全语义，安全语义改动禁止降级；多模块 user/record/verify + compose 基建 → 独立复核 + 全量逐位离线门禁），两件套就绪待用户派发实施子agent；
-2. TASK-249（D1+D2+D3+D6 数据一致性与查询防护治理）已封盘：2026-10-16 立项→实施→指导亲核→独立复核五块 PASS→封盘推送，CI run 读数见 PLAN.md 验收小节。
+1. **D 系 8 项候选全部收口完毕**：D1/D2/D3/D6 封盘于 TASK-249（2026-10-16，CI run `38839626456` 全绿），D4/D5/D7/D8 封盘于 TASK-250（2026-10-16，`32c1d8f` / `f1dd3e4`，独立复核五块 PASS，FULL 档终裁 ACCEPT）；
+2. **下一批次**：新批次立项侦察待用户发起（候选方向：D 系侦察排除声明外的全仓新侦察、B 系遗留 N 项观察、或生产姿态类课题）。
 
 
 
