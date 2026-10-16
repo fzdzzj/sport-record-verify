@@ -11,7 +11,7 @@
 - **当前分支与 HEAD**：`main` 分支，最新已封盘任务为 **TASK-252**（E 系批2——CI runner 迁移预备 E4+E31，MEDIUM 档；C-01 `66d0ec3` / C-02 `49b02c7`，指导亲核三块 PASS，终裁 ACCEPT；CI run `38869656012` 全绿外部终验达成，**完整闭环**）。前一封盘 TASK-251（E 系批1 认证/鉴权面三处破口，FULL 档，CI run `38864817657` 全绿完整闭环）。**E 系批1/批2 全部收口**。
 - **外部 CI 门槛状态**：TASK-252 封盘批次（4 笔：TASK-251 补记笔 `b4bdef8` + C-01 `66d0ec3` + C-02 `49b02c7` + 封盘笔 `b599c23`）推送后经 CI run `38869656012` 全绿（`web` ✓27s / `build` ✓10m27s，HEAD `b599c23`），外部终验达成，**TASK-252 完整闭环**（本行由补记笔落库，读数时点 2026-10-16）。**probe-ubuntu26 job skipped = R3 workflow_dispatch if 门禁正确生效旁证**；本课题改动面即 ci.yml（runner 钉扎 + 六 uses 升 v5/v6 + probe 通道 + concurrency/timeout），CI 实跑即治理生效直接验证。前一批次：TASK-251 封盘批次（7 笔）经 CI run `38864817657` 全绿（`web` ✓34s / `build` ✓11m37s），完整闭环。
 - **工作树状态**：干净（TASK-252 封盘批次 4 笔已推送 origin/main；TASK-252 CI 读数补记笔已落库，本地领先 1 笔，随 TASK-253 批次统一推送，禁单独推送）。
-- **当前在途任务数**：`0` 个——E 系批1（TASK-251）+ 批2（TASK-252）均已完整闭环（终裁 ACCEPT + CI 全绿外部终验）。TASK-253（批3）立项滚动随立项笔落库。
+- **当前在途任务数**：`1` 个——**TASK-253**（E 系批3：E5 调度饿死 + E6 终判偏斜 + E7 结算误删 + E9 迁移漂移，数据一致性四项合并，FULL 档独立复核 + 全量逐位；两件套与看板随立项笔落库，实施派发包见对话记录，开工基线 = 本立项笔哈希）。
 
 ---
 
@@ -81,17 +81,18 @@
    - **CI runner 预警**：GitHub `ubuntu-latest` 将于 2026-10-19 起迁移至 Ubuntu 26（当前 run 已附 deprecation 注解：Node 20 actions 强制跑于 Node 24、`actions/setup-java@v4` 停更），迁移后首个 CI run 需重点观察，若红按环境签名归因登记，不盲目重试刷绿——**已立项 TASK-252 预备治理（2026-10-16）**；
    - **E 系批1/批2 立项（2026-10-16）**：TASK-251（E1+E2+E3 认证/鉴权面三处破口，FULL 档）+ TASK-252（E4+E31 CI runner 迁移预备，MEDIUM 档，串行第二批）；
    - **E 系批1 收口（2026-10-16）**：TASK-251 已终裁 ACCEPT 予以封盘（C-01 `124c93e` / C-02 `fd14459`，独立复核五块 PASS 零阻断；token 门 3 项各 −1 为课题目标性口径替换经用户显式追认；非阻断登记：N1 handoff §0 quotePath 陈旧叙述（已随封盘笔订正）、N2 compose 显式 5 处 vs 叙述四服务（网关条目系冗余加强）、N3 token 29 项清单仓内无追踪定义（历史清单在 TASK-181 §6 与归档 PLAN-history，后续派发包直接附该指引）、N4 token 台账记账粒度 1-2 计数出入；后续顺手项：healthcheck.sh L9-10 与项目速览手册 L197-199 旧 8080 口径经网关打 internal 现 404（零触碰面、README 已订正）、handoff §6 词面门表述瑕疵（权威口径零命中已双验）；lessons：契约工具 CJK 提取缺口（mailbox-contract.sh 升级需专门授权））；
-   - **E 系批2 收口（2026-10-16）**：TASK-252 已终裁 ACCEPT 予以封盘（C-01 `66d0ec3` / C-02 `49b02c7`，MEDIUM 档免独立复核，指导亲核三块 PASS 含 typed-router 步骤移位重排存疑解除；偏差登记：spec §4.1 surefire 预期为 TASK-251 开工前旧值、以收口实测 52/71/205/300/182/104/29 持平为准、probe job 纳入 setup-java 步骤、probe Trivy 仅门禁跑次、契约门 .trivyignore 需 ./. 前缀形态沿 TASK-195 先例）；**受限：ubuntu-26.04 真实试跑未做，待 2026-10-19 标签可用后手动 workflow_dispatch probe26=true 验证（读数随补记笔登记，此事 10-19 后必做）**；
+   - **E 系批2 收口（2026-10-16）**：TASK-252 已终裁 ACCEPT 予以封盘（C-01 `66d0ec3` / C-02 `49b02c7`，MEDIUM 档免独立复核，指导亲核三块 PASS 含 typed-router 步骤移位重排存疑解除；偏差登记：spec §4.1 surefire 预期为 TASK-251 开工前旧值、以收口实测 52/71/205/300/182/104/29 持平为准、probe job 纳入 setup-java 步骤、probe Trivy 仅门禁跑次、契约门 .trivyignore 需 ./. 前缀形态沿 TASK-195 先例）；CI run `38869656012` 全绿（web ✓27s / build ✓10m27s，probe-ubuntu26 skipped = if 门禁正确生效旁证）完整闭环；**受限：ubuntu-26.04 真实试跑未做，待 2026-10-19 标签可用后手动 workflow_dispatch probe26=true 验证（读数随补记笔登记，此事 10-19 后必做）**；
+   - **E 系批3 立项（2026-10-16）**：TASK-253（E5+E6+E7+E9 数据一致性，FULL 档）立项笔落库——立项侦察亲验四项全部坐实：E5 恰 4 @Scheduled + yml 零池配置 + archiveSweep 无 initialDelay 启动即跑；E6 record-service 零 verify 事件消费者（状态迁移唯一路径同步 Feign 无补偿）+ reconcileCallback L168 白名单不含 APPEALING；E7 applyVerified 先 DB 后 ZSet（二次复核修法覆盖主竞态窗口）；E9 05 脚本注释自证非幂等 + migrate.sh 全量重跑无 archived 迁移；
    - 申诉审核意见（verify_db）透出限制：受限与 verify-service 红线，当前前台申诉进度条由记录状态推导，结论权威可靠。
 
 ---
 
 ## 4. 当前推进与唯一推荐动作
 
-- **当前推进**：**TASK-252（E 系批2：CI runner 迁移预备 E4+E31，MEDIUM 档）已终裁 ACCEPT 予以封盘**（2026-10-16：指导亲核三块 PASS，免独立复核；封盘批次 4 笔推送后 CI 实跑观察中，读数由补记笔落库）。E 系批1（TASK-251）+ 批2（TASK-252）全部收口，**E 系高危前 4 项（E1/E2/E3/E4）+ E31 已全部封盘，当前在途 0**。
-  - **唯一推荐动作**：观察 TASK-252 封盘批次 CI 结果——本课题改动面即 CI 配置（runner 钉扎/actions 升级/probe 通道），CI 实跑为最直接验证面：绿即外部终验达成（且「Node 20 deprecated」annotations 应消失，可作治理生效旁证）→ 落补记笔收口；红则按签名归因（若红在 actions 版本/runner 标签段优先归因本课题，若红在业务测试段按既有纪律归因），禁重试刷绿；
-  - **10-19 必做事项**：ubuntu-26.04 标签可用后，手动 `workflow_dispatch` 触发 probe26=true 试跑 probe-ubuntu26 job（Docker 链三处 + Trivy 门禁），读数随补记笔登记；通过后另立课题平移 runs-on 至 ubuntu-26.04 并摘除钉扎注释；
-  - **后续候选方向**（待用户拍板）：批3（E5+E6+E7+E9 数据一致性）/ 批4a（配置性能）/ 批4b（测试可观测）——◎ 标注项立项前需 EXPLAIN/真实库/真实网关复验再定级；E16 需实测 Sentinel 库回调语义；E15 保留「Nacos 运行时覆盖未核」适用性说明。
+- **当前推进**：**TASK-252（E 系批2）完整闭环**（CI run `38869656012` 全绿外部终验达成，补记笔已落库）；**TASK-253（E 系批3：E5 调度饿死 + E6 终判偏斜 + E7 结算误删 + E9 迁移漂移，FULL 档）已立项待实施**——立项侦察四项亲验全部坐实（E7 并发复验已做：applyVerified 先 DB 后 ZSet，二次复核修法成立），两件套 + 看板随立项笔落库。
+  - **唯一推荐动作**：请用户派发 **TASK-253 实施子agent**（派发包见对话记录，开工基线 = 立项笔哈希；FULL 档流程 = 实施 → 指导亲核 → 独立复核五块 → 终裁封盘 → 推送 → CI 外部终验 → 补记笔）；
+  - **10-19 必做事项（沿挂账）**：ubuntu-26.04 标签可用后，手动 `workflow_dispatch` 触发 probe26=true 试跑 probe-ubuntu26 job，读数随补记笔登记；通过后另立课题平移 runs-on 并摘除钉扎注释；
+  - **后续候选方向**（待用户拍板）：批4a 配置性能（E10/E11/E12/E16/E17/E21/E23/E24/E27/E29）/ 批4b 测试可观测（E8/E13/E14/E15/E18/E19/E20/E22/E25/E26/E28/E30）——◎ 标注项立项前需 EXPLAIN/真实库/真实网关复验再定级。
 
 
 
