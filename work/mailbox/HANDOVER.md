@@ -8,10 +8,10 @@
 
 ## 1. 当前代码基线与外部状态
 
-- **当前分支与 HEAD**：`main` 分支，最新已封盘任务为 **TASK-252**（E 系批2——CI runner 迁移预备 E4+E31，MEDIUM 档；C-01 `66d0ec3` / C-02 `49b02c7`，指导亲核三块 PASS，终裁 ACCEPT，CI 外部终验观察中）。前一封盘 TASK-251（E 系批1 认证/鉴权面三处破口，FULL 档，CI run `38864817657` 全绿完整闭环）。**E 系批1/批2 全部收口**。
-- **外部 CI 门槛状态**：TASK-252 封盘批次（4 笔：TASK-251 补记笔 `b4bdef8` + C-01 `66d0ec3` + C-02 `49b02c7` + 封盘笔）推送后 CI 实跑观察中——**本课题改动面即 ci.yml（钉 ubuntu-24.04 + 六 uses 升 v5/v6 + probe 通道 + concurrency/timeout）+ .trivyignore，推送后 CI 实跑为最直接验证面**，红则按签名归因不盲目重试刷绿，读数由补记笔落库。前一批次：TASK-251 封盘批次（7 笔）经 CI run `38864817657` 全绿（`web` ✓34s / `build` ✓11m37s），完整闭环；该 run annotations 双 job 亲见五 v4 actions 强制跑 Node 24、setup-java v4 停更、ubuntu-latest 10-19 迁移——与 TASK-252 治理面互证（治理后该类 annotation 应消失）。
-- **工作树状态**：干净（TASK-252 封盘批次 4 笔已推送 origin/main：TASK-251 补记笔 `b4bdef8` + C-01 `66d0ec3` + C-02 `49b02c7` + 封盘笔；TASK-252 CI 读数补记笔落库后随下一课题批次统一推送，禁单独推送）。
-- **当前在途任务数**：`0` 个——E 系批1（TASK-251）+ 批2（TASK-252）均已终裁 ACCEPT 予以封盘；批2 CI 外部终验观察中（读数由补记笔落库）。
+- **当前分支与 HEAD**：`main` 分支，最新已封盘任务为 **TASK-252**（E 系批2——CI runner 迁移预备 E4+E31，MEDIUM 档；C-01 `66d0ec3` / C-02 `49b02c7`，指导亲核三块 PASS，终裁 ACCEPT；CI run `38869656012` 全绿外部终验达成，**完整闭环**）。前一封盘 TASK-251（E 系批1 认证/鉴权面三处破口，FULL 档，CI run `38864817657` 全绿完整闭环）。**E 系批1/批2 全部收口**。
+- **外部 CI 门槛状态**：TASK-252 封盘批次（4 笔：TASK-251 补记笔 `b4bdef8` + C-01 `66d0ec3` + C-02 `49b02c7` + 封盘笔 `b599c23`）推送后经 CI run `38869656012` 全绿（`web` ✓27s / `build` ✓10m27s，HEAD `b599c23`），外部终验达成，**TASK-252 完整闭环**（本行由补记笔落库，读数时点 2026-10-16）。**probe-ubuntu26 job skipped = R3 workflow_dispatch if 门禁正确生效旁证**；本课题改动面即 ci.yml（runner 钉扎 + 六 uses 升 v5/v6 + probe 通道 + concurrency/timeout），CI 实跑即治理生效直接验证。前一批次：TASK-251 封盘批次（7 笔）经 CI run `38864817657` 全绿（`web` ✓34s / `build` ✓11m37s），完整闭环。
+- **工作树状态**：干净（TASK-252 封盘批次 4 笔已推送 origin/main；TASK-252 CI 读数补记笔已落库，本地领先 1 笔，随 TASK-253 批次统一推送，禁单独推送）。
+- **当前在途任务数**：`0` 个——E 系批1（TASK-251）+ 批2（TASK-252）均已完整闭环（终裁 ACCEPT + CI 全绿外部终验）。TASK-253（批3）立项滚动随立项笔落库。
 
 ---
 
