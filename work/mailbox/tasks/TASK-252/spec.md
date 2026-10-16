@@ -3,8 +3,8 @@
 > **课题**：E 系批2——CI runner 迁移预备（E4 runner/action 迁移 + E31 trivyignore 漂移治理）  
 > **级别**：MEDIUM 档（纯 CI 配置与文档注释，零核心逻辑零安全语义 → 免独立复核 + 指导亲核，CI 外部绿即收口；触碰 `.github/workflows/ci.yml` 基建 → 离线门禁仍全量逐位）  
 > **责任服务**：`CI workflow`、`.trivyignore`  
-> **开工基线**：TASK-251 完整收口后的 `main` HEAD（实际哈希开工时 `git rev-parse HEAD` 取得并回填；工作树干净；**开工前提：TASK-251 已封盘含 CI 绿**）  
-> **状态**：待实施（串行第二批，TASK-251 收口前禁开工）  
+> **开工基线**：`b4bdef8`（TASK-251 补记笔；2026-10-16 开工时 `git rev-parse HEAD` 取得回填；工作树干净；**开工前提：TASK-251 已封盘含 CI 绿**）
+> **状态**：已实施（C-01+C-02 已提交，待推送后 CI 外部终验）
 
 ---
 
