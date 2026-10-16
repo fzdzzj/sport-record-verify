@@ -3,8 +3,8 @@
 > **课题**：E 系批3——数据一致性批：E5 调度器单线程饿死 + E6 申诉终判跨服务偏斜无补偿 + E7 结算 ZREM 并发误删 + E9 archived 列迁移漂移与归档分片缺索引
 > **级别**：FULL 档（E6 申诉终判补偿与 E7 结算纠偏均为核心服务逻辑生产改动；多模块 record/verify/leaderboard + sql/migrations 基建 → 独立复核 + 全量逐位离线门禁）
 > **责任服务**：`record-service`（yml 配置）、`verify-service`（对账新类）、`leaderboard-service`（结算复核）、`sql/migrations`
-> **开工基线**：`<立项笔哈希>`（main，工作树干净；本占位符由实施侧 C-02 回填为实际哈希）
-> **状态**：待实施
+> **开工基线**：`c020587`（main，工作树干净；C-02 已回填实际哈希）
+> **状态**：已实施（C-01/C-02 双笔收口，七门禁读数与受限登记见 handoff.md）
 
 ---
 
