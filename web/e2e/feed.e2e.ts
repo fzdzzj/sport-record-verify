@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test'
-import { assertNoUnhandled, createApiCtx, createStores, installRouteMocks, seedSession } from './helpers'
+import { assertNoUnhandled, assertNoUnmocked, createApiCtx, createStores, installRouteMocks, seedSession } from './helpers'
 
 // ⑥ feed 卡片与分页：卡片渲染作者/类型/距离/状态；翻页加载第 2 页内容。
 test.describe('feed 卡片与分页（route-mock）', () => {
@@ -13,7 +13,9 @@ test.describe('feed 卡片与分页（route-mock）', () => {
     await expect(page.locator('.ant-card-head-title', { hasText: '好友动态' }).first()).toBeVisible()
     await expect(page.getByText('跑友0', { exact: true })).toBeVisible()
     await expect(page.getByText('跑友1', { exact: true })).toBeVisible()
-    await expect(page.getByText('RUNNING', { exact: true }).first()).toBeVisible()
+    // TASK-257 条件项基线红订正：TASK-245 B27 徽标化后类型 1 渲染 '🏃 跑步'（旧断言 'RUNNING'
+    // 自 B27 起在基线即红，1772102 worktree 实测复现），随页面演进同步断言
+    await expect(page.getByText('🏃 跑步', { exact: true }).first()).toBeVisible()
     await expect(page.getByText('km', { exact: false }).first()).toBeVisible()
 
     const feedCalls = () => ctx.apiRequests.filter((r) => r.includes('GET /record/api/records/feed'))
@@ -38,5 +40,6 @@ test.describe('feed 卡片与分页（route-mock）', () => {
     await expect(page.getByText('跑友0', { exact: true })).toBeHidden()
     expect(feedCalls().length).toBeGreaterThanOrEqual(2)
     assertNoUnhandled(ctx)
+    assertNoUnmocked(ctx)
   })
 })

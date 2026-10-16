@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test'
-import { assertNoUnhandled, createApiCtx, createStores, installRouteMocks, seedSession } from './helpers'
+import { assertNoUnhandled, assertNoUnmocked, createApiCtx, createStores, installRouteMocks, seedSession } from './helpers'
 
 // ④ 筛选联动 + 重置页码：翻页后变更筛选 → 请求回落 page=1 且列表按筛选缩减；重置恢复全量。
 test.describe('筛选联动与重置页码（route-mock）', () => {
@@ -33,5 +33,6 @@ test.describe('筛选联动与重置页码（route-mock）', () => {
     expect(stores.records.lastQuery?.get('sportType')).toBeNull()
     expect(stores.records.lastQuery?.get('page')).toBe('1')
     assertNoUnhandled(ctx)
+    assertNoUnmocked(ctx)
   })
 })

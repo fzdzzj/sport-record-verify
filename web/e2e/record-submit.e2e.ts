@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test'
-import { assertNoUnhandled, createApiCtx, createStores, installRouteMocks, seedSession } from './helpers'
+import { assertNoUnhandled, assertNoUnmocked, createApiCtx, createStores, installRouteMocks, seedSession } from './helpers'
 
 // ③ 提交表单校验与提交：清空轨迹 → 提交按钮禁用（校验门）；加载样例 → 可提交；
 // 提交 → route-mock POST /record/api/records → 结果卡片渲染（recordId/status/duplicated）。
@@ -35,6 +35,7 @@ test.describe('提交表单校验与提交（route-mock）', () => {
     await expect(page.getByText('points 数量: 10')).toBeVisible()
     await expect(submitBtn).toBeEnabled()
     assertNoUnhandled(ctx)
+    assertNoUnmocked(ctx)
   })
 
   test('选择骑行类型提交 → 结果卡片渲染（recordId/status/duplicated）', async ({ page }) => {
@@ -62,5 +63,6 @@ test.describe('提交表单校验与提交（route-mock）', () => {
     expect(typeof ctx.submitBodies[0].requestId).toBe('string')
     expect((ctx.submitBodies[0].points as unknown[]).length).toBeGreaterThanOrEqual(1)
     assertNoUnhandled(ctx)
+    assertNoUnmocked(ctx)
   })
 })

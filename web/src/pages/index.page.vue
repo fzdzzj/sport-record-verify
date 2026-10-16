@@ -495,6 +495,9 @@ function statusLabel(code: number): string {
   return m[code] || `UNKNOWN(${code})`
 }
 
+/** 请求序号守卫（TASK-257 E26）：快速翻页/筛选时，陈旧响应不写数据态/错误态/不清 loading */
+let loadSeq = 0
+
 /**
  * 列表加载（TASK-232 解耦）：只负责「我的记录」分页查询与分页状态。
  * 翻页（onPageChange）与过滤变更（onFilterChange / resetFilters）只调用本函数，
@@ -503,25 +506,31 @@ function statusLabel(code: number): string {
  */
 async function loadRecords() {
   if (!authed.value) return
+  const seq = ++loadSeq
   tableLoading.value = true
   loadError.value = ''
   try {
     const res = await fetchRecordsPage()
+    if (seq !== loadSeq) return
     const totalRows = (res.data && res.data.total) || 0
     const lastPage = Math.max(1, Math.ceil(totalRows / size.value))
     if (page.value > lastPage) {
       page.value = lastPage
       const fallback = await fetchRecordsPage()
+      if (seq !== loadSeq) return
       applyRecordsPage(fallback)
       return
     }
     applyRecordsPage(res)
   } catch (e: any) {
+    if (seq !== loadSeq) return
     loadError.value = e.code ? `[${e.code}] ${e.message}` : (e.message || '加载个人记录失败')
     records.value = []
     total.value = 0
   } finally {
-    tableLoading.value = false
+    if (seq === loadSeq) {
+      tableLoading.value = false
+    }
   }
 }
 

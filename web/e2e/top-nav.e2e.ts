@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test'
-import { assertNoUnhandled, createApiCtx, createStores, installRouteMocks, seedSession } from './helpers'
+import { assertNoUnhandled, assertNoUnmocked, createApiCtx, createStores, installRouteMocks, seedSession } from './helpers'
 
 // ⑧ 顶栏导航：逐项点击导航按钮 → 路由与页面内容断言（含登录态感知、设置入口与退出清会话）。
 // 注：「榜单」按钮未点击——/leaderboard/api/* 不在两前缀 route-mock 覆盖内，点击将产生
@@ -73,5 +73,6 @@ test.describe('顶栏导航（route-mock）', () => {
     await navBtn(/好\s*友/).click()
     await expect(page).toHaveURL(/\/login/)
     assertNoUnhandled(ctx)
+    assertNoUnmocked(ctx)
   })
 })

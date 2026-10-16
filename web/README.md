@@ -48,7 +48,8 @@ git diff --exit-code -- src/typed-router.d.ts   # 非 0 = 提交的生成物与�
 - 范围（第一阶段）：`src/utils/__tests__/token.test.ts`（凭证存储：键常量、setTokens 双键回环、
   clearTokens 清理含存量 `refresh_token` 键、auth-fail handler 注册/调用/异常吞没）与
   `src/api/__tests__/client.test.ts`（拦截器链：Bearer 注入有无、code=0 透传、code!=0 抛出、
-  401 单次 refresh 重试含 `withCredentials`、`/api/auth/*` 401 零 refresh、refresh 失败触发 auth-fail）。
+  401 单次 refresh 重试含 `withCredentials`、`/api/auth/*` 401 零 refresh、refresh 失败触发 auth-fail、
+  并发 401 共享单次刷新（TASK-257 E8：败者不再清赢家 token））。
 - 传输层以 axios adapter 注入（替换 `api.defaults.adapter`）模拟，不引入 axios-mock-adapter / msw；
   仅新增 devDeps `vitest` + `happy-dom`，无 @vue/test-utils；E2E 自 TASK-227 起由 Playwright 承载（见下文「E2E 真实浏览器验证」小节）。
 - 组件测试后置理由：页面为路由 / axios / query 重度耦合，无轻量可挂载组件（组件测试另立变更）；
@@ -58,7 +59,7 @@ git diff --exit-code -- src/typed-router.d.ts   # 非 0 = 提交的生成物与�
 
 - 注册页：`/register` ，POST /api/auth/register ，成功不返回 token，提示去登录；重复手机号 2001。
 - 登录页：`/login` ，POST /api/auth/login ，成功保存 accessToken/refreshToken/role（分别存储），进入控制台。
-- 401 单次 refresh：业务请求 401 时，用 refreshToken 调用 /api/auth/refresh 一次，成功更新 token 并重试；失败清存储跳登录（防死循环）。
+- 401 单次 refresh：业务请求 401 时，用 refreshToken 调用 /api/auth/refresh 一次，成功更新 token 并重试；失败清存储跳登录（防死循环）。并发 401 共享单次刷新，败者不再清赢家 token（TASK-257 E8：模块级单例 in-flight Promise，后端 refresh 原子消费旧 jti 并发仅一赢家）。
 - 路由守卫：无 accessToken 不能进入控制台（/ 等）；已登录访问 /login 自动跳转控制台；退出清 localStorage。
 - 请求头：仅 `Authorization: Bearer <accessToken>` ；**不发送** headers.token、X-User-Id、X-Role（由网关注入）。
 

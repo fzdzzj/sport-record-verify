@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test'
-import { assertNoUnhandled, createApiCtx, createStores, installRouteMocks, seedSession } from './helpers'
+import { assertNoUnhandled, assertNoUnmocked, createApiCtx, createStores, installRouteMocks, seedSession } from './helpers'
 
 // ⑤ 删除确认与刷新：Popconfirm 取消不发 DELETE；确认后 DELETE 发出、列表刷新（首行 1000 → 1001）。
 test.describe('删除确认与列表刷新（route-mock）', () => {
@@ -31,5 +31,6 @@ test.describe('删除确认与列表刷新（route-mock）', () => {
     await expect(rows.first()).toContainText('1001')
     await expect(page.locator('.ant-table-tbody')).not.toContainText('1000')
     assertNoUnhandled(ctx)
+    assertNoUnmocked(ctx)
   })
 })

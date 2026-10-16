@@ -245,13 +245,18 @@ async function toggleLike(item: FeedItemDTO) {
   }
 }
 
+/** 请求序号守卫（TASK-257 E26）：快速翻页/刷新时，陈旧响应不写数据态/错误态/不清 loading */
+let loadSeq = 0
+
 async function loadList() {
   if (!loggedIn.value) return
+  const seq = ++loadSeq
   loading.value = true
   errorMessage.value = ''
   rowsMessage.value = ''
   try {
     const res = await getFeed(page.value, size.value)
+    if (seq !== loadSeq) return
     rows.value = res.data?.records || []
     total.value = res.data?.total || 0
     // 后端按 createdAt 倒序；页内兜底排序
@@ -261,10 +266,13 @@ async function loadList() {
     loadLikes()
     if (!rows.value.length) rowsMessage.value = '暂无动态（没有本人或好友的可见记录）。'
   } catch (e: any) {
+    if (seq !== loadSeq) return
     rows.value = []
     errorMessage.value = e.code ? `[${e.code}] ${e.message}` : (e.message || '加载动态失败')
   } finally {
-    loading.value = false
+    if (seq === loadSeq) {
+      loading.value = false
+    }
   }
 }
 

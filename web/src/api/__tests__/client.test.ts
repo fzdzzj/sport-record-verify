@@ -780,3 +780,76 @@ describe('client.ts clearReadNotifications（B21）', () => {
     expect(call.method?.toLowerCase()).toBe('delete')
   })
 })
+
+// ===== 并发 401 共享刷新（TASK-257 E8） =====
+describe('client.ts 并发 401 共享刷新（TASK-257 E8）', () => {
+  // R1：两并发业务请求均 401 → 恰一次 refresh 调用（共享 in-flight Promise），
+  // 两原请求各以新 token 重试一次并成功（败者不清赢家 token）
+  it('R1 two concurrent 401s share exactly one refresh and both retry with the new token', async () => {
+    setTokens('oldtok', 'USER')
+    let refreshCalls = 0
+    const businessAuths: Array<string | undefined> = []
+    const attempts = new Map<string, number>()
+    adapter.mockImplementation((config: unknown) => {
+      const url = String((config as { url?: string }).url || '')
+      if (url.includes('/api/auth/refresh')) {
+        refreshCalls++
+        return Promise.resolve(
+          ok(config, { code: 0, message: 'ok', data: { accessToken: 'newtok', role: 'USER' } }),
+        )
+      }
+      const n = (attempts.get(url) || 0) + 1
+      attempts.set(url, n)
+      businessAuths.push(authHeaderOf(config))
+      if (n === 1) return unauthorized(config)
+      return Promise.resolve(ok(config, { code: 0, message: 'ok', data: { url } }))
+    })
+
+    const [ra, rb] = await Promise.all([
+      api.get('/record/api/records/1/like'),
+      api.get('/record/api/records/2/like'),
+    ])
+
+    expect(ra).toEqual({ code: 0, message: 'ok', data: { url: '/record/api/records/1/like' } })
+    expect(rb).toEqual({ code: 0, message: 'ok', data: { url: '/record/api/records/2/like' } })
+    // 并发收敛为恰一次 refresh
+    expect(refreshCalls).toBe(1)
+    // 两原请求各重试一次：两次携旧 token（首尝试）+ 两次携新 token（重试）
+    expect(businessAuths.filter((a) => a === 'Bearer oldtok')).toHaveLength(2)
+    expect(businessAuths.filter((a) => a === 'Bearer newtok')).toHaveLength(2)
+    // adapter 总调用 = 2×原请求 401 + 1 refresh + 2 重试 = 5
+    expect(adapter).toHaveBeenCalledTimes(5)
+    // 新 token 已落库且未被败者清除
+    expect(getAccessToken()).toBe('newtok')
+  })
+
+  // R2：两并发 401 且 refresh 失败 → 恰一次 refresh 调用、两原请求均不重试、
+  // auth-fail 触发（每败者 catch 各一次 = 2，与不共享基线同计数，不放大）
+  it('R2 concurrent 401s with failing refresh trigger auth-fail per waiter and never retry', async () => {
+    const failHandler = vi.fn()
+    setAuthFailHandler(failHandler)
+    setTokens('oldtok', 'USER')
+    let refreshCalls = 0
+    const businessUrls: string[] = []
+    adapter.mockImplementation((config: unknown) => {
+      const url = String((config as { url?: string }).url || '')
+      if (url.includes('/api/auth/refresh')) {
+        refreshCalls++
+        return unauthorized(config, { code: 1001, message: 'refresh 失败' })
+      }
+      businessUrls.push(url)
+      return unauthorized(config)
+    })
+
+    await expect(
+      Promise.all([api.get('/record/api/records/1/like'), api.get('/record/api/records/2/like')]),
+    ).rejects.toBeTruthy()
+
+    expect(refreshCalls).toBe(1)
+    // 原请求不重试：业务调用恰 2 次（各自首次 401）
+    expect(businessUrls).toHaveLength(2)
+    // adapter 总调用 = 2×原请求 401 + 1 refresh = 3
+    expect(adapter).toHaveBeenCalledTimes(3)
+    expect(failHandler).toHaveBeenCalledTimes(2)
+  })
+})

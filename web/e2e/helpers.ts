@@ -2,22 +2,26 @@ import { expect, Page, Route } from '@playwright/test'
 import { createRecordStore, myStats, PAGE_SIZE } from './fixtures/records'
 import { createFeedStore } from './fixtures/feed'
 import { createGoalStore, type GoalUpsert } from './fixtures/goals'
-import { NOTIFICATION_LIST, NOTIFICATION_PREFERENCES, UNREAD_COUNT } from './fixtures/notifications'
+import { createNotificationStore, NOTIFICATION_PREFERENCES } from './fixtures/notifications'
 
 /**
  * route-mock 装配（TASK-227）：page.route 拦截 /record/api/* 与 /user/api/* 返回固定夹具，
  * 并在 page.on('request') 记录全部 /api/ 请求——两前缀之外的任何 API 请求记入 unhandled
  * （断言 no-unhandled = 零真实网络请求）。WebSocket（/user/ws-notifications，STOMP 推送）
  * 不属于 HTTP 请求面，preview 下连接失败被客户端静默降级，见 handoff 说明。
+ * TASK-257 E14 mock 兜底可见性：两前缀「之内」未映射请求原兜底 404（code:9999）不入任何
+ * 断言 → 假安全；现兜底 404 前记入 ctx.unmocked（断言 no-unmocked = 零未映射兜底）。
  */
 export interface ApiCtx {
   apiRequests: string[]
   unhandled: string[]
+  /** 两前缀内未映射请求（兜底 404 前记入，TASK-257 E14） */
+  unmocked: string[]
   submitBodies: Record<string, unknown>[]
 }
 
 export function createApiCtx(): ApiCtx {
-  return { apiRequests: [], unhandled: [], submitBodies: [] }
+  return { apiRequests: [], unhandled: [], unmocked: [], submitBodies: [] }
 }
 
 export function ok(data: unknown): { status: number; contentType: string; body: string } {
@@ -44,10 +48,17 @@ export function assertNoUnhandled(ctx: ApiCtx): void {
   expect(ctx.unhandled, `发现两前缀外未覆盖 API 请求: ${ctx.unhandled.join(', ')}`).toEqual([])
 }
 
+/** 两前缀内零未映射兜底 404（TASK-257 E14：mock 兜底假安全收口） */
+export function assertNoUnmocked(ctx: ApiCtx): void {
+  expect(ctx.unmocked, `发现两前缀内未映射请求(兜底404): ${ctx.unmocked.join(', ')}`).toEqual([])
+}
+
 export interface Stores {
   records: ReturnType<typeof createRecordStore>
   feed: ReturnType<typeof createFeedStore>
   goals: ReturnType<typeof createGoalStore>
+  /** 通知状态记忆（TASK-257 E14）：列表/未读数随标已读/批量/清空写操作流转 */
+  notifications: ReturnType<typeof createNotificationStore>
   /** 点赞态记忆（TASK-236）：key=recordId → { liked, likeCount }，POST +1 / DELETE -1 / GET 返回当前态 */
   likes: Map<number, { liked: boolean; likeCount: number }>
 }
@@ -57,13 +68,14 @@ export function createStores(): Stores {
     records: createRecordStore(),
     feed: createFeedStore(),
     goals: createGoalStore(),
+    notifications: createNotificationStore(),
     likes: new Map(),
   }
 }
 
 export async function installRouteMocks(page: Page, ctx: ApiCtx, stores: Stores): Promise<void> {
   await page.route('**/record/api/**', (route) => handleRecord(route, ctx, stores))
-  await page.route('**/user/api/**', (route) => handleUser(route, stores))
+  await page.route('**/user/api/**', (route) => handleUser(route, ctx, stores))
   page.on('request', (req) => {
     const p = new URL(req.url()).pathname
     // 仅统计后端 API 前缀（排除 dev server 下的 /src/api/*.ts 源码模块）
@@ -137,6 +149,19 @@ async function handleRecord(route: Route, ctx: ApiCtx, stores: Stores): Promise<
     route.fulfill(okPage(items.slice(start, start + size), items.length, page, size))
     return
   }
+  if (p === '/record/api/records/likes/batch' && method === 'POST') {
+    // TASK-257 E14 清障补 mock（此前兜底 404、feed loadLikes 静默吞错）：按请求 id 列表返回当前点赞态
+    const ids = (req.postDataJSON() || []) as number[]
+    route.fulfill(
+      ok(
+        ids.map((id) => {
+          const prev = stores.likes.get(id)
+          return { recordId: id, likeCount: prev?.likeCount ?? 0, liked: prev?.liked ?? false }
+        }),
+      ),
+    )
+    return
+  }
   const recDel = p.match(/^\/record\/api\/records\/(\d+)$/)
   if (recDel && method === 'DELETE') {
     stores.records.deleteById(Number(recDel[1]))
@@ -172,24 +197,26 @@ async function handleRecord(route: Route, ctx: ApiCtx, stores: Stores): Promise<
     route.fulfill(ok({ recordId: id, likeCount, liked }))
     return
   }
+  ctx.unmocked.push(`${method} ${p}`)
   route.fulfill({ status: 404, contentType: 'application/json', body: JSON.stringify({ code: 9999, message: 'mock unmapped: ' + p }) })
 }
 
-async function handleUser(route: Route, stores: Stores): Promise<void> {
+async function handleUser(route: Route, ctx: ApiCtx, stores: Stores): Promise<void> {
   const req = route.request()
   const url = new URL(req.url())
   const p = url.pathname
   const method = req.method()
 
   if (p === '/user/api/notifications/unread-count' && method === 'GET') {
-    route.fulfill(ok(UNREAD_COUNT))
+    // 状态记忆（TASK-257 E14）：未读数随写操作实时流转（顶栏徽标初值 3 = 列表未读派生）
+    route.fulfill(ok(stores.notifications.unreadCount))
     return
   }
   if (p === '/user/api/notifications' && method === 'GET') {
     const page = Number(url.searchParams.get('page') || '1')
     const size = Number(url.searchParams.get('size') || '10')
-    const start = (page - 1) * size
-    route.fulfill(okPage(NOTIFICATION_LIST.slice(start, start + size), NOTIFICATION_LIST.length, page, size))
+    const { records, total } = stores.notifications.page(page, size)
+    route.fulfill(okPage(records, total, page, size))
     return
   }
   if (p === '/user/api/notifications/preferences' && method === 'GET') {
@@ -202,11 +229,23 @@ async function handleUser(route: Route, stores: Stores): Promise<void> {
   }
   const readOne = p.match(/^\/user\/api\/notifications\/(\d+)\/read$/)
   if (readOne && method === 'PATCH') {
-    route.fulfill(ok(null))
+    // 状态记忆：命中未读行置读（1）否则不流转（0），后续列表/未读数查询反映变更
+    route.fulfill(ok(stores.notifications.markRead(Number(readOne[1])) ? 1 : 0))
     return
   }
   if (p === '/user/api/notifications/read-all' && method === 'PATCH') {
-    route.fulfill(ok(2))
+    route.fulfill(ok(stores.notifications.markAllRead()))
+    return
+  }
+  if (p === '/user/api/notifications/batch-read' && method === 'PATCH') {
+    // TASK-257 E14 补 mock（此前兜底 404）：body 为通知 id 列表，返回流转条数
+    const ids = (req.postDataJSON() || []) as number[]
+    route.fulfill(ok(stores.notifications.batchRead(ids)))
+    return
+  }
+  if (p === '/user/api/notifications/read' && method === 'DELETE') {
+    // TASK-257 E14 补 mock（此前兜底 404）：清空本人已读行，返回删除条数
+    route.fulfill(ok(stores.notifications.clearRead()))
     return
   }
   if (p === '/user/api/friends' && method === 'GET') {
@@ -223,5 +262,16 @@ async function handleUser(route: Route, stores: Stores): Promise<void> {
     )
     return
   }
+  if (p === '/user/api/friends/requests' && method === 'GET') {
+    // TASK-257 E14 清障补 mock（此前兜底 404）：待处理好友申请列表（空态）
+    route.fulfill(okPage([], 0, 1, 20))
+    return
+  }
+  if (p === '/user/api/user/profile' && method === 'GET') {
+    // TASK-257 E14 清障补 mock（此前兜底 404）：settings 页挂载 loadProfile 拉取个人资料
+    route.fulfill(ok({ id: 100, nickname: '演示用户' }))
+    return
+  }
+  ctx.unmocked.push(`${method} ${p}`)
   route.fulfill({ status: 404, contentType: 'application/json', body: JSON.stringify({ code: 9999, message: 'mock unmapped: ' + p }) })
 }

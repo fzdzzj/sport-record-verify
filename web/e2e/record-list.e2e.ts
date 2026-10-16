@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test'
-import { assertNoUnhandled, createApiCtx, createStores, installRouteMocks, seedSession } from './helpers'
+import { assertNoUnhandled, assertNoUnmocked, createApiCtx, createStores, installRouteMocks, seedSession } from './helpers'
 import { totalDistanceSum } from './fixtures/records'
 
 // ② 记录列表渲染：登录态首页统计卡 + 记录表格（route-mock 返回 25 条 / 第 1 页 20 条）。
@@ -29,5 +29,6 @@ test.describe('记录列表渲染（route-mock）', () => {
     // 25 条 → 分页器可见（共 25 条）
     await expect(page.locator('.ant-pagination')).toBeVisible()
     assertNoUnhandled(ctx)
+    assertNoUnmocked(ctx)
   })
 })

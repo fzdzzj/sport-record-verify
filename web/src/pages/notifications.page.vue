@@ -212,22 +212,30 @@ const columns = [
   { title: '操作', dataIndex: 'action', key: 'action', width: 90 },
 ]
 
+/** 请求序号守卫（TASK-257 E26）：快速翻页/刷新时，陈旧响应不写数据态/错误态/不清 loading */
+let loadSeq = 0
+
 async function loadList() {
   if (!loggedIn.value) return
+  const seq = ++loadSeq
   loading.value = true
   errorMessage.value = ''
   try {
     const res = await listNotifications(page.value, size.value)
+    if (seq !== loadSeq) return
     rows.value = res.data?.records || []
     total.value = res.data?.total || 0
     if (res.data && typeof res.data.current === 'number' && res.data.current > 0) {
       page.value = res.data.current
     }
   } catch (e: any) {
+    if (seq !== loadSeq) return
     errorMessage.value = e.code ? `[${e.code}] ${e.message}` : (e.message || '加载失败')
     rows.value = []
   } finally {
-    loading.value = false
+    if (seq === loadSeq) {
+      loading.value = false
+    }
   }
 }
 

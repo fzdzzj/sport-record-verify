@@ -99,6 +99,26 @@ api.interceptors.request.use((config) => {
   return config
 })
 
+// ===== 401 shared refresh (TASK-257 E8) =====
+// 模块级单例 in-flight refresh：首个 401 发起 /api/auth/refresh，并发 401 await 同一 Promise。
+// 后端 refresh 原子消费旧 jti（并发仅一赢家）——各自发起会使败者 triggerAuthFail 清掉赢家
+// 刚写入的 token（整页互踢）；共享后败者等同一结果。settled 后 finally 清引用，下一轮重新发起。
+let refreshPromise: Promise<any> | null = null
+
+function sharedRefresh(): Promise<any> {
+  if (!refreshPromise) {
+    // refresh 凭证在 HttpOnly cookie 中（JS 不可读），body 无凭证字段；withCredentials 使同源 cookie
+    // 随请求携带（跨域时亦携带）。cookie 是否可用由服务端 401 裁决，前端不预设本地值。
+    refreshPromise = api
+      .post('/api/auth/refresh', {}, { withCredentials: true })
+      .then((refreshRes) => (refreshRes as any).data)
+      .finally(() => {
+        refreshPromise = null
+      })
+  }
+  return refreshPromise
+}
+
 // Response interceptor: code===0 success else throw; 401 -> single refresh attempt
 api.interceptors.response.use(
   (response) => {
@@ -134,10 +154,8 @@ api.interceptors.response.use(
 
       originalRequest._retry = true
       try {
-        // refresh 凭证在 HttpOnly cookie 中（JS 不可读），body 无凭证字段；withCredentials 使同源 cookie
-        // 随请求携带（跨域时亦携带）。cookie 是否可用由服务端 401 裁决，前端不预设本地值。
-        const refreshRes = await api.post('/api/auth/refresh', {}, { withCredentials: true })
-        const t = refreshRes.data
+        // 并发 401 共享同一次 refresh（E8）：败者 await 同一 Promise，不再各自发起
+        const t = await sharedRefresh()
         if (t && t.accessToken) {
           setTokens(t.accessToken, t.role || '')
           // update header for retry

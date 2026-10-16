@@ -94,22 +94,31 @@ function iso(date: Date): string {
   return `${date.getFullYear()}-${mm}-${dd}`
 }
 
+/** 请求序号守卫（TASK-257 E26）：快速切换类型/模式/条数时，陈旧响应不写数据态/错误态/不清 loading */
+let loadSeq = 0
+
 async function loadLb() {
+  const seq = ++loadSeq
   loading.value = true
   lbError.value = ''
   try {
     if (lbMode.value === 'range') {
       const res = await getLeaderboardRange(rangeStart(), lbSize.value)
+      if (seq !== loadSeq) return
       lbData.value = res.data || []
     } else {
       const res = await getLeaderboard(lbType.value, lbSize.value)
+      if (seq !== loadSeq) return
       lbData.value = res.data || []
     }
   } catch (e: any) {
+    if (seq !== loadSeq) return
     lbError.value = e.code ? `[${e.code}] ${e.message}` : (e.message || '查询失败')
     lbData.value = []
   } finally {
-    loading.value = false
+    if (seq === loadSeq) {
+      loading.value = false
+    }
   }
 }
 
