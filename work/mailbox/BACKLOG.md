@@ -120,5 +120,45 @@
 3. **批3 已封盘 TASK-253（FULL 档，2026-10-16）**：E5（调度池并行化）+ E6（申诉终判兜底对账）+ E7（结算 ZREM 二次复核）+ E9（幂等迁移）四项收口（C-01 `1c35a27` / C-02 `22a0802`，白名单恰 10 文件跨 record/verify/leaderboard/sql 四面；指导亲核三块 PASS + 独立复核五块全 PASS 零阻断、N1-N4 非阻断登记，终裁 ACCEPT；surefire verify 182→188、leaderboard 104→108 只增不减；CI run 待观察、读数随补记笔登记）；
 4. **批4（纵深与测试债）**：批4a-1（网关+高危簇）**已封盘 TASK-254**（2026-10-16：E10/E11/E12/E16 修法落地 + E27 反证关闭 + 两顺手项搭车，FULL 档，指导亲核 + 独立复核五块 PASS 终裁 ACCEPT，CI run `38892885813` 全绿外部终验达成完整闭环）；批4a-2 配置性能余项（E17/E21/E23/E24/E29）**已封盘 TASK-255**（2026-10-16：五项修法 R1-R7 落地 + E23 前提订正，FULL 档 16 项白名单，指导亲核 + 独立复核五块 PASS 零阻断 N1-N3 非阻断登记终裁 ACCEPT，CI run `38903763620` 全绿完整闭环）；批4b 测试可观测（12 项）已切分立项（2026-10-16）：**批4b-1 TASK-256 已封盘**（2026-10-16：E15+E18+E19+E20+E22+E25+E28+E30 八项修法 R1-R8 落地，FULL 档 25 项白名单（含 N-a 追认 VerifyControllerTest + N-c 计数订正），指导亲核 + 独立复核五块 PASS 零阻断 4 项非阻断登记终裁 ACCEPT，CI run `38917734857` 全绿完整闭环）+ **批4b-2 TASK-257 已封盘**（2026-10-17：E8+E14+E26 前端测试可观测三项落地，MEDIUM 档 20 项白名单（10+条件项 8+台账 2），条件项三块（assertNoUnmocked 接入 / 基线红订正 3 断言 / 补 mock 三端点）C-01 前定档登记，指导亲核三块 PASS，CI 读数由补记笔登记）+ **E13 拆出**（真实 PostGIS 库复验路径独立成课题拟 TASK-258——验证路径异质（scratch 容器实测 vs 纯 JVM）且结果未知可能引出修复批，批4b-2 已封盘可启动立项侦察）；◎ 标注 8 项已逐项亲验坐实，证据入 TASK-256/257 spec §1。**E 系批1/批2/批3/批4a-1/批4a-2/批4b-1/批4b-2 全部收口完毕，31 项候选全部闭环**。
 
+## 2026-10-17 批（G 系项目优化点专项侦察产出，23 项候选：HIGH 1 / MEDIUM 7 / LOW 15；◎ 标注为侦察证据未经指导侧亲验，立项前须坐实——尤其标注「需 EXPLAIN/压测确认」项须实测）
+
+> G 系诚实声明（混合侦察口径）：K 面由只读子代理完成（其 B1 证据经侦察侧对 RecordController L334-343 抽查坐实）；J/L/M 面子代理三次被「user concurrency limit exceeded」拒绝，改由侦察侧本人定点自扫（J 面覆盖清单内 7 项、L 面瀑布仅抽查 notifications/feed/leaderboard 三页、M 面全量计数类盘点）；Nacos 运行时配置与 D 系先例一致未核；全部结论为静态阅读。
+
+| 编号 | 方向 | 依据 | 价值 | 预估档 | 状态 |
+| --- | --- | --- | --- | --- | --- |
+| G1 | 时区语义全链缺失 | SportRecordService L1068 `LocalDateTime.ofInstant(..., ZoneOffset.UTC)` vs L226 `LocalDateTime.now()`；docker-compose TZ 仅挂 mysql/postgis，六个 Java 服务容器无 TZ（JVM=UTC）；user yml `serverTimezone=Asia/Shanghai` 意图分裂；feed.page.vue L169 `new Date(iso)` 按浏览器本地解析——同库两帧混存 8h 错位，归日/周期/显示全链偏移 | 高（打卡断签判定、目标进度窗口、周期榜窗口、全部时间显示） | FULL | 候选（◎ 待亲验；立项须预注册边界用例：跨日提交、23:59 边界、晨跑归日、周/月窗口；建议与 H2 生产演练联调验证） |
+| G2 | updateVisibility 整行回写丢失更新 | SportRecordService L615-616 selectById→setVisibility→updateById 整行回写，实体无 @Version；并发窗口内 verify statusCallback（乐观锁刚迁 PASSED v1）可被旧快照（VERIFYING v0）覆盖且 version 一并回退——E30（TASK-256）同根因新落点 | 中 | MEDIUM | 候选（◎ 待亲验；修法照 E30：LambdaUpdateWrapper 单列 set + TableInfoHelper 预注册测试） |
+| G3 | getLikesBatch 批内 N+1 | RecordLikeService L359-372 逐条 selectById+assertCanView（≤50 次 E12 上限串行 DB 单查）+ SportRecordService L1154 逐条 areFriends Feign——feed 单页 20 条最坏 20 次 DB RTT + 20 次串行 Feign RTT | 中 | MEDIUM | 候选（◎ 待亲验；修法需 user-service 批量端点或 caller 好友集缓存，新增内部契约属功能面需指导裁决；对照 B5 Pipeline 先例与 D7 分批先例） |
+| G4 | 分页钳制范式未对齐四处 | RecordController L255-256 /points size 直通（可传 10 万，一页拉全轨迹 20000 点，ShardingSphere 内存合并放大）；NotificationService L116、FriendService L347,432 无钳制；范式先例 MAX_MY_RECORDS_SIZE=500/榜单 500/1000 | 中 | LIGHT | 候选（◎ 待亲验；纯钳制补齐） |
+| G5 | 周期榜同分无 tie-break | LeaderboardContributionMapper L118 `ORDER BY totalDistance DESC LIMIT` 无次序键，同分排名不稳定；先例 L61 日榜 `, user_id ASC`、好友榜 LeaderboardService L356-358 | 中 | LIGHT | 候选（◎ 待亲验） |
+| G6 | BizException→HTTP 状态翻译 9 处分裂 | GlobalExceptionHandler L51-63 公共层（含 3001→404）vs 8 处局部 @ExceptionHandler(BizException)（RecordController L334-343 侦察侧抽查坐实）优先级遮蔽公共层，映射集参差——同一 3001（RECORD_NOT_FOUND）record→200、goal→404、verify→404 | 中 | MEDIUM 小 | 候选（E21 遗留局部副本；修法=删局部副本收敛公共层或逐一对齐，改对外 HTTP 契约需回归；覆盖 TASK-255 治理挂账「局部 handler 收拢」项） |
+| G7 | 主 chunk 1.6MB 无分包 | web/dist/assets/index-CS7BnriL.js 1,639,216B；vite.config.ts 全文无 build 配置 | 中 | LIGHT | 候选（纯 vite 配置不引依赖；manualChunks 口径需按 TASK-215「不引入」先例征询指导侧） |
+| G8 | Redis 客户端超时矩阵缺口 | 六服务 spring.data.redis 仅 host/port（user yml L38-41 等）；Lettuce 默认 command timeout 60s——E10/E17 超时矩阵同主题新落点 | 中 | LIGHT | 候选（◎ 待亲验；纯配置收益直接，对照 E10/E17 收口先例） |
+| G9 | 注释滞后群 | LeaderboardContributionMapper L112「settled_at 无专用索引（全局禁加索引）」vs DDL 02:63 + migrations 已建 idx_status_settled；mapmatch yml readiness 注释「仅依赖 MySQL」实为 PostgreSQL | 低 | LIGHT | 候选（◎ 待亲验；注释滞后误导后来者） |
+| G10 | listPendingAppeals 无界 | VerifyService L231-234 selectList 无 limit；同文件 outbox 端点 EXHAUSTED_LIMIT_MAX 钳制先例 | 低 | LIGHT | 候选（◎ 待亲验） |
+| G11 | my 记录日期过滤口径错位 | SportRecordService L723,726 裸 start_time 过滤 vs myStats/goal COALESCE(start_time, created_at) 口径——仅影响存量 NULL 行 | 低 | LIGHT | 候选（◎ 待亲验） |
+| G12 | overall 缓存 TTL 无抖动 | CacheConfig L49 恒定 5min；jitter 范式先例 RuleCacheService L223-231 | 低 | LIGHT | 候选（◎ 待亲验；范式已存在未对齐） |
+| G13 | pageFeed filesort 潜势 | SportRecordService L778-786 `user_id IN(...) AND (user_id=? OR visibility IN..) ORDER BY created_at DESC` | 低 | LIGHT | 候选（◎ 待亲验；需 EXPLAIN 确认，立项后先实测） |
+| G14 | PageResult vs MP Page 双轨 | api PageResult L12-14「统一使用本类型」vs RecordController L112,139,254 外抛 MP Page（多 pages 字段） | 低 | LIGHT | 候选（◎ 待亲验） |
+| G15 | Redis 键前缀重复/outbox 字面量 | `notification:event:` 于 LikeEventConsumer L214-215、NotificationEventConsumer L217-218 重复定义；outbox 状态字面量 SQL 内联（VerifyEventOutboxMapper L47,88） | 低 | LIGHT | 候选（◎ 待亲验） |
+| G16 | L2 缓存序列化分裂 | CacheConfig L89 JdkSerializationRedisSerializer vs RuleCacheService L196 JSON 字符串 | 低 | LIGHT | 候选（◎ 待亲验） |
+| G17 | listPoints 契约死面 | RecordApi L53 + InternalRecordController L49 + SportRecordService L493 主代码零调用（VerifyService L119 注释自证被 getRecordWithPoints 取代） | 低 | LIGHT | 候选（◎ 待亲验） |
+| G18 | STOMP 异常转译丢因 | StompConnectAuthInterceptor L64-67 catch → throw new MessagingException 不带 e（有 log.warn 兜底） | 低 | LIGHT | 候选（◎ 待亲验；可搭任意批次顺手收口） |
+| G19 | passwordHash 序列化防线缺失 | User L33 无 @JsonIgnore（现无直透路径全靠 DTO 纪律，防御性） | 低 | LIGHT | 候选（◎ 待亲验；可搭任意批次顺手收口） |
+| G20 | CI web job 无 pnpm 缓存 | ci.yml build job 有 actions/cache@v5（m2），web job（L140-165 区段）无任何缓存步 | 低 | LIGHT | 候选（◎ 待亲验；既有 action 内） |
+| G21 | notifications 页串行瀑布 | notifications.page.vue L192-193,267-268 `await loadList(); await refreshUnread()` 互不依赖 | 低 | LIGHT | 候选（◎ 待亲验） |
+| G22 | Hikari 池容量全线默认 10 | 六服务无 maximum-pool-size；VerifyOutboxRelay L103-108 注释自认「消费线程 32~40 与 relay worker 争同一个池」 | 低 | LIGHT | 候选（◎ 待亲验；修复手段受限：需 A/B 压测定参） |
+| G23 | 慢 SQL 观测盲区 | 各服务 mybatis-plus log-impl=Slf4jImpl（DEBUG 级全量 SQL），生产 INFO 下无慢 SQL 记录；B10/D2/B17 慢查全靠静态审计发现 | 低 | LIGHT | 候选（◎ 待亲验；修复手段受限：禁新插件，需裁决走 MySQL slow log 配置） |
+
+> G 系排除声明（各面已核无问题，防下轮重复过筛）：A 面 19 mapper 全量过筛——无 SELECT * 热点/深分页 offset/OR 失索引热点，事务边界全仓 6 处 @Transactional 均只包本地写（RPC/Redis/MQ 全 afterCommit 或事务外，ADR-0009 贯彻），批量写范式齐备无循环单写残留；B 面穿透/击穿/雪崩三防护齐全（F17/B12 已收），Redisson 锁 per-key 粒度锁内无 RPC，大 key 边界已知（like:record:{id}:users 上界=单记录点赞数，登记为已知边界）；C 面 Feign 全客户端显式超时+R4J 熔断+hc5 池化，除 G3/G21 外无其他循环内逐条 Feign；D 面无 @Async/裸奔自建池/CompletableFuture，大集合全量驻留已收；E 面四 consumer 逐字同构对齐范式，producer best-effort 对齐（2 处变体有 Javadoc 理由），outbox relay 参数全有判别文档背书不动；F 面除 G4/G10 外无其他无界端点，列表页均 summary 投影；G 面除 G8/G22 外网关 HTTP（E10）/mapmatch DB 三件套（E17）/Feign 矩阵齐备，密钥环境变量注入（E1 已收）；H 面 prometheus+histogram 六服务齐开、traceId 从网关→服务→outbox→MQ 贯穿，盲区仅 G23；J 面异常因链全仓抽查保全/敏感日志全脱敏/无裸流未关闭/pom 依赖卫生良好/@Scheduled 均在锁内幂等（仓根 BOOT-INF/、com/、mm_review.tar 等本地遗留未跟踪物不入候选，建议线下清理）；L/M 面请求瀑布仅 G21 坐实（feed/index/leaderboard 单请求或已批量化），@SpringBootTest 全仓仅 7 处无上下文碎片化，CI 已有 m2 缓存与 concurrency/timeout（E4 已收）余 G20；K 面统一性小结——全仓对齐项：Event DTO 范式/MQ producer best-effort/consumer 范式/*IT 命名/分页参数名/JSON 命名/REST kebab-case/时间串 ISO/枚举数值码/错误码消费口径/ID 生成按域分工/常量与配置键风格/Result 包装单一/fixture 组织；偏离群已全部入候选（G6/G4/G14/G15/G16/G12/G17）；事实陈述供裁度：测试断言 JUnit 原生与 AssertJ 双轨并存（14 文件含 AssertJ 其中 12 同文件混用，纯风格无语义错误）。
+
+推荐序（G 系批次建议）：
+1. **批 G-1「时间语义统一」**：G1 单独立项 FULL——触碰归日/周期/前后端契约核心语义须独立预注册（边界用例：跨日提交、23:59 边界、晨跑归日、周/月窗口），建议与 H2 生产演练联调验证；
+2. **批 G-2「record/leaderboard 口径小批」**：G2（MEDIUM 主项，照 E30 修法）+G5+G9+G11+G13（G13 立项后先 EXPLAIN 坐实）；
+3. **批 G-3「跨服务与查询边界」**：G3（需 user-service 批量契约或 caller 好友集缓存，新增内部端点属功能面需指导裁决）+G4+G10（纯钳制）；
+4. **批 G-4「统一性对齐群」**：G6（主项，改 HTTP 契约需回归，与批 4b 先例对齐处理）+G12+G14+G15+G16+G17；
+5. **批 G-5「配置与前端效率群」**：G8+G20+G21+G22+G23——G8 纯配置收益直接（对照 E10/E17 先例）；G22/G23 修复手段受限，立项时预注册「压测/裁决前置」；G7 纯 vite 配置可并入（manualChunks 口径按 TASK-215「不引入」先例征询）；
+6. **轻量杂项**：G18+G19 搭任意批次顺手收口。
+
 
 
