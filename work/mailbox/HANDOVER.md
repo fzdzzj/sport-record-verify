@@ -8,10 +8,10 @@
 
 ## 1. 当前代码基线与外部状态
 
-- **当前分支与 HEAD**：`main` 分支，最新已封盘任务为 **TASK-253**（E 系批3——数据一致性批 E5+E6+E7+E9，FULL 档；C-01 `1c35a27` / C-02 `22a0802`，指导亲核三块 PASS + 独立复核五块全 PASS 零阻断，终裁 ACCEPT）。前一封盘 TASK-252（E 系批2 CI runner 迁移预备，MEDIUM 档，CI run `38869656012` 全绿完整闭环）、TASK-251（E 系批1 认证/鉴权面三处破口，FULL 档，CI run `38864817657` 全绿完整闭环）。**E 系批1/批2/批3 全部收口**。
-- **外部 CI 门槛状态**：TASK-253 封盘批次（5 笔：TASK-252 补记笔 `0a611be` + TASK-253 立项笔 `c020587` + C-01 `1c35a27` + C-02 `22a0802` + 封盘笔）推送后 CI 已触发**待观察**，外部终验读数随补记笔登记（CI run 运行号见对话记录/补记笔）。前一批次：TASK-252 封盘批次经 CI run `38869656012` 全绿（`web` ✓27s / `build` ✓10m27s，probe-ubuntu26 skipped = if 门禁正确生效旁证）；TASK-251 封盘批次经 CI run `38864817657` 全绿。
-- **工作树状态**：干净（TASK-253 封盘批次 5 笔已推送 origin/main，本地与远端平齐；TASK-253 CI 读数补记笔待 CI 全绿后落库，随下一批次统一推送，禁单独推送）。
-- **当前在途任务数**：`0` 个（TASK-253 已终裁封盘，CI 外部终验待观察——全绿后落补记笔即完整闭环；下一批次候选为 E 系批4a/批4b，待用户拍板立项）。
+- **当前分支与 HEAD**：`main` 分支，最新已封盘任务为 **TASK-253**（E 系批3——数据一致性批 E5+E6+E7+E9，FULL 档；C-01 `1c35a27` / C-02 `22a0802`，指导亲核三块 PASS + 独立复核五块全 PASS 零阻断，终裁 ACCEPT；CI run `38879776160` 全绿外部终验达成，**完整闭环**）。前一封盘 TASK-252（E 系批2 CI runner 迁移预备，MEDIUM 档，CI run `38869656012` 全绿完整闭环）、TASK-251（E 系批1 认证/鉴权面三处破口，FULL 档，CI run `38864817657` 全绿完整闭环）。**E 系批1/批2/批3 全部收口且完整闭环**。
+- **外部 CI 门槛状态**：TASK-253 封盘批次（5 笔：TASK-252 补记笔 `0a611be` + TASK-253 立项笔 `c020587` + C-01 `1c35a27` + C-02 `22a0802` + 封盘笔 `d791b7a`）推送后经 CI run `38879776160` 全绿（HEAD `d791b7a`，`web` ✓27s / `build` ✓11m15s，conclusion=success 全 job 绿），外部终验达成，**TASK-253 完整闭环**（本行由补记笔落库，读数时点 2026-10-16；**probe-ubuntu26 job skipped = workflow_dispatch if 门禁正确生效旁证**——非 dispatch 触发的常规 push 不跑 probe）。前一批次：TASK-252 封盘批次经 CI run `38869656012` 全绿（`web` ✓27s / `build` ✓10m27s，probe-ubuntu26 skipped = if 门禁正确生效旁证）；TASK-251 封盘批次经 CI run `38864817657` 全绿。
+- **工作树状态**：干净（TASK-253 封盘批次 5 笔已推送 origin/main；TASK-253 CI 读数补记笔已落库，本地领先 1 笔，随下一批次统一推送，禁单独推送）。
+- **当前在途任务数**：`0` 个——E 系批1（TASK-251）+ 批2（TASK-252）+ 批3（TASK-253）均已完整闭环（终裁 ACCEPT + CI 全绿外部终验）；下一批次候选为 E 系批4a/批4b，待用户拍板立项。
 
 ---
 
@@ -83,7 +83,7 @@
    - **E 系批1 收口（2026-10-16）**：TASK-251 已终裁 ACCEPT 予以封盘（C-01 `124c93e` / C-02 `fd14459`，独立复核五块 PASS 零阻断；token 门 3 项各 −1 为课题目标性口径替换经用户显式追认；非阻断登记：N1 handoff §0 quotePath 陈旧叙述（已随封盘笔订正）、N2 compose 显式 5 处 vs 叙述四服务（网关条目系冗余加强）、N3 token 29 项清单仓内无追踪定义（历史清单在 TASK-181 §6 与归档 PLAN-history，后续派发包直接附该指引）、N4 token 台账记账粒度 1-2 计数出入；后续顺手项：healthcheck.sh L9-10 与项目速览手册 L197-199 旧 8080 口径经网关打 internal 现 404（零触碰面、README 已订正）、handoff §6 词面门表述瑕疵（权威口径零命中已双验）；lessons：契约工具 CJK 提取缺口（mailbox-contract.sh 升级需专门授权））；
    - **E 系批2 收口（2026-10-16）**：TASK-252 已终裁 ACCEPT 予以封盘（C-01 `66d0ec3` / C-02 `49b02c7`，MEDIUM 档免独立复核，指导亲核三块 PASS 含 typed-router 步骤移位重排存疑解除；偏差登记：spec §4.1 surefire 预期为 TASK-251 开工前旧值、以收口实测 52/71/205/300/182/104/29 持平为准、probe job 纳入 setup-java 步骤、probe Trivy 仅门禁跑次、契约门 .trivyignore 需 ./. 前缀形态沿 TASK-195 先例）；CI run `38869656012` 全绿（web ✓27s / build ✓10m27s，probe-ubuntu26 skipped = if 门禁正确生效旁证）完整闭环；**受限：ubuntu-26.04 真实试跑未做，待 2026-10-19 标签可用后手动 workflow_dispatch probe26=true 验证（读数随补记笔登记，此事 10-19 后必做）**；
    - **E 系批3 立项（2026-10-16）**：TASK-253（E5+E6+E7+E9 数据一致性，FULL 档）立项笔落库——立项侦察亲验四项全部坐实：E5 恰 4 @Scheduled + yml 零池配置 + archiveSweep 无 initialDelay 启动即跑；E6 record-service 零 verify 事件消费者（状态迁移唯一路径同步 Feign 无补偿）+ reconcileCallback L168 白名单不含 APPEALING；E7 applyVerified 先 DB 后 ZSet（二次复核修法覆盖主竞态窗口）；E9 05 脚本注释自证非幂等 + migrate.sh 全量重跑无 archived 迁移；
-   - **E 系批3 收口（2026-10-16）**：TASK-253 已终裁 ACCEPT 予以封盘（C-01 `1c35a27` / C-02 `22a0802`，FULL 档：指导亲核三块 PASS + 独立复核五块全 PASS 零阻断，N1-N4 非阻断登记——N1 单测 6 用例较 spec 五类多 RE_CONFIRMED 映射属增强、N2 spec 行文 `_00..15` vs 仓内实际表名 `_0..15` 无零前缀（后续任务书书写统一实际分片表名形态）、N3 本机无 Nacos/MySQL 环境噪声、N4 yml→properties 条件项授权链独立坐实）；改动恰 10 文件白名单双向全等（条件项：record-service 实际为 application.properties，文件头自证 snakeyaml 冲突禁改 yml，属性键语义等价）；后端 surefire verify 182→188、leaderboard 104→108 只增不减，token 门 28 持平 + 1 项 +1（新单测里程值子串命中）无一减少；CI run 待观察，读数随补记笔登记；非阻断留痕：R4 scratch 库实测留证未做（可选受限，幂等形态沿两先例背书）；
+   - **E 系批3 收口（2026-10-16）**：TASK-253 已终裁 ACCEPT 予以封盘（C-01 `1c35a27` / C-02 `22a0802`，FULL 档：指导亲核三块 PASS + 独立复核五块全 PASS 零阻断，N1-N4 非阻断登记——N1 单测 6 用例较 spec 五类多 RE_CONFIRMED 映射属增强、N2 spec 行文 `_00..15` vs 仓内实际表名 `_0..15` 无零前缀（后续任务书书写统一实际分片表名形态）、N3 本机无 Nacos/MySQL 环境噪声、N4 yml→properties 条件项授权链独立坐实）；改动恰 10 文件白名单双向全等（条件项：record-service 实际为 application.properties，文件头自证 snakeyaml 冲突禁改 yml，属性键语义等价）；后端 surefire verify 182→188、leaderboard 104→108 只增不减，token 门 28 持平 + 1 项 +1（新单测里程值子串命中）无一减少；CI run `38879776160` 全绿（`web` ✓27s / `build` ✓11m15s，HEAD `d791b7a`，probe-ubuntu26 skipped = if 门禁正确生效旁证）外部终验达成完整闭环，读数由补记笔落库；非阻断留痕：R4 scratch 库实测留证未做（可选受限，幂等形态沿两先例背书）；
    - 申诉审核意见（verify_db）透出限制：受限与 verify-service 红线，当前前台申诉进度条由记录状态推导，结论权威可靠。
 
 ---
