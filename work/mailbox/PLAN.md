@@ -594,3 +594,17 @@
 | 是否到达外部门槛 | **已到达**：随封盘批次推送后经 GitHub Actions CI run `38864817657`（HEAD `30fc66a`，`web` ✓34s / `build` ✓11m37s）conclusion=success 全 job 绿，外部终验达成（本行由补记笔落库，读数时点 2026-10-16；运行 annotations 双 job 再证五 v4 actions 强制跑 Node 24、setup-java v4 停更、ubuntu-latest 2026-10-19 迁移 Ubuntu 26——与 TASK-252 E4 治理面互证） |
 | 状态 | TASK-251 完整闭环（外部终验达成），指导侧终裁 **ACCEPT 予以封盘**（N1 §0 陈旧叙述已随封盘笔订正） |
 
+## 验收记录：`TASK-252`（E 系批2——CI runner 迁移预备 E4+E31，MEDIUM 档，2026-10-16）
+
+| 项 | 内容 |
+| --- | --- |
+| 开工基线 | `b4bdef8`（main 分支 TASK-251 补记笔，工作树干净；串行批2，开工前提 = TASK-251 完整闭环含 CI run `38864817657` 全绿） |
+| C-01 实施笔 | `66d0ec3` `chore(ci): 钉扎runner与升级actions及补dispatch试跑与并发超时和trivyignore治理（TASK-252）`（恰 2 文件 +77/−10：ci.yml + .trivyignore） |
+| C-02 任务两件套 | `49b02c7` `docs(mailbox): 登记TASK-252实施完成与门禁回填（TASK-252）`（恰 2 文件，占位符回填 `b4bdef8` + handoff 五节回填；收口最终 HEAD） |
+| 任务内容与白名单 | 相对开工基线恰 4 文件与白名单双向全等（纯 ASCII 路径，无 TASK-251 的 CJK 契约提取缺口）；全部 Java/测试/web 前端/compose/sql/scripts/README/docs/PLAN/HANDOVER 100% 零触碰，零新工具零新 action |
+| 核心实现 | ① R1 钉扎 runner：build/web 两 job `runs-on` → `ubuntu-24.04` + 止血注释；② R2 六 uses 升级零 v4 残留：checkout@v5×2 / setup-java@v5 / cache@v5 / upload-artifact@v6 / setup-node@v5，逐 action changelog 破坏性变更核对结论表登记 handoff §4（全部目标 major 稳定发布，无保持现状项）；③ R3 顶层 `workflow_dispatch`（probe26 boolean default false）+ 新 job `probe-ubuntu26`（runs-on ubuntu-26.04、if 双门禁、步骤同 build 款 Docker 链 + Trivy 门禁跑次，注释注明 10-19 标签可用前禁触发）；④ R4 顶层 concurrency（group `${{ github.workflow }}-${{ github.ref }}` + cancel-in-progress: true）+ timeout-minutes build 45 / web 15 / probe 45；⑤ R5 ci.yml「历史存量 13 项」注释校准为 2 项（CVE-2026-47892/47884，注明订正来源 E31/TASK-252）+ .trivyignore 两条 CVE 各补「复核期限 2027-04」纯注释 |
+| 本机门禁 | 后端全模块 offline test rc=0（52/71/205/300/182/104/29 逐位持平 TASK-251 收口值）；compose config -q rc=0；前端 type-check + 4 文件 61 测全绿；契约门 `--open=TASK-252 --baseline=b4bdef8` rc=0（判据 A+B 双过）；token 门 29 项 SUM 2015→2015 持平 TOKEN_VIOLATIONS=0；词面门 CI 权威口径零命中 + 探针双阳性；`git diff --check` 净，4 文件保持 LF；ci.yml 经 pyyaml 机器级解析通过（三 job/八 uses 零 v4 残留） |
+| 指导亲核与裁决 | MEDIUM 档免独立复核；指导亲核三块 PASS（Git 摘要恰 3 笔领先 / 高风险抽查：六 uses 零 v4 残留、词面门正则逐字未动、Provision INTERNAL_API_TOKEN 占位行双处在位、typed-router 门禁步骤完好——C-01 diff 中该行删除系 probe job 插入移位重排非误删 / 一致性裁决：四项偏差登记自洽含 spec §4.1 基线旧值订正）；**已授权口径（沿用户追认）**：MEDIUM 档流程 = 指导亲核 → 推送 → CI 外部绿即收口 |
+| 是否到达外部门槛 | 待观察：封盘批次推送后 CI 实跑（本课题改动面即 CI 配置，推送后 CI 实跑为最直接验证面；词面门/Trivy/static 门均随 run 实测；红则按签名归因不盲目重试刷绿）。读数由补记笔落库 |
+| 状态 | TASK-252 本地闭环，指导侧终裁 **ACCEPT 予以封盘**（受限：ubuntu-26.04 真实试跑待 10-19 标签可用后手动 dispatch probe26=true 验证，读数随补记笔登记） |
+
