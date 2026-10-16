@@ -126,7 +126,7 @@
 
 | 编号 | 方向 | 依据 | 价值 | 预估档 | 状态 |
 | --- | --- | --- | --- | --- | --- |
-| G1 | 时区语义全链缺失 | SportRecordService L1068 `LocalDateTime.ofInstant(..., ZoneOffset.UTC)` vs L226 `LocalDateTime.now()`；docker-compose TZ 仅挂 mysql/postgis，六个 Java 服务容器无 TZ（JVM=UTC）；user yml `serverTimezone=Asia/Shanghai` 意图分裂；feed.page.vue L169 `new Date(iso)` 按浏览器本地解析——同库两帧混存 8h 错位，归日/周期/显示全链偏移 | 高（打卡断签判定、目标进度窗口、周期榜窗口、全部时间显示） | FULL | 候选（◎ 待亲验；立项须预注册边界用例：跨日提交、23:59 边界、晨跑归日、周/月窗口；建议与 H2 生产演练联调验证） |
+| G1 | 时区语义全链缺失 | SportRecordService L1068 `LocalDateTime.ofInstant(..., ZoneOffset.UTC)` vs L226 `LocalDateTime.now()`；docker-compose TZ 仅挂 mysql/postgis，六个 Java 服务容器无 TZ（JVM=UTC）；user yml `serverTimezone=Asia/Shanghai` 意图分裂；feed.page.vue L169 `new Date(iso)` 按浏览器本地解析——同库两帧混存 8h 错位，归日/周期/显示全链偏移 | 高（打卡断签判定、目标进度窗口、周期榜窗口、全部时间显示） | FULL | **已立项 TASK-259（2026-10-17，批 G-1）：指导侧亲验 8 处全部坐实（三帧分裂矩阵/JDBC 7 处东八/归日链/前端消费链，证据入 spec §1）；修法=compose 六服务 TZ 注入 + 推导改区 + 断言适配 + ≥4 边界用例，FULL 档待派发** |
 | G2 | updateVisibility 整行回写丢失更新 | SportRecordService L615-616 selectById→setVisibility→updateById 整行回写，实体无 @Version；并发窗口内 verify statusCallback（乐观锁刚迁 PASSED v1）可被旧快照（VERIFYING v0）覆盖且 version 一并回退——E30（TASK-256）同根因新落点 | 中 | MEDIUM | 候选（◎ 待亲验；修法照 E30：LambdaUpdateWrapper 单列 set + TableInfoHelper 预注册测试） |
 | G3 | getLikesBatch 批内 N+1 | RecordLikeService L359-372 逐条 selectById+assertCanView（≤50 次 E12 上限串行 DB 单查）+ SportRecordService L1154 逐条 areFriends Feign——feed 单页 20 条最坏 20 次 DB RTT + 20 次串行 Feign RTT | 中 | MEDIUM | 候选（◎ 待亲验；修法需 user-service 批量端点或 caller 好友集缓存，新增内部契约属功能面需指导裁决；对照 B5 Pipeline 先例与 D7 分批先例） |
 | G4 | 分页钳制范式未对齐四处 | RecordController L255-256 /points size 直通（可传 10 万，一页拉全轨迹 20000 点，ShardingSphere 内存合并放大）；NotificationService L116、FriendService L347,432 无钳制；范式先例 MAX_MY_RECORDS_SIZE=500/榜单 500/1000 | 中 | LIGHT | 候选（◎ 待亲验；纯钳制补齐） |
@@ -153,7 +153,7 @@
 > G 系排除声明（各面已核无问题，防下轮重复过筛）：A 面 19 mapper 全量过筛——无 SELECT * 热点/深分页 offset/OR 失索引热点，事务边界全仓 6 处 @Transactional 均只包本地写（RPC/Redis/MQ 全 afterCommit 或事务外，ADR-0009 贯彻），批量写范式齐备无循环单写残留；B 面穿透/击穿/雪崩三防护齐全（F17/B12 已收），Redisson 锁 per-key 粒度锁内无 RPC，大 key 边界已知（like:record:{id}:users 上界=单记录点赞数，登记为已知边界）；C 面 Feign 全客户端显式超时+R4J 熔断+hc5 池化，除 G3/G21 外无其他循环内逐条 Feign；D 面无 @Async/裸奔自建池/CompletableFuture，大集合全量驻留已收；E 面四 consumer 逐字同构对齐范式，producer best-effort 对齐（2 处变体有 Javadoc 理由），outbox relay 参数全有判别文档背书不动；F 面除 G4/G10 外无其他无界端点，列表页均 summary 投影；G 面除 G8/G22 外网关 HTTP（E10）/mapmatch DB 三件套（E17）/Feign 矩阵齐备，密钥环境变量注入（E1 已收）；H 面 prometheus+histogram 六服务齐开、traceId 从网关→服务→outbox→MQ 贯穿，盲区仅 G23；J 面异常因链全仓抽查保全/敏感日志全脱敏/无裸流未关闭/pom 依赖卫生良好/@Scheduled 均在锁内幂等（仓根 BOOT-INF/、com/、mm_review.tar 等本地遗留未跟踪物不入候选，建议线下清理）；L/M 面请求瀑布仅 G21 坐实（feed/index/leaderboard 单请求或已批量化），@SpringBootTest 全仓仅 7 处无上下文碎片化，CI 已有 m2 缓存与 concurrency/timeout（E4 已收）余 G20；K 面统一性小结——全仓对齐项：Event DTO 范式/MQ producer best-effort/consumer 范式/*IT 命名/分页参数名/JSON 命名/REST kebab-case/时间串 ISO/枚举数值码/错误码消费口径/ID 生成按域分工/常量与配置键风格/Result 包装单一/fixture 组织；偏离群已全部入候选（G6/G4/G14/G15/G16/G12/G17）；事实陈述供裁度：测试断言 JUnit 原生与 AssertJ 双轨并存（14 文件含 AssertJ 其中 12 同文件混用，纯风格无语义错误）。
 
 推荐序（G 系批次建议）：
-1. **批 G-1「时间语义统一」**：G1 单独立项 FULL——触碰归日/周期/前后端契约核心语义须独立预注册（边界用例：跨日提交、23:59 边界、晨跑归日、周/月窗口），建议与 H2 生产演练联调验证；
+1. **批 G-1「时间语义统一」已立项 TASK-259（2026-10-17）**：G1 单独 FULL——触碰归日/周期/前后端契约核心语义，边界用例（跨日提交、23:59 边界、晨跑归日、周/月窗口）已预注册入 spec §3 R4，两件套已落库待用户派发执行子agent；
 2. **批 G-2「record/leaderboard 口径小批」**：G2（MEDIUM 主项，照 E30 修法）+G5+G9+G11+G13（G13 立项后先 EXPLAIN 坐实）；
 3. **批 G-3「跨服务与查询边界」**：G3（需 user-service 批量契约或 caller 好友集缓存，新增内部端点属功能面需指导裁决）+G4+G10（纯钳制）；
 4. **批 G-4「统一性对齐群」**：G6（主项，改 HTTP 契约需回归，与批 4b 先例对齐处理）+G12+G14+G15+G16+G17；

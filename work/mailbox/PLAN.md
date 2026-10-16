@@ -678,3 +678,16 @@
 | 是否到达外部门槛 | **已到达**（补记笔翻转，2026-10-17）：封盘批次（4 笔：TASK-256 补记笔 `1dd8ab8` + C-01 `033110a` + C-02 `5788184` + 封盘笔 `b1d763c`）推送后 GitHub Actions CI run **`38931526812`** 权威核验 conclusion=**success** 全 job 绿（`build` ✓ 10m44s / `web` ✓ 26s / `probe-ubuntu26` skipped=if 门禁正确生效旁证；两条 varargs annotations 为既有测试文件 javac 警告非阻断），headSha `b1d763c` 与封盘批次匹配，外部终验达成完整闭环 |
 | 状态 | TASK-257 已亲核通过完整闭环（MEDIUM 档：实施回报 + 指导亲核两方闭环一致；CI run `38931526812` 全绿外部终验达成，读数已由补记笔落库登记） |
 
+## 验收记录：`TASK-259`（G 系批 G-1——G1 时区语义全链统一，FULL 档，2026-10-17 立项）
+
+| 项 | 内容 |
+| --- | --- |
+| 开工基线 | main @ `50d1877`（G 系登记笔；工作树含本地未推送笔 a21ee02/50d1877，以开工实测 `git rev-parse HEAD` 回填 handoff 为准） |
+| 分级定档 | FULL（G 系唯一 HIGH 项：触碰归日/周期/前后端契约核心语义，禁降级；触碰 compose 部署基建 → 七模块全量逐位验证 + 独立复核子agent + 指导亲核） |
+| 亲验证据 | 指导侧 8 处全部坐实（spec §1 行号级）：三帧分裂矩阵（中间件 TZ 东八 + JDBC serverTimezone 7 处东八 vs 六服务容器 JVM=UTC vs 前端浏览器本地解析）；created_at L226 vs 推导 L1068-1069 显式 UTC；归日链 myStreak L874-882/myStats L937-945/GoalService L194-199；feed L169/leaderboard L72-83 |
+| 白名单 | 4+5 项：docker-compose.services.yml + SportRecordService.java + SportRecordServiceTest.java（适配并入）+ 台账 5（零触碰 api/其余五服务/pom/package.json/sql/scripts/web/docker-compose.yml/.github） |
+| 核心实现 | R1 compose 六服务 TZ=Asia/Shanghai；R2 推导改区 BUSINESS_ZONE 常量（唯一生产代码改动）；R3 L530-532 断言适配（向演进同步非删弱）；R4 边界用例 ≥4（固定 Instant + 显式 ZoneId，runner 时区无关：跨日/23:59/晨跑归日/周月窗口） |
+| 门禁要求 | 七门禁全量逐位（surefire 63/78/215/302/200/108/35 只增不减）+ compose config 配置层断言 + 契约/token/词面/checkstyle/diff --check 照跑；双提交 C-01/C-02 |
+| 受限预登记 | spec §5 四项：真实容器 JVM user.timezone 运行态读数未实测（配置层承载）、存量 UTC 墙钟数据不迁移、非东八浏览器显示错位已知边界、Nacos 运行时未核 |
+| 状态 | **已立项待派发**（2026-10-17 指导侧立项，两件套已落库 work/mailbox/tasks/TASK-259/；实施派发包提示词已生成待用户派发执行子agent） |
+
