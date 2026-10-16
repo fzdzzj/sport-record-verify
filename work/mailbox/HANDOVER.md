@@ -10,8 +10,8 @@
 
 - **当前分支与 HEAD**：`main` 分支，最新已封盘任务为 **TASK-253**（E 系批3——数据一致性批 E5+E6+E7+E9，FULL 档；C-01 `1c35a27` / C-02 `22a0802`，指导亲核三块 PASS + 独立复核五块全 PASS 零阻断，终裁 ACCEPT；CI run `38879776160` 全绿外部终验达成，**完整闭环**）。前一封盘 TASK-252（E 系批2 CI runner 迁移预备，MEDIUM 档，CI run `38869656012` 全绿完整闭环）、TASK-251（E 系批1 认证/鉴权面三处破口，FULL 档，CI run `38864817657` 全绿完整闭环）。**E 系批1/批2/批3 全部收口且完整闭环**。
 - **外部 CI 门槛状态**：TASK-253 封盘批次（5 笔：TASK-252 补记笔 `0a611be` + TASK-253 立项笔 `c020587` + C-01 `1c35a27` + C-02 `22a0802` + 封盘笔 `d791b7a`）推送后经 CI run `38879776160` 全绿（HEAD `d791b7a`，`web` ✓27s / `build` ✓11m15s，conclusion=success 全 job 绿），外部终验达成，**TASK-253 完整闭环**（本行由补记笔落库，读数时点 2026-10-16；**probe-ubuntu26 job skipped = workflow_dispatch if 门禁正确生效旁证**——非 dispatch 触发的常规 push 不跑 probe）。前一批次：TASK-252 封盘批次经 CI run `38869656012` 全绿（`web` ✓27s / `build` ✓10m27s，probe-ubuntu26 skipped = if 门禁正确生效旁证）；TASK-251 封盘批次经 CI run `38864817657` 全绿。
-- **工作树状态**：干净（TASK-253 封盘批次 5 笔已推送 origin/main；TASK-253 CI 读数补记笔已落库，本地领先 1 笔，随下一批次统一推送，禁单独推送）。
-- **当前在途任务数**：`0` 个——E 系批1（TASK-251）+ 批2（TASK-252）+ 批3（TASK-253）均已完整闭环（终裁 ACCEPT + CI 全绿外部终验）；下一批次候选为 E 系批4a/批4b，待用户拍板立项。
+- **工作树状态**：TASK-254 立项笔工作树（TASK-254 两件套新建 + BACKLOG/HANDOVER 滚动；TASK-253 封盘批次 5 笔已推送 origin/main，CI 读数补记笔 `8c8e631` 已落库，立项笔落库后本地领先 2 笔，随下一批次统一推送，禁单独推送）。
+- **当前在途任务数**：`1` 个——**TASK-254**（E 系批4a-1：网关与高危簇 E10+E11+E12+E16+两顺手项，FULL 档）已立项待派发实施子agent；E 系批1（TASK-251）+ 批2（TASK-252）+ 批3（TASK-253）均已完整闭环。
 
 ---
 
@@ -84,16 +84,17 @@
    - **E 系批2 收口（2026-10-16）**：TASK-252 已终裁 ACCEPT 予以封盘（C-01 `66d0ec3` / C-02 `49b02c7`，MEDIUM 档免独立复核，指导亲核三块 PASS 含 typed-router 步骤移位重排存疑解除；偏差登记：spec §4.1 surefire 预期为 TASK-251 开工前旧值、以收口实测 52/71/205/300/182/104/29 持平为准、probe job 纳入 setup-java 步骤、probe Trivy 仅门禁跑次、契约门 .trivyignore 需 ./. 前缀形态沿 TASK-195 先例）；CI run `38869656012` 全绿（web ✓27s / build ✓10m27s，probe-ubuntu26 skipped = if 门禁正确生效旁证）完整闭环；**受限：ubuntu-26.04 真实试跑未做，待 2026-10-19 标签可用后手动 workflow_dispatch probe26=true 验证（读数随补记笔登记，此事 10-19 后必做）**；
    - **E 系批3 立项（2026-10-16）**：TASK-253（E5+E6+E7+E9 数据一致性，FULL 档）立项笔落库——立项侦察亲验四项全部坐实：E5 恰 4 @Scheduled + yml 零池配置 + archiveSweep 无 initialDelay 启动即跑；E6 record-service 零 verify 事件消费者（状态迁移唯一路径同步 Feign 无补偿）+ reconcileCallback L168 白名单不含 APPEALING；E7 applyVerified 先 DB 后 ZSet（二次复核修法覆盖主竞态窗口）；E9 05 脚本注释自证非幂等 + migrate.sh 全量重跑无 archived 迁移；
    - **E 系批3 收口（2026-10-16）**：TASK-253 已终裁 ACCEPT 予以封盘（C-01 `1c35a27` / C-02 `22a0802`，FULL 档：指导亲核三块 PASS + 独立复核五块全 PASS 零阻断，N1-N4 非阻断登记——N1 单测 6 用例较 spec 五类多 RE_CONFIRMED 映射属增强、N2 spec 行文 `_00..15` vs 仓内实际表名 `_0..15` 无零前缀（后续任务书书写统一实际分片表名形态）、N3 本机无 Nacos/MySQL 环境噪声、N4 yml→properties 条件项授权链独立坐实）；改动恰 10 文件白名单双向全等（条件项：record-service 实际为 application.properties，文件头自证 snakeyaml 冲突禁改 yml，属性键语义等价）；后端 surefire verify 182→188、leaderboard 104→108 只增不减，token 门 28 持平 + 1 项 +1（新单测里程值子串命中）无一减少；CI run `38879776160` 全绿（`web` ✓27s / `build` ✓11m15s，HEAD `d791b7a`，probe-ubuntu26 skipped = if 门禁正确生效旁证）外部终验达成完整闭环，读数由补记笔落库；非阻断留痕：R4 scratch 库实测留证未做（可选受限，幂等形态沿两先例背书）；
+   - **E 系批4a-1 立项（2026-10-16）**：TASK-254（E10+E11+E12+E16 网关与高危簇 + 两顺手项，FULL 档——E11 触碰 verify 判定核心链路、E16 触碰网关限流安全语义禁降级）立项笔落库——立项侦察亲验四项坐实：E10 gateway yml 全文无 `spring.cloud.gateway.httpclient.*` 超时段（对照 verify Feign connect 1000/read 3000）；E11 前半 RuleVersionService 零规则阈值校验（R1SpeedRule L50 `sum/(window-1)`——windowPoints=1 除零 NaN/Infinity、=0 时 windowAvg[-1] 越界）+ 后半 VerifyEngine L78-83 规则链零 try/catch；E12 LikeController `likes/batch` `List<Long>` 零上限 + RecordLikeService 逐 id selectById+assertCanView N 次放大；E16 toGatewayFlowRules 合法空数组得空集覆盖兜底（应沿解析失败「保持上一版」语义返 null）。**E27 反证关闭**（GatewayProbeTest 真实网关全上下文断言 /actuator/health/liveness|readiness 经网关 200/UP 基线全绿——无路由时落入 actuator 端点映射非 404，白名单为有效配置，本课题零 E27 改动）；两顺手项搭车（RecordLikeMapper L64/L73 Javadoc 订正为键集分页游标口径 + healthcheck.sh L9-10 与速览手册旧 8080 口径）；修法路线：E11 程序化校验落 RuleVersionService（不动 VerifyProperties/DTO/Controller 避免 @Validated 对 Nacos 配置绑定语义外溢）、E12 落 RecordLikeService 服务层拒绝式（沿 SportRecordService 数学钳制先例域）；
    - 申诉审核意见（verify_db）透出限制：受限与 verify-service 红线，当前前台申诉进度条由记录状态推导，结论权威可靠。
 
 ---
 
 ## 4. 当前推进与唯一推荐动作
 
-- **当前推进**：**TASK-253（E 系批3：E5 调度饿死 + E6 终判偏斜 + E7 结算误删 + E9 迁移漂移，FULL 档）已终裁 ACCEPT 封盘**——实施 → 指导亲核三块 PASS → 独立复核五块全 PASS 零阻断 → 终裁 → 看板滚动 → 封盘批次 5 笔已推送（TASK-252 补记 `0a611be` + TASK-253 立项 `c020587` + C-01 `1c35a27` + C-02 `22a0802` + 封盘笔）；**CI 已触发待观察**，全绿即完整闭环。
-  - **唯一推荐动作**：①观察 TASK-253 封盘批次 CI 运行结果（权威核验：`gh run view <run-id>` 确认 conclusion=success 全 job 绿，禁凭口头「绿了」收口；若红按签名归因禁重试刷绿）→ 全绿后落**补记笔**（PLAN.md TASK-253「是否到达外部门槛」行翻转为已到达 + HANDOVER §1/§3 滚动 + TASK-253/handoff.md 登记 CI 运行号与终裁依据），补记笔仅本地保留随下一批次统一推送；②请用户拍板下一批次：批4a 配置性能（E10/E11/E12/E16/E17/E21/E23/E24/E27/E29）或批4b 测试可观测（E8/E13/E14/E15/E18/E19/E20/E22/E25/E26/E28/E30），◎ 标注项立项前需 EXPLAIN/真实库/真实网关复验再定级；
+- **当前推进**：**TASK-254（E 系批4a-1：E10 网关超时 + E11 规则校验与规则链隔离 + E12 批量点赞上限 + E16 Sentinel 空集保护，FULL 档）已立项**——立项侦察四项坐实 + E27 反证关闭 + 两顺手项搭车，spec.md 任务书（15 项白名单 + R1-R6 判别式 + 预注册受限 5 项）与 handoff.md 骨架已创建，BACKLOG/HANDOVER 看板已滚动，立项笔已落库（仅本地，随封盘批次统一推送）。
+  - **唯一推荐动作**：①请用户**亲自派发实施子agent**执行 `work/mailbox/tasks/TASK-254/spec.md`（派发包文本由指导侧在立项汇报中输出）；②实施完成后指导侧亲核（紧凑 Git 摘要 + 高风险改动面定向抽查 + 回报一致性裁决）；③FULL 档独立复核子agent五块独立复跑（用户亲自派发）；④终裁 → 封盘批次统一推送（含补记笔 `8c8e631` 与立项笔）→ CI 观察（权威核验 conclusion=success）→ 补记笔落库；
   - **10-19 必做事项（沿挂账）**：ubuntu-26.04 标签可用后，手动 `workflow_dispatch` 触发 probe26=true 试跑 probe-ubuntu26 job，读数随补记笔登记；通过后另立课题平移 runs-on 并摘除钉扎注释；
-  - **后续候选方向**（待用户拍板）：批4a 配置性能（E10/E11/E12/E16/E17/E21/E23/E24/E27/E29）/ 批4b 测试可观测（E8/E13/E14/E15/E18/E19/E20/E22/E25/E26/E28/E30）——◎ 标注项立项前需 EXPLAIN/真实库/真实网关复验再定级。
+  - **后续候选方向**（待用户拍板）：批4a-2 配置性能余项（E17/E21/E23/E24/E29）/ 批4b 测试可观测（E8/E13/E14/E15/E18/E19/E20/E22/E25/E26/E28/E30）——◎ 标注项立项前需 EXPLAIN/真实库/真实网关复验再定级。
 
 
 

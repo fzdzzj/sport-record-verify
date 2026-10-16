@@ -88,13 +88,13 @@
 | E7 | 结算 scan 清残留误删并发新入榜成员 | 先 SELECT target 后按「target 缺失」判 ZREM（LeaderboardService L474-513/568），SELECT 后并发 applyVerified 入榜成员必被删且 ZADD 不补回，总榜 evict 后掉榜最长 10min | 高 | MEDIUM | **已封盘 TASK-253（2026-10-16，同批）：并发复验坐实 applyVerified 先 DB 后 ZSet；修法落地 `flushStale` ZREM 前批候选 `selectActiveUserIds` 二次复核仍缺才删、复核命中保留、异常保守跳过（宁漏删不误删），窗口秒级→毫秒级残余下轮收敛** |
 | E8 | 前端并发 401 各自刷新败者强制登出 | client.ts 每 401 各自 await refresh 无共享 in-flight Promise，后端 GETDEL 原子消费旧 jti 并发仅一赢家，败者 clearTokens 把赢家刚写入的 access 一并清 → 并发页必然整页踢回登录 | 高 | MEDIUM | 候选（◎；批4b） |
 | E9 | 迁移漂移：archived 列无升级路径 + 归档分片缺索引 | sport_record.archived 仅 initdb 脚本出现（migrate.sh 升级路径缺列 → 存量库查询即 BadSqlGrammar 上线即故障）；add-idx-record-seq 覆盖 17 张表却无 track_point_archive | 高 | LIGHT | **已封盘 TASK-253（2026-10-16，同批）：指导亲验坐实 05 脚本 L236 注释自证非幂等 + migrate.sh 全量重跑无该列迁移；修法落地 `add-track-archive-column-and-idx.sql`（archived+idx_archive 与 05 脚本 L239-240 逐字一致、16 分片 idx_record_seq 逐段幂等、只加不删），05/migrate.sh 零触碰** |
-| E10 | 网关 HTTP 客户端无连接/响应超时 | gateway yml 全文无 httpclient.connect-timeout/response-timeout（对照 leaderboard/verify 均显式配置），hang 住连接无截止，Sentinel 限流对已建立连接零作用 | 高 | LIGHT | 候选（◎；批4a） |
-| E11 | 规则快照阈值零校验 × 规则链无异常隔离 | RuleVersionCreateRequest rules 无 @Valid 无 @Min；window=0 数组越界 / window=1 NaN 静默永不命中；VerifyEngine 无单规则 try/catch，误下发一条 ACTIVE 快照即全判定停摆进 DLQ | 高 | MEDIUM | 候选（◎；批4a） |
-| E12 | likes/batch 无入参上限放大 N 次 DB+Feign | @RequestBody List 无 @Size，逐 id selectById + 逐条 areFriends Feign（对照 RecordController 同域有 size 钳制） | 高 | LIGHT | 候选（◎；批4a） |
+| E10 | 网关 HTTP 客户端无连接/响应超时 | gateway yml 全文无 httpclient.connect-timeout/response-timeout（对照 leaderboard/verify 均显式配置），hang 住连接无截止，Sentinel 限流对已建立连接零作用 | 高 | LIGHT | 已立项（TASK-254 批4a-1；2026-10-16 侦察坐实） |
+| E11 | 规则快照阈值零校验 × 规则链无异常隔离 | RuleVersionCreateRequest rules 无 @Valid 无 @Min；window=0 数组越界 / window=1 NaN 静默永不命中；VerifyEngine 无单规则 try/catch，误下发一条 ACTIVE 快照即全判定停摆进 DLQ | 高 | MEDIUM | 已立项（TASK-254 批4a-1；2026-10-16 侦察坐实：windowPoints=0 越界 / =1 除零 NaN 或 Infinity） |
+| E12 | likes/batch 无入参上限放大 N 次 DB+Feign | @RequestBody List 无 @Size，逐 id selectById + 逐条 areFriends Feign（对照 RecordController 同域有 size 钳制） | 高 | LIGHT | 已立项（TASK-254 批4a-1；侦察坐实，钳制先例实为 SportRecordService L713/L762 服务层数学钳制） |
 | E13 | PostGIS 匹配 SQL 从未对真实库执行 | 内联 ST_DWithin/ST_MakeEnvelope SQL 仅 mock JdbcTemplate 桩测，全仓无 Testcontainers、mapmatch 无任何 IT，SRID/参数序/GIST/度换算偏差全无验证，直接决定 R5 判定正误 | 高 | FULL | 候选（◎；批4b；立项前真实库复验） |
 | E14 | E2E mock 兜底 404 掩盖通知写路径 | helpers 未映射请求兜底 404 code:9999 不进 unhandled 断言（假安全）；client.ts 清空已读/batch-read 两写端点无 mock → 通知页三按钮 E2E 恒失败无红灯 | 高 | MEDIUM | 候选（批4b） |
 | E15 | 登录锁定 threshold=5 使 F11 账号 DoS 回归【排除项新证据】 | user yml threshold: 5 enabled: true 覆盖代码默认 20（AuthService L84），spec-delta 明确该值语义为「5→20 兜底阈值」防分布式爆破 DoS，findings-summary 已记 F11 关闭；README 同步滞后；Nacos 运行时覆盖未核 | 中 | FULL | 候选（指导侧亲验 yml/代码坐实；批4b） |
-| E16 | Sentinel 动态规则 [] 静默清空兜底限流 | 合法空数组走 new HashSet 得空集覆盖 loadRules 兜底（SentinelGatewayRuleConfig L74-107），日志仍报「已注册可动态改」；空集应视为无效更新 | 中 | MEDIUM | 候选（◎；批4a；库回调语义需实测） |
+| E16 | Sentinel 动态规则 [] 静默清空兜底限流 | 合法空数组走 new HashSet 得空集覆盖 loadRules 兜底（SentinelGatewayRuleConfig L74-107），日志仍报「已注册可动态改」；空集应视为无效更新 | 中 | MEDIUM | 已立项（TASK-254 批4a-1；侦察坐实，空集→null 沿既有解析失败语义，真实 Nacos 链路登记受限） |
 | E17 | mapmatch 无 DB 超时 + TRUNCATE 重灌 + 采样上限无下界【合并】 | hikari 仅 initialization-fail-timeout、URL 无 socketTimeout、queryForList 无 queryTimeout；import 脚本 TRUNCATE 取 ACCESS EXCLUSIVE 锁阻塞读 → 重灌窗口 R5 全量误拒；max=1 除零 / max=0 NaN fail-open | 中 | MEDIUM | 候选（◎；批4a） |
 | E18 | verify 补偿把异步 MQ 提交当成功转人工不可达 | publishSubmitted 返回值恒 true（onFailure 在回调线程晚于 return 求值），VerifyDegradeService 据此记成功 republished++，broker 不可达时永不转人工无告警 | 中 | LIGHT | 候选（批4b） |
 | E19 | 好友批量同意自调用绕过 @Transactional | batchTransition 内直接调 accept(id, caller)，同类自调用不过事务代理（全仓无 exposeProxy/AopContext），update+insert 两写失原子且测试只断言注解存在 | 中 | FULL | 候选（◎；批4b） |
@@ -105,7 +105,7 @@
 | E24 | 改判重激活不重置 settled_at 归入旧周期 | updateStatus 只 SET status，range 归窗按 settled_at → 补回里程漏计当周/当月榜，与已归档日快照口径长期不一致 | 中 | LIGHT | 候选（◎；批4a，可并入相邻课题） |
 | E25 | R2 首有效点 speed=0 伪造加速度尖峰 | 首点 speed/dt 从未计算保持 0，以它作 prev 得 a=speed[1]/dt[1] 必超阈，minCount=3 实际门槛降为 2，高频采样轨迹被误拒且证据计数被污染 | 中 | MEDIUM | 候选（◎；批4b） |
 | E26 | 前端榜单筛选无取消陈旧响应覆盖 | loadLb 无 AbortController/请求序号，快速切换旧响应覆盖新态、finally 提前置 loading=false；feed/index/notifications 分页同款 | 中 | LIGHT | 候选（◎；批4b） |
-| E27 | 网关 actuator 白名单与路由表不一致探针 404 | 白名单声明 /actuator/health* 但 7 条路由无 /actuator/**，经网关探针恒 404；compose 裸 TCP 检查掩盖错配，K8s 按注释口径配探针即反复重启 | 中 | MEDIUM | 候选（◎；批4a） |
+| E27 | 网关 actuator 白名单与路由表不一致探针 404 | 白名单声明 /actuator/health* 但 7 条路由无 /actuator/**，经网关探针恒 404；compose 裸 TCP 检查掩盖错配，K8s 按注释口径配探针即反复重启 | 中 | MEDIUM | 反证关闭（2026-10-16 批4a-1 侦察：GatewayProbeTest 真实网关全上下文断言 /actuator/health/liveness 与 /readiness 经网关端口 200/UP 且基线全绿——无 /actuator/** 路由时请求落入 actuator 端点映射而非 404，白名单为有效配置；compose 裸 TCP 检查仅风格项非缺陷） |
 | E28 | X-Request-Id 无长度/字符校验 | resolveOrCreate 仅 trim，客户端可控值可挂他人链路/放大日志全链扩散；入口白名单一处收敛所有 MVC 服务与 MQ 续链；既有契约测试反而固化原样复用 | 中 | FULL | 候选（◎；批4b） |
 | E29 | mapmatch 候选边并集复用放大 | acc.addAll 无去重、超限判据只看单叶非累计并集、每点每边重新 substring/parseDouble，CPU 毫秒→秒级超 verify 3s 读超时，并集 WKT 常驻堆无观测 | 中 | MEDIUM | 候选（◎；批4a） |
 | E30 | 昵称整行 updateById 丢失更新 | selectById→setNickname→updateById 整行回写含 passwordHash/role，无 @Transactional 无 @Version；与改密/撤销管理员并发可回写旧密码哈希或旧 ADMIN（毫秒级窗口，失败模式为安全语义回退） | 低 | MEDIUM | 候选（◎；批4b） |
@@ -118,7 +118,7 @@
 1. **批1 已封盘 TASK-251（FULL 档，2026-10-16）**：E1+E2+E3 认证/鉴权面三处破口已收口（C-01 `124c93e` / C-02 `fd14459`，独立复核五块 PASS 零阻断，终裁 ACCEPT；CI run `38864817657` 全绿，完整闭环）；
 2. **批2 已封盘 TASK-252（MEDIUM 档，2026-10-16）**：E4+E31 CI runner 迁移预备已收口（C-01 `66d0ec3` / C-02 `49b02c7`，MEDIUM 档指导亲核三块 PASS；钉 ubuntu-24.04 + 六 uses 升 v5/v6 + probe-ubuntu26 试跑通道 + concurrency/timeout + trivyignore 校准；ubuntu-26.04 真实试跑待 10-19 标签可用后手动 dispatch，读数随补记笔登记）；
 3. **批3 已封盘 TASK-253（FULL 档，2026-10-16）**：E5（调度池并行化）+ E6（申诉终判兜底对账）+ E7（结算 ZREM 二次复核）+ E9（幂等迁移）四项收口（C-01 `1c35a27` / C-02 `22a0802`，白名单恰 10 文件跨 record/verify/leaderboard/sql 四面；指导亲核三块 PASS + 独立复核五块全 PASS 零阻断、N1-N4 非阻断登记，终裁 ACCEPT；surefire verify 182→188、leaderboard 104→108 只增不减；CI run 待观察、读数随补记笔登记）；
-4. **批4（纵深与测试债，待立项）**：4a 配置与性能（E10/E11/E12/E16/E17/E21/E23/E24/E27/E29）、4b 测试与可观测（E8/E13/E14/E15/E18/E19/E20/E22/E25/E26/E28/E30）；◎ 标注项立项前需 EXPLAIN/真实库/真实网关复验再定级。
+4. **批4（纵深与测试债）**：批4a-1（网关+高危簇）已立项 **TASK-254**（2026-10-16：E10/E11/E12/E16 侦察坐实 + E27 反证关闭 + 两顺手项搭车，FULL 档）；批4a-2 配置性能余项（E17/E21/E23/E24/E29）、批4b 测试可观测（E8/E13/E14/E15/E18/E19/E20/E22/E25/E26/E28/E30）待拍板；◎ 标注项立项前需 EXPLAIN/真实库/真实网关复验再定级。
 
 
 
