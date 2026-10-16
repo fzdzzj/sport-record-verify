@@ -152,6 +152,48 @@ class NotificationControllerTest {
         verify(service).pageNotifications(42L, 1, 20);
     }
 
+    // ==================== TASK-251 R1：清理端点服务层 ADMIN 角色门 ====================
+
+    /** 角色门放行：X-Role=ADMIN（网关注入语义）时透传阈值与批大小到服务层，返回实际删除条数 */
+    @Test
+    void cleanExpiredNotifications_adminRolePasses() {
+        HttpServletRequest req = mock(HttpServletRequest.class);
+        when(req.getHeader(NotificationController.HEADER_ROLE)).thenReturn(NotificationController.ROLE_ADMIN);
+        when(service.cleanExpiredNotifications(90, 200)).thenReturn(6);
+
+        Result<Integer> r = controller.cleanExpiredNotifications(null, req);
+
+        assertEquals(ResultCode.SUCCESS.getCode(), r.getCode());
+        assertEquals(6, r.getData());
+        verify(service).cleanExpiredNotifications(90, 200);
+    }
+
+    /** 角色门失败关闭：X-Role=USER → 403（1002），服务层零触达（不得清库） */
+    @Test
+    void cleanExpiredNotifications_userRoleForbidden() {
+        HttpServletRequest req = mock(HttpServletRequest.class);
+        when(req.getHeader(NotificationController.HEADER_ROLE)).thenReturn("USER");
+
+        BizException ex = assertThrows(BizException.class,
+                () -> controller.cleanExpiredNotifications(30, req));
+
+        assertEquals(ResultCode.FORBIDDEN.getCode(), ex.getCode());
+        verify(service, never()).cleanExpiredNotifications(any(Integer.class), any(Integer.class));
+    }
+
+    /** 角色门失败关闭：头缺失（未过网关/直连端口）→ 403（1002），服务层零触达 */
+    @Test
+    void cleanExpiredNotifications_missingRoleHeaderForbidden() {
+        HttpServletRequest req = mock(HttpServletRequest.class);
+        when(req.getHeader(NotificationController.HEADER_ROLE)).thenReturn(null);
+
+        BizException ex = assertThrows(BizException.class,
+                () -> controller.cleanExpiredNotifications(null, req));
+
+        assertEquals(ResultCode.FORBIDDEN.getCode(), ex.getCode());
+        verify(service, never()).cleanExpiredNotifications(any(Integer.class), any(Integer.class));
+    }
+
     /** 局部异常处理映射：越权 1002 → HTTP 403 + body 1002；401 → HTTP 401 */
     @Test
     void handleBizException_mapsForbiddenAndUnauthorizedHttpStatus() {

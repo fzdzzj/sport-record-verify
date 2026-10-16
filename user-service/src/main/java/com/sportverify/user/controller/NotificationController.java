@@ -65,6 +65,12 @@ public class NotificationController {
     /** 网关注入的 userId 请求头（唯一可信来源，外部伪造同名头被网关覆盖，见 ADR-0007） */
     private static final String HEADER_USER_ID = "X-User-Id";
 
+    /** 网关注入的 role 请求头（治理面准入依据；网关鉴权分支覆盖式注入，外部伪造头被剥离） */
+    static final String HEADER_ROLE = "X-Role";
+
+    /** 治理面管理员角色值（与网关 AuthGlobalFilter.ROLE_ADMIN 同字面量） */
+    static final String ROLE_ADMIN = "ADMIN";
+
     /**
      * 通知分页（规范差异「通知列表」）：按 id 倒序分页返回，仅收件人本人；越权 → 403。
      */
@@ -171,12 +177,35 @@ public class NotificationController {
     /**
      * 清理过期已读通知（B21 治理面，DELETE /api/notifications/expired?days=90）：
      * 以「已读 + created_at &lt; now-days」为界分批物理删除历史已读通知；返回本批实际删除条数。
+     *
+     * <p><b>双层防线（TASK-251 R1/E3）</b>：本端点删除范围是<b>全平台</b>（mapper 全表 DELETE，
+     * 无 user_id 归属条件），属跨用户数据治理动作，故设两层——
+     * ① <b>网关前置</b>：外部路径 {@code /user/api/notifications/expired} 已列入 gateway
+     * {@code app.auth.admin.paths}，非 ADMIN 在网关即 403（未登录 401），请求不落到本服务；
+     * ② <b>服务层兜底</b>：本方法再读网关注入的 {@code X-Role} 判 ADMIN，非 ADMIN 或头缺失一律
+     * {@link ResultCode#FORBIDDEN} 失败关闭（与 {@link #resolveUserId} 同款「只认网关注入头」认定模式，
+     * 不信任自报身份）。②的存在意义是「网关配置漂移/直连端口」时不出现零鉴权清库路径——
+     * 网关是唯一外部入口（ADR-0007），但防线不依赖单点配置正确。</p>
      */
     @DeleteMapping("/expired")
     public Result<Integer> cleanExpiredNotifications(
-            @RequestParam(value = "days", required = false) Integer days) {
+            @RequestParam(value = "days", required = false) Integer days,
+            HttpServletRequest request) {
+        requireAdmin(request);
         int thresholdDays = (days == null || days <= 0) ? 90 : days;
         return Result.success(notificationService.cleanExpiredNotifications(thresholdDays, 200));
+    }
+
+    /**
+     * 治理面角色门（TASK-251 R1）：X-Role 非 ADMIN 或头缺失 → 403（1002）失败关闭。
+     * 不读库、不看 body，纯头认定——与网关 admin.paths 判定同源（均以网关注入的 X-Role 为唯一依据）。
+     */
+    private void requireAdmin(HttpServletRequest request) {
+        String role = request.getHeader(HEADER_ROLE);
+        if (!ROLE_ADMIN.equals(role)) {
+            log.warn("治理面端点越权拒绝：requiredRole=ADMIN, actualRole={}", role);
+            throw new BizException(ResultCode.FORBIDDEN);
+        }
     }
 
     /**

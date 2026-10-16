@@ -93,8 +93,8 @@ pnpm install && pnpm dev   # 默认 5173，Vite 代理原样转发网关 8080
 | 中间件健康 | `docker compose ps` | 6 个容器 `healthy`（含 postgis） |
 | 登录 schema 探测 | `bash scripts/smoke/smoke-schema.sh` | **通过**：HTTP 401 且 `code=1001`（错误凭据，说明登录 SELECT 已跑通）；**硬失败**：HTTP 500 或 `code=9999`（schema/系统错误）。HTTP 403/`1002` 为账号锁定、502/503 或连接失败为服务未就绪——二者都不是缺列，须换号或先起网关与 user-service |
 | 注册可见 | 浏览器打开 `http://127.0.0.1:8848/nacos` 服务列表 | 6 个服务各 1 实例 |
-| 网关路由 | `curl -H "X-Internal-Token: local-demo-internal-token" http://127.0.0.1:8080/user/internal/health` | `{"code":0,"message":"success","data":"user-service is alive"}` |
-| Feign 探活 | `curl -H "X-Internal-Token: local-demo-internal-token" http://127.0.0.1:8080/verify/internal/probe/record` | `"record-service is alive"`（verify→record 跨服务调用） |
+| 内部接口直连 | `curl -H "X-Internal-Token: $INTERNAL_API_TOKEN" http://127.0.0.1:8081/internal/health` | `{"code":0,"message":"success","data":"user-service is alive"}`（token 取仓库根 `.env` 的 `INTERNAL_API_TOKEN`；**必须直连服务端口**——网关已拒绝一切 internal 路径，走 8080 恒 404，见下方鉴权章节） |
+| Feign 探活 | `curl -H "X-Internal-Token: $INTERNAL_API_TOKEN" http://127.0.0.1:8083/internal/probe/record` | `"record-service is alive"`（verify→record 跨服务调用；同样直连 8083） |
 | 榜单查询 | `curl http://127.0.0.1:8080/leaderboard/api/leaderboard?type=overall` | `{"code":0,...,"data":[...]}`（总榜；`type=friend&userId=` 查好友榜） |
 | 日期范围榜 | `curl "http://127.0.0.1:8080/leaderboard/api/leaderboard/range?start=2026-09-01&end=2026-09-07"` | 按 `settled_at` 半开窗口聚合 ACTIVE 贡献里程榜（start 必填、end 缺省今天、跨度 ≤366 天、size 默认 50 上限 500） |
 | 路网匹配 | `curl -X POST http://127.0.0.1:8080/mapmatch/match -H 'Content-Type: application/json' -d '{"points":[{"seq":0,"lat":31.23,"lng":121.4626,"ts":1700000000000},{"seq":1,"lat":31.2293,"lng":121.4627,"ts":1700000165000},{"seq":2,"lat":31.2287,"lng":121.4628,"ts":1700000428000}]}'` | `data.offRoadRatio≈0`（点位在南北高架路上，悬浮点位如黄浦江江心则 ≈1） |
@@ -180,7 +180,15 @@ stderr 打出"按口径记为未覆盖"的提示，台账须照此记录，不�
   `POST /api/auth/login`（错密码 → 401 + 计失败）、`POST /api/auth/refresh`（refresh 换新 + 轮换作废旧 refresh）。
   登录签发 access 时从库读 `role` 写入 role claim 并随响应返回（前端据此判断是否可进管理端）。
 - **校验端**（gateway）：GlobalFilter 校验 `Authorization: Bearer`（失败 401/1001），解析 userId 注入
-  `X-User-Id`、role 注入 `X-Role` 透传下游（覆盖外部伪造同名头）；白名单 `/api/auth/**` `/actuator/**` 放行（已删除无路由的 `/internal/**` 死配置）。服务本地 `/internal/**` 须带 `X-Internal-Token`。
+  `X-User-Id`、role 注入 `X-Role` 透传下游（覆盖外部伪造同名头）；白名单为**发 token 入口逐端点精确清单**
+  `/api/auth/register`、`/api/auth/login`、`/api/auth/refresh`、`/api/auth/logout`（凭 refresh token 自洽吊销，
+  不依赖身份头）与 `/actuator/health*` 探针、`/user/ws-notifications`（STOMP 握手，鉴权下沉到 CONNECT 帧）。
+  **内部面双层防线**（TASK-251）：① 网关入口对所有分支剥离入站 `X-Internal-Token`，并在白名单判断之前
+  把任一路径段为 `internal` 的请求一律 **404**（外部不可达语义、不泄露存在性，覆盖全部七条路由，含
+  StripPrefix 后落上游 `/internal/**` 的 `/user/internal/**` 形态）；② 服务本地 `/internal/**` 仍按
+  `InternalApiAuthFilter` 校验 `X-Internal-Token`（值为仓库根 `.env` 的 `INTERNAL_API_TOKEN`，
+  compose 部署路径为必填插值、缺值即解析失败）。**内部面只走服务间 Feign 直连或本机 8081-8085**——
+  网关侧不存在可用的 internal 路由，此前 README「网关无 /internal 路由」的表述由此升级为「网关主动拒绝」。
 - **治理面 RBAC**（add-admin-rbac）：最小角色模型 USER/ADMIN 二态，注册默认 USER、仅经
   `POST /internal/auth/grant-admin` 显式授予 ADMIN；`/admin/**` 与规则版本接口（`/verify/rules/**`）
   从白名单移除并纳入角色校验——未登录 401（1001）、普通用户 403（1002）、ADMIN 放行；

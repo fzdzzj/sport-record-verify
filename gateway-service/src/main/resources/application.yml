@@ -119,17 +119,21 @@ app:
       # HS256 对称密钥（>=32 字节）：与 user-service 配置必须一致（本网关按同一密钥校验并注入 X-User-Id）
       # 本地默认值仅演示；生产必须经环境变量 JWT_SECRET 或配置中心统一注入
       secret: ${JWT_SECRET:sport-verify-hs256-secret-key-0123456789abcdef}
-    # 白名单：/api/auth/**（注册/登录/刷新）与健康探针 /actuator/health（精确匹配，narrow-actuator-exposure）。
-    # actuator 其余端点（metrics/env/prometheus 等）不经网关裸放行——监控按 ADR-0007 走内网直连，
-    # 经网关访问须携带有效 token（走鉴权分支）；matchesPrefixList 对无 /** 后缀的模式走精确匹配。
-    # 已删除 /internal/**（无对应路由的死配置）；/admin/**、/verify/rules/** 与 /verify/api/appeals/** 走角色校验。
-    # 白名单：/api/auth/**（注册/登录/刷新）、健康探针 /actuator/health（精确匹配，narrow-actuator-exposure）
-    # 与 /user/ws-notifications（通知实时推送 STOMP 端点，TASK-185——握手经网关豁免 Bearer 头，
-    # 鉴权下沉到 STOMP CONNECT 帧级由 user-service 的 StompConnectAuthInterceptor 校验）。
+    # 白名单（TASK-251 R2 收窄：原 /api/auth/** 整段放行会把改密端点也从「鉴权分支」挤到放行分支，
+    # 而改密端点强制读网关注入的 X-User-Id → auth.enabled 真假两条路径都恒 401）。
+    # 现改为「公开集逐端点精确清单」：register/login/refresh 是发 token 入口（无 token 可带）；
+    # logout 凭 refresh token 自洽吊销（见 AuthController.logout，不依赖 X-User-Id；若纳入鉴权分支，
+    # 过期 access 会连带阻断登出，故保留白名单——理由同步登记在 TASK-251 handoff §4）。
+    # change-password 已移出白名单 → 走鉴权分支由网关注入 X-User-Id，主链路恢复。
+    # 另：/actuator/health* 与 /user/ws-notifications（通知实时推送 STOMP 端点，TASK-185——握手经网关
+    # 豁免 Bearer 头，鉴权下沉到 STOMP CONNECT 帧级由 user-service 的 StompConnectAuthInterceptor 校验）。
     # TASK-198 批3：K8s 探针路径精确追加 /actuator/health/liveness 与 /actuator/health/readiness
     # （无 /** 后缀仍走精确匹配语义）；/actuator/health 聚合端点原样保留，
     # 其余 actuator 端点（metrics/env/prometheus 等）仍不经网关放行（监控按 ADR-0007 内网直连）。
-    whitelist: /api/auth/**,/actuator/health,/actuator/health/liveness,/actuator/health/readiness,/user/ws-notifications
+    # TASK-251 R3：白名单不含任何 internal 配置——网关已在白名单判断之前对 internal 路径段一律 404
+    # （外部不可达），故此处既不需要、也不允许出现 internal 死配置（原 /internal/** 已于
+    # add-resilience-hardening 删除，本次改为「主动拒绝」而非「无路由」语义）。
+    whitelist: /api/auth/register,/api/auth/login,/api/auth/refresh,/api/auth/logout,/actuator/health,/actuator/health/liveness,/actuator/health/readiness,/user/ws-notifications
     admin:
       # 治理面角色校验开关：true=管理端/规则版本接口要求 role=ADMIN（普通用户 403/1002、未登录 401/1001）
       # 默认 true 关门；false=治理目标失败关闭（不再裸放行）
@@ -138,7 +142,10 @@ app:
       # 榜单每日报表（某日全平台用户里程排行）属跨用户数据，仅 ADMIN 可读：
       # /leaderboard/api/leaderboard/daily 是外部路径（路由 Path=/leaderboard/** + StripPrefix=1
       # → leaderboard-service 的 /api/leaderboard/daily）；只列这一条，总榜/好友榜仍是用户面公开读接口
-      paths: /admin/**,/verify/rules/**,/verify/api/appeals/**,/leaderboard/api/leaderboard/daily
+      # TASK-251 R1：/user/api/notifications/expired 是全平台已读通知物理清理（mapper 全表 DELETE、无 user_id
+      # 归属条件），属跨用户数据治理动作 → 沿 /leaderboard/api/leaderboard/daily 先例精确串追加（无 ** 后缀，
+      # 走精确匹配语义）；服务层另设 X-Role=ADMIN 角色门兜底（双层防线）。
+      paths: /admin/**,/verify/rules/**,/verify/api/appeals/**,/leaderboard/api/leaderboard/daily,/user/api/notifications/expired
     sentinel:
       # 网关流控规则 Nacos 数据源（add-sentinel-dynamic-rules）：SentinelGatewayRuleConfig 注册的
       # NacosDataSource 指向该 dataId；Nacos 里规则 JSON 数组（每个元素为 GatewayFlowRule：resource/count/intervalSec/grade），

@@ -28,8 +28,12 @@ import java.util.List;
  * <ul>
  *   <li><b>校验</b>：Authorization Bearer 解析 access token；缺失/无效 → 401/1001；</li>
  *   <li><b>透传</b>：注入并覆盖 X-User-Id / X-Role；</li>
- *   <li><b>白名单</b>：/api/auth/**、/actuator/health 放行；无 /internal 路由；</li>
- *   <li><b>治理面角色</b>：/admin/**、/verify/rules/**、/verify/api/appeals/**、日报路径要求 ADMIN；</li>
+ *   <li><b>白名单</b>：/api/auth 发 token 端点（register/login/refresh）、/api/auth/logout（凭 refresh token
+ *       自洽吊销，不依赖身份头）、/actuator/health* 探针、/user/ws-notifications 放行；</li>
+ *   <li><b>内部凭证边界</b>（TASK-251 R3）：入口对全分支剥离 X-Internal-Token；路径任一段为 internal
+ *       一律 404（外部不可达，不泄露存在性）——七条路由未来新增 internal 面自动落在该防线内；</li>
+ *   <li><b>治理面角色</b>：/admin/**、/verify/rules/**、/verify/api/appeals/**、日报路径、
+ *       /user/api/notifications/expired（跨用户清理）要求 ADMIN；</li>
  *   <li><b>治理面专用凭证</b>（TASK-136 第二阶段；TASK-201 升级 HMAC 签名）：所有入站分支先清除客户端自带的
  *       X-Gateway-Governance-Token；仅当 auth.enabled、JWT 有效、role=ADMIN、admin.enabled、
  *       专用密钥均有效时向治理目标注入 {@link #sign} 签发的签名凭证（v1.&lt;ts&gt;.&lt;role&gt;.&lt;sigHex&gt;，
@@ -89,6 +93,15 @@ public class AuthGlobalFilter implements GlobalFilter, Ordered {
     public static final String HEADER_ROLE = "X-Role";
     /** 网关治理面专用凭证头（独立于 X-Internal-Token，不复用 Feign 内部 token） */
     public static final String HEADER_GOVERNANCE_TOKEN = "X-Gateway-Governance-Token";
+    /**
+     * 服务间内部接口共享密钥头（TASK-251 R3 入口剥离）。
+     *
+     * <p>本字符串逐字等于 common {@code InternalApiHeaders.TOKEN}：网关是 common 零依赖的叶子模块
+     * （模块依赖边界见任务书 §1.8），故按内联字面量引用，不引依赖；改动两侧须同步。</p>
+     */
+    static final String HEADER_INTERNAL_TOKEN = "X-Internal-Token";
+    /** 外部不可达路径段：任一段等于该值即整体 404（不泄露存在性） */
+    private static final String INTERNAL_PATH_SEGMENT = "internal";
     /** 管理员角色值 */
     private static final String ROLE_ADMIN = "ADMIN";
 
@@ -126,11 +139,22 @@ public class AuthGlobalFilter implements GlobalFilter, Ordered {
     public Mono<Void> filter(ServerWebExchange exchange, GatewayFilterChain chain) {
         String path = exchange.getRequest().getPath().value();
 
-        // 所有入站分支先清除客户端自带的治理凭证头，防止外部伪造
+        // 所有入站分支先清除客户端自带的治理凭证与内部接口凭证头，防止外部伪造
+        // （TASK-251 R3：X-Internal-Token 与治理凭证同为「下游只认网关注入」的凭证，剥离覆盖全分支）
         ServerHttpRequest cleanedRequest = exchange.getRequest().mutate()
-                .headers(headers -> headers.remove(HEADER_GOVERNANCE_TOKEN))
+                .headers(headers -> {
+                    headers.remove(HEADER_GOVERNANCE_TOKEN);
+                    headers.remove(HEADER_INTERNAL_TOKEN);
+                })
                 .build();
         exchange = exchange.mutate().request(cleanedRequest).build();
+
+        // 外部不可达语义（先于白名单/鉴权分支，覆盖全部七条路由）：路径任一段为 internal 即 404，
+        // 不泄露该 internal 面是否存在；服务间 Feign 直连不经网关，不受影响。
+        if (hasInternalPathSegment(path)) {
+            log.warn("网关拒绝外部访问 internal 路径：path={}", path);
+            return reject(exchange, HttpStatus.NOT_FOUND, "{\"code\":404,\"message\":\"资源不存在\"}");
+        }
 
         // 治理面路径：任一前提不成立即失败关闭（不走降级/白名单放行）
         if (isAdminPath(path)) {
@@ -246,6 +270,23 @@ public class AuthGlobalFilter implements GlobalFilter, Ordered {
 
     private boolean isWhitelisted(String path) {
         return matchesPrefixList(whitelist, path);
+    }
+
+    /**
+     * 路径中是否存在 {@code internal} 路径段（TASK-251 R3）。
+     *
+     * <p>逐段精确比较，故 {@code /internal/x}、{@code /user/internal/x} 命中，
+     * 而 {@code /user/internalized}（无独立段）不误伤；用 {@link String#contains(CharSequence)}
+     * 判段可覆盖首尾斜杠与重复斜杠。</p>
+     *
+     * @param path 请求原始路径
+     * @return true=外部不可达（调用方以 404 拒绝）
+     */
+    static boolean hasInternalPathSegment(String path) {
+        if (path == null || path.isEmpty()) {
+            return false;
+        }
+        return ("/" + path + "/").contains("/" + INTERNAL_PATH_SEGMENT + "/");
     }
 
     private boolean isAdminPath(String path) {

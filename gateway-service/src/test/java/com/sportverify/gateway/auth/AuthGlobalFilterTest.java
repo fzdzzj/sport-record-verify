@@ -137,6 +137,169 @@ class AuthGlobalFilterTest {
         assertEquals(null, exchange.getResponse().getStatusCode());
     }
 
+    // ==================== TASK-251 R2：公开集逐端点精确白名单 ====================
+
+    /**
+     * 按生产 application.yml 的 R2 白名单原文构造过滤器（复制值：单测零 Spring 上下文，
+     * 不读 yml；生产配置漂移由本用例的白名单字面量与网关 yml 人工对齐守护）。
+     */
+    private AuthGlobalFilter productionWhitelistFilter() {
+        AuthGlobalFilter fresh = new AuthGlobalFilter(parser);
+        ReflectionTestUtils.setField(fresh, "authEnabled", true);
+        ReflectionTestUtils.setField(fresh, "whitelist", List.of(
+                "/api/auth/register", "/api/auth/login", "/api/auth/refresh", "/api/auth/logout",
+                "/actuator/health", "/actuator/health/liveness", "/actuator/health/readiness",
+                "/user/ws-notifications"));
+        ReflectionTestUtils.setField(fresh, "adminPaths", List.of(
+                "/admin/**", "/verify/rules/**", "/verify/api/appeals/**",
+                "/leaderboard/api/leaderboard/daily", "/user/api/notifications/expired"));
+        ReflectionTestUtils.setField(fresh, "adminRoleCheckEnabled", true);
+        ReflectionTestUtils.setField(fresh, "governanceToken", VECTOR_KEY);
+        return fresh;
+    }
+
+    /** 以生产白名单过滤器执行过滤，并记录传链 exchange（断言注入/剥离头） */
+    private MockServerWebExchange runWithProductionWhitelist(AuthGlobalFilter fresh, String path,
+                                                             String authorization, String forgedUserId,
+                                                             String forgedRole, String forgedInternalToken,
+                                                             AtomicReference<ServerWebExchange> captured) {
+        MockServerHttpRequest.BaseBuilder<?> builder = MockServerHttpRequest.get(path);
+        if (authorization != null) {
+            builder.header("Authorization", authorization);
+        }
+        if (forgedUserId != null) {
+            builder.header(AuthGlobalFilter.HEADER_USER_ID, forgedUserId);
+        }
+        if (forgedRole != null) {
+            builder.header(AuthGlobalFilter.HEADER_ROLE, forgedRole);
+        }
+        if (forgedInternalToken != null) {
+            builder.header(AuthGlobalFilter.HEADER_INTERNAL_TOKEN, forgedInternalToken);
+        }
+        MockServerWebExchange exchange = MockServerWebExchange.from(builder);
+        fresh.filter(exchange, e -> {
+            captured.set(e);
+            return Mono.empty();
+        }).block();
+        return exchange;
+    }
+
+    @Test
+    void changePasswordNotWhitelistedGoesAuthedBranchAndInjectsUserId() {
+        // R2 判别式：白名单收窄后 change-password 落到鉴权分支 —— 校验 JWT 并注入 X-User-Id，
+        // 控制器 resolveUserId 零改动即通（收窄前该路径命中放行分支，X-User-Id 恒缺 → 改密恒 401）
+        AtomicReference<ServerWebExchange> captured = new AtomicReference<>();
+        MockServerWebExchange exchange = runWithProductionWhitelist(productionWhitelistFilter(),
+                "/api/auth/change-password", "Bearer " + token(42L, "USER"), null, null, null, captured);
+        assertEquals(null, exchange.getResponse().getStatusCode());
+        assertEquals("42", captured.get().getRequest().getHeaders().getFirst(AuthGlobalFilter.HEADER_USER_ID));
+        assertEquals("USER", captured.get().getRequest().getHeaders().getFirst(AuthGlobalFilter.HEADER_ROLE));
+    }
+
+    @Test
+    void changePasswordWithoutTokenIs401() {
+        // 收窄的副作用面同时守护：无 Bearer 的改密请求在网关即 401，不再裸达控制器
+        MockServerWebExchange exchange = runWithProductionWhitelist(productionWhitelistFilter(),
+                "/api/auth/change-password", null, null, null, null, new AtomicReference<>());
+        assertEquals(HttpStatus.UNAUTHORIZED, exchange.getResponse().getStatusCode());
+    }
+
+    @Test
+    void publicTokenEndpointsStayWhitelistedAndStripIdentityHeaders() {
+        // 公开集（register/login/refresh/logout）仍逐端点放行，且放行分支照旧剥离外部身份头
+        AuthGlobalFilter fresh = productionWhitelistFilter();
+        for (String path : List.of("/api/auth/register", "/api/auth/login",
+                "/api/auth/refresh", "/api/auth/logout")) {
+            AtomicReference<ServerWebExchange> captured = new AtomicReference<>();
+            MockServerWebExchange exchange =
+                    runWithProductionWhitelist(fresh, path, null, "999", "ADMIN", null, captured);
+            assertEquals(null, exchange.getResponse().getStatusCode(), path + " 应白名单放行");
+            assertEquals(null, captured.get().getRequest().getHeaders().getFirst(AuthGlobalFilter.HEADER_USER_ID),
+                    path + " 应剥离外部 X-User-Id");
+            assertEquals(null, captured.get().getRequest().getHeaders().getFirst(AuthGlobalFilter.HEADER_ROLE),
+                    path + " 应剥离外部 X-Role");
+        }
+    }
+
+    // ==================== TASK-251 R3：internal 凭证剥离 + 路径拒绝 ====================
+
+    @Test
+    void forgedInternalTokenStrippedOnAuthBranch() {
+        // E1 核心修复：入站 X-Internal-Token 在鉴权分支（业务路径）也必须被剥离，
+        // 否则外部持演示默认串可直打上游 /internal/auth/grant-admin 自助提权
+        AtomicReference<ServerWebExchange> captured = new AtomicReference<>();
+        MockServerWebExchange exchange = runCapturedWithIdentity(
+                "/verify/1/submit",
+                "Bearer " + token(5L, "USER"),
+                null,
+                null,
+                captured,
+                null,
+                "forged-client-internal-token");
+        assertEquals(null, exchange.getResponse().getStatusCode());
+        assertEquals(null, captured.get().getRequest().getHeaders().getFirst(AuthGlobalFilter.HEADER_INTERNAL_TOKEN));
+    }
+
+    @Test
+    void forgedInternalTokenStrippedOnWhitelistBranch() {
+        // 全分支覆盖：白名单（发 token 端点）分支同样剥离 internal 凭证
+        AtomicReference<ServerWebExchange> captured = new AtomicReference<>();
+        MockServerWebExchange exchange = runCapturedWithIdentity(
+                "/api/auth/login", null, null, null, captured, null, "forged-client-internal-token");
+        assertEquals(null, exchange.getResponse().getStatusCode());
+        assertEquals(null, captured.get().getRequest().getHeaders().getFirst(AuthGlobalFilter.HEADER_INTERNAL_TOKEN));
+    }
+
+    @Test
+    void internalPathRejectedWith404BeforeWhitelistAndAuth() {
+        // R3 路径拒绝：外部 /user/internal/**（route-user StripPrefix=1 会落上游 internal 面）一律 404，
+        // 不泄露存在性；该拒绝先于白名单/鉴权分支，故带合法 token 也拒绝
+        MockServerWebExchange withToken = runWithProductionWhitelist(productionWhitelistFilter(),
+                "/user/internal/health", "Bearer " + token(1L, "ADMIN"), null, null, null,
+                new AtomicReference<>());
+        assertEquals(HttpStatus.NOT_FOUND, withToken.getResponse().getStatusCode());
+
+        MockServerWebExchange withoutToken = runWithProductionWhitelist(productionWhitelistFilter(),
+                "/user/internal/health", null, null, null, null, new AtomicReference<>());
+        assertEquals(HttpStatus.NOT_FOUND, withoutToken.getResponse().getStatusCode());
+    }
+
+    @Test
+    void internalPathRejectedEvenWhenWhitelistedPathAndWithoutAuthorization() {
+        // 覆盖七条路由的未来 internal 面：命中白名单形态（/api/auth/**）的 internal 子路径同样先被拒
+        AtomicReference<ServerWebExchange> captured = new AtomicReference<>();
+        MockServerWebExchange exchange = runWithProductionWhitelist(productionWhitelistFilter(),
+                "/api/auth/internal/grant-admin", null, null, null, null, captured);
+        assertEquals(HttpStatus.NOT_FOUND, exchange.getResponse().getStatusCode());
+        assertEquals(null, captured.get(), "拒绝路径不得进入过滤链");
+    }
+
+    @Test
+    void internalPathSegmentPredicateMatchesSegmentsOnly() {
+        // 逐段语义守护：只有独立段 internal 命中，/user/internalized 与 /api/auth/login 不得误伤
+        assertTrue(AuthGlobalFilter.hasInternalPathSegment("/internal"));
+        assertTrue(AuthGlobalFilter.hasInternalPathSegment("/internal/"));
+        assertTrue(AuthGlobalFilter.hasInternalPathSegment("/internal/auth/grant-admin"));
+        assertTrue(AuthGlobalFilter.hasInternalPathSegment("/user/internal/health"));
+        assertEquals(false, AuthGlobalFilter.hasInternalPathSegment("/user/internalized"));
+        assertEquals(false, AuthGlobalFilter.hasInternalPathSegment("/api/auth/login"));
+        assertEquals(false, AuthGlobalFilter.hasInternalPathSegment(""));
+    }
+
+    @Test
+    void notificationsExpiredPathRequiresAdmin() {
+        // R1 网关侧：清理端点纳入 admin.paths 后，普通用户 403（服务层角色门为第二层兜底）
+        MockServerWebExchange user = runWithProductionWhitelist(productionWhitelistFilter(),
+                "/user/api/notifications/expired", "Bearer " + token(1L, "USER"), null, null, null,
+                new AtomicReference<>());
+        assertEquals(HttpStatus.FORBIDDEN, user.getResponse().getStatusCode());
+
+        MockServerWebExchange admin = runWithProductionWhitelist(productionWhitelistFilter(),
+                "/user/api/notifications/expired", "Bearer " + token(2L, "ADMIN"), null, null, null,
+                new AtomicReference<>());
+        assertEquals(null, admin.getResponse().getStatusCode());
+    }
+
     @Test
     void adminCheckDisabledGovernanceFailsClosed() {
         // TASK-136 第二阶段：admin.enabled=false 时治理目标失败关闭，不再裸放行
@@ -271,6 +434,16 @@ class AuthGlobalFilterTest {
                                                           String forgedUserId, String forgedRole,
                                                           AtomicReference<ServerWebExchange> captured,
                                                           String forgedGovernanceToken) {
+        return runCapturedWithIdentity(path, authorization, forgedUserId, forgedRole, captured,
+                forgedGovernanceToken, null);
+    }
+
+    /** 同上的六参形态：可另注入伪造的 X-Internal-Token（TASK-251 R3 剥离用例） */
+    private MockServerWebExchange runCapturedWithIdentity(String path, String authorization,
+                                                          String forgedUserId, String forgedRole,
+                                                          AtomicReference<ServerWebExchange> captured,
+                                                          String forgedGovernanceToken,
+                                                          String forgedInternalToken) {
         MockServerHttpRequest.BaseBuilder<?> builder = MockServerHttpRequest.get(path);
         if (authorization != null) {
             builder.header("Authorization", authorization);
@@ -283,6 +456,9 @@ class AuthGlobalFilterTest {
         }
         if (forgedGovernanceToken != null) {
             builder.header(AuthGlobalFilter.HEADER_GOVERNANCE_TOKEN, forgedGovernanceToken);
+        }
+        if (forgedInternalToken != null) {
+            builder.header(AuthGlobalFilter.HEADER_INTERNAL_TOKEN, forgedInternalToken);
         }
         MockServerWebExchange exchange = MockServerWebExchange.from(builder);
         filter.filter(exchange, e -> {

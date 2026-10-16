@@ -39,8 +39,12 @@ jobs:
       # compose 的 6 个服务都声明 env_file: [.env]，而 .env 按约定不入库：CI 里没有它，
       # config 与 build 会在解析阶段直接报 "env file ... not found"。这里放一份占位值
       # （只为让编排可解析、镜像可构建，不用于起真服务）。本地开发仍必须自备 .env。
+      # TASK-251 R3：compose 的 INTERNAL_API_TOKEN 改为必填插值（`:?`），而 env.example 不在本课题
+      # 白名单内（scripts/verify/** 零触碰），故在本步补一行占位值，使 config/build 不因缺变量红。
       - name: Provision placeholder env for compose checks
-        run: cp scripts/verify/env.example .env
+        run: |
+          cp scripts/verify/env.example .env
+          echo "INTERNAL_API_TOKEN=SvLocal-Internal-0000000000000000-ChangeMe" >> .env
 
       # 交付面判别式之一：两份编排文件组合不可解析即门槛失败。
       # 注意：本命令必须在无 .env 的树上验证，只在有 .env 的开发机上跑过一次不算证据。
