@@ -3,7 +3,7 @@
 > **TASK**：E 系批4a-2——配置性能余项（E17+E21+E23+E24+E29，FULL 档）
 > **开工基线**：`f39e693`（main，立项笔后工作树干净）
 > **方案**：2026-10-16 E 系批4a-2 指导侧立项侦察，用户拍板「批4a-2 配置性能余项（E17/E21/E23/E24/E29）」立项
-> **状态**：已派发实施完成（2026-10-16 实施子 agent 按 R1-R7 全部落地，七门禁全绿，双提交完成——C-01 `ce4aa4a` + C-02 台账笔收口）
+> **状态**：已终裁封盘（2026-10-16：实施 R1-R7 全落地七门禁全绿 + 指导亲核三块 PASS + 独立复核五块全 PASS 零阻断 N1-N3 非阻断登记，指导侧终裁 **ACCEPT**；CI 外部终验运行号与终裁依据由补记笔落库登记）
 
 ## 1. 实施摘要
 
@@ -68,7 +68,7 @@ spec §5 预注册五项受限（全部按口径登记）：
 ## 5. 双提交记录
 
 - **C-01 实施笔**：`ce4aa4a`（`ce4aa4a…`）：
-  `fix(common,mapmatch,record,leaderboard): E系批4a-2配置性能余项五项治理（TASK-255）` —— 恰白名单 1-14（14 files changed, 452 insertions(+), 112 deletions(-)）；
+  `fix(common,mapmatch,record,leaderboard): E系批4a-2配置性能余项五项治理（TASK-255）` —— 恰白名单 1-14（14 files changed；**计数封盘笔订正（N1）：+426/−86**，复核实测 `git show --numstat ce4aa4a` 求和；实施侧原誊录 +452/−112 系口径偏差，文件数/哈希/消息均正确，纯台账誊录订正）；
 - **C-02 台账笔**：本笔 `docs(mailbox): 登记TASK-255实施完成与门禁回填（TASK-255）` —— 仅 spec.md（开工基线占位符回填 `f39e693` + 状态更新）+ handoff.md 七节回填。C-02 为收口最终 HEAD；台账不落具体哈希（`git log --oneline -1` / `git rev-parse HEAD` 即为该笔，自指沿既有先例）。
 - **收口日净声明**：`git status --porcelain` 为空（C-02 后实测；`.trae/tmp` 临时件已删，零残留）；未推送（由指导侧终裁后统一执行，本地领先 origin/main = 4 笔属预期）。
 

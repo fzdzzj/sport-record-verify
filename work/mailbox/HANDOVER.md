@@ -8,10 +8,10 @@
 
 ## 1. 当前代码基线与外部状态
 
-- **当前分支与 HEAD**：`main` 分支，最新已终裁任务为 **TASK-254**（E 系批4a-1——网关与高危簇 E10+E11+E12+E16+两顺手项，FULL 档；C-01 `342bd9a` / C-02 `fb34665`，指导亲核三块 PASS + 独立复核五块全 PASS 零阻断 N1-N3 非阻断登记，终裁 **ACCEPT 予以封盘**；CI run `38892885813` conclusion=success 全 job 绿，**外部终验达成完整闭环**，补记笔已落库随下一批次推送）。前一封盘 TASK-253（E 系批3 数据一致性批，CI run `38879776160` 全绿）、TASK-252（E 系批2，CI run `38869656012` 全绿）、TASK-251（E 系批1，CI run `38864817657` 全绿）。**E 系批1/批2/批3/批4a-1 全部完整闭环；批4a-2（TASK-255）已立项待派发实施子 agent**。
-- **外部 CI 门槛状态**：TASK-254 封盘批次（5 笔：TASK-253 补记笔 `8c8e631` + TASK-254 立项笔 `9ce65b7` + C-01 `342bd9a` + C-02 `fb34665` + 封盘笔 `09a86e6`）已经 CI run `38892885813` 权威核验 conclusion=**success** 全 job 绿（`build` ✓11m19s / `web` ✓29s / `probe-ubuntu26` skipped=if 门禁正确生效旁证），外部终验达成。TASK-255 立项笔 + TASK-254 补记笔为本地领先，随 TASK-255 封盘批次统一推送。
-- **工作树状态**：立项笔工作树（TASK-255 两件套新建 + BACKLOG 五行翻转与推荐序 + HANDOVER 滚动 + TASK-254 补记三文件：PLAN 门槛行翻转 / TASK-254 handoff CI 登记 / 本文件）。
-- **当前在途任务数**：`1` 个——**TASK-255**（E 系批4a-2 配置性能余项 E17/E21/E23/E24/E29，FULL 档）已立项：两件套落库、五项复验全部坐实（含 E23 前提订正「TASK-235 后失用」）、16 项白名单定案、实施派发包已生成，**待用户派发实施子 agent**。
+- **当前分支与 HEAD**：`main` 分支，最新已终裁任务为 **TASK-255**（E 系批4a-2——配置性能余项 E17+E21+E23+E24+E29，FULL 档；C-01 `ce4aa4a` / C-02 `1ac8c60`，指导亲核三块 PASS + 独立复核五块全 PASS 零阻断 N1-N3 非阻断登记，终裁 **ACCEPT 予以封盘**；封盘批次 5 笔已推送，CI 外部终验读数由补记笔落库）。前一封盘 TASK-254（E 系批4a-1，CI run `38892885813` 全绿完整闭环，补记笔 `8612d2b` 已随本批次推送）、TASK-253（E 系批3，CI run `38879776160` 全绿）、TASK-252（E 系批2，CI run `38869656012` 全绿）、TASK-251（E 系批1，CI run `38864817657` 全绿）。**E 系批1/批2/批3/批4a-1/批4a-2 全部终裁封盘，当前在途 0**。
+- **外部 CI 门槛状态**：TASK-255 封盘批次（5 笔：TASK-254 补记笔 `8612d2b` + TASK-255 立项笔 `f39e693` + C-01 `ce4aa4a` + C-02 `1ac8c60` + 封盘笔）已推送，CI 已触发**待权威核验**（`gh run view <run-id>` 确认 conclusion=success 全 job 绿方达外部终验；若红按签名归因禁重试刷绿）。前一批次：TASK-254 经 CI run `38892885813` 全绿（build ✓11m19s / web ✓29s）；TASK-253 经 `38879776160` 全绿；TASK-252 经 `38869656012` 全绿；TASK-251 经 `38864817657` 全绿。
+- **工作树状态**：封盘笔工作树（PLAN.md TASK-255 验收小节 + BACKLOG 五行翻转与推荐序 + HANDOVER 滚动 + spec/handoff 状态行翻转与 N1 计数订正；封盘笔落库后与 origin/main 平齐）。
+- **当前在途任务数**：`0` 个——TASK-255 已终裁 ACCEPT 封盘（CI 外部终验读数待补记笔登记）；下一批次候选为批4b 测试可观测（E8/E13/E14/E15/E18/E19/E20/E22/E25/E26/E28/E30，◎ 标注项立项前需复验再定级），待用户拍板立项。
 
 ---
 
@@ -88,16 +88,17 @@
    - **E 系批4a-1 收口（2026-10-16）**：TASK-254 已终裁 ACCEPT 予以封盘（C-01 `342bd9a` / C-02 `fb34665`，FULL 档：指导亲核三块 PASS + 独立复核五块全 PASS 零阻断，N1-N3 非阻断登记——N1 任务书两处零触碰面路径描述性笔误（filter/AuthGlobalFilter→auth/、model/VerifyProperties→config/）实存均零 diff、N2 token SUM 计数口径差异（实施侧行命中 1989 / 复核侧文件出现次数 2017，29 项逐位持平红线一致，建议后续统一口径）、N3 契约门判据 B rc=1 确认为 CJK 路径工具缺口沿 TASK-251 N1 处置）；改动恰 15 文件白名单双向全等（工具判据 + 等价判据双通道）；后端 surefire gateway 71→75、record 300→302、verify 188→195 只增不减，token 门逐位持平，词面门 ZERO_HIT+探针对照；偏差授权链：D1 R4 复用 record 域既有码 SPORT_TYPE_INVALID（common 零触碰不可加码）、D2 E16 包私有可见性 C-02 登记、D3 checkstyle 4 项基线既有 delta=0；封盘批次 5 笔已推送，CI 外部终验读数由补记笔落库；N1/N2 治理建议随课题收口记入项目记忆；
    - **E 系批4a-1 外部终验（2026-10-16）**：TASK-254 封盘批次 CI run `38892885813` 权威核验 conclusion=success 全 job 绿（`build` ✓11m19s / `web` ✓29s / `probe-ubuntu26` skipped=if 门禁正确生效旁证），外部终验达成完整闭环；补记笔落库（PLAN.md TASK-254 门槛行翻转「已到达」+ TASK-254/handoff.md CI 登记 + 本文件 §1/§3），仅本地保留随下一批次统一推送；
    - **E 系批4a-2 立项（2026-10-16）**：TASK-255（E17+E21+E23+E24+E29 配置性能余项，FULL 档——E21 触碰 common 全局异常契约面跨服务 HTTP 状态码语义、E24 触碰榜单结算归窗正确性、E17/E29 触碰 mapmatch 判定链路，多模块 common/mapmatch/record/leaderboard + scripts/sql 禁降级）立项——五项 ◎ 复验**全部坐实**：E17 三半（DB 超时三处缺失 / TRUNCATE ACCESS EXCLUSIVE 分钟级重灌窗口致 R5 全量误拒 / thin 零下界——max=0 NaN fail-open、max=1 除零，与 chunkSize 有 Math.max(1) 保护不对称）；E21 三半并补现状（common 全局 handleBizException 恒 200 影响 verify/mapmatch；415/406/缺头三类框架异常落兜底 500；同码 1002 网关 403 vs 服务 200 不一——**record/user/leaderboard 八个 controller 局部 handler 已正确映射为先例，公共层缺位**，前端 client.ts 静态核对 1001→401 激活 refresh/1002→403 兼容）；E23 坐实**含前提订正**（selectDailyDistanceSince 系 TASK-235 后失用非「全仓无调用（从未）」，现况 main 零调用 grep 实证；退化点 myStats L932-938 与 GoalService L198-199）；E24 缺陷链完整推演（updateStatus 只 SET status + markSettled 仅盖 IS NULL → 改判里程永久归 T1 旧周期漏计当周/当月榜）；E29 三点（addAll 无去重/单叶判据/每点每边重复 WKT 解析）。修法 R1-R7 定案（超时三件套 PG JDBC 秒单位 / 影子表 staging+单事务 RENAME 原子切换 / thin Math.max(2,max) / common 全局 code 映射+三类框架 Handler（八个局部 handler 保留不动，机制收拢另立候选）/ MySQL 函数索引纯索引路径（服务层零改动）双路径迁移 / reactivate 清 settled_at / LinkedHashSet 去重+累计判据+WKT 预解析行为等价硬约束）；白名单 16 项（14 业务/测试/SQL + 2 台账）；两件套落库、BACKLOG 五行翻转含 E23 口径订正与推荐序滚动；立项笔落库，实施派发包已生成待用户派发；
+   - **E 系批4a-2 收口（2026-10-16）**：TASK-255 实施回报（C-01 `ce4aa4a` 恰 14 文件 / C-02 `1ac8c60` 台账）→ 指导亲核三块 PASS（Git 摘要 16 条全等；高风险抽查 GlobalExceptionHandler 枚举映射 + reactivate SQL 逐字一致并坐实 leaderboard +0 登记真实性；回报一致性零矛盾）→ 独立复核五块全 PASS 零阻断（七门禁全量复跑：surefire 59/75/205/302/195/108/35 只增不减、token SUM=1353 逐位持平、契约门收口态 rc=1 属 C-02 台账固有语义等价判据 16 项全等、词面门 ZERO_HIT+探针对照、checkstyle delta=0）N1-N3 非阻断登记（N1 C-01 计数誊录偏差封盘笔订正 +452/−112→+426/−86、N2 旧 git clean 假阳性三重核证、N3 控制台乱码显示 artifact）→ 指导侧终裁 **ACCEPT**：五看板滚动（PLAN TASK-255 验收小节 + BACKLOG 五行封盘翻转 + spec/handoff 状态行 + N1 订正）、封盘笔落库，含 TASK-254 补记笔共 5 笔推送 origin/main，CI 触发待观察（全绿后补记笔登记运行号）；
    - 申诉审核意见（verify_db）透出限制：受限与 verify-service 红线，当前前台申诉进度条由记录状态推导，结论权威可靠。
 
 ---
 
 ## 4. 当前推进与唯一推荐动作
 
-- **当前推进**：**TASK-255（E 系批4a-2：E17 mapmatch 超时三件套与影子表原子切换 + E21 全局异常状态码契约 + E23 COALESCE 函数索引 + E24 重激活清结算戳 + E29 候选边去重与 WKT 预解析，FULL 档）已立项**——五项 ◎ 复验全部坐实（含 E23 前提订正「selectDailyDistanceSince 系 TASK-235 后失用」、E21 补现状「八个 controller 局部 handler 已正确映射为先例，公共层缺位」）；两件套落库（16 项白名单 + R1-R7 判别式 + 5 项预注册受限）、BACKLOG 五行翻转与推荐序滚动、TASK-254 补记笔落库（CI run `38892885813` 全绿外部终验达成）、立项笔落库。前一课题 TASK-254 完整闭环。
-  - **唯一推荐动作**：请用户**派发 TASK-255 实施子 agent**（实施派发包已生成，含 16 项白名单、零触碰红线、R1-R7 判别式、七门门禁与双提交规范）；实施回报后指导侧做亲核三块并生成独立复核派发包（FULL 档）；
+- **当前推进**：**TASK-255（E 系批4a-2：E17 mapmatch 超时三件套与影子表原子切换 + E21 全局异常状态码契约 + E23 COALESCE 函数索引 + E24 重激活清结算戳 + E29 候选边去重与 WKT 预解析，FULL 档）已终裁 ACCEPT 封盘**——实施（C-01 `ce4aa4a` / C-02 `1ac8c60`）→ 指导亲核三块 PASS → 独立复核五块全 PASS 零阻断 → 终裁 → 五看板滚动（PLAN 验收小节 + BACKLOG 五行翻转 + spec/handoff 状态行与 N1 订正）→ 封盘批次 5 笔（TASK-254 补记笔 `8612d2b` + TASK-255 立项笔 `f39e693` + C-01 + C-02 + 封盘笔）已推送；**CI 已触发待观察**，全绿即完整闭环。前一课题 TASK-254 完整闭环（run `38892885813` 全绿）。
+  - **唯一推荐动作**：①观察 TASK-255 封盘批次 CI 运行结果（权威核验：`gh run view <run-id>` 确认 conclusion=success 全 job 绿，禁凭口头「绿了」收口；若红按签名归因禁重试刷绿）→ 全绿后落**补记笔**（PLAN.md TASK-255「是否到达外部门槛」行翻转为已到达 + HANDOVER §1/§3 滚动 + TASK-255/handoff.md 登记 CI 运行号与终裁依据），补记笔仅本地保留随下一批次统一推送；②请用户拍板下一批次：批4b 测试可观测（E8/E13/E14/E15/E18/E19/E20/E22/E25/E26/E28/E30——◎ 标注项 E13/E19/E20/E22/E25/E26/E28/E30 立项前需 EXPLAIN/真实库/真实网关复验再定级，E15 指导侧已亲验 yml/代码坐实）；
   - **10-19 必做事项（沿挂账）**：ubuntu-26.04 标签可用后，手动 `workflow_dispatch` 触发 probe26=true 试跑 probe-ubuntu26 job，读数随补记笔登记；通过后另立课题平移 runs-on 并摘除钉扎注释；
-  - **治理挂账（非阻断，随下一课题/批次顺手）**：token 计数口径统一（TASK-254 N2：逐项 git grep -cF 文件出现次数为权威口径）、零触碰面路径书写以仓内实存路径为准（N1）、八个局部 BizException handler 机制收拢（TASK-255 E21 修复后局部与全局并存，收拢为独立候选）。
+  - **治理挂账（非阻断，随下一课题/批次顺手）**：token 计数口径统一（TASK-254 N2：逐项 git grep -cF 文件出现次数为权威口径）、零触碰面路径书写以仓内实存路径为准（N1）、八个局部 BizException handler 机制收拢（TASK-255 E21 修复后局部与全局并存，收拢为独立候选）、E5 类「X-Request-Id 透传」等散件见 BACKLOG 排除声明。
 
 
 
