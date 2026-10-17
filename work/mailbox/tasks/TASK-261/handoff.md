@@ -1,6 +1,6 @@
 # TASK-261 执行交接（handoff）
 
-> 状态：**已终裁 ACCEPT**（2026-10-17 指导侧终裁：亲核三块 + 独立复核五块全 PASS 零阻断；非阻断 4 项——中 1 token 派发书窗口口径未计自枚举、低 3 loadFriendIdSet warn 语义按先例读法 / spec「8 用例」实为 9 文档口径 / record JavadocType 位移基准表述 +17+11=+28 算术吻合——集中登记封盘笔不退改本档原文保持执行侧笔迹；CI 外部终验随补记笔登记）
+> 状态：**已终裁 ACCEPT**（2026-10-17 指导侧终裁：亲核三块 + 独立复核五块全 PASS 零阻断；非阻断 4 项——中 1 token 派发书窗口口径未计自枚举、低 3 loadFriendIdSet warn 语义按先例读法 / spec「8 用例」实为 9 文档口径 / record JavadocType 位移基准表述 +17+11=+28 算术吻合——集中登记封盘笔不退改本档原文保持执行侧笔迹；CI 外部终验已达成——run `39009192599` conclusion=success 全 job 绿（web ✓ / build ✓ / probe-ubuntu26 skipped=if 门禁旁证）、headSha `878ee9a` 匹配（2026-10-17 补记笔登记））
 
 ## 1. 开工基线
 
