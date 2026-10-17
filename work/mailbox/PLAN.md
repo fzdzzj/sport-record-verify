@@ -716,11 +716,16 @@
 
 | 项 | 内容 |
 | --- | --- |
-| 开工基线 | main @ `<立项笔哈希>`（TASK-261 立项笔；以开工实测 `git rev-parse HEAD` 回填 handoff 为准） |
+| 开工基线 | main @ `3e9b4db`（TASK-261 立项笔；实测 `3e9b4db29a0a` 与派发要求逐位一致，开工 porcelain 空；实测领先 origin 1 笔——派发书「2 笔」口径过时系前批封盘笔已随批次推送，执行侧修正登记） |
 | 分级定档 | FULL（G3 触碰读取面可见性授权门 assertCanView 批量路径重构 + 跨服务 Feign 消费面，安全语义敏感禁降级；跨 record/user/verify 三模块 → 七模块全量逐位验证 + 独立复核子agent + 指导亲核） |
 | 亲验证据 | 三项全部坐实（spec §1 实测行号）：G3 双落点 RecordLikeService L358-372 逐条 selectById+assertCanView + SportRecordService L1184-1185 逐条 areFriends Feign + 修法前提 listFriendIds 契约已存在（api L98 + fallback，零新增契约）+ feed 先例 L789-794；G4 四处 size 直通（pagePoints L531 / 通知 L112-121 / 好友 L347/L432）+ 范式先例 MAX_MY_RECORDS_SIZE=500 双钳制写法 L724-725；G10 VerifyService L230-235 无界 + EXHAUSTED_LIMIT_MAX=200 同文件先例 |
 | 白名单 | 9+5 项：record 两主类 + 两测试 + user 两服务类 + user 测试落点（执行侧选定登记）+ VerifyService + verify 测试落点（执行侧选定登记）+ 台账 5（零触碰 api 模块/全部控制器层/其余服务 src/test/pom/package.json/sql/scripts/web） |
 | 核心实现 | R1 getLikesBatch 批量重构（selectBatchIds 单查 + listFriendIds 好友集懒拉一次 + FRIENDS contains 内存判定 + assertCanView 公共签名与门矩阵语义不变 + fail-safe 降级对齐）；R2 四处服务层双钳制（safePage/safeSize 沿 L724-725 先例，值 500）；R3 listPendingAppeals LIMIT 200（沿 EXHAUSTED_LIMIT_MAX 值域，Javadoc 语义收窄登记） |
 | 门禁要求 | 七门禁全量逐位（surefire 63/78/215/310/200/109/35 只增不减；三服务主类有 diff 静态门纯净 worktree 双向坐实）+ 契约/token/词面/checkstyle/diff --check 照跑；双提交 C-01/C-02 |
 | 受限预登记 | spec §5 五项：G3 收益静态推论无压测（mock 语义承载）、好友集懒拉等价性单测承载、G4 上限 500 范式对齐值、G10 防御性语义收窄、Nacos 未核 |
+| 实施与门禁 | C-01 `93312b9`（fix(record)，恰 10 文件 +409/−47：R1 assertCanView(List) 公共重载 + loadFriendIdSet 懒拉 fail-safe + getLikesBatch selectBatchIds 批查保序 + R2 四处双钳制 + R3 LIMIT 200 + 新测 13）+ C-02 `66d2449`（台账 2 文件 +59/−1）；七门禁全绿：offline rc=0（63/78/**218**/**318**/**202**/109/35，user +3/record +8/verify +2 恰为本笔新测零删减、mapmatch 35 持平）、契约门三时点 rc=0（判据 B 恰 12 路径；C-01 后曾 rc=1 一次系 handoff 改动清单节叙述行裸 token 提取陷阱，措辞改写后复跑 rc=0 并登记避坑）、token 门基线 2046 逐位持平（C-02 树 2075=2046+29 自枚举效应沿 TASK-260 同型）、词面门四 locale ZERO_HIT + 探针阳性对照、checkstyle delta=0（record 4=4 / verify 976=976 / user 1175→1172 顺带收敛 3 条存量长行，新增行违规交集空，纯净 worktree 双向坐实）、diff --check 净、10 业务文件 w/crlf·blob i/lf（NotificationService 两文件编辑中曾整转 LF 以 perl raw-IO 归回） |
+| 指导亲核 | 三块全 PASS：①Git 摘要（porcelain 空、恰 3 笔、diff 12 文件与 handoff §2 逐位一致）；②定向抽查（R1 批量重载 L1230-1262 门矩阵四分支与单条门逐字保持 + loadFriendIdSet L1269-1280 懒拉整批至多一次三路 fail-safe 空集 + selectBatchIds 单查 LinkedHashMap 去重保序；R2 四处钳制值 500 控制器零改动；R3 LIMIT 200 常量拼接 + orderByDesc(id) 保最新）；③一致性裁决（surefire 净增 user +3/record +8/verify +2 与 handoff §4 新增断言落位对账一致；执行侧如实登记八项均合理非阻断） |
+| 独立复核 | 五块全 PASS 零阻断（块一 4/4 提交链逐笔对账；块二红线全过——单条门零 hunk、批量重载四分支逐字等价、归属人 null×FRIENDS 边界独立判定等价、loadFriendIdSet 三路 fail-safe、懒拉严格条件、R2/R3 落位、零触碰面 pathspec 双查全空、零新增契约 3e9b4db 与 66d2449 命中位逐字相同；块三 8/8 全亲自跑——offline 七模块逐位、契约门纯净 worktree @66d2449 回放 rc=0、token 29/29 逐位全等 + C-02 树 2075=2046+29 逐 token 验证 + 剔除 handoff 后 2046=2046、词面四 locale+探针、checkstyle 三模块双向 + 新增行交集空、diff/行尾双口径净、mapmatch 持平；块四证据链 7/7 一致 + §4 八条登记独立判定成立；块五三向全等 12=12=白名单映射，主树 15=12+补记笔 3 文件属派发书预警预期形态）；非阻断 4 项（中 1：token 派发书窗口口径未计自枚举效应——复核实测实质 PASS，教训=后续派发书期望值直写「C-02 树 = 基线 + 29」；低 3：loadFriendIdSet warn 语义按先例读法（异常路 warn）、spec「8 用例」实为 9 纯文档口径、record JavadocType 位移基准表述 +17+11=+28 算术吻合） |
+| 是否到达外部门槛 | **未到达**：封盘批次（5 笔 = 立项笔 `3e9b4db` + C-01 `93312b9` + C-02 `66d2449` + TASK-260 补记笔 `41279cc` + 封盘笔）推送后 GitHub Actions CI 权威核验，全绿由补记笔翻转为已到达 |
+| 状态 | **已终裁 ACCEPT（2026-10-17 指导侧）**：亲核三块 + 复核五块双 PASS 零阻断；非阻断 4 项集中登记封盘笔（token 派发书口径教训沿自枚举先例追认，低 3 文字层/口径类不退改原文档）；复核收口自证中 detached worktree 系 .codex 会话前既存件未触碰如实登记；待 CI 外部终验读数由补记笔登记 |
 
