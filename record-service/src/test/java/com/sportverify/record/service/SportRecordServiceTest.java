@@ -26,6 +26,7 @@ import com.sportverify.record.mapper.RecordLikeMapper;
 import com.sportverify.record.service.RecordLikeService;
 import com.baomidou.mybatisplus.core.MybatisConfiguration;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
 import com.baomidou.mybatisplus.core.metadata.TableInfoHelper;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.sportverify.api.verify.VerifyApi;
@@ -58,6 +59,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.anyInt;
 import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.doThrow;
@@ -1463,7 +1465,7 @@ class SportRecordServiceTest {
         assertEquals(0, out.getRecords().size());
     }
 
-    /** TASK-224 R2：全量过滤参数（sportType/status/startDate/endDate）组合生效，wrapper 条件与参数对齐 */
+    /** TASK-224 R2 + G11/TASK-260 R4：全量过滤参数（sportType/status/startDate/endDate）组合生效，日期过滤按 COALESCE 活动时间口径 */
     @Test
     @SuppressWarnings("unchecked")
     void pageMyRecords_withAllFilters_buildsCorrectWrapper() {
@@ -1483,8 +1485,10 @@ class SportRecordServiceTest {
         assertTrue(sql.contains("user_id ="), "必须含 user_id 过滤");
         assertTrue(sql.contains("sport_type ="), "必须含 sport_type 过滤");
         assertTrue(sql.contains("status ="), "必须含 status 过滤");
-        assertTrue(sql.contains("start_time >="), "必须含 start_time >= 过滤");
-        assertTrue(sql.contains("start_time <="), "必须含 start_time <= 过滤");
+        assertTrue(sql.contains("COALESCE(start_time, created_at) >="),
+                "必须含 COALESCE(start_time, created_at) >= 过滤（G11 活动时间口径）：" + sql);
+        assertTrue(sql.contains("COALESCE(start_time, created_at) <="),
+                "必须含 COALESCE(start_time, created_at) <= 过滤（G11 活动时间口径）：" + sql);
         assertTrue(sql.contains("ORDER BY created_at DESC"), "必须保持 createdAt 倒序");
         assertTrue(wrapper.getValue().getParamNameValuePairs().containsValue(200L));
         assertTrue(wrapper.getValue().getParamNameValuePairs().containsValue(1));
@@ -1517,21 +1521,48 @@ class SportRecordServiceTest {
         assertTrue(captor2.getValue().getSqlSegment().contains("status ="));
         assertFalse(captor2.getValue().getSqlSegment().contains("sport_type ="));
 
-        // 仅 startDate
+        // 仅 startDate（G11 R4：下界按 COALESCE(start_time, created_at) 活动时间口径）
         LocalDate start = LocalDate.of(2026, 10, 1);
         service.pageMyRecords(200L, 1, 20, null, null, start, null);
         ArgumentCaptor<LambdaQueryWrapper> captor3 = ArgumentCaptor.forClass(LambdaQueryWrapper.class);
         verify(sportRecordMapper, times(3)).selectPage(any(Page.class), captor3.capture());
-        assertTrue(captor3.getValue().getSqlSegment().contains("start_time >="));
-        assertFalse(captor3.getValue().getSqlSegment().contains("start_time <="));
+        assertTrue(captor3.getValue().getSqlSegment().contains("COALESCE(start_time, created_at) >="));
+        assertFalse(captor3.getValue().getSqlSegment().contains("COALESCE(start_time, created_at) <="));
 
         // 仅 endDate
         LocalDate end = LocalDate.of(2026, 10, 5);
         service.pageMyRecords(200L, 1, 20, null, null, null, end);
         ArgumentCaptor<LambdaQueryWrapper> captor4 = ArgumentCaptor.forClass(LambdaQueryWrapper.class);
         verify(sportRecordMapper, times(4)).selectPage(any(Page.class), captor4.capture());
-        assertTrue(captor4.getValue().getSqlSegment().contains("start_time <="));
-        assertFalse(captor4.getValue().getSqlSegment().contains("start_time >="));
+        assertTrue(captor4.getValue().getSqlSegment().contains("COALESCE(start_time, created_at) <="));
+        assertFalse(captor4.getValue().getSqlSegment().contains("COALESCE(start_time, created_at) >="));
+    }
+
+    /**
+     * G11/TASK-260 R4 口径断言：日期过滤按 COALESCE(start_time, created_at) 归窗——
+     * start_time=NULL 存量行（TASK-235 前旧数据）回退 created_at 过滤，
+     * 与 myStats/GoalService 活动时间口径统一；裸 start_time 过滤会把存量 NULL 行整行漏掉。
+     */
+    @Test
+    @SuppressWarnings("unchecked")
+    void pageMyRecords_dateFilter_nullStartTimeFallsBackToCreatedAt() {
+        TableInfoHelper.initTableInfo(
+                new MapperBuilderAssistant(new MybatisConfiguration(), ""), SportRecord.class);
+        Page<SportRecord> mpPage = new Page<>(1, 20, 0);
+        when(sportRecordMapper.selectPage(any(Page.class), any())).thenReturn(mpPage);
+
+        LocalDate start = LocalDate.of(2026, 10, 1);
+        service.pageMyRecords(200L, 1, 20, null, null, start, null);
+
+        ArgumentCaptor<LambdaQueryWrapper> wrapper = ArgumentCaptor.forClass(LambdaQueryWrapper.class);
+        verify(sportRecordMapper).selectPage(any(Page.class), wrapper.capture());
+        String sql = wrapper.getValue().getSqlSegment();
+        assertTrue(sql.contains("COALESCE(start_time, created_at) >="),
+                "G11：窗口下界必须按 COALESCE(start_time, created_at)（start_time=NULL 回退 created_at 归窗）：" + sql);
+        assertFalse(sql.contains("start_time >="),
+                "不得再用裸 start_time 过滤（存量 NULL 行整行漏窗）：" + sql);
+        assertTrue(wrapper.getValue().getParamNameValuePairs().containsValue(start.atStartOfDay()),
+                "窗口下界参数必须是 startDate 00:00:00");
     }
 
     /** TASK-224 R3：服务层非法 sportType → 抛 400（IllegalArgumentException） */
@@ -1842,9 +1873,12 @@ class SportRecordServiceTest {
         assertEquals(ResultCode.RECORD_NOT_FOUND.getCode(), e.getCode());
     }
 
-    /** B29 绿：本人修改可见性（0/1/2 各一值）→ updateById 持久化并返回详情 */
+    /** B29 绿 + G2 R1：本人修改可见性（0/1/2 各一值）→ visibility 单列 UPDATE（update(null, wrapper)）持久化并返回详情 */
     @Test
+    @SuppressWarnings("unchecked")
     void updateVisibility_owner_persists() {
+        TableInfoHelper.initTableInfo(
+                new MapperBuilderAssistant(new MybatisConfiguration(), ""), SportRecord.class);
         for (Integer vis : new Integer[]{0, 1, 2}) {
             SportRecordMapper m = mock(SportRecordMapper.class);
             SportRecord record = new SportRecord();
@@ -1852,19 +1886,63 @@ class SportRecordServiceTest {
             record.setUserId(100L);
             record.setVisibility(0);
             when(m.selectById(1L)).thenReturn(record);
-            when(m.updateById(any(SportRecord.class))).thenReturn(1);
+            when(m.update(any(), any())).thenReturn(1);
             SportRecordService svc = new SportRecordService(m, trackPointMapper, trackPointArchiveMapper,
                     recordEventProducer, verifyApi, verifyDegradeService, userApi);
 
             SportRecordDTO out = svc.updateVisibility(100L, 1L, vis);
 
             assertEquals(Integer.valueOf(vis), out.getVisibility());
-            assertEquals(Integer.valueOf(vis), record.getVisibility());
-            verify(m).updateById(any(SportRecord.class));
+            ArgumentCaptor<LambdaUpdateWrapper> captor = ArgumentCaptor.forClass(LambdaUpdateWrapper.class);
+            verify(m).update(isNull(), captor.capture());
+            LambdaUpdateWrapper<SportRecord> wrapper = captor.getValue();
+            String sqlSet = wrapper.getSqlSet();
+            assertTrue(sqlSet.contains("visibility="), "SET 列必须是 visibility 单列：" + sqlSet);
+            assertTrue(wrapper.getParamNameValuePairs().containsValue(vis),
+                    "SET 值必须是目标可见性：" + wrapper.getParamNameValuePairs());
+            assertTrue(wrapper.getSqlSegment().contains("id ="),
+                    "WHERE 必须按主键定位：" + wrapper.getSqlSegment());
+            verify(m, never()).updateById(any(SportRecord.class));
         }
     }
 
-    /** B29 红：非归属人修改可见性 → 403，不 updateById */
+    /**
+     * G2 R1 并发语义（mock 承载，真实毫秒级双线程竞态不强制——spec §5.1）：selectById 读到
+     * VERIFYING/v1 旧快照的瞬间，verify statusCallback 已把真行乐观锁迁移为 PASSED/v2——
+     * 旧实现整行 updateById 会把旧 status/version 盖回真行（状态机回退破窗）；
+     * 修后断言：发出的 UPDATE 的 SET 列不含 status/version、实体旧快照零改动、不触 updateById。
+     */
+    @Test
+    @SuppressWarnings("unchecked")
+    void updateVisibility_staleSnapshot_doesNotOverwriteStatusVersion() {
+        TableInfoHelper.initTableInfo(
+                new MapperBuilderAssistant(new MybatisConfiguration(), ""), SportRecord.class);
+        SportRecord stale = new SportRecord();
+        stale.setId(7L);
+        stale.setUserId(100L);
+        stale.setStatus(RecordStatus.VERIFYING.getCode());
+        stale.setVersion(1);
+        stale.setVisibility(0);
+        when(sportRecordMapper.selectById(7L)).thenReturn(stale);
+        when(sportRecordMapper.update(any(), any())).thenReturn(1);
+
+        SportRecordDTO out = service.updateVisibility(100L, 7L, 1);
+
+        assertEquals(Integer.valueOf(1), out.getVisibility());
+        // 实体旧快照零改动：status/version 停留在读数，可见性新值仅经单列 UPDATE 落库
+        assertEquals(RecordStatus.VERIFYING.getCode(), stale.getStatus());
+        assertEquals(Integer.valueOf(1), stale.getVersion());
+        assertEquals(Integer.valueOf(0), stale.getVisibility());
+        ArgumentCaptor<LambdaUpdateWrapper> captor = ArgumentCaptor.forClass(LambdaUpdateWrapper.class);
+        verify(sportRecordMapper).update(isNull(), captor.capture());
+        String sqlSet = captor.getValue().getSqlSet();
+        assertTrue(sqlSet.contains("visibility="), "SET 列必须是 visibility 单列：" + sqlSet);
+        assertFalse(sqlSet.contains("status"), "SET 列不得含 status（旧快照不得覆盖状态机字段）：" + sqlSet);
+        assertFalse(sqlSet.contains("version"), "SET 列不得含 version（乐观锁版本不得被旧快照回退）：" + sqlSet);
+        verify(sportRecordMapper, never()).updateById(any(SportRecord.class));
+    }
+
+    /** B29 红：非归属人修改可见性 → 403，不落库（update/updateById 均不触发） */
     @Test
     void updateVisibility_stranger_throwsForbidden() {
         SportRecord record = new SportRecord();
@@ -1874,10 +1952,11 @@ class SportRecordServiceTest {
 
         BizException e = assertThrows(BizException.class, () -> service.updateVisibility(999L, 1L, 1));
         assertEquals(ResultCode.FORBIDDEN.getCode(), e.getCode());
+        verify(sportRecordMapper, never()).update(any(), any());
         verify(sportRecordMapper, never()).updateById(any(SportRecord.class));
     }
 
-    /** B29 红：非法可见性（非 0/1/2）→ IllegalArgumentException（映射 400），不 updateById */
+    /** B29 红：非法可见性（非 0/1/2）→ IllegalArgumentException（映射 400），不落库（update/updateById 均不触发） */
     @Test
     void updateVisibility_outOfRange_throwsIllegalArgument() {
         for (Integer vis : new Integer[]{null, 3, 99, -1}) {
@@ -1885,6 +1964,7 @@ class SportRecordServiceTest {
                     () -> service.updateVisibility(100L, 1L, vis));
             assertEquals("非法可见性：" + vis, e.getMessage());
         }
+        verify(sportRecordMapper, never()).update(any(), any());
         verify(sportRecordMapper, never()).updateById(any(SportRecord.class));
     }
 

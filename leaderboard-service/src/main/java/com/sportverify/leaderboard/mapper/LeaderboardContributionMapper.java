@@ -107,15 +107,19 @@ public interface LeaderboardContributionMapper extends BaseMapper<LeaderboardCon
      *
      * <p>窗口归属口径：按<b>结算时间</b>（{@code settled_at}）而非记录创建时间归属周期——
      * 贡献行由定时结算任务批量盖 settled_at（见 LeaderboardService#settleAndReconcile），
-     * 同一用户多行贡献在窗口内累加为总分。已回滚（ROLLED_BACK）行不入窗（status 过滤）。</p>
+     * 同一用户多行贡献在窗口内累加为总分。已回滚（ROLLED_BACK）行不入窗（status 过滤）。
+     * 排序带 {@code user_id ASC} tie-break（G5/TASK-260 R2，照 LeaderboardDailySummaryMapper
+     * 先例）：totalDistance 同分用户名次稳定，不随引擎返回序漂移。</p>
      *
-     * <p>已知限制：{@code settled_at} 无专用索引（全局禁加索引，见任务书 S0），
-     * 范围扫描走全表；演示规模下可接受，生产需在独立 perf 课题引入该索引。</p>
+     * <p>索引现状（G9/TASK-260 R3 订正）：{@code (status, settled_at)} 复合索引
+     * {@code idx_status_settled} 已建（sql/02-record-db.sql L63 + 幂等迁移
+     * add-idx-leaderboard-contribution-status-settled.sql），范围扫描走 status 前缀 +
+     * settled_at 窗口收窄，与 {@link #selectOrphanContributions} 共用该索引。</p>
      */
     @Select("SELECT user_id AS userId, SUM(distance) AS totalDistance " +
             "FROM leaderboard_contribution WHERE status = #{status} " +
             "AND settled_at >= #{start} AND settled_at < #{endExclusive} " +
-            "GROUP BY user_id ORDER BY totalDistance DESC LIMIT #{size}")
+            "GROUP BY user_id ORDER BY totalDistance DESC, user_id ASC LIMIT #{size}")
     List<UserMileage> selectRangeSummaries(@Param("status") Integer status,
                                            @Param("start") LocalDateTime start,
                                            @Param("endExclusive") LocalDateTime endExclusive,

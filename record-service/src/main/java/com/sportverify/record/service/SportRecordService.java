@@ -1,6 +1,7 @@
 package com.sportverify.record.service;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
 import com.baomidou.mybatisplus.core.toolkit.IdWorker;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.sportverify.api.leaderboard.LeaderboardApi;
@@ -595,7 +596,9 @@ public class SportRecordService {
      * 原地修改记录可见性（TASK-245 B22/B29）：仅允许本人修改，值域 0(PUBLIC)/1(FRIENDS)/2(PRIVATE)。
      *
      * <p>归属校验：caller 非空且非记录归属人 → 403 越权；合法值域外 → IllegalArgumentException（控制器映射 400）。
-     * 更新主表 {@code sport_record.visibility} 即持久化（无乐观锁参与，可见性非状态机字段）。</p>
+     * 更新主表 {@code sport_record.visibility} 单列即持久化（LambdaUpdateWrapper 单列 SET，不整行回写
+     * status/version——selectById 快照与 verify statusCallback 乐观锁迁移并发时，整行回写会把
+     * 旧 status/version 盖回真行，G2/TASK-260 R1 照 E30/TASK-256 修法杜绝；可见性非状态机字段，无乐观锁参与）。</p>
      *
      * @param caller     调用者 userId（鉴权开启时为网关注入，关闭时为 null）
      * @param recordId   记录 id
@@ -613,10 +616,16 @@ public class SportRecordService {
         if (caller != null && !caller.equals(record.getUserId())) {
             throw new BizException(ResultCode.FORBIDDEN);
         }
-        record.setVisibility(visibility);
-        sportRecordMapper.updateById(record);
+        // G2（TASK-260 R1，照 E30/TASK-256 修法）：可见性单列 UPDATE，不整行回写——
+        // 旧实现 selectById 快照整行 updateById，与 verify statusCallback 乐观锁迁移并发时，
+        // 毫秒级窗口内可用 VERIFYING/v0 旧快照覆盖已迁移的 PASSED/v1（status/version 一并回退）；
+        // 单列 UPDATE 天然原子，SET 列不含 status/version，旧快照无从覆盖状态机字段
+        sportRecordMapper.update(null, new LambdaUpdateWrapper<SportRecord>()
+                .eq(SportRecord::getId, recordId)
+                .set(SportRecord::getVisibility, visibility));
         SportRecordDTO dto = new SportRecordDTO();
         BeanUtils.copyProperties(record, dto);
+        dto.setVisibility(visibility); // 局部变量携带新值（不整行回写，E30 同款）
         return dto;
     }
 
@@ -694,8 +703,10 @@ public class SportRecordService {
      * @param size      每页条数（1..500）
      * @param sportType 运动类型（可选枚举，1=RUNNING, 2=CYCLING, 3=WALKING；非法值抛 IllegalArgumentException）
      * @param status    审核状态（可选状态码 0..7；非法值抛 IllegalArgumentException）
-     * @param startDate 开始日期下界（可选，按 start_time >= startDate 00:00:00 过滤）
-     * @param endDate   开始日期上界（可选，按 start_time <= endDate 23:59:59.999999999 过滤；start>end 抛 IllegalArgumentException）
+     * @param startDate 开始日期下界（可选，按 COALESCE(start_time, created_at) >= startDate 00:00:00 过滤；
+     *                  start_time=NULL 存量行回退 created_at 归窗，G11/TASK-260 R4 与 myStats/goal 口径统一）
+     * @param endDate   开始日期上界（可选，按 COALESCE(start_time, created_at) <= endDate 23:59:59.999999999 过滤；
+     *                  start>end 抛 IllegalArgumentException）
      * @return 分页结果（{@code Page<RecordSummaryDTO>}），元素按 createdAt 倒序
      */
     public Page<RecordSummaryDTO> pageMyRecords(Long userId, long page, long size,
@@ -720,11 +731,17 @@ public class SportRecordService {
         if (status != null) {
             wrapper.eq(SportRecord::getStatus, status);
         }
+        // G11（TASK-260 R4）：日期过滤按活动时间口径 COALESCE(start_time, created_at)——
+        // 与 myStats L937 / GoalService L194 统一：start_time=NULL 存量行（TASK-235 前旧数据）
+        // 回退 created_at 归窗，不再被裸 start_time 过滤整行漏掉；
+        // 函数索引 idx_user_coalesce_time 使该表达式保持 sargable（E23 R5）
         if (startDate != null) {
-            wrapper.ge(SportRecord::getStartTime, startDate.atStartOfDay());
+            wrapper.apply("COALESCE(start_time, created_at) >= {0}",
+                    startDate.atStartOfDay());
         }
         if (endDate != null) {
-            wrapper.le(SportRecord::getStartTime, endDate.atTime(LocalTime.MAX));
+            wrapper.apply("COALESCE(start_time, created_at) <= {0}",
+                    endDate.atTime(LocalTime.MAX));
         }
         wrapper.orderByDesc(SportRecord::getCreatedAt);
 
