@@ -45,5 +45,6 @@
 ## 5. 收口自证
 
 - `git status --porcelain` 输出为空（C-02 后实测）；`.trae/tmp` 下临时件（msg258c1.txt / tokens258.txt / lex258.txt / Probe258.java / tmp258_*.log）均在 gitignore 范围内，不污染工作树。
-- 未推送：`origin/main..HEAD` 收口后 = **4 笔**（TASK-264 外部终验补记 `96caca4` + 立项笔 `4f3060f` + C-01 `97ddde9` + C-02）——推送由指导侧批次统一执行，本笔严格零推送。
-- handoff 状态行「已实施待复核」；契约门 C-02 后终态复跑 rc=0（判据 B 4 路径双向全等）。
+- 未推送：`origin/main..HEAD` 收口后 = **4 笔**（TASK-264 外部终验补记 `96caca4` + 立项笔 `4f3060f` + C-01 `97ddde9` + C-02）——封盘后 5 笔统一推送已完成。
+- handoff 状态行「已终裁 ACCEPT 予以封盘」；契约门 C-02 后终态复跑 rc=0（判据 B 4 路径双向全等）。
+- **外部终验达成（2026-10-18 补记）**：封盘批次推送后 GitHub Actions CI run **`39053016034`**（headSha `6227056`）权威核验 conclusion=**success** 全 job 绿（`web` ✓ 23s / `build` ✓ 11m18s / `probe-ubuntu26` skipped=if 门禁正确生效旁证），外部终验达成完整闭环。
