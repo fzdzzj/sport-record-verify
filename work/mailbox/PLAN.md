@@ -750,15 +750,15 @@
 
 | 项 | 内容 |
 | --- | --- |
-| 开工基线 | main @ `<立项笔哈希>`（TASK-263 立项笔；以开工实测 `git rev-parse HEAD` 回填 handoff 为准；预期领先 origin 2 笔：TASK-262 补记笔 `e2df483` + TASK-263 立项笔，本地保留随批次推送） |
+| 开工基线 | main @ `76a447b`（TASK-263 立项笔；实测领先 origin 2 笔：TASK-262 补记笔 `e2df483` + TASK-263 立项笔，本地保留随批次推送） |
 | 分级定档 | MEDIUM（纯配置、前端效率与防御性注解，非安全核心语义，跨 user/leaderboard/verify/record/web 五面；由指导侧亲核 + 子 agent 实施闭环） |
 | 亲验证据 | 七项全部坐实（spec §1 实测行号）：G8 四服务（leaderboard L61-63/user L30-33/verify L52-55/record L46-47）仅配 host/port 缺 timeout 矩阵；G20 ci.yml L145-159 web job 缺 pnpm 依赖缓存；G21 notifications.page.vue 三处（L192-193/L267-268/L286-287）串行 await 瀑布；G7 web/dist/assets/index-*.js 1.64MB 超限且 vite.config.ts 缺 build 分包；G18 StompConnectAuthInterceptor L66 抛 MessagingException 丢因 e；G19 User.java L32-33 passwordHash 缺 @JsonIgnore；G22/G23 既有受限事实坐实 |
 | 白名单 | 12+5 项：leaderboard yml + user yml + verify yml + record properties + ci.yml + notifications.page.vue + vite.config.ts + StompConnectAuthInterceptor.java + User.java + 3 个测试落点 + 台账 5（零触碰 gateway/mapmatch/pom/package.json/sql/状态机/MQ/批量/索引参数） |
 | 核心实现 | R1 G8 四微服务配置 spring.data.redis.timeout=3000ms；R2 G20 ci.yml web job 补 pnpm store cache 步骤；R3 G21 notifications 三处串行改为 await Promise.all([loadList(), refreshUnread()])；R4 G7 vite.config.ts manualChunks 提取 vendor-antdv 与 vendor-vue，主 chunk 降至 500KB 以下；R5 G18 STOMP 异常保留 cause e；R6 G19 User.java passwordHash 补 @JsonIgnore 防御序列化 |
 | 门禁要求 | 七门禁全量逐位（surefire 63/78/219/320/203/110/35 只增不减）+ 前端三门禁（type-check 0 / vitest 4 套 63 测全绿 / build 主 chunk < 500KB / typed-router 净）+ 契约门（判据 B 机器比对）+ token 门 29 项逐位持平（期望值口径：C-02 树 = 2075 + 29 = 2104）+ 词面门四 locale ZERO_HIT + 探针阳性对照 + checkstyle delta=0 + diff --check 净；双提交 C-01/C-02 |
 | 受限预登记 | spec §5 五项：G22 Hikari 池默认 10 保持不变未压测禁调；G23 慢 SQL 依托既有 Slf4jImpl 与底层慢查日志禁新插件；G8 超时为生产防御标称值无网络注入实测；G20 缓存生效以 GitHub runner 真实运行为准；Nacos 运行时未核 |
-| 实施与门禁 | 待填（执行侧实施后回填 C-01/C-02 笔及门禁实测） |
-| 指导亲核 | 待填（指导侧亲核三块：Git 摘要 / 定向抽查 / 一致性裁决） |
-| 独立复核 | 免独立复核子 agent（MEDIUM 档按规范由指导侧亲核把关） |
+| 实施与门禁 | C-01 `3c6a596`（fix(config,web,user)，恰 12 文件 +126/−9：R1 四处 timeout 3000ms 与 Binder 配置单测 + R2 web actions/cache@v5 + R3 notifications 三处 Promise.all + R4 vite manualChunks 主 chunk 降至 90.64KB + R5 STOMP cause e 与测试断言 + R6 User @JsonIgnore 与单测）+ C-02 `8320acb`（台账 1 文件 +37/−15）；七门禁全绿：offline 七模块 rc=0（63/78/221/320/203/110/35，user 219→221 净 +2 恰为两纯 JVM 新测零删减、其余六模块完全持平）、前端三门禁全绿（type-check 0 错、vitest 4 套 63 测全绿、build 产物主 index chunk 90.64KB 消除 500KB 警告、typed-router.d.ts 纯净无漂移）、契约门纯净 worktree 判据 B 13 路径全等 rc=0、token 门基线 2075 逐位持平 + 终态 2104 精确吻合期望值、词面门四 locale ZERO_HIT + 探针阳性对照、checkstyle delta=0、diff --check 净（新文件 LF） |
+| 指导亲核 | MEDIUM 档亲核三块全 PASS：①Git 摘要（porcelain 空、恰 2 笔、diff 13 文件与 handoff §2 逐位一致、零推送）；②定向抽查（R1 四微服务超时配置与 Binder 单元测试落位、R2 actions/cache@v5 缓存 step 落位、R3 Promise.all 并行化三处落位、R4 manualChunks 主 chunk 实测 90.64KB、R5 MessagingException cause 传参、R6 @JsonIgnore 与序列化防护断言）；③一致性裁决（surefire 净增与落位吻合、前端构建体积大降符合预期、受限声明如实登记） |
+| 独立复核 | 免独立复核子 agent（MEDIUM 档按规范由指导侧亲核把关并终裁） |
 | 是否到达外部门槛 | **未到达**：封盘批次推送后 GitHub Actions CI 权威核验，全绿由补记笔翻转为已到达 |
-| 状态 | **已立项待实施（2026-10-17 指导侧）**：开工基线 main @ `<立项笔哈希>`，白名单 12+5 项，实施派发包已生成待用户派发 |
+| 状态 | **已终裁 ACCEPT 予以封盘（2026-10-17 指导侧）**：指导亲核三块全 PASS 零阻断；13 文件白名单双向全等；G8/G20/G21/G7/G18/G19 六项全部收口；封盘批次 5 笔（TASK-262 补记笔 `e2df483` + 立项笔 `76a447b` + C-01 `3c6a596` + C-02 `8320acb` + 封盘笔）统一推送 origin/main，待 CI 外部终验 |
