@@ -1,6 +1,6 @@
 # TASK-262 执行交接（handoff）
 
-> 状态：**已实施待复核**（2026-10-17 执行侧 C-01 `3379843` + C-02 双笔落库；七门禁全绿，待指导侧复核与终裁）
+> 状态：**已终裁 ACCEPT 封盘**（2026-10-17 指导侧终裁；亲核三块 + 独立复核五块 PASS 零阻断，七门禁全绿，批次推送后 CI 外部终验待补记笔登记）
 
 ## 1. 开工基线
 
@@ -54,14 +54,15 @@
 
 ## 4. 条件项与非阻断登记（如实回填）
 
-- **R1 两类契约 delta 用例落点**：①record 3001→404 = RecordControllerTest 的 standalone MockMvc 全链路用例（公共 advice 接管，断言 HTTP 404 + body code 3001）；②Auth 1002→403 = AuthControllerTest 的 standalone MockMvc 全链路用例（AuthService 打桩抛锁定语义，断言 HTTP 403 + body code 1002）。11 个局部 handler 用例改写分布 = RecordControllerTest 3 / LikeControllerTest 3 / GoalControllerTest 3 / NotificationControllerTest 2，断言从「局部 handler 恒 200」升级为「公共层 HTTP 状态 + body 双断言」，另 LeaderboardControllerDailyTest 的 standalone 桩增公共层 advice 注册。
-- **R1 局部 handler 处置边界**：GoalController 的 `IllegalArgumentException` 局部 handler 保留——不在 spec 八处 `BizException` 清单内且公共层不承接同一映射，属面外零触碰；其 1001/1002 语义已由公共层同值覆盖，故 Goal 零 delta。
+- **R1 两类契约 delta 用例落点**：①record 3001→404 = RecordControllerTest 的 standalone MockMvc 全链路用例（公共 advice 接管，断言 HTTP 404 + body code 3001）；②Auth 1002→403 = AuthControllerTest 的 standalone MockMvc 全链路用例（AuthService 打桩抛锁定语义，断言 HTTP 403 + body code 1002）。11 个局部 handler 用例改写分布 = RecordControllerTest 3 / LikeControllerTest 3 / GoalControllerTest 3 / NotificationControllerTest 2，断言从「局部 handler 恒 200」升级为「公共层 HTTP 状态 + body 双断言」，另 LeaderboardControllerDailyTest 的 standalone 桩增公共层 advice 注册。spec §3 R1 要求的「局部 handler 内 log.warn 域化文案随删除收敛公共层统一文案」已确认并登记为有意收敛（公共层集中统一日志规约）。
+- **R1 局部 handler 处置边界**：GoalController 的 `IllegalArgumentException` 局部 handler 保留——不在 spec 八处 `BizException` 清单内，公共层 L171 虽已有 `@ExceptionHandler(IllegalArgumentException.class)` 映射 400，但本课题对该局部 handler 保持面外零触碰/冗余保留，零 delta。
 - **R2 抖动形态登记**：采用 spring-data-redis 3.2.4 的 `RedisCacheWriter.TtlFunction`（该版本无顶层 TtlFunction，实测 API 签名 `getTimeToLive(key, value) -> Duration`）；基值 5min ± 60s 均匀抖动（`nextLong(-60, 61)`），L1 Caffeine 恒定 5min 不抖动；值域断言 1000 次取样全落 [240s,360s] 且去重值 >2。
-- **R4 常量落点登记**：`"notification:event:"` 前缀收拢为 NotificationEventConsumer 的包级可见 `DEDUP_KEY_PREFIX`，LikeEventConsumer 跨类引用（同包、零新增文件）；outbox 状态三值收拢为 VerifyEventOutboxMapper 接口常量 `SQL_STATUS_PENDING/SENT/EXHAUSTED`（单引号形态入常量，注解 SQL 拼接后逐字等价），等价性由既有 SQL 契约测试（selectPendingBatch）与新增六语句整文本断言共同钉守。
+- **R4 常量落点登记**：`"notification:event:"` 前缀收拢为 NotificationEventConsumer 的包级可见 `DEDUP_KEY_PREFIX`，LikeEventConsumer 跨类引用（同包、零新增文件）；outbox 状态三值收拢为 VerifyEventOutboxMapper 接口常量 `SQL_STATUS_PENDING/SENT/EXHAUSTED`（单引号形态入常量，注解 SQL 拼接后逐字等价），等价性由既有 SQL 契约测试（selectPendingBatch）与新增六语句整文本断言共同钉守（8 语句中 7 句有整文本断言，selectExhausted 经人工双向 diff 文本比对确证逐字未变）。
 - **R5 序列化形态与升版登记**：L2 值序列化改为 GenericJackson2JsonRedisSerializer，typing 定制为 `As.WRAPPER_ARRAY` 根级对称包裹——默认 `As.PROPERTY` 对根级 List 写侧不落类型包裹、读侧按数组回读，往返不对称（本批 offline 实测坐实后修正）；L2 物理键前缀升版为 `:v2::`（Spring cache 名保持 leaderboard:overall 不变，故 `@Cacheable` 与 LeaderboardService 白名单外零改动），旧 JDK 条目 5min TTL 内自然过期孤儿化；往返断言覆盖 JSON 首字节（非 JDK 魔数）、生产序列化器回读等价、BigDecimal scale 存活与新实例 L2 命中不回源。
 - **R6 测试处置对账（record surefire 只增不减红线）**：删除 = SportRecordServiceTest 两例（listPoints 路由、归档冷热判别式）+ VerifyServiceTest 一处针对已删契约的 `never()` 断言（非用例删除）；新增 = record 4 例（/my、/feed、/{id}/points 的 PageResult 序列化形态 + record 404 delta 契约）、user 1 例、verify 1 例、leaderboard 1 例；record 318→320 净 +2，等量补位成立且只增不减。
 - **R3 薄转换登记**：RecordController 单点私有 `toPageResult(Page)` 转换（current/size/total/records 语义对齐），Service 层返回 `Page` 零改动；三端点形态断言以 standalone MockMvc 序列化结果为准，断言四字段值且 JSON 不含 `pages` 实现细节字段。
 - **白名单文件数差异登记（非阻断）**：派发书「C-01 恰 23 文件」按白名单条目计；spec §2 条目 16、19 的「...」占位由执行侧选定并各自展开为 2 个既有测试文件（R1 四类控制器测试与 R2/R5 断言无法并入同一文件），故 C-01 实际 25 文件，全部落在白名单条目授权面内，无面外文件。
+- **提交形式与路径笔误说明（非阻断）**：实施两笔提交全角括号（TASK-262）与 C-01 scope=record 跨服务均沿仓内先例合规追认；spec §2 条目 13 AuthController 路径笔误（缺 auth/）已在封盘笔更正，实施改动完全在语义授权面内。
 - **受限声明沿 spec §5 五项**：G6 前端透明性为 client.ts 静态核对；G12 jitter 收益为范式对齐推论（单 key 无批量过期面）；G16 旧条目孤儿化依赖 5min TTL 自然过期、无真实 Redis 混存实测；G17 死面判定为静态 grep 依据；Nacos 运行时配置未核。
 
 ## 5. 收口自证

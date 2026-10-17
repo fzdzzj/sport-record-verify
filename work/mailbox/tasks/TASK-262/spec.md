@@ -1,6 +1,6 @@
 # TASK-262 立项任务书（批 G-4：统一性对齐群 G6+G12+G14+G15+G16+G17）
 
-> 状态：**已立项待实施**（2026-10-17 指导侧立项；开工基线 = 立项笔哈希，见 handoff §1；FULL 档——G6 改对外 HTTP 契约跨 record/user/leaderboard 三服务八控制器 + G17 触碰 api 模块契约面，多模块 + 对外契约变化禁降级）
+> 状态：**已封盘（ACCEPT 通过）**（2026-10-17 指导侧终裁；封盘笔哈希见 handoff §1；FULL 档——指导亲核三块 + 独立复核五块双 PASS 零阻断，七门禁实测全绿，外部终验待推送后 CI 监督）
 
 ## 1. 证据链（指导侧亲验坐实，2026-10-17，TASK-261 补记笔 54e3c50 后实测行号）
 
@@ -29,7 +29,7 @@
 10. `user-service/src/main/java/com/sportverify/user/controller/UserController.java`（R1）
 11. `user-service/src/main/java/com/sportverify/user/controller/NotificationController.java`（R1）
 12. `user-service/src/main/java/com/sportverify/user/controller/FriendController.java`（R1）
-13. `user-service/src/main/java/com/sportverify/user/controller/AuthController.java`（R1）
+13. `user-service/src/main/java/com/sportverify/user/auth/controller/AuthController.java`（R1）
 14. `user-service/src/main/java/com/sportverify/user/mq/LikeEventConsumer.java`（R4 前缀常量收拢）
 15. `user-service/src/main/java/com/sportverify/user/mq/NotificationEventConsumer.java`（R4）
 16. `user-service/src/test/java/...`（R1 控制器测试适配，文件由执行侧按既有测试布局选定并在 C-01 前登记增补）
