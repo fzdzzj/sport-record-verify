@@ -1,4 +1,4 @@
-# 方向候选与待办（BACKLOG，指导侧常备）
+﻿# 方向候选与待办（BACKLOG，指导侧常备）
 
 > 用途：指导主agent立项侦察与交接的常备清单；每批次封盘后更新状态。执行/复核侧不直接修改本文件。
 > 挂载：PLAN.md 末节「方向候选与待办」指向本文件；立项时从此清单取号（TASK-xxx），封盘后回写状态与课题号。
@@ -159,10 +159,8 @@
 4. **批 G-4「统一性对齐群」已封盘 TASK-262（2026-10-17，FULL 档）**：G6（主项，删 8 处局部 handler 收敛公共层）+G12（±60s jitter）+G14（PageResult 薄转换）+G15（常量收拢）+G16（JSON 序列化与键升版）+G17（删四处 listPoints 死面）——指导亲核三块 + 独立复核五块双 PASS 零阻断，surefire 219/320/203/110 新基线，CI 外部终验随补记笔；
 5. **批 G-5「配置与前端效率群」已封盘 TASK-263（2026-10-17，MEDIUM 档）**：G8+G20+G21+G7+G18+G19 组合收口（C-01 `3c6a596` / C-02 `8320acb`，指导亲核三块 PASS 零阻断，终裁 ACCEPT；主 chunk 90KB / timeout 3s / pnpm cache / Promise.all / cause / @JsonIgnore；surefire 221 新基线）；G22/G23 如实预注册受限保持不变；
 6. **轻量杂项**：G18+G19 已随批 G-5（TASK-263）完整收口闭环；
-7. **新发现候选治理（批 G-6，TASK-264，MEDIUM 档，2026-10-17 立项进行中）**：
-   - ①**sql/ 函数索引语法订正（N2）**：`sql/02-record-db.sql` L34 与 `sql/migrations/add-idx-record-coalesce-time.sql` 的 `((user_id), (COALESCE(...)))` 双括号错误语法在 MySQL 8.0 报 ERROR 3762 阻断建库与迁移，立项 TASK-264 订正为 `(user_id, (COALESCE(...)))` 单括号形态并增设纯 JVM 契约测试与真机留证；
-   - ②**R5 查询形态决策与 scratch 库清理**：受限于「全局禁加索引红线」，确认 `pageFeed` filesort 无法通过 wrapper 层面改写消除，正式受限关闭决策，保持现有实现不变；清理销毁 `task260_scratch` 临时库。
-8. **后续储备（方案 B）**：E13 PostGIS 真实空间库复验（拟保留编号 TASK-258，FULL 档，待 TASK-264 闭环后启动）。
-
-
-
+7. **批 G-6「SQL 函数索引订正与查询形态收尾群」已封盘 TASK-264（2026-10-17，MEDIUM 档）**：
+   - ①**sql/ 函数索引语法订正（N2）**：`sql/02-record-db.sql` L34 与 `sql/migrations/add-idx-record-coalesce-time.sql` 的 `((user_id), (COALESCE(...)))` 双括号错误语法彻底修复为 `(user_id, (COALESCE(...)))` 单括号形态，新增纯 JVM 契约测试 `SportRecordSqlContractTest`（record surefire 320→321 新基线），真机 MySQL 实测与 EXPLAIN sargable 范围扫描坐实；
+   - ②**R5 查询形态决策与 scratch 库清理**：受限于「全局禁加索引红线」，确认 `pageFeed` filesort 无法通过 wrapper 层面改写消除，正式受限关闭决策，保持现有实现不变；成功销毁清理 `task260_scratch` 临时库；
+   - 指导亲核三块 PASS 零阻断，终裁 ACCEPT；CI 外部终验随补记笔登记；
+8. **下一课题建议（方案 B）**：启动 E13 PostGIS 真实空间库复验（拟保留编号 TASK-258，FULL 档，待 TASK-264 CI 闭环后立项）。

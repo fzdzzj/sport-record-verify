@@ -8,10 +8,11 @@
 
 ## 1. 当前代码基线与外部状态
 
-- **当前分支与 HEAD**：`main` 分支，当前在途任务为 **TASK-264**（批 G-6——SQL 函数索引订正与查询形态收尾群，MEDIUM 档；开工基线 main @ `44d5056`，含 TASK-263 外部终验补记笔 `44d5056`，本地保留随批次推送）。前一已终裁任务为 **TASK-263**（G 系批 G-5——配置与前端效率群 G8+G20+G21+G7+G18+G19，MEDIUM 档；CI run `39034968218` 全绿闭环，补记笔 `44d5056` 本地保留）。前一封盘 **TASK-262**（G 系批 G-4，CI run `39029851254` 全绿闭环，补记笔 `e2df483` 已随批推送）。前一封盘 TASK-261（批 G-3，CI run `39009192599` 全绿闭环）、TASK-260（批 G-2，`38999061241`）、TASK-259（批 G-1，`38990356530`）、TASK-257（E 系批4b-2，`38931526812`）、TASK-256（批4b-1，`38917734857`）、TASK-255（批4a-2，`38903763620`）、TASK-254（批4a-1，`38892885813`）、TASK-253（批3，`38879776160`）、TASK-252（批2，`38869656012`）、TASK-251（批1，`38864817657`）。**E 系 31 项全部闭环；G 系已闭环 21 项，余 2 项受限保持（G22/G23）；E13 拆出拟 TASK-258（编号保留占位，待 TASK-264 闭环后推进）；当前在途 1 个（TASK-264）**。
-- **外部 CI 门槛状态**：TASK-263 封盘批次经 CI run `39034968218` 权威核验 conclusion=success 全 job 绿（web ✓ 32s / build ✓ 10m57s / probe-ubuntu26 skipped=if 门禁正确生效旁证；headSha `57f8d92` 匹配）——G 系批 G-5 外部终验达成完整闭环，**E 系 31 项 + G 系 21 项共 52 项候选完整闭环**（2026-10-17 补记笔登记）。
-- **工作树状态**：TASK-263 外部终验补记笔仅本地保留随下一批次统一推送，禁单独推送；`origin/main` 停留在 `57f8d92`。
-- **当前在途任务数**：`1` 个——**TASK-264**（批 G-6：SQL 函数索引订正与查询形态收尾群，MEDIUM 档）已立项待派发；E13 拆出拟 TASK-258（方案 B 保留占位）。
+- **当前分支与 HEAD**：`main` 分支，最新已终裁任务为 **TASK-264**（批 G-6——SQL 函数索引订正与查询形态收尾群，MEDIUM 档；C-01 `13453f2` / C-02 `09923de`，指导亲核三块 PASS 零阻断，surefire 新基线 63/78/221/321/203/110/35；N2 单括号函数索引修复 + 纯 JVM 契约测试 + R5 决策收尾与 task260_scratch 销毁，封盘批次 5 笔统一推送 origin/main，待 CI 外部终验）。前一封盘 **TASK-263**（G 系批 G-5，CI run `39034968218` 全绿闭环，补记笔 `44d5056` 已随批推送）。前一封盘 **TASK-262**（G 系批 G-4，CI run `39029851254` 全绿闭环，补记笔 `e2df483` 已随批推送）。前一封盘 TASK-261（批 G-3，CI run `39009192599` 全绿闭环）、TASK-260（批 G-2，`38999061241`）、TASK-259（批 G-1，`38990356530`）、TASK-257（E 系批4b-2，`38931526812`）、TASK-256（批4b-1，`38917734857`）、TASK-255（批4a-2，`38903763620`）、TASK-254（批4a-1，`38892885813`）、TASK-253（批3，`38879776160`）、TASK-252（批2，`38869656012`）、TASK-251（批1，`38864817657`）。**E 系 31 项全部闭环；G 系已闭环 21 项（余 G22/G23 受限保持）；新候选 N2+R5 全部收口；E13 拆出拟 TASK-258（方案 B 准备启动）；当前在途 0**。
+- **外部 CI 门槛状态**：TASK-263 封盘批次经 CI run `39034968218` 权威核验 conclusion=success 全 job 绿（web ✓ 32s / build ✓ 10m57s / probe-ubuntu26 skipped=if 门禁正确生效旁证；headSha `57f8d92` 匹配）——G 系批 G-5 外部终验达成完整闭环，**E 系 31 项 + G 系 21 项共 52 项候选完整闭环**（2026-10-17 补记笔登记）；TASK-264 待推送与外部终验。
+- **工作树状态**：TASK-264 封盘批次推送中；`origin/main` 停留在 `57f8d92`。
+- **当前在途任务数**：`0` 个——TASK-264 已终裁封盘；待启动 TASK-258（方案 B：E13 PostGIS 空间库复验，FULL 档）。
+
 
 
 ---
@@ -108,19 +109,20 @@
    - **G 系批 G-3 外部终验（2026-10-17）**：TASK-261 封盘批次 CI run `39009192599` 权威核验 conclusion=success 全 job 绿（web ✓ / build ✓ / probe-ubuntu26 skipped=if 门禁正确生效旁证），headSha `878ee9a` 与封盘批次匹配；补记笔落库（PLAN.md TASK-261 门槛行翻转「已到达」+ TASK-261/handoff.md CI 运行号登记 + 本文件 §1/§3），仅本地保留随下一批次统一推送——**G 系批 G-3 完整闭环（G 系 23 项已收口 9 项：G1 + G2/G5/G9/G11/G13 + G3/G4/G10）**；
    - **G 系批 G-4 收口与外部终验（2026-10-17）**：TASK-262 实施回报（C-01 `3379843` 恰 25 文件 +475/−399 / C-02 `7eed9ec` 台账 1 文件）→ 指导亲核三块 PASS（Git 摘要 26 项全等；定向抽查局部 handler/PageResult/CacheConfig/RecordApi；一致性裁决 surefire user+1/record+2/verify+1/leaderboard+1 吻合）→ 独立复核五块全 PASS 零阻断（块一 4 笔提交链全等；块二红线与零触碰 8 项全 PASS；块三双端门禁实测 7 项亲自复跑全 PASS：surefire 63/78/219/320/203/110/35、契约门纯净 worktree rc=0、token 门 2075 精确持平、词面门四 locale ZERO_HIT+探针对照、checkstyle delta<=0 且新增行交集空、diff 净、mapmatch 35 持平；块四证据链核对 PASS，非阻断 3 项登记；块五只改清单计数 26=26=26 全等，条目 13 路径缺少 auth/ 确认并随封盘笔订正）→ 指导侧终裁 **ACCEPT**（C-01 25 文件展开追认；spec 条目 13 路径笔误随封盘笔订正；非阻断登记项追认收口）：五看板滚动 + 封盘笔 `adcd4c8` 落库，批次 5 笔（TASK-261 补记笔 `54e3c50` + 立项笔 `6f7f2cc` + C-01 `3379843` + C-02 `7eed9ec` + 封盘笔 `adcd4c8`）统一推送 origin/main，GitHub Actions CI run **`39029851254`** 权威核验 conclusion=**success** 全 job 绿（web ✓ 22s / build ✓ 11m6s / probe-ubuntu26 skipped=if 门禁正确生效旁证），headSha `adcd4c8` 匹配，外部终验达成完整闭环，补记笔本地保留随下一批次推送；**G 系 23 项已收口 15 项，余 8 项在册**；
    - **G 系批 G-5 收口与外部终验（2026-10-17）**：TASK-263 实施回报（C-01 `3c6a596` 恰 12 文件 +126/−9 / C-02 `8320acb` 台账 1 文件）→ 指导亲核三块 PASS（Git 摘要 13 文件全等；定向抽查 R1 Redis timeout 3000ms 与 Binder 配置单测 / R2 CI web pnpm actions/cache@v5 / R3 notifications Promise.all 三处 / R4 vite manualChunks 主 chunk 降至 90.64KB / R5 STOMP cause e / R6 User @JsonIgnore；一致性裁决：surefire user 219→221 净增 2 测吻合、前端 4 套 63 测全绿与构建体积大降符合预期）→ 指导侧终裁 **ACCEPT**：五看板滚动 + 封盘笔落库，批次 5 笔统一推送 origin/main，GitHub Actions CI run **`39034968218`** 权威核验 conclusion=**success** 全 job 绿（`web` ✓ 32s / `build` ✓ 10m57s / `probe-ubuntu26` skipped=if 门禁正确生效旁证），headSha `57f8d92` 匹配，外部终验达成完整闭环，补记笔本地保留随下一批次推送；**G 系 23 项已收口 21 项，余 2 项受限保持（G22/G23）**；
+   - **批 G-6 收口（2026-10-17）**：TASK-264 实施回报（C-01 `13453f2` 恰 3 文件 +66/−3 / C-02 `09923de` 台账 1 文件）→ 指导亲核三块 PASS（Git 摘要 4 文件全等；定向抽查 R1 02 脚本与迁移脚本单括号语法落位且非阻断非法双括号排除 / `SportRecordSqlContractTest` 纯 JVM 单测 0.146s 独立跑通 / 真机 MySQL 容器 `task260_scratch` 确认销毁 / `record_db` 复合函数索引建出且 EXPLAIN 走范围扫描；一致性裁决：surefire record 320→321 净增 1 契约测吻合，受限声明如实登记）→ 指导侧终裁 **ACCEPT**：五看板滚动 + 封盘笔落库，批次 5 笔（TASK-263 补记笔 `44d5056` + 立项笔 `8e34aa2` + C-01 `13453f2` + C-02 `09923de` + 封盘笔）统一推送 origin/main，CI 触发待观察（全绿后补记笔登记运行号）；新候选 N2 语法阻断与 R5 查询形态彻底收口闭环；
    - 申诉审核意见（verify_db）透出限制：受限与 verify-service 红线，当前前台申诉进度条由记录状态推导，结论权威可靠。
 
 ---
 
 ## 4. 当前推进与唯一推荐动作
 
-- **当前推进**：**推进 TASK-264（批 G-6：SQL 函数索引订正与查询形态收尾群，MEDIUM 档）**。用户已拍板 A+B 组合推进路线，优先启动方案 A（TASK-264：N2 函数索引双括号错误语法订正 + R5 pageFeed 查询形态收尾决策与 task260_scratch 销毁）。TASK-264 实施派发包已生成，待用户派发执行子 agent。TASK-264 闭环后接续推进方案 B（TASK-258：E13 PostGIS 真实库复验，FULL 档）。
+- **当前推进**：**批 G-6 TASK-264 已终裁封盘**（N2 函数索引双括号语法订正 + R5 pageFeed 查询形态收尾决策与 task260_scratch 销毁，MEDIUM 档闭环；批次 5 笔统一推送 origin/main，待 CI 外部终验）；当前在途 0。
   - **唯一推荐动作**：
-    1. 由用户将【TASK-264 实施派发包】派发给执行子 agent；
-    2. 执行子 agent 回传后由指导侧进行亲核抽查与门禁验证，终裁后封盘推送；
-    3. TASK-264 闭环后启动 TASK-258（方案 B：E13 PostGIS 空间库复验，FULL 档）。
-  - **10-19 必做事项（沿挂账）**：ubuntu-26.04 标签可用后，手动 `workflow_dispatch` 触发 probe26=true 试跑 probe-ubuntu26 job，读数随补记笔登记；通过后另立课题平移 runs-on 并摘除钉扎注释；
+    1. 观察 CI run，全绿后落 TASK-264 补记笔（PLAN 门槛行翻转「已到达」+ handoff 运行号 + HANDOVER §1/§3）；
+    2. 启动用户拍板的**方案 B（TASK-258：E13 PostGIS 真实空间库复验，FULL 档）**：拉起 Docker postgis 容器，对 road_db 空间库执行真实 ST_DWithin / ST_MakeEnvelope 空间查询与 GIST 索引实测；
+    3. **10-19 必做事项（沿挂账）**：ubuntu-26.04 标签可用后，手动 `workflow_dispatch` 触发 probe26=true 试跑 probe-ubuntu26 job，读数随补记笔登记；通过后另立课题平移 runs-on 并摘除钉扎注释；
   - **治理挂账（非阻断，随下一课题/批次顺手）**：token 计数口径统一（TASK-254 N2：逐项 git grep -cF 文件出现次数为权威口径）、零触碰面路径书写以仓内实存路径为准（N1）、E5 类「X-Request-Id 透传」等散件见 BACKLOG 排除声明。
+
 
 
 ---

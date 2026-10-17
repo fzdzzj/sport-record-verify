@@ -774,8 +774,8 @@
 | 核心实现 | R1 N2 函数索引普通列去冗余外括号，修复 DDL 与迁移语法，新增纯 JVM 契约测试，真机实跑留证；R2 R5 查询形态维持现有 wrapper 不变，清理 task260_scratch 库 |
 | 门禁要求 | 七门禁全量逐位（surefire 63/78/221/320/203/110/35 只增不减，record 320→321 净增 1 契约测）+ 契约门（判据 B 机器比对）+ token 门 29 项逐位持平（期望值口径：C-02 树 = 2104 + 29 = 2133）+ 词面门四 locale ZERO_HIT + 探针阳性对照 + checkstyle delta=0 + diff --check 净；双提交 C-01/C-02 |
 | 受限预登记 | spec §5 三项：全局禁加索引红线严格遵守；MySQL 8.0.13+ 函数索引特性要求；演示库 record_db 存量数据演进留存 |
-| 实施与门禁 | 待实施回填 |
-| 指导亲核 | 待亲核 |
+| 实施与门禁 | C-01 `13453f2`（fix(sql,record)，恰 3 文件 +66/−3：R1 02 建表与迁移脚本订正为单括号合法函数索引 + 新增纯 JVM SportRecordSqlContractTest 契约测试）+ C-02 `09923de`（台账 1 文件 +38/−25）；七门禁全绿：offline 七模块 rc=0（63/78/221/321/203/110/35，record 320→321 净 +1 契约测全绿、其余六模块完全持平、零失败零跳过）、真机 MySQL 迁移脚本执行成功且幂等、EXPLAIN 证实 type=range 且 key=idx_user_coalesce_time（key_len=14）、task260_scratch 成功清理、契约门纯净 worktree 判据 B 4 路径全等 rc=0、token 门基线 2104 逐位持平 + 终态 2133 精确吻合期望值、词面门四 locale ZERO_HIT + 探针阳性对照、checkstyle delta=0、diff --check 净（新文件 LF） |
+| 指导亲核 | MEDIUM 档亲核三块全 PASS：①Git 摘要（porcelain 空、恰 2 笔、diff 4 文件与 handoff §2 逐位一致、零推送）；②定向抽查（R1 02 脚本与迁移脚本单括号语法落位且非阻断非法双括号排除、SportRecordSqlContractTest 单测 0.146s 独立跑通、真实 MySQL 容器 task260_scratch 确认已销毁、record_db 复合函数索引建出且 EXPLAIN 走范围扫描）；③一致性裁决（surefire 净增与契约测落位完全吻合、受限声明与关闭决策如实登记） |
 | 独立复核 | 免独立复核子 agent（MEDIUM 档按规范由指导侧亲核把关并终裁） |
 | 是否到达外部门槛 | **未到达**：封盘批次推送后 GitHub Actions CI 权威核验，全绿由补记笔翻转为已到达 |
-| 状态 | **已立项待派发（2026-10-17 指导侧）**：指导侧亲验两项全部坐实；白名单 3+1 项定案；实施派发包已就绪待用户派发 |
+| 状态 | **已终裁 ACCEPT 予以封盘（2026-10-17 指导侧）**：指导亲核三块全 PASS 零阻断；4 文件白名单双向全等；N2 函数索引语法阻断彻底修复并增补纯 JVM 契约测试；R5 维持现有 wrapper 不变收尾关闭，task260_scratch 成功清理；封盘批次统一推送 origin/main，待 CI 外部终验 |
