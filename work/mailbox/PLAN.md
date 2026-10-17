@@ -729,3 +729,19 @@
 | 是否到达外部门槛 | **已到达**（补记笔 2026-10-17 翻转）：封盘批次（5 笔 = 立项笔 `3e9b4db` + C-01 `93312b9` + C-02 `66d2449` + TASK-260 补记笔 `41279cc` + 封盘笔 `878ee9a`）推送后 GitHub Actions CI run **`39009192599`** 权威核验 conclusion=**success** 全 job 绿（web ✓ / build ✓ / probe-ubuntu26 skipped=if 门禁正确生效旁证），headSha `878ee9a` 与封盘批次匹配，外部终验达成完整闭环 |
 | 状态 | **已终裁 ACCEPT（2026-10-17 指导侧）**：亲核三块 + 复核五块双 PASS 零阻断；非阻断 4 项集中登记封盘笔（token 派发书口径教训沿自枚举先例追认，低 3 文字层/口径类不退改原文档）；复核收口自证中 detached worktree 系 .codex 会话前既存件未触碰如实登记；CI run `39009192599` 全绿 headSha 匹配（2026-10-17 补记笔登记），完整闭环 |
 
+## 验收记录：`TASK-262`（G 系批 G-4——统一性对齐群 G6+G12+G14+G15+G16+G17，FULL 档，2026-10-17 立项）
+
+| 项 | 内容 |
+| --- | --- |
+| 开工基线 | main @ `<立项笔哈希>`（TASK-262 立项笔；以开工实测 `git rev-parse HEAD` 回填 handoff 为准；预期领先 origin 2 笔：TASK-261 补记笔 `54e3c50` + TASK-262 立项笔，本地保留随批次推送） |
+| 分级定档 | FULL（G6 改对外 HTTP 契约跨 record/user/leaderboard 三服务八控制器 + G17 触碰 api 模块 Feign 契约面，多模块 + 对外契约变化就高禁降级；跨 api/record/user/leaderboard/verify 五模块 → 七模块全量逐位验证 + 独立复核子agent + 指导亲核） |
+| 亲验证据 | 十项全部坐实（spec §1 实测行号）：G6 八处局部 handler 优先级遮蔽公共层（record 三处 L334/L120/L131、user 四处 L130/L235/L178/L246、leaderboard L124）+ 组件扫描确保公共层生效 + 契约 delta 恰两类（record 3001 路径 200→404、AuthController 1002 路径 200→403，其余五控制器零 delta）+ 前端 client.ts 拦截器只看 body.code 零前端影响 + 测试适配面 4 类 11 用例；G12 CacheConfig L49 恒定 5min + RuleCacheService jitter 范式；G14 api PageResult L12-14 Javadoc 规范 vs RecordController L112/L139/L254 三处外抛 MP Page（前端已对齐 PageResult 零消费影响）；G15 LikeEventConsumer L213 与 NotificationEventConsumer L216 重复定义前缀 + VerifyEventOutboxMapper 六处状态字面量内联；G16 CacheConfig L89 Jdk 序列化 vs RuleCacheService JSON 序列化；G17 listPoints 四处死面（RecordApi L53/Fallback L43/InternalRecordController L49/SportRecordService L497）主代码零调用 + VerifyService L119 注释自证 |
+| 白名单 | 23+5 项：record 5 主类 + 4 测试 + user 5 主类 + user 测试落点（执行侧选定登记）+ leaderboard 2 主类 + leaderboard 测试落点（执行侧选定登记）+ verify 1 主类 + 1 测试 + api 2 类 + 台账 5（零触碰 common 模块/gateway/mapmatch/pom/package.json/sql/scripts/web/状态机/MQ/批量/索引参数） |
+| 核心实现 | R1 G6 主项（删 8 处局部 handler 收敛公共层 + record 3001→404 / Auth 1002→403 两类 delta 契约测 + 11 测试用例改写为公共层等价断言）；R2 G12 Redis entryTtl 引入 ±60s jitter；R3 G14 RecordController 三端点 MP Page 改 api PageResult 薄转换；R4 G15 前缀常量与 outbox 状态常量收拢；R5 G16 CacheConfig 改 JSON 序列化 + 缓存键升版防 JDK 二进制条目穿透；R6 G17 删除四处 listPoints 死面 + record surefire 等量补位只增不减 |
+| 门禁要求 | 七门禁全量逐位（surefire 63/78/218/318/202/109/35 只增不减；record 删用例等量补位对账）+ 契约门（判据 B 机器比对）+ token 门 29 项逐位持平（期望值口径：C-02 树 = 2046 + 29 = 2075）+ 词面门四 locale ZERO_HIT + 探针阳性对照 + checkstyle delta=0（纯净 worktree 双向坐实）+ diff --check 净；双提交 C-01/C-02 |
+| 受限预登记 | spec §5 五项：G6 前端透明性为静态核对无浏览器回归（沿 E21 先例）；G12 jitter 收益为范式对齐推论；G16 旧条目孤儿化依赖 5min TTL 自然过期无 Redis 混存实测；G17 死面判定为静态依据无运行时观测；Nacos 运行时未核 |
+| 实施与门禁 | 待填（执行侧实施后回填 C-01/C-02 笔及门禁实测） |
+| 指导亲核 | 待填（指导侧亲核三块：Git 摘要 / 定向抽查 / 一致性裁决） |
+| 独立复核 | 待填（FULL 档独立复核五块复跑） |
+| 是否到达外部门槛 | **未到达**：封盘批次推送后 GitHub Actions CI 权威核验，全绿由补记笔翻转为已到达 |
+| 状态 | **已立项待实施（2026-10-17 指导侧）**：开工基线 main @ `<立项笔哈希>`，白名单 23+5 项，实施派发包已生成待用户派发 |
