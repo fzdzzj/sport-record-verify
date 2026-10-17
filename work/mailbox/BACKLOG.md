@@ -159,7 +159,10 @@
 4. **批 G-4「统一性对齐群」已封盘 TASK-262（2026-10-17，FULL 档）**：G6（主项，删 8 处局部 handler 收敛公共层）+G12（±60s jitter）+G14（PageResult 薄转换）+G15（常量收拢）+G16（JSON 序列化与键升版）+G17（删四处 listPoints 死面）——指导亲核三块 + 独立复核五块双 PASS 零阻断，surefire 219/320/203/110 新基线，CI 外部终验随补记笔；
 5. **批 G-5「配置与前端效率群」已封盘 TASK-263（2026-10-17，MEDIUM 档）**：G8+G20+G21+G7+G18+G19 组合收口（C-01 `3c6a596` / C-02 `8320acb`，指导亲核三块 PASS 零阻断，终裁 ACCEPT；主 chunk 90KB / timeout 3s / pnpm cache / Promise.all / cause / @JsonIgnore；surefire 221 新基线）；G22/G23 如实预注册受限保持不变；
 6. **轻量杂项**：G18+G19 已随批 G-5（TASK-263）完整收口闭环；
-7. **新发现候选（TASK-260 N2/R5 复核坐实，2026-10-17 登记，待用户拍板）**：①**sql/ 函数索引语法订正**——sql/02-record-db.sql L34 与 add-idx-record-coalesce-time.sql 的 `((user_id), (COALESCE(...)))` 双括号形态经 MySQL 8.0.46 实证 ERROR 3762（函数索引位含裸列不被支持；单括号 `(user_id, (COALESCE(...)))` 可建）——新装库 docker-entrypoint-initdb.d 初始化在该语句中断、该索引从未在任何真实库建成（实况演示库佐证；E23 R5 的 sargable 收益实况未兑现），涉 sql/ 红线需独立课题订正；②**R5 UNION ALL 有界改写 perf 课题**——TASK-260 实测 pageFeed 外层仍 filesort 且手写 SQL 超出 wrapper 范畴，消除 filesort 须 (visibility, created_at) 类索引（全局禁加索引红线），如立项需先裁决索引豁免；scratch 库 task260_scratch（167,365 行）保留至上述课题决策后处置。
+7. **新发现候选治理（批 G-6，TASK-264，MEDIUM 档，2026-10-17 立项进行中）**：
+   - ①**sql/ 函数索引语法订正（N2）**：`sql/02-record-db.sql` L34 与 `sql/migrations/add-idx-record-coalesce-time.sql` 的 `((user_id), (COALESCE(...)))` 双括号错误语法在 MySQL 8.0 报 ERROR 3762 阻断建库与迁移，立项 TASK-264 订正为 `(user_id, (COALESCE(...)))` 单括号形态并增设纯 JVM 契约测试与真机留证；
+   - ②**R5 查询形态决策与 scratch 库清理**：受限于「全局禁加索引红线」，确认 `pageFeed` filesort 无法通过 wrapper 层面改写消除，正式受限关闭决策，保持现有实现不变；清理销毁 `task260_scratch` 临时库。
+8. **后续储备（方案 B）**：E13 PostGIS 真实空间库复验（拟保留编号 TASK-258，FULL 档，待 TASK-264 闭环后启动）。
 
 
 

@@ -1,4 +1,4 @@
-# sports 项目优化计划（活动看板）
+﻿# sports 项目优化计划（活动看板）
 
 ## 当前进度与外部基线
 
@@ -762,3 +762,20 @@
 | 独立复核 | 免独立复核子 agent（MEDIUM 档按规范由指导侧亲核把关并终裁） |
 | 是否到达外部门槛 | **已到达**（补记笔 2026-10-17 翻转）：封盘批次（5 笔 = TASK-262 补记笔 `e2df483` + 立项笔 `76a447b` + C-01 `3c6a596` + C-02 `8320acb` + 封盘笔 `57f8d92`）推送后 GitHub Actions CI run **`39034968218`** 权威核验 conclusion=**success** 全 job 绿（`web` ✓ 32s / `build` ✓ 10m57s / `probe-ubuntu26` skipped=if 门禁正确生效旁证），headSha `57f8d92` 与封盘批次匹配，外部终验达成完整闭环 |
 | 状态 | **已终裁 ACCEPT（2026-10-17 指导侧）**：指导亲核三块全 PASS 零阻断；13 文件白名单双向全等；G8/G20/G21/G7/G18/G19 六项全部收口；CI run `39034968218` 全绿 headSha 匹配（2026-10-17 补记笔登记），完整闭环 |
+
+## 验收记录：`TASK-264`（G 系批 G-6——SQL 函数索引订正与查询形态收尾群，MEDIUM 档，2026-10-17 立项）
+
+| 项 | 内容 |
+| --- | --- |
+| 开工基线 | main @ `44d5056`（TASK-264 立项笔；实测领先 origin 1 笔：TASK-263 补记笔 `44d5056`，本地保留随批次推送） |
+| 分级定档 | MEDIUM（SQL DDL 语法订正与性能/架构决策收尾，非业务逻辑与安全敏感变更；由指导侧亲核 + 子 agent 实施闭环） |
+| 亲验证据 | 两项全部坐实：①N2 sql/02-record-db.sql L34 与 add-idx-record-coalesce-time.sql 函数索引 ((user_id), (COALESCE(...))) 双括号经 MySQL 8.0 实证 ERROR 3762 阻断建表与迁移，单括号订正后在真机 MySQL 8.0.46 容器实测通过且 EXPLAIN 证实 range 扫描 key_len=14 完美命中；②R5 pageFeed filesort 改形不可消，依红线保持 Java wrapper 原样，销毁 task260_scratch 临时库 |
+| 白名单 | 3+1 项：`sql/02-record-db.sql` + `sql/migrations/add-idx-record-coalesce-time.sql` + `record-service/src/test/java/com/sportverify/record/db/SportRecordSqlContractTest.java` + 台账 `work/mailbox/tasks/TASK-264/handoff.md`（零触碰全仓其余代码/配置/依赖/前端/compose） |
+| 核心实现 | R1 N2 函数索引普通列去冗余外括号，修复 DDL 与迁移语法，新增纯 JVM 契约测试，真机实跑留证；R2 R5 查询形态维持现有 wrapper 不变，清理 task260_scratch 库 |
+| 门禁要求 | 七门禁全量逐位（surefire 63/78/221/320/203/110/35 只增不减，record 320→321 净增 1 契约测）+ 契约门（判据 B 机器比对）+ token 门 29 项逐位持平（期望值口径：C-02 树 = 2104 + 29 = 2133）+ 词面门四 locale ZERO_HIT + 探针阳性对照 + checkstyle delta=0 + diff --check 净；双提交 C-01/C-02 |
+| 受限预登记 | spec §5 三项：全局禁加索引红线严格遵守；MySQL 8.0.13+ 函数索引特性要求；演示库 record_db 存量数据演进留存 |
+| 实施与门禁 | 待实施回填 |
+| 指导亲核 | 待亲核 |
+| 独立复核 | 免独立复核子 agent（MEDIUM 档按规范由指导侧亲核把关并终裁） |
+| 是否到达外部门槛 | **未到达**：封盘批次推送后 GitHub Actions CI 权威核验，全绿由补记笔翻转为已到达 |
+| 状态 | **已立项待派发（2026-10-17 指导侧）**：指导侧亲验两项全部坐实；白名单 3+1 项定案；实施派发包已就绪待用户派发 |
