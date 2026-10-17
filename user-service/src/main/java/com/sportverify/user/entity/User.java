@@ -3,6 +3,7 @@ package com.sportverify.user.entity;
 import com.baomidou.mybatisplus.annotation.IdType;
 import com.baomidou.mybatisplus.annotation.TableId;
 import com.baomidou.mybatisplus.annotation.TableName;
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import lombok.Data;
 
 import java.time.LocalDateTime;
@@ -30,6 +31,7 @@ public class User {
     private String phone;
 
     /** BCrypt 密码哈希（仅内部使用，不对外下发） */
+    @JsonIgnore
     private String passwordHash;
 
     /** 昵称 */

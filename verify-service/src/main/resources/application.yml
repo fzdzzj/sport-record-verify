@@ -53,6 +53,7 @@ spring:
     redis:
       host: 127.0.0.1
       port: 6379
+      timeout: 3000ms
 
 # RocketMQ：消费 SUBMITTED 事件触发校验，发布 VERIFIED / REJECTED 事件
 rocketmq:

@@ -20,6 +20,16 @@ export default defineConfig({
       '@': path.resolve(__dirname, 'src'),
     },
   },
+  build: {
+    rollupOptions: {
+      output: {
+        manualChunks: {
+          'vendor-antdv': ['ant-design-vue', '@ant-design/icons-vue'],
+          'vendor-vue': ['vue', 'vue-router', '@tanstack/vue-query'],
+        },
+      },
+    },
+  },
   test: {
     name: 'web',
     // DOM 环境：token.ts 依赖 localStorage / window（happy-dom 提供）

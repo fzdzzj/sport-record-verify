@@ -63,7 +63,7 @@ public class StompConnectAuthInterceptor implements ChannelInterceptor {
             userId = jwtUtil.parseAccess(token);
         } catch (Exception e) {
             log.warn("STOMP CONNECT 鉴权失败，拒绝会话：{}", e.getMessage());
-            throw new MessagingException("STOMP CONNECT 携带的 access token 无效或已过期，拒绝会话建立");
+            throw new MessagingException("STOMP CONNECT 携带的 access token 无效或已过期，拒绝会话建立", e);
         }
         accessor.setUser(new Principal() {
             @Override

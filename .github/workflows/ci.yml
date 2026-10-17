@@ -153,6 +153,14 @@ jobs:
           corepack prepare pnpm@10.25.0 --activate
           pnpm --version
 
+      # 缓存 pnpm store 加速：key 按 web/pnpm-lock.yaml 哈希变化自动失效，对齐 build job 缓存范式
+      - name: Cache pnpm store
+        uses: actions/cache@v5
+        with:
+          path: ~/.local/share/pnpm/store
+          key: ${{ runner.os }}-pnpm-store-${{ hashFiles('web/pnpm-lock.yaml') }}
+          restore-keys: ${{ runner.os }}-pnpm-store-
+
       # 依赖声明与已提交锁文件不一致（或锁文件缺失）时这一步直接失败，失败信号指向锁文件而非业务代码
       - name: Install with frozen lockfile
         run: pnpm --dir web install --frozen-lockfile

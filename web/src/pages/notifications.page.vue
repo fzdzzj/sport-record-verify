@@ -189,8 +189,7 @@ async function onBatchRead() {
     const n = typeof res.data === 'number' ? res.data : 0
     infoMessage.value = `批量标记已读 ${n} 条`
     selectedIds.value = []
-    await loadList()
-    await refreshUnread()
+    await Promise.all([loadList(), refreshUnread()])
   } catch (e: any) {
     errorMessage.value = e.code ? `[${e.code}] ${e.message}` : (e.message || '操作失败')
   } finally {
@@ -264,8 +263,7 @@ async function onMarkAll() {
     const res = await markAllNotificationsRead()
     const n = typeof res.data === 'number' ? res.data : 0
     infoMessage.value = `本次流转 ${n} 条`
-    await loadList()
-    await refreshUnread()
+    await Promise.all([loadList(), refreshUnread()])
   } catch (e: any) {
     errorMessage.value = e.code ? `[${e.code}] ${e.message}` : (e.message || '操作失败')
   } finally {
@@ -283,8 +281,7 @@ async function onClearRead() {
     const res = await clearReadNotifications()
     const n = typeof res.data === 'number' ? res.data : 0
     infoMessage.value = `已清空 ${n} 条已读通知`
-    await loadList()
-    await refreshUnread()
+    await Promise.all([loadList(), refreshUnread()])
   } catch (e: any) {
     errorMessage.value = e.code ? `[${e.code}] ${e.message}` : (e.message || '操作失败')
   } finally {

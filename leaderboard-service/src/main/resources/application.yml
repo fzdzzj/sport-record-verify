@@ -61,6 +61,7 @@ spring:
     redis:
       host: 127.0.0.1
       port: 6379
+      timeout: 3000ms
 
 # RocketMQ：以独立消费组订阅 record-verify-events 的 VERIFIED/REJECTED Tag 驱动入榜/回滚；
 # 消费组 leaderboard-consumer-group 随榜单职责整体迁自 record-service（record 侧已下线，防双写）

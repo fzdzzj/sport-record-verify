@@ -67,9 +67,10 @@ class StompConnectAuthInterceptorTest {
         String token = jwtUtil.issueAccessToken(1001L, "ROLE_USER");
         StompConnectAuthInterceptor guard = interceptor(jwtUtil);
 
-        assertThrows(MessagingException.class,
+        MessagingException ex = assertThrows(MessagingException.class,
                 () -> guard.preSend(connectMessage("Bearer " + token), null),
                 "过期 token 应拒绝会话建立");
+        assertNotNull(ex.getCause(), "抛出的 MessagingException 应保留底层异常 cause");
     }
 
     /** 无效签名（另一密钥签发的串）→ 拒绝，抛 MessagingException */
@@ -79,9 +80,10 @@ class StompConnectAuthInterceptorTest {
         String token = issuer.issueAccessToken(1001L, "ROLE_USER");
         StompConnectAuthInterceptor guard = interceptor(new JwtUtil(SECRET, 15, 7));
 
-        assertThrows(MessagingException.class,
+        MessagingException ex = assertThrows(MessagingException.class,
                 () -> guard.preSend(connectMessage("Bearer " + token), null),
                 "错误密钥签发的 token 应拒绝");
+        assertNotNull(ex.getCause(), "抛出的 MessagingException 应保留底层异常 cause");
     }
 
     /** 缺失 Authorization 头 → 拒绝，抛 MessagingException（WS 端点不设匿名） */

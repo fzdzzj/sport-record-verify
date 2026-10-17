@@ -31,6 +31,7 @@ spring:
     redis:
       host: 127.0.0.1
       port: 6379
+      timeout: 3000ms
 
 # RocketMQ（TASK-182 add-notification-center）：判定事件通知消费者订阅
 # record-verify-events 的 VERIFIED/REJECTED Tag，独立消费组 notification-consumer-group，
