@@ -31,7 +31,7 @@ CREATE TABLE IF NOT EXISTS `sport_record` (
     --   COALESCE(start_time, created_at) >= {0} 过滤直接 sargable（MySQL 8.0.13+，
     --   时间口径统一为 start_time 回退 created_at），服务层与查询 SQL 零改动。
     --   与 sql/migrations/add-idx-record-coalesce-time.sql 双路径逐字一致
-    KEY `idx_user_coalesce_time` ((`user_id`), (COALESCE(`start_time`, `created_at`)))
+    KEY `idx_user_coalesce_time` (`user_id`, (COALESCE(`start_time`, `created_at`)))
 ) ENGINE = InnoDB
   DEFAULT CHARSET = utf8mb4 COMMENT ='运动记录表';
 

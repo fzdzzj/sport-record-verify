@@ -1,5 +1,5 @@
 -- ============================================================
--- 迁移：sport_record 新增 COALESCE 函数索引 idx_user_coalesce_time ((user_id), (COALESCE(start_time, created_at)))
+-- 迁移：sport_record 新增 COALESCE 函数索引 idx_user_coalesce_time (user_id, (COALESCE(start_time, created_at)))
 -- （E23 R5，纯索引路径；服务层与查询 SQL 零改动）
 --
 -- 背景：SportRecordService.myStats 与 GoalService.queryPeriodRecords 的窗口过滤为
@@ -20,6 +20,6 @@ USE record_db;
 SET @stmt := IF(
     (SELECT COUNT(*) FROM information_schema.statistics
      WHERE table_schema = DATABASE() AND table_name = 'sport_record' AND index_name = 'idx_user_coalesce_time') = 0,
-    'ALTER TABLE `sport_record` ADD INDEX `idx_user_coalesce_time` ((`user_id`), (COALESCE(`start_time`, `created_at`)))',
+    'ALTER TABLE `sport_record` ADD INDEX `idx_user_coalesce_time` (`user_id`, (COALESCE(`start_time`, `created_at`)))',
     'SELECT ''sport_record.idx_user_coalesce_time 已存在，跳过'' AS msg');
 PREPARE stmt FROM @stmt; EXECUTE stmt; DEALLOCATE PREPARE stmt;
