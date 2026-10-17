@@ -784,11 +784,15 @@
 
 | 项 | 内容 |
 | --- | --- |
-| 开工基线 | main @ `96caca4`（TASK-258 立项笔；开工 porcelain 空，领先 origin 1 笔：TASK-264 外部终验补记笔 `96caca4`，本地保留随批次推送） |
+| 开工基线 | main @ `4f3060f`（TASK-258 立项笔；实测领先 origin 1 笔：TASK-264 外部终验补记笔 `96caca4`，本地保留随批次推送） |
 | 分级定档 | FULL（PostGIS 空间库交互、真实路网投影匹配算法与反作弊 R5 核心判定链路复验，涉及真实数据库引擎与空间索引实测；跨测试、脚本与运维工具；独立复核子 agent + 指导亲核） |
 | 亲验证据 | 三项全部坐实：①E13 内联候选边 SQL 从未对真实库执行，全仓缺少针对 mapmatch 的 IT 现状坐实；②真机容器 sport-verify-postgis 端口 5433 运行正常，road_edge 表 7780 条真实路网数据就绪；③EXPLAIN ANALYZE 实测证实耗时 7.915 ms 并精确命中 idx_road_edge_geom GIST 空间索引，WKT 文本解析格式吻合 |
 | 白名单 | 3+1 项：`mapmatch-service/src/test/java/com/sportverify/mapmatch/service/MapMatchSqlContractTest.java` + `mapmatch-service/src/test/java/com/sportverify/mapmatch/service/MapMatchPostgisIT.java` + `scripts/mapmatch/verify-postgis.sh` + 台账 `work/mailbox/tasks/TASK-258/handoff.md`（零触碰生产 Java 代码/其余模块/配置/pom/web） |
 | 核心实现 | R1 新增 MapMatchPostgisIT 真实 PostGIS 集成测试（环境感知守卫、GIST 索引断言、正负样本轨迹匹配通过率与半径封顶）；R2 新增纯 JVM MapMatchSqlContractTest 契约测试（surefire mapmatch 35→36 只增不减）；R3 新增自动化复验脚本 verify-postgis.sh |
 | 门禁要求 | 七门禁全量逐位（surefire 63/78/221/321/203/110/35 只增不减，mapmatch 35→36 净增 1 契约测）+ 契约门（判据 B 机器比对）+ token 门 29 项逐位持平（期望值口径：C-02 树 = 2133 + 29 = 2162）+ 词面门四 locale ZERO_HIT + 探针阳性对照 + checkstyle delta=0 + diff --check 净；双提交 C-01/C-02 |
 | 受限预登记 | spec §5 三项：MapMatchPostgisIT 依赖容器环境在缺省时 assume 优雅跳过；7780 条路网切片覆盖上海核心区域；生产代码 MapMatchService 零改动 |
-| 状态 | **已立项待派发（2026-10-17 指导侧）**：开工基线 `96caca4`；立项两件套齐备；实施派发包起草完毕待用户派发执行子 agent |
+| 实施与门禁 | C-01 `97ddde9`（fix(mapmatch)，恰 3 文件 +563 行：MapMatchPostgisIT 真实 PostGIS 集成测试 5 用例全绿 + MapMatchSqlContractTest 纯 JVM 契约测试 + verify-postgis.sh 100755 脚本）+ C-02 `68afd35`（台账 1 文件 +49 行）；七门禁全绿：offline 七模块 rc=0（63/78/221/321/203/110/36，mapmatch 35→36 净增 1 契约测全绿、其余六模块完全持平、零失败零跳过）、真机 PostGIS 四步核验通过且 MapMatchPostgisIT 5 用例实跑全绿（1.419s，0 失败 0 跳过，EXPLAIN 命中 idx_road_edge_geom 无 Seq Scan）、契约门纯净 worktree 判据 B 4 路径全等 rc=0、token 门基线 2133 逐位持平 + 终态 2162 精确吻合期望值、词面门四 locale ZERO_HIT + 探针阳性对照、checkstyle delta=0、diff --check 净（新文件 LF） |
+| 指导亲核 | FULL 档亲核三块全 PASS：①Git 摘要（porcelain 空、恰 2 笔、diff 4 文件与 handoff §2 逐位一致、零推送）；②定向抽查（MapMatchPostgisIT 5 用例全绿、MapMatchSqlContractTest 常量反射锁定与列序对齐、verify-postgis.sh 脚本可执行权限 100755）；③一致性裁决（surefire 净增与契约测落位完全吻合，口令漂移与首轮假绿排查如实登记） |
+| 独立复核 | 五块全 PASS 零阻断（块一 4 笔提交链全等；块二红线与零触碰 4 项全 PASS；块三双端门禁实测 7 项亲自复跑全 PASS：surefire 63/78/221/321/203/110/36、真机 PostGIS 5 用例真跑非跳过、契约门纯净 worktree rc=0、token 门 2162 精确持平、词面门四 locale ZERO_HIT+探针对照、checkstyle delta=0 且新文件不在扫描面、diff 净、ls-files 纯 LF；块四证据链核对 PASS，独立 JDBC 探针反向坐实口令漂移排查结论；块五只改清单三向全等 4=4=4）；非阻断 4 项集中登记封盘笔（N1 baseline 时点口径 / N2 提交信息措辞 / N3 机器负载耗时差异 / N4 脚本端口展示行模板） |
+| 是否到达外部门槛 | **已到达本地封盘**：封盘批次（5 笔 = TASK-264 补记笔 `96caca4` + 立项笔 `4f3060f` + C-01 `97ddde9` + C-02 `68afd35` + 封盘笔）统一推送 origin/main，GitHub Actions CI 外部终验随后登记 |
+| 状态 | **已终裁 ACCEPT（2026-10-18 指导侧）**：指导亲核三块 + 独立复核五块双 PASS 零阻断；4 文件白名单双向全等；E13 PostGIS 真实空间库复验端到端闭环；surefire 63/78/221/321/203/110/36 新基线确立；封盘批次统一推送 origin/main，待 CI 外部终验 |
