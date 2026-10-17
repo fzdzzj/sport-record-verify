@@ -127,18 +127,18 @@
 | 编号 | 方向 | 依据 | 价值 | 预估档 | 状态 |
 | --- | --- | --- | --- | --- | --- |
 | G1 | 时区语义全链缺失 | SportRecordService L1068 `LocalDateTime.ofInstant(..., ZoneOffset.UTC)` vs L226 `LocalDateTime.now()`；docker-compose TZ 仅挂 mysql/postgis，六个 Java 服务容器无 TZ（JVM=UTC）；user yml `serverTimezone=Asia/Shanghai` 意图分裂；feed.page.vue L169 `new Date(iso)` 按浏览器本地解析——同库两帧混存 8h 错位，归日/周期/显示全链偏移 | 高（打卡断签判定、目标进度窗口、周期榜窗口、全部时间显示） | FULL | **已封盘 TASK-259（2026-10-17，批 G-1）：C-01 `48a0a45` / C-02 `692073b`，指导亲核三块 + 独立复核五块双 PASS 零阻断，偏差①比对帧牵连带与偏差②两文件口径追认，N-1~N-6 文字层笔误登记；surefire record 302→308（UTC runner 反向实测双向时区无关坐实）；CI 外部终验随补记笔** |
-| G2 | updateVisibility 整行回写丢失更新 | SportRecordService L615-616 selectById→setVisibility→updateById 整行回写，实体无 @Version；并发窗口内 verify statusCallback（乐观锁刚迁 PASSED v1）可被旧快照（VERIFYING v0）覆盖且 version 一并回退——E30（TASK-256）同根因新落点 | 中 | MEDIUM | 候选（◎ 待亲验；修法照 E30：LambdaUpdateWrapper 单列 set + TableInfoHelper 预注册测试） |
+| G2 | updateVisibility 整行回写丢失更新 | SportRecordService L615-616 selectById→setVisibility→updateById 整行回写，实体无 @Version；并发窗口内 verify statusCallback（乐观锁刚迁 PASSED v1）可被旧快照（VERIFYING v0）覆盖且 version 一并回退——E30（TASK-256）同根因新落点 | 中 | MEDIUM | **已立项 TASK-260（2026-10-17，批 G-2 亲验坐实：L609-617 整行回写 + @Version 零命中；修法照 E30 单列 set + 并发语义断言）** |
 | G3 | getLikesBatch 批内 N+1 | RecordLikeService L359-372 逐条 selectById+assertCanView（≤50 次 E12 上限串行 DB 单查）+ SportRecordService L1154 逐条 areFriends Feign——feed 单页 20 条最坏 20 次 DB RTT + 20 次串行 Feign RTT | 中 | MEDIUM | 候选（◎ 待亲验；修法需 user-service 批量端点或 caller 好友集缓存，新增内部契约属功能面需指导裁决；对照 B5 Pipeline 先例与 D7 分批先例） |
 | G4 | 分页钳制范式未对齐四处 | RecordController L255-256 /points size 直通（可传 10 万，一页拉全轨迹 20000 点，ShardingSphere 内存合并放大）；NotificationService L116、FriendService L347,432 无钳制；范式先例 MAX_MY_RECORDS_SIZE=500/榜单 500/1000 | 中 | LIGHT | 候选（◎ 待亲验；纯钳制补齐） |
-| G5 | 周期榜同分无 tie-break | LeaderboardContributionMapper L118 `ORDER BY totalDistance DESC LIMIT` 无次序键，同分排名不稳定；先例 L61 日榜 `, user_id ASC`、好友榜 LeaderboardService L356-358 | 中 | LIGHT | 候选（◎ 待亲验） |
+| G5 | 周期榜同分无 tie-break | LeaderboardContributionMapper L118 `ORDER BY totalDistance DESC LIMIT` 无次序键，同分排名不稳定；先例 L61 日榜 `, user_id ASC`、好友榜 LeaderboardService L356-358 | 中 | LIGHT | **已立项 TASK-260（批 G-2 亲验坐实：L118 无次序键 + 先例 DailySummaryMapper L61 `user_id ASC`）** |
 | G6 | BizException→HTTP 状态翻译 9 处分裂 | GlobalExceptionHandler L51-63 公共层（含 3001→404）vs 8 处局部 @ExceptionHandler(BizException)（RecordController L334-343 侦察侧抽查坐实）优先级遮蔽公共层，映射集参差——同一 3001（RECORD_NOT_FOUND）record→200、goal→404、verify→404 | 中 | MEDIUM 小 | 候选（E21 遗留局部副本；修法=删局部副本收敛公共层或逐一对齐，改对外 HTTP 契约需回归；覆盖 TASK-255 治理挂账「局部 handler 收拢」项） |
 | G7 | 主 chunk 1.6MB 无分包 | web/dist/assets/index-CS7BnriL.js 1,639,216B；vite.config.ts 全文无 build 配置 | 中 | LIGHT | 候选（纯 vite 配置不引依赖；manualChunks 口径需按 TASK-215「不引入」先例征询指导侧） |
 | G8 | Redis 客户端超时矩阵缺口 | 六服务 spring.data.redis 仅 host/port（user yml L38-41 等）；Lettuce 默认 command timeout 60s——E10/E17 超时矩阵同主题新落点 | 中 | LIGHT | 候选（◎ 待亲验；纯配置收益直接，对照 E10/E17 收口先例） |
-| G9 | 注释滞后群 | LeaderboardContributionMapper L112「settled_at 无专用索引（全局禁加索引）」vs DDL 02:63 + migrations 已建 idx_status_settled；mapmatch yml readiness 注释「仅依赖 MySQL」实为 PostgreSQL | 低 | LIGHT | 候选（◎ 待亲验；注释滞后误导后来者） |
+| G9 | 注释滞后群 | LeaderboardContributionMapper L112「settled_at 无专用索引（全局禁加索引）」vs DDL 02:63 + migrations 已建 idx_status_settled；mapmatch yml readiness 注释「仅依赖 MySQL」实为 PostgreSQL | 低 | LIGHT | **已立项 TASK-260（批 G-2 亲验坐实：DDL 02:63 idx_status_settled 已建 vs L112 注释滞后 + mapmatch yml L92「MySQL」实为 PostgreSQL）** |
 | G10 | listPendingAppeals 无界 | VerifyService L231-234 selectList 无 limit；同文件 outbox 端点 EXHAUSTED_LIMIT_MAX 钳制先例 | 低 | LIGHT | 候选（◎ 待亲验） |
-| G11 | my 记录日期过滤口径错位 | SportRecordService L723,726 裸 start_time 过滤 vs myStats/goal COALESCE(start_time, created_at) 口径——仅影响存量 NULL 行 | 低 | LIGHT | 候选（◎ 待亲验） |
+| G11 | my 记录日期过滤口径错位 | SportRecordService L723,726 裸 start_time 过滤 vs myStats/goal COALESCE(start_time, created_at) 口径——仅影响存量 NULL 行 | 低 | LIGHT | **已立项 TASK-260（批 G-2 亲验坐实：L723-727 裸 start_time vs myStats/goal COALESCE 口径）** |
 | G12 | overall 缓存 TTL 无抖动 | CacheConfig L49 恒定 5min；jitter 范式先例 RuleCacheService L223-231 | 低 | LIGHT | 候选（◎ 待亲验；范式已存在未对齐） |
-| G13 | pageFeed filesort 潜势 | SportRecordService L778-786 `user_id IN(...) AND (user_id=? OR visibility IN..) ORDER BY created_at DESC` | 低 | LIGHT | 候选（◎ 待亲验；需 EXPLAIN 确认，立项后先实测） |
+| G13 | pageFeed filesort 潜势 | SportRecordService L778-786 `user_id IN(...) AND (user_id=? OR visibility IN..) ORDER BY created_at DESC` | 低 | LIGHT | **已立项 TASK-260（批 G-2 亲验坐实查询形态 L778-787；filesort 与否以 R5 前置 EXPLAIN 双结局裁决：坐实仅改查询形态禁加索引 / 不坐实零改动登记）** |
 | G14 | PageResult vs MP Page 双轨 | api PageResult L12-14「统一使用本类型」vs RecordController L112,139,254 外抛 MP Page（多 pages 字段） | 低 | LIGHT | 候选（◎ 待亲验） |
 | G15 | Redis 键前缀重复/outbox 字面量 | `notification:event:` 于 LikeEventConsumer L214-215、NotificationEventConsumer L217-218 重复定义；outbox 状态字面量 SQL 内联（VerifyEventOutboxMapper L47,88） | 低 | LIGHT | 候选（◎ 待亲验） |
 | G16 | L2 缓存序列化分裂 | CacheConfig L89 JdkSerializationRedisSerializer vs RuleCacheService L196 JSON 字符串 | 低 | LIGHT | 候选（◎ 待亲验） |
@@ -154,7 +154,7 @@
 
 推荐序（G 系批次建议）：
 1. **批 G-1「时间语义统一」已封盘 TASK-259（2026-10-17）**：G1 单独 FULL——全链东八墙钟统一落地（compose 六服务 TZ + 推导改区 + 比对帧牵连带 + 六边界用例），独立复核五块 PASS 零阻断，CI 外部终验随补记笔；
-2. **批 G-2「record/leaderboard 口径小批」**：G2（MEDIUM 主项，照 E30 修法）+G5+G9+G11+G13（G13 立项后先 EXPLAIN 坐实）；
+2. **批 G-2「record/leaderboard 口径小批」已立项 TASK-260（2026-10-17）**：G2（主项照 E30 修法）+G5+G9+G11+G13（R5 前置 EXPLAIN 双结局）——五项指导侧亲验坐实，FULL 档（G2 并发安全语义就高），两件套落库待派发；
 3. **批 G-3「跨服务与查询边界」**：G3（需 user-service 批量契约或 caller 好友集缓存，新增内部端点属功能面需指导裁决）+G4+G10（纯钳制）；
 4. **批 G-4「统一性对齐群」**：G6（主项，改 HTTP 契约需回归，与批 4b 先例对齐处理）+G12+G14+G15+G16+G17；
 5. **批 G-5「配置与前端效率群」**：G8+G20+G21+G22+G23——G8 纯配置收益直接（对照 E10/E17 先例）；G22/G23 修复手段受限，立项时预注册「压测/裁决前置」；G7 纯 vite 配置可并入（manualChunks 口径按 TASK-215「不引入」先例征询）；

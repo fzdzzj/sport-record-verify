@@ -695,3 +695,16 @@
 | 是否到达外部门槛 | **待到达**：封盘批次（6 笔 = TASK-257 补记笔 `a21ee02` + G 系登记笔 `50d1877` + 立项笔 `b18c9fe` + C-01 `48a0a45` + C-02 `692073b` + 封盘笔）推送后 GitHub Actions CI 权威核验，全绿由补记笔翻转为已到达 |
 | 状态 | **已终裁 ACCEPT（2026-10-17 指导侧）**：偏差①（validateTimeRationality 比对帧同步，红→绿证据链完整+三元分支语义正确）与偏差②（compose 两文件 CI 权威口径，overlay 既有行为附基线同败证据）均追认；待 CI 外部终验读数由补记笔登记完整闭环 |
 
+## 验收记录：`TASK-260`（G 系批 G-2——record/leaderboard 口径小批 G2+G5+G9+G11+G13，FULL 档，2026-10-17 立项）
+
+| 项 | 内容 |
+| --- | --- |
+| 开工基线 | main @ `552bbb9`（TASK-259 封盘笔；以开工实测 `git rev-parse HEAD` 回填 handoff 为准） |
+| 分级定档 | FULL（G2 触碰核心服务逻辑并发安全语义就高定档——updateVisibility 整行回写可覆盖 verify statusCallback 乐观锁迁移；G13 条件项可能涉查询形态改写；跨 record/leaderboard/mapmatch 三模块全量逐位 + 独立复核子agent + 指导亲核） |
+| 亲验证据 | 五项全部坐实（spec §1 实测行号）：G2 L609-617 整行回写 + @Version 零命中（E30 同根因）；G5 L118 无 tie-break + 先例 DailySummaryMapper L61 `user_id ASC`；G9 ContributionMapper L112 注释「无专用索引」vs DDL 02:63 idx_status_settled 已建 + mapmatch yml L92「MySQL」实为 PostgreSQL；G11 L723-727 裸 start_time vs myStats/goal COALESCE 口径；G13 L778-787 pageFeed 查询形态（filesort 待 EXPLAIN） |
+| 白名单 | 5+5 项：SportRecordService.java + SportRecordServiceTest.java + LeaderboardContributionMapper.java + leaderboard 测试落点（执行侧选定登记）+ mapmatch application.yml（注释级）+ 台账 5（零触碰 sql/DDL——G9 索引已建无需补、状态机/MQ/批量参数） |
+| 核心实现 | R1 updateVisibility 改 LambdaUpdateWrapper 单列 set（照 E30）+ 并发语义断言（旧快照不覆盖 status/version）；R2 周期榜 ORDER BY 补 `, user_id ASC`（照日榜先例）+ 同分稳定排序断言；R3 两处注释订正（零行为变更）；R4 my 过滤改 COALESCE 口径 + NULL 行归窗断言；R5 前置 EXPLAIN（scratch 库）双结局：filesort 坐实仅改查询形态禁加索引 / 不坐实登记零改动 |
+| 门禁要求 | 七门禁全量逐位（surefire 63/78/215/308/200/108/35 只增不减；ContributionMapper 有 diff 静态门纯净 worktree 双向坐实；mapmatch 35 持平注释级零行为）+ 契约/token/词面/checkstyle/diff --check 照跑；双提交 C-01/C-02 |
+| 受限预登记 | spec §5 四项：G2 毫秒级窗口单测 mock 语义承载、G13 EXPLAIN 为 scratch 时点快照、G11 仅存量 NULL 行、Nacos 未核 |
+| 状态 | **已立项待派发**（2026-10-17 指导侧立项，两件套落库 work/mailbox/tasks/TASK-260/；实施派发包提示词已生成待用户派发执行子agent） |
+
