@@ -1,4 +1,4 @@
-﻿# 方向候选与待办（BACKLOG，指导侧常备）
+# 方向候选与待办（BACKLOG，指导侧常备）
 
 > 用途：指导主agent立项侦察与交接的常备清单；每批次封盘后更新状态。执行/复核侧不直接修改本文件。
 > 挂载：PLAN.md 末节「方向候选与待办」指向本文件；立项时从此清单取号（TASK-xxx），封盘后回写状态与课题号。
@@ -91,7 +91,7 @@
 | E10 | 网关 HTTP 客户端无连接/响应超时 | gateway yml 全文无 httpclient.connect-timeout/response-timeout（对照 leaderboard/verify 均显式配置），hang 住连接无截止，Sentinel 限流对已建立连接零作用 | 高 | LIGHT | **已封盘 TASK-254（2026-10-16）：gateway yml spring.cloud.gateway.httpclient connect-timeout 3000 / response-timeout 10s + GatewayProbeTest 资源断言** |
 | E11 | 规则快照阈值零校验 × 规则链无异常隔离 | RuleVersionCreateRequest rules 无 @Valid 无 @Min；window=0 数组越界 / window=1 NaN 静默永不命中；VerifyEngine 无单规则 try/catch，误下发一条 ACTIVE 快照即全判定停摆进 DLQ | 高 | MEDIUM | **已封盘 TASK-254（2026-10-16）：RuleVersionService 程序化校验全套（vDrift/legacy/bySportType 同套/R5）+ VerifyEngine 规则链 per-rule try/catch 隔离** |
 | E12 | likes/batch 无入参上限放大 N 次 DB+Feign | @RequestBody List 无 @Size，逐 id selectById + 逐条 areFriends Feign（对照 RecordController 同域有 size 钳制） | 高 | LIGHT | **已封盘 TASK-254（2026-10-16）：getLikesBatch 入口去重前 size>50 拒绝式 BizException（非截断），50 推定值未改动** |
-| E13 | PostGIS 匹配 SQL 从未对真实库执行 | 内联 ST_DWithin/ST_MakeEnvelope SQL 仅 mock JdbcTemplate 桩测，全仓无 Testcontainers、mapmatch 无任何 IT，SRID/参数序/GIST/度换算偏差全无验证，直接决定 R5 判定正误 | 高 | FULL | **拆出另立课题（2026-10-16 批4b 切分：真实 PostGIS 库复验路径独立成课题拟 TASK-258，待批4b-1/4b-2 封盘后立项；内联 SQL 仅 mock 桩测现状坐实）** |
+| E13 | PostGIS 匹配 SQL 从未对真实库执行 | 内联 ST_DWithin/ST_MakeEnvelope SQL 仅 mock JdbcTemplate 桩测，全仓无 Testcontainers、mapmatch 无任何 IT，SRID/参数序/GIST/度换算偏差全无验证，直接决定 R5 判定正误 | 高 | FULL | **进行中 TASK-258（2026-10-17 立项，FULL 档）：方案 B 真实 PostGIS 空间库复验（PostGIS 容器实测 + GIST 空间索引 EXPLAIN + 正负轨迹真实路网匹配 + 纯 JVM 契约测试）** |
 | E14 | E2E mock 兜底 404 掩盖通知写路径 | helpers 未映射请求兜底 404 code:9999 不进 unhandled 断言（假安全）；client.ts 清空已读/batch-read 两写端点无 mock → 通知页三按钮 E2E 恒失败无红灯 | 高 | MEDIUM | **已封盘 TASK-257（2026-10-17：ApiCtx unmocked 列表可见性 + notifications store 状态化 + 两写端点 mock + notifications.e2e 三按钮覆盖；C-01 `033110a` / C-02 `5788184`，MEDIUM 档亲核三块 PASS，CI 读数由补记笔登记）** |
 | E15 | 登录锁定 threshold=5 使 F11 账号 DoS 回归【排除项新证据】 | user yml threshold: 5 enabled: true 覆盖代码默认 20（AuthService L84），spec-delta 明确该值语义为「5→20 兜底阈值」防分布式爆破 DoS，findings-summary 已记 F11 关闭；README 同步滞后；Nacos 运行时覆盖未核 | 中 | FULL | **已封盘 TASK-256（2026-10-16：yml threshold 5→20 + 注释/README 双维度口径 + LoginLockoutConfigTest 资源断言；C-01 `a89d095` / C-02 `2a2f11f`，指导亲核 + 独立复核五块 PASS 终裁 ACCEPT，CI 读数由补记笔登记）** |
 | E16 | Sentinel 动态规则 [] 静默清空兜底限流 | 合法空数组走 new HashSet 得空集覆盖 loadRules 兜底（SentinelGatewayRuleConfig L74-107），日志仍报「已注册可动态改」；空集应视为无效更新 | 中 | MEDIUM | **已封盘 TASK-254（2026-10-16）：toGatewayFlowRules 空列表 → log.warn + return null 沿解析失败「保持上一版」语义 + SentinelGatewayRuleConfigTest 三用例（Nacos 真实链路登记受限）** |
@@ -163,4 +163,4 @@
    - ①**sql/ 函数索引语法订正（N2）**：`sql/02-record-db.sql` L34 与 `sql/migrations/add-idx-record-coalesce-time.sql` 的 `((user_id), (COALESCE(...)))` 双括号错误语法彻底修复为 `(user_id, (COALESCE(...)))` 单括号形态，新增纯 JVM 契约测试 `SportRecordSqlContractTest`（record surefire 320→321 新基线），真机 MySQL 实测与 EXPLAIN sargable 范围扫描坐实；
    - ②**R5 查询形态决策与 scratch 库清理**：受限于「全局禁加索引红线」，确认 `pageFeed` filesort 无法通过 wrapper 层面改写消除，正式受限关闭决策，保持现有实现不变；成功销毁清理 `task260_scratch` 临时库；
    - 指导亲核三块 PASS 零阻断，终裁 ACCEPT；CI 外部终验随补记笔登记；
-8. **下一课题建议（方案 B）**：启动 E13 PostGIS 真实空间库复验（拟保留编号 TASK-258，FULL 档，待 TASK-264 CI 闭环后立项）。
+8. **进行中课题（方案 B）**：**TASK-258（方案 B：E13 PostGIS 真实空间库复验，FULL 档，2026-10-17 立项待派发）**：针对 mapmatch-service 内联 ST_DWithin / ST_MakeEnvelope 空间预筛 SQL 与真实 PostGIS 16-3.4 引擎执行端到端复验，新增 MapMatchPostgisIT 真实空间集成测试 + MapMatchSqlContractTest 纯 JVM 契约测试（surefire 35→36 只增不减）+ 自动化复验脚本 verify-postgis.sh。

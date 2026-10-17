@@ -1,4 +1,4 @@
-﻿# sports 项目优化计划（活动看板）
+# sports 项目优化计划（活动看板）
 
 ## 当前进度与外部基线
 
@@ -779,3 +779,16 @@
 | 独立复核 | 免独立复核子 agent（MEDIUM 档按规范由指导侧亲核把关并终裁） |
 | 是否到达外部门槛 | **已到达**（补记笔 2026-10-17 翻转）：封盘批次（5 笔 = TASK-263 补记笔 `44d5056` + 立项笔 `8e34aa2` + C-01 `13453f2` + C-02 `09923de` + 封盘笔 `0a7390a`）推送后 GitHub Actions CI run **`39040084087`** 权威核验 conclusion=**success** 全 job 绿（`web` ✓ 24s / `build` ✓ 10m38s / `probe-ubuntu26` skipped=if 门禁正确生效旁证），headSha `0a7390a` 与封盘批次匹配，外部终验达成完整闭环 |
 | 状态 | **已终裁 ACCEPT（2026-10-17 指导侧）**：指导亲核三块全 PASS 零阻断；4 文件白名单双向全等；N2 函数索引语法阻断彻底修复并增补纯 JVM 契约测试；R5 维持现有 wrapper 不变收尾关闭，task260_scratch 成功清理；CI run `39040084087` 全绿 headSha 匹配（2026-10-17 补记笔登记），完整闭环 |
+
+## 验收记录：`TASK-258`（方案 B：E13 PostGIS 真实空间库复验，FULL 档，2026-10-17 立项）
+
+| 项 | 内容 |
+| --- | --- |
+| 开工基线 | main @ `96caca4`（TASK-258 立项笔；开工 porcelain 空，领先 origin 1 笔：TASK-264 外部终验补记笔 `96caca4`，本地保留随批次推送） |
+| 分级定档 | FULL（PostGIS 空间库交互、真实路网投影匹配算法与反作弊 R5 核心判定链路复验，涉及真实数据库引擎与空间索引实测；跨测试、脚本与运维工具；独立复核子 agent + 指导亲核） |
+| 亲验证据 | 三项全部坐实：①E13 内联候选边 SQL 从未对真实库执行，全仓缺少针对 mapmatch 的 IT 现状坐实；②真机容器 sport-verify-postgis 端口 5433 运行正常，road_edge 表 7780 条真实路网数据就绪；③EXPLAIN ANALYZE 实测证实耗时 7.915 ms 并精确命中 idx_road_edge_geom GIST 空间索引，WKT 文本解析格式吻合 |
+| 白名单 | 3+1 项：`mapmatch-service/src/test/java/com/sportverify/mapmatch/service/MapMatchSqlContractTest.java` + `mapmatch-service/src/test/java/com/sportverify/mapmatch/service/MapMatchPostgisIT.java` + `scripts/mapmatch/verify-postgis.sh` + 台账 `work/mailbox/tasks/TASK-258/handoff.md`（零触碰生产 Java 代码/其余模块/配置/pom/web） |
+| 核心实现 | R1 新增 MapMatchPostgisIT 真实 PostGIS 集成测试（环境感知守卫、GIST 索引断言、正负样本轨迹匹配通过率与半径封顶）；R2 新增纯 JVM MapMatchSqlContractTest 契约测试（surefire mapmatch 35→36 只增不减）；R3 新增自动化复验脚本 verify-postgis.sh |
+| 门禁要求 | 七门禁全量逐位（surefire 63/78/221/321/203/110/35 只增不减，mapmatch 35→36 净增 1 契约测）+ 契约门（判据 B 机器比对）+ token 门 29 项逐位持平（期望值口径：C-02 树 = 2133 + 29 = 2162）+ 词面门四 locale ZERO_HIT + 探针阳性对照 + checkstyle delta=0 + diff --check 净；双提交 C-01/C-02 |
+| 受限预登记 | spec §5 三项：MapMatchPostgisIT 依赖容器环境在缺省时 assume 优雅跳过；7780 条路网切片覆盖上海核心区域；生产代码 MapMatchService 零改动 |
+| 状态 | **已立项待派发（2026-10-17 指导侧）**：开工基线 `96caca4`；立项两件套齐备；实施派发包起草完毕待用户派发执行子 agent |
