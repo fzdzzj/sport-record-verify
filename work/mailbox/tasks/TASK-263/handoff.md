@@ -1,6 +1,6 @@
 # TASK-263 执行交接（handoff）
 
-> 状态：**已终裁 ACCEPT 予以封盘**（2026-10-17 指导侧终裁；开工基线 = main @ 76a447b119566fa5c44cfe77a6e88bbed66ac131；MEDIUM 档，指导亲核三块 PASS 零阻断，七门禁全绿，封盘批次推送 origin/main）
+> 状态：**已终裁 ACCEPT 予以封盘，外部终验达成**（2026-10-17 外部终验；GitHub Actions CI run 39034968218 全绿，headSha 57f8d92 匹配；web ✓ 32s / build ✓ 10m57s / probe-ubuntu26 skipped；完整闭环）
 
 ## 1. 开工基线
 
