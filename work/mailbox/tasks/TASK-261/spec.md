@@ -1,6 +1,6 @@
 # TASK-261 立项任务书（批 G-3：跨服务与查询边界 G3+G4+G10）
 
-> 状态：**已立项待派发**（2026-10-17 用户拍板批 G-3；指导侧亲验三项全部坐实，修法裁决=G3 复用既有 listFriendIds 契约零新增端点）
+> 状态：**已实施待复核**（2026-10-17 执行侧 G3+G4+G10 三项全落：R1 批量重构 = assertCanView(List) 重载 + loadFriendIdSet 懒拉 + getLikesBatch selectBatchIds 批查；R2 四处服务层双钳制；R3 LIMIT 200 + Javadoc 订正。七门禁读数与受限登记见 handoff.md §3/§4，白名单双向全等见 handoff §2；独立复核与指导侧终裁待做）
 
 ## 1. 证据链（指导侧亲验坐实，2026-10-17，TASK-260 合并后实测行号）
 
