@@ -30,9 +30,15 @@ import java.util.concurrent.atomic.AtomicLong;
  * 虚拟线程调度）发送；逐请求记录耗时/状态码，产出：</p>
  * <ul>
  *   <li>摘要 JSON：count/qps/errRate/p50/p95/p99/max/limited（HTTP 429 单列，不算错误——
- *       限流拦截验证口径）+ 各状态码分布；</li>
+ *       限流拦截验证口径）+ 各状态码分布 statusHistogram + 分类汇总 statusClass
+ *       （2xx/400/401/403/404/429/5xx/other/EXCEPTION，供多链路容量报告结构化解析）；</li>
  *   <li>原始 CSV：seq,concurrency,latency_ms,status,ok（留存供优化前后对比，spec 场景「原始数据留存」）。</li>
  * </ul>
+ *
+ * <p>协议面（TASK-265 R1 多链路扩展）：{@code --method} 支持 GET/POST/PUT/DELETE（GET 不携带
+ * 请求体与 Content-Type）；{@code --header "Name: Value"} 可重复传入自定义请求头（鉴权
+ * Authorization、压测标识 X-Load-Tag 等，透传经网关）；URL 支持 {@code {userId}}/{@code {seq}}
+ * 占位符逐请求渲染（如点赞批量 {@code ?userId={userId}} 的身份轮转）。</p>
  *
  * <p>请求体模板支持占位符替换：{@code {requestId}}（每请求唯一，触发真实落库而非幂等命中）、
  * {@code {userId}}（按 --user-total 轮转分片）、{@code {seq}}（请求序号）。</p>
@@ -55,7 +61,8 @@ public class LoadTest {
         long userTotal = Long.parseLong(arg(args, "--user-total", "16"));
         int timeoutSec = Integer.parseInt(arg(args, "--timeout", "30"));
         String label = arg(args, "--label", "c" + concurrency);
-        String method = arg(args, "--method", "POST");
+        String method = arg(args, "--method", "POST").toUpperCase(Locale.ROOT);
+        List<String[]> headers = collectHeaders(args);             // 可重复 --header "Name: Value"
 
         if (total <= 0 && seconds <= 0) {
             System.err.println("必须指定 --total N 或 --seconds S 之一");
@@ -87,11 +94,11 @@ public class LoadTest {
 
         // 预热：跑通链路（建连、路由、首个 SQL/MQ 通道），不计入统计
         for (int i = 0; i < warmup; i++) {
-            sendQuietly(client, method, url,
-                    template.isEmpty() ? null : render(template, runId + "w", i, userTotal), timeoutSec);
+            sendQuietly(client, method, renderIfTemplate(url, runId, i, userTotal),
+                    template.isEmpty() ? null : render(template, runId + "w", i, userTotal), timeoutSec, headers);
         }
-        System.out.printf(Locale.ROOT, "预热 %d 请求完成，开始压测：concurrency=%d，%s%n",
-                warmup, concurrency, total > 0 ? "total=" + total : "seconds=" + seconds);
+        System.out.printf(Locale.ROOT, "预热 %d 请求完成，开始压测：concurrency=%d，%s，method=%s，自定义头 %d 项%n",
+                warmup, concurrency, total > 0 ? "total=" + total : "seconds=" + seconds, method, headers.size());
 
         // ===== 压测主循环 =====
         AtomicInteger nextSeq = new AtomicInteger(0);
@@ -117,10 +124,11 @@ public class LoadTest {
                             }
                         }
                         String body = total > 0 ? bodies.get(seq) : render(template, runId, seq, userTotal);
+                        String reqUrl = renderIfTemplate(url, runId, seq, userTotal);
                         long t0 = System.nanoTime();
                         int status;
                         try {
-                            status = sendQuietly(client, method, url, body, timeoutSec);
+                            status = sendQuietly(client, method, reqUrl, body, timeoutSec, headers);
                         } catch (Exception e) {
                             status = -1; // 连接失败/超时/响应异常
                         }
@@ -153,15 +161,19 @@ public class LoadTest {
 
         Map<Integer, Long> statuses = new TreeMap<>();
         all.forEach(r -> statuses.merge(r.status(), 1L, Long::sum));
+        Map<String, Long> statusClass = new TreeMap<>();
+        all.forEach(r -> statusClass.merge(statusKey(r.status()), 1L, Long::sum));
 
         System.out.printf(Locale.ROOT,
                 "%n===== 压测结果 [%s] concurrency=%d =====%n"
                         + "总请求: %d  成功: %d  限流429: %d  错误: %d  错误率: %.2f%%%n"
                         + "时长: %.2fs  QPS: %.1f%n"
                         + "延迟 ms: P50=%.1f  P95=%.1f  P99=%.1f  MAX=%.1f%n"
-                        + "状态码分布: %s%n",
+                        + "状态码分布: %s%n"
+                        + "状态分类: %s%n",
                 label, concurrency, count, okCount.get(), limitedCount.get(), errCount.get(), errRate * 100,
-                wallSec, qps, p50, p95, p99, sorted.length == 0 ? 0 : sorted[sorted.length - 1], statuses);
+                wallSec, qps, p50, p95, p99, sorted.length == 0 ? 0 : sorted[sorted.length - 1],
+                statuses, statusClass);
 
         // ===== 产出文件 =====
         if (!outPrefix.isEmpty()) {
@@ -171,6 +183,7 @@ public class LoadTest {
             StringBuilder json = new StringBuilder();
             json.append("{\n")
                     .append("  \"label\": \"").append(label).append("\",\n")
+                    .append("  \"method\": \"").append(method).append("\",\n")
                     .append("  \"concurrency\": ").append(concurrency).append(",\n")
                     .append("  \"total\": ").append(count).append(",\n")
                     .append("  \"ok\": ").append(okCount.get()).append(",\n")
@@ -184,7 +197,8 @@ public class LoadTest {
                     .append("  \"p99ms\": ").append(String.format(Locale.ROOT, "%.2f", p99)).append(",\n")
                     .append("  \"maxMs\": ").append(String.format(Locale.ROOT, "%.2f",
                             sorted.length == 0 ? 0 : sorted[sorted.length - 1])).append(",\n")
-                    .append("  \"statusHistogram\": ").append(toJson(statuses)).append("\n")
+                    .append("  \"statusHistogram\": ").append(toJson(statuses)).append(",\n")
+                    .append("  \"statusClass\": ").append(toJsonStr(statusClass)).append("\n")
                     .append("}\n");
             Files.writeString(summary, json.toString(), StandardCharsets.UTF_8);
 
@@ -200,19 +214,37 @@ public class LoadTest {
         }
     }
 
-    /** 发送一个请求，返回 HTTP 状态码（-1 = 异常；异常详情不进统计只打标记） */
-    private static int sendQuietly(HttpClient client, String method, String url, String body, int timeoutSec)
+    /** 发送一个请求，返回 HTTP 状态码（-1 = 异常；异常详情不进统计只打标记）。
+     *  GET/DELETE 无请求体（GET 不携带 Content-Type）；POST/PUT 携带 JSON 体；
+     *  自定义 --header 逐项透传（鉴权/压测标识），与默认头并存。 */
+    private static int sendQuietly(HttpClient client, String method, String url, String body,
+                                   int timeoutSec, List<String[]> headers)
             throws IOException, InterruptedException {
         HttpRequest.Builder b = HttpRequest.newBuilder(URI.create(url))
-                .timeout(Duration.ofSeconds(timeoutSec))
-                .header("Content-Type", "application/json");
+                .timeout(Duration.ofSeconds(timeoutSec));
+        if (body != null) {
+            b.header("Content-Type", "application/json");
+        }
+        for (String[] h : headers) {
+            b.header(h[0], h[1]);
+        }
         HttpRequest req = switch (method) {
             case "GET" -> b.GET().build();
             case "DELETE" -> b.DELETE().build();
+            case "PUT" -> b.PUT(HttpRequest.BodyPublishers.ofString(body == null ? "" : body,
+                    StandardCharsets.UTF_8)).build();
             default -> b.POST(HttpRequest.BodyPublishers.ofString(body == null ? "" : body,
                     StandardCharsets.UTF_8)).build();
         };
         return client.send(req, HttpResponse.BodyHandlers.discarding()).statusCode();
+    }
+
+    /** URL 模板渲染：含 {userId}/{seq} 占位符时逐请求替换（身份轮转/序号打散），否则原样返回 */
+    private static String renderIfTemplate(String url, String runId, long seq, long userTotal) {
+        if (url.indexOf('{') < 0) {
+            return url;
+        }
+        return render(url, runId, seq, userTotal);
     }
 
     /** 占位符替换：{requestId} 唯一（真实落库而非幂等命中），{userId} 轮转（16 分片均匀），{seq} 请求序号 */
@@ -221,6 +253,41 @@ public class LoadTest {
                 .replace("{requestId}", runId + "-" + seq)
                 .replace("{userId}", String.valueOf(1 + seq % userTotal))
                 .replace("{seq}", String.valueOf(seq));
+    }
+
+    /** 状态码分类键：2xx 归并、高频业务码单列（400/401/403/404/429）、5xx 归并、其余 other、异常 EXCEPTION */
+    private static String statusKey(int status) {
+        if (status < 0) {
+            return "EXCEPTION";
+        }
+        if (status >= 200 && status < 300) {
+            return "2xx";
+        }
+        if (status == 400 || status == 401 || status == 403 || status == 404 || status == 429) {
+            return String.valueOf(status);
+        }
+        if (status >= 500 && status < 600) {
+            return "5xx";
+        }
+        return "other";
+    }
+
+    /** 收集可重复的 --header "Name: Value"（首个冒号切分，容忍缺空格；缺名字丢弃并告警） */
+    private static List<String[]> collectHeaders(String[] args) {
+        List<String[]> list = new ArrayList<>();
+        for (int i = 0; i < args.length - 1; i++) {
+            if (!"--header".equals(args[i])) {
+                continue;
+            }
+            String raw = args[i + 1];
+            int idx = raw.indexOf(':');
+            if (idx <= 0) {
+                System.err.println("忽略非法 --header（需 \"Name: Value\" 形态）：" + raw);
+                continue;
+            }
+            list.add(new String[] {raw.substring(0, idx).trim(), raw.substring(idx + 1).trim()});
+        }
+        return list;
     }
 
     /** 百分位（线性插值），sorted 为升序样本 */
@@ -246,6 +313,19 @@ public class LoadTest {
                 sb.append(", ");
             }
             sb.append('"').append(e.getKey() < 0 ? "EXCEPTION" : e.getKey()).append("\": ").append(e.getValue());
+            first = false;
+        }
+        return sb.append('}').toString();
+    }
+
+    private static String toJsonStr(Map<String, Long> map) {
+        StringBuilder sb = new StringBuilder("{");
+        boolean first = true;
+        for (Map.Entry<String, Long> e : map.entrySet()) {
+            if (!first) {
+                sb.append(", ");
+            }
+            sb.append('"').append(e.getKey()).append("\": ").append(e.getValue());
             first = false;
         }
         return sb.append('}').toString();
