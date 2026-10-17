@@ -796,3 +796,20 @@
 | 独立复核 | 五块全 PASS 零阻断（块一 4 笔提交链全等；块二红线与零触碰 4 项全 PASS；块三双端门禁实测 7 项亲自复跑全 PASS：surefire 63/78/221/321/203/110/36、真机 PostGIS 5 用例真跑非跳过、契约门纯净 worktree rc=0、token 门 2162 精确持平、词面门四 locale ZERO_HIT+探针对照、checkstyle delta=0 且新文件不在扫描面、diff 净、ls-files 纯 LF；块四证据链核对 PASS，独立 JDBC 探针反向坐实口令漂移排查结论；块五只改清单三向全等 4=4=4）；非阻断 4 项集中登记封盘笔（N1 baseline 时点口径 / N2 提交信息措辞 / N3 机器负载耗时差异 / N4 脚本端口展示行模板） |
 | 是否到达外部门槛 | **已到达**（补记笔 2026-10-18 翻转）：封盘批次（5 笔 = TASK-264 补记笔 `96caca4` + 立项笔 `4f3060f` + C-01 `97ddde9` + C-02 `68afd35` + 封盘笔 `6227056`）推送后 GitHub Actions CI run **`39053016034`** 权威核验 conclusion=**success** 全 job 绿（`web` ✓ 23s / `build` ✓ 11m18s / `probe-ubuntu26` skipped=if 门禁正确生效旁证），headSha `6227056` 与封盘批次匹配，外部终验达成完整闭环 |
 | 状态 | **已终裁 ACCEPT（2026-10-18 指导侧）**：指导亲核三块 + 独立复核五块双 PASS 零阻断；4 文件白名单双向全等；E13 PostGIS 真实空间库复验端到端闭环；surefire 63/78/221/321/203/110/36 新基线确立；CI run `39053016034` 全绿 headSha 匹配（2026-10-18 补记笔登记），完整闭环 |
+
+## 验收记录：`TASK-265`（全链路高并发压测与容量基准建立，FULL 档，2026-10-18 立项）
+
+| 项 | 内容 |
+| --- | --- |
+| 开工基线 | main @ `c4ad1b1`（TASK-258 外部终验补记笔；实测领先 origin 1 笔，本地保留随批次推送） |
+| 分级定档 | FULL（全链路多服务高并发压测、LoadTest 虚拟线程引擎增强、自动化编排脚本与容量基准报告产出；跨压测脚本、测试工程与性能数据；独立复核子 agent + 指导亲核） |
+| 亲验证据 | 三项全部坐实：①中间件全栈（MySQL 3307、PostGIS 5433、Nacos 8848、RocketMQ 9876/10909、Redis 6379）已全量启动就绪；②既有 LoadTest 仅覆盖单个提交接口，缺少 Feed 流、批量点赞与榜单聚合等多业务链路场景覆盖；③全仓 54 项治理闭环后亟需建立标准高并发容量基准与连接池表现报告 |
+| 白名单 | 3+1 项：`scripts/perf/LoadTest.java` + `scripts/perf/benchmark-e2e.sh` + `docs/perf/benchmark-e2e-capacity-report.md` + 台账 `work/mailbox/tasks/TASK-265/handoff.md`（零触碰生产 Java 代码/常规单测/配置/pom/web） |
+| 核心实现 | R1 扩展 LoadTest.java 支持多端点、自定义请求头与细粒度状态码统计；R2 新增自动化压测编排脚本 benchmark-e2e.sh（100755）；R3 产出全链路容量基准报告 benchmark-e2e-capacity-report.md |
+| 门禁要求 | 七门禁全量逐位（surefire 63/78/221/321/203/110/36 严格保持）+ 契约门（判据 B 机器比对）+ token 门 29 项逐位持平（期望值口径：C-02 树 = 2162 + 29 = 2191）+ 词面门四 locale ZERO_HIT + 探针阳性对照 + checkstyle delta=0 + diff --check 净；双提交 C-01/C-02 |
+| 受限预登记 | 压测依赖本地运行环境与内存，按机器能力分档测试，生产 Java 业务代码保持零修改 |
+| 实施与门禁 | 待实施 |
+| 指导亲核 | 待亲核 |
+| 独立复核 | 待复核 |
+| 是否到达外部门槛 | 本地压测治理课题，不触碰微服务核心依赖 |
+| 状态 | **已立项待派发（2026-10-18 指导侧）**：开工基线 main @ c4ad1b1，两件套已落库，待派发实施子 agent |
