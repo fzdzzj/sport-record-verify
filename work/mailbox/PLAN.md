@@ -712,3 +712,15 @@
 | 是否到达外部门槛 | **未到达**：封盘批次（5 笔 = 立项笔 `27181dc` + C-01 `3ab2f04` + C-02 `2434842` + TASK-259 补记笔 `83cf5f2` + 封盘笔）推送后 GitHub Actions CI 权威核验，全绿由补记笔翻转为已到达 |
 | 状态 | **已终裁 ACCEPT（2026-10-17 指导侧）**：R5 零改动收口追认（预登记路径内、证据链复核逐位复现）；契约门窗口并集效应沿时点标签惯例封盘笔消化；token 终态读数 2046 订正登记；N2（sql/02:34 函数索引 ERROR 3762——E23 R5 收益从未兑现、新装库 init 中断风险）+ R5 UNION ALL perf 口径登记 BACKLOG 待用户拍板；待 CI 外部终验读数由补记笔登记 |
 
+## 验收记录：`TASK-261`（G 系批 G-3——跨服务与查询边界 G3+G4+G10，FULL 档，2026-10-17 立项）
+
+| 项 | 内容 |
+| --- | --- |
+| 开工基线 | main @ `<立项笔哈希>`（TASK-261 立项笔；以开工实测 `git rev-parse HEAD` 回填 handoff 为准） |
+| 分级定档 | FULL（G3 触碰读取面可见性授权门 assertCanView 批量路径重构 + 跨服务 Feign 消费面，安全语义敏感禁降级；跨 record/user/verify 三模块 → 七模块全量逐位验证 + 独立复核子agent + 指导亲核） |
+| 亲验证据 | 三项全部坐实（spec §1 实测行号）：G3 双落点 RecordLikeService L358-372 逐条 selectById+assertCanView + SportRecordService L1184-1185 逐条 areFriends Feign + 修法前提 listFriendIds 契约已存在（api L98 + fallback，零新增契约）+ feed 先例 L789-794；G4 四处 size 直通（pagePoints L531 / 通知 L112-121 / 好友 L347/L432）+ 范式先例 MAX_MY_RECORDS_SIZE=500 双钳制写法 L724-725；G10 VerifyService L230-235 无界 + EXHAUSTED_LIMIT_MAX=200 同文件先例 |
+| 白名单 | 9+5 项：record 两主类 + 两测试 + user 两服务类 + user 测试落点（执行侧选定登记）+ VerifyService + verify 测试落点（执行侧选定登记）+ 台账 5（零触碰 api 模块/全部控制器层/其余服务 src/test/pom/package.json/sql/scripts/web） |
+| 核心实现 | R1 getLikesBatch 批量重构（selectBatchIds 单查 + listFriendIds 好友集懒拉一次 + FRIENDS contains 内存判定 + assertCanView 公共签名与门矩阵语义不变 + fail-safe 降级对齐）；R2 四处服务层双钳制（safePage/safeSize 沿 L724-725 先例，值 500）；R3 listPendingAppeals LIMIT 200（沿 EXHAUSTED_LIMIT_MAX 值域，Javadoc 语义收窄登记） |
+| 门禁要求 | 七门禁全量逐位（surefire 63/78/215/310/200/109/35 只增不减；三服务主类有 diff 静态门纯净 worktree 双向坐实）+ 契约/token/词面/checkstyle/diff --check 照跑；双提交 C-01/C-02 |
+| 受限预登记 | spec §5 五项：G3 收益静态推论无压测（mock 语义承载）、好友集懒拉等价性单测承载、G4 上限 500 范式对齐值、G10 防御性语义收窄、Nacos 未核 |
+
