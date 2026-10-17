@@ -689,5 +689,9 @@
 | 核心实现 | R1 compose 六服务 TZ=Asia/Shanghai；R2 推导改区 BUSINESS_ZONE 常量（唯一生产代码改动）；R3 L530-532 断言适配（向演进同步非删弱）；R4 边界用例 ≥4（固定 Instant + 显式 ZoneId，runner 时区无关：跨日/23:59/晨跑归日/周月窗口） |
 | 门禁要求 | 七门禁全量逐位（surefire 63/78/215/302/200/108/35 只增不减）+ compose config 配置层断言 + 契约/token/词面/checkstyle/diff --check 照跑；双提交 C-01/C-02 |
 | 受限预登记 | spec §5 四项：真实容器 JVM user.timezone 运行态读数未实测（配置层承载）、存量 UTC 墙钟数据不迁移、非东八浏览器显示错位已知边界、Nacos 运行时未核 |
-| 状态 | **已立项待派发**（2026-10-17 指导侧立项，两件套已落库 work/mailbox/tasks/TASK-259/；实施派发包提示词已生成待用户派发执行子agent） |
+| 实施与门禁 | C-01 `48a0a45`（fix(record): G1时区语义全链统一，恰 3 文件 +243/−14：compose 六服务 TZ +18 / 主类 R2+偏差①牵连带 +23/−9 / 测试 R3+R4 六测 +202/−5）+ C-02 `692073b`（台账 +53/−16）；七门禁全绿：offline 七模块 rc=0（63/78/215/**308**/200/108/35，record 302→308 恰 +6 零删减）、compose config 两文件口径 rc=0（TZ 渲染面恰 8 处=六服务+mysql/postgis 既有 2）、契约门三读 rc=0（判据 B 恰 5 token）、token 门 29 项 SUM 2017 逐位持平零命中、词面门 ZERO_HIT+探针阳性对照（.txt）、checkstyle delta=0（恰 4 条既有 JavadocType，L1050→L1059 +9 位移=常量块插入，纯净 worktree 双向坐实）、diff --check 双提交净（业务件 CRLF/台账 LF） |
+| 指导亲核 | FULL 档亲核三块全 PASS：①Git 摘要（porcelain 空、b18c9fe→48a0a45→692073b、领先 5 笔、C-01 stat 逐字吻合）；②定向抽查 3 处（R2 BUSINESS_ZONE L1056 常量+L1079-1080 推导改区；偏差① 落点 L1114-1125 三元分支 startTimeDerived ? now(BUSINESS_ZONE) : now()——推导值东八帧/显式值 JVM 帧语义精细正确；R1 TZ 恰 6 处 + R4 六测落点 L603/626/665/693/721）；③回报一致性（+6 与六测吻合、红→绿机理自洽；N-1：C-02 回报 +67/−30 为笔误，实测 +53/−16） |
+| 独立复核 | 五块全 PASS 零阻断：Git 链/红线抽查（白名单外 17 项显式路径全零 diff、偏差①与修前基线 L1107 对照成立、全文 ZoneOffset 零残留 import 已移除）/双端门禁 7/7 独立复现（含 UTC runner 反向实测 _JAVA_OPTIONS=-Duser.timezone=UTC 308 全绿——双向 runner 时区无关性坐实）/证据链逐项比对/handoff §2 五行同序全等；N-1~N-6 非阻断（均为文字层笔误：C-02 行数、R1 行数表述、清理件命名、白名单项次引用、五法六测计数、R4-6 相对 Instant 宽松表述——实质均无碍，集中登记本笔不退改 handoff 原文保持执行侧笔迹） |
+| 是否到达外部门槛 | **待到达**：封盘批次（6 笔 = TASK-257 补记笔 `a21ee02` + G 系登记笔 `50d1877` + 立项笔 `b18c9fe` + C-01 `48a0a45` + C-02 `692073b` + 封盘笔）推送后 GitHub Actions CI 权威核验，全绿由补记笔翻转为已到达 |
+| 状态 | **已终裁 ACCEPT（2026-10-17 指导侧）**：偏差①（validateTimeRationality 比对帧同步，红→绿证据链完整+三元分支语义正确）与偏差②（compose 两文件 CI 权威口径，overlay 既有行为附基线同败证据）均追认；待 CI 外部终验读数由补记笔登记完整闭环 |
 
