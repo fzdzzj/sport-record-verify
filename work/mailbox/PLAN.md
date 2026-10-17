@@ -709,8 +709,8 @@
 | 实施与门禁 | C-01 `3ab2f04`（fix(record)，恰 5 文件 +163/−26：R1 updateVisibility 单列 UPDATE + R4 COALESCE 口径 + R2 tie-break + R3 两处注释订正 + 并发语义/口径/SQL 契约新测）+ C-02 `2434842`（台账 +33/−13）；七门禁全绿：offline rc=0（63/78/215/**310**/200/**109**/35，record +2、leaderboard +1 恰为本笔新测、mapmatch 35 持平）、契约门三读 rc=0（判据 B 恰 7 路径）、token 门基线 2017 逐位持平 + 终态 2046（+29 恰为 handoff §3 枚举行，沿既有口径）、词面门 ZERO_HIT+探针对照、checkstyle delta=0（record 既有 4 条 JavadocType L1059→L1076 +17 位移，纯净 worktree 双向坐实）、diff --check 净；R5 EXPLAIN 四场景（scratch 167,365 行）：auth-on filesort 坐实、OR 拆分计划逐位相同、UNION ALL 外层仍 filesort——消除须加索引触发 §6 停止条件零改动收口 |
 | 指导亲核 | 三块全 PASS：①Git 摘要（porcelain 空、恰 2 笔、diff 7 文件与 handoff §2 全等、sql/ 零触碰）；②定向抽查（R1 L623-625 单列 SET 不含 status/version + DTO 局部变量 + 归属校验前置；R2+R3a L114-122 tie-break 落位 + 注释如实登记 idx_status_settled）；③一致性裁决（surefire 净增恰为本笔新测；R5 零改动收口属 spec §3 预登记双结局+§6 停止条件路径非偏差；N2 函数索引 ERROR 3762 如实登记） |
 | 独立复核 | 五块全 PASS 零阻断（4/6/6/5/1 子项全过：契约门 C-02 时点纯净 worktree 回放 rc=0 判据 B 通过、token 双读数口径实证、R5 四场景逐位复现、pageFeed 方法体双向提取逐字相同、N2 单双括号一次性库复验后即删）；非阻断 5 项集中登记封盘笔（中 1：契约门 rc 时点性=补记笔窗口并集效应沿时点标签惯例；低 4：token 工作树 SUM 终态订正 2046、N1 idx_archive 实存误列缺失、spec §1 行号微漂、UNION ALL Extra 微差） |
-| 是否到达外部门槛 | **未到达**：封盘批次（5 笔 = 立项笔 `27181dc` + C-01 `3ab2f04` + C-02 `2434842` + TASK-259 补记笔 `83cf5f2` + 封盘笔）推送后 GitHub Actions CI 权威核验，全绿由补记笔翻转为已到达 |
-| 状态 | **已终裁 ACCEPT（2026-10-17 指导侧）**：R5 零改动收口追认（预登记路径内、证据链复核逐位复现）；契约门窗口并集效应沿时点标签惯例封盘笔消化；token 终态读数 2046 订正登记；N2（sql/02:34 函数索引 ERROR 3762——E23 R5 收益从未兑现、新装库 init 中断风险）+ R5 UNION ALL perf 口径登记 BACKLOG 待用户拍板；待 CI 外部终验读数由补记笔登记 |
+| 是否到达外部门槛 | **已到达**（补记笔 2026-10-17 翻转）：封盘批次（5 笔 = 立项笔 `27181dc` + C-01 `3ab2f04` + C-02 `2434842` + TASK-259 补记笔 `83cf5f2` + 封盘笔 `1dda602`）推送后 GitHub Actions CI run **`38999061241`** 权威核验 conclusion=**success** 全 job 绿，headSha `1dda602` 与封盘批次匹配，外部终验达成完整闭环 |
+| 状态 | **已终裁 ACCEPT（2026-10-17 指导侧）**：R5 零改动收口追认（预登记路径内、证据链复核逐位复现）；契约门窗口并集效应沿时点标签惯例封盘笔消化；token 终态读数 2046 订正登记；N2（sql/02:34 函数索引 ERROR 3762——E23 R5 收益从未兑现、新装库 init 中断风险）+ R5 UNION ALL perf 口径登记 BACKLOG 待用户拍板；CI run `38999061241` 全绿 headSha 匹配（2026-10-17 补记笔登记），完整闭环 |
 
 ## 验收记录：`TASK-261`（G 系批 G-3——跨服务与查询边界 G3+G4+G10，FULL 档，2026-10-17 立项）
 
