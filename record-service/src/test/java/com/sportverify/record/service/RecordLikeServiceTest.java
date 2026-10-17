@@ -715,13 +715,17 @@ class RecordLikeServiceTest {
         verify(redis, never()).delete(any(List.class));
     }
 
-    // ==================== 批量点赞态查询（TASK-240 B7） ====================
+    // ==================== 批量点赞态查询（TASK-240 B7；TASK-261 R1 批量重构） ====================
 
     /** 判别式：多条可用记录经一次 Pipeline 往返返回点赞数与 liked 状态（RTT=1） */
     @Test
     void getLikesBatch_returnsBatchLikesInSinglePipeline() {
-        when(sportRecordMapper.selectById(1L)).thenReturn(record(RecordStatus.PASSED));
-        when(sportRecordMapper.selectById(2L)).thenReturn(record(RecordStatus.PASSED, 2L, 200L));
+        when(sportRecordMapper.selectBatchIds(List.of(1L, 2L))).thenReturn(java.util.Arrays.asList(
+                record(RecordStatus.PASSED), record(RecordStatus.PASSED, 2L, 200L)));
+        // 批量授权协作器（TASK-261 R1）：mock 的批量重载默认整批透传，可见性门语义由
+        // SportRecordServiceTest#assertCanViewBatch_* 承载
+        when(sportRecordService.assertCanView(anyList(), eq(100L)))
+                .thenAnswer(inv -> inv.getArgument(0));
         // authorized 两条，userId 非空 → 每条 2 个响应项：count, liked
         when(redis.executePipelined(any(RedisCallback.class)))
                 .thenReturn(List.of("3", Boolean.TRUE, "0", Boolean.FALSE));
@@ -738,32 +742,40 @@ class RecordLikeServiceTest {
         verify(redis).executePipelined(any(RedisCallback.class));
     }
 
-    /** 判别式：空入参会安全返回空列表，零 Pipeline 交互 */
+    /** 判别式：空入参会安全返回空列表，零 Pipeline 交互、零 Mapper/授权协作器触达 */
     @Test
     void getLikesBatch_emptyOrNullInput_returnsEmpty() {
         assertEquals(List.of(), service.getLikesBatch(null, 100L));
         assertEquals(List.of(), service.getLikesBatch(List.of(), 100L));
         assertEquals(List.of(), service.getLikesBatch(java.util.Arrays.asList((Long) null), 100L));
         verify(redis, never()).executePipelined(any(RedisCallback.class));
+        verify(sportRecordMapper, never()).selectBatchIds(anyList());
+        verify(sportRecordService, never()).assertCanView(anyList(), any());
     }
 
-    /** 判别式：去重保序——重复 id / null 被剔除，保留首次出现顺序 */
+    /** 判别式：去重保序——重复 id / null 被剔除，保留首次出现顺序；去重后列表整批恰一次进 mapper */
     @Test
     void getLikesBatch_dedupPreservesOrder() {
-        when(sportRecordMapper.selectById(2L)).thenReturn(record(RecordStatus.PASSED, 2L, 200L));
+        when(sportRecordMapper.selectBatchIds(List.of(2L)))
+                .thenReturn(List.of(record(RecordStatus.PASSED, 2L, 200L)));
+        when(sportRecordService.assertCanView(anyList(), eq(100L)))
+                .thenAnswer(inv -> inv.getArgument(0));
         when(redis.executePipelined(any(RedisCallback.class))).thenReturn(List.of("5", Boolean.TRUE));
 
         List<LikeDTO> dtos = service.getLikesBatch(java.util.Arrays.asList(2L, 2L, null, 2L), 100L);
 
         assertEquals(1, dtos.size());
         assertEquals(2L, dtos.get(0).getRecordId());
-        verify(sportRecordMapper, org.mockito.Mockito.times(1)).selectById(2L);
+        verify(sportRecordMapper, org.mockito.Mockito.times(1)).selectBatchIds(List.of(2L));
     }
 
     /** 判别式：缓存未命中（count 为 null）→ 回退 readCount 补齐（DB 兜底回填） */
     @Test
     void getLikesBatch_cacheMiss_fallsBackToReadCount() {
-        when(sportRecordMapper.selectById(1L)).thenReturn(record(RecordStatus.PASSED));
+        when(sportRecordMapper.selectBatchIds(List.of(1L)))
+                .thenReturn(List.of(record(RecordStatus.PASSED)));
+        when(sportRecordService.assertCanView(anyList(), eq(100L)))
+                .thenAnswer(inv -> inv.getArgument(0));
         when(redis.executePipelined(any(RedisCallback.class)))
                 .thenReturn(java.util.Arrays.asList(null, Boolean.FALSE));   // count 缓存缺失
         when(valueOps.get("like:count:1")).thenReturn(null);        // readCount 主键缺失
@@ -777,17 +789,19 @@ class RecordLikeServiceTest {
         verify(recordLikeMapper).countByRecordId(1L);   // DB 兜底触发
     }
 
-    /** 判别式：不可视记录安全过滤——记录不存在 / assertCanView 抛 403 均被跳过，不影响整批 */
+    /** 判别式：不可视记录安全过滤——记录不存在 / 批量门未过均被跳过，不影响整批 */
     @Test
     void getLikesBatch_filtersInaccessibleRecords() {
-        // id=1 不可视（门抛 403）；id=2 不存在；id=3 可视
-        when(sportRecordMapper.selectById(1L)).thenReturn(record(RecordStatus.PASSED));
-        doThrow(new BizException(ResultCode.FORBIDDEN))
-                .when(sportRecordService).assertCanView(
-                        org.mockito.ArgumentMatchers.<SportRecord>argThat(r -> java.util.Objects.equals(1L, r.getId())),
-                        eq(100L));
-        when(sportRecordMapper.selectById(2L)).thenReturn(null);
-        when(sportRecordMapper.selectById(3L)).thenReturn(record(RecordStatus.PASSED, 3L, 300L));
+        // id=1 不可视（批量门剔除，等价单条门 403）；id=2 不存在（批量加载即缺席）；id=3 可视
+        when(sportRecordMapper.selectBatchIds(List.of(1L, 2L, 3L))).thenReturn(java.util.Arrays.asList(
+                record(RecordStatus.PASSED), record(RecordStatus.PASSED, 3L, 300L)));
+        when(sportRecordService.assertCanView(anyList(), eq(100L))).thenAnswer(inv -> {
+            List<SportRecord> in = inv.getArgument(0);
+            // 批量门等价动作「不过门剔除」：模拟 id=1 未过门
+            return in.stream()
+                    .filter(r -> !java.util.Objects.equals(1L, r.getId()))
+                    .toList();
+        });
         when(redis.executePipelined(any(RedisCallback.class))).thenReturn(List.of("1", Boolean.TRUE));
 
         List<LikeDTO> dtos = service.getLikesBatch(List.of(1L, 2L, 3L), 100L);
@@ -800,8 +814,10 @@ class RecordLikeServiceTest {
     /** 判别式：userId=null（降级态）→ 每记录仅 1 个 count 响应项，liked 恒 false */
     @Test
     void getLikesBatch_userIdNull_onlyCountItem() {
-        when(sportRecordMapper.selectById(1L)).thenReturn(record(RecordStatus.PASSED));
-        when(sportRecordMapper.selectById(2L)).thenReturn(record(RecordStatus.PASSED, 2L, 200L));
+        when(sportRecordMapper.selectBatchIds(List.of(1L, 2L))).thenReturn(java.util.Arrays.asList(
+                record(RecordStatus.PASSED), record(RecordStatus.PASSED, 2L, 200L)));
+        when(sportRecordService.assertCanView(anyList(), any()))
+                .thenAnswer(inv -> inv.getArgument(0));
         when(redis.executePipelined(any(RedisCallback.class))).thenReturn(List.of("3", "0"));
 
         List<LikeDTO> dtos = service.getLikesBatch(List.of(1L, 2L), null);
@@ -814,12 +830,33 @@ class RecordLikeServiceTest {
     /** 判别式：全部记录均不可视 → 返回空列表，零 Pipeline 交互 */
     @Test
     void getLikesBatch_allInaccessible_returnsEmpty() {
-        when(sportRecordMapper.selectById(1L)).thenReturn(record(RecordStatus.PASSED));
-        doThrow(new BizException(ResultCode.FORBIDDEN))
-                .when(sportRecordService).assertCanView(any(SportRecord.class), eq(100L));
+        when(sportRecordMapper.selectBatchIds(List.of(1L)))
+                .thenReturn(List.of(record(RecordStatus.PASSED)));
+        when(sportRecordService.assertCanView(anyList(), eq(100L))).thenReturn(List.of());
 
         assertEquals(List.of(), service.getLikesBatch(List.of(1L), 100L));
         verify(redis, never()).executePipelined(any(RedisCallback.class));
+    }
+
+    /** 判别式（TASK-261 R1）：批内 DB 单查——selectBatchIds 恰一次、逐条 selectById 零调用（N+1 消除） */
+    @Test
+    void getLikesBatch_singleBatchedDbQuery_noPerIdSelect() {
+        when(sportRecordMapper.selectBatchIds(List.of(1L, 2L, 3L))).thenReturn(java.util.Arrays.asList(
+                record(RecordStatus.PASSED), record(RecordStatus.PASSED, 2L, 200L),
+                record(RecordStatus.PASSED, 3L, 300L)));
+        when(sportRecordService.assertCanView(anyList(), eq(100L)))
+                .thenAnswer(inv -> inv.getArgument(0));
+        when(redis.executePipelined(any(RedisCallback.class)))
+                .thenReturn(List.of("1", Boolean.TRUE, "2", Boolean.TRUE, "3", Boolean.TRUE));
+
+        List<LikeDTO> dtos = service.getLikesBatch(List.of(1L, 2L, 3L), 100L);
+
+        assertEquals(3, dtos.size());
+        assertEquals(1L, dtos.get(0).getRecordId());
+        assertEquals(2L, dtos.get(1).getRecordId());
+        assertEquals(3L, dtos.get(2).getRecordId());
+        verify(sportRecordMapper, times(1)).selectBatchIds(List.of(1L, 2L, 3L));
+        verify(sportRecordMapper, never()).selectById(anyLong());
     }
 
     /** 判别式（TASK-254 E12）：原始入参 51 条（去重前）→ 拒绝式 BizException（非截断），
@@ -835,6 +872,7 @@ class RecordLikeServiceTest {
         assertTrue(e.getMessage().contains("50"), e.getMessage());
         verify(redis, never()).executePipelined(any(RedisCallback.class));
         verify(sportRecordMapper, never()).selectById(anyLong());
+        verify(sportRecordMapper, never()).selectBatchIds(anyList());
     }
 
     /** 判别式（TASK-254 E12）：恰 50 条原始入参（含重复与 null）→ 正常，去重后走既有逻辑 */
@@ -848,8 +886,14 @@ class RecordLikeServiceTest {
         ids.add(1L);   // 49：重复
         ids.add(2L);   // 50：重复
         assertEquals(50, ids.size(), "原始入参恰 50 条（含重复与 null）");
-        when(sportRecordMapper.selectById(1L)).thenReturn(record(RecordStatus.PASSED));
+        List<Long> distinct = new ArrayList<>();
+        for (long i = 1; i <= 47; i++) {
+            distinct.add(i);
+        }
+        when(sportRecordMapper.selectBatchIds(distinct)).thenReturn(List.of(record(RecordStatus.PASSED)));
         // 去重后 47 个 id，其中仅 1 存在；authorized 1 条 → userId 非空 2 个响应项
+        when(sportRecordService.assertCanView(anyList(), eq(100L)))
+                .thenAnswer(inv -> inv.getArgument(0));
         when(redis.executePipelined(any(RedisCallback.class))).thenReturn(List.of("3", Boolean.TRUE));
 
         List<LikeDTO> dtos = service.getLikesBatch(ids, 100L);

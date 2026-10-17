@@ -1,6 +1,9 @@
 package com.sportverify.verify.service;
 
+import com.baomidou.mybatisplus.core.MybatisConfiguration;
+import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.conditions.update.UpdateWrapper;
+import com.baomidou.mybatisplus.core.metadata.TableInfoHelper;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
 import com.github.benmanes.caffeine.cache.Cache;
@@ -30,6 +33,7 @@ import com.sportverify.verify.mapper.VerificationResultMapper;
 import com.sportverify.verify.mapper.VerifyEventOutboxMapper;
 import com.sportverify.verify.mq.VerifyEventProducer;
 import org.apache.rocketmq.spring.core.RocketMQTemplate;
+import org.apache.ibatis.builder.MapperBuilderAssistant;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
@@ -408,5 +412,41 @@ class VerifyServiceTest {
 
         assertEquals(1L, dto.getRecordId());
         assertEquals(Verdict.VERIFYING.getCode(), dto.getVerdict());
+    }
+
+    // ==================== 待审申诉队列（B15；TASK-261 R3 LIMIT 收口） ====================
+
+    /** 判别式（TASK-261 R3，G10 无界收口）：SQL 末段 LIMIT 200 + ORDER BY id DESC
+     *  （截断保最新语义由排序方向承载；常量硬编码拼接，无注入面） */
+    @Test
+    @SuppressWarnings("unchecked")
+    void listPendingAppeals_limit200OrderByIdDesc() {
+        TableInfoHelper.initTableInfo(
+                new MapperBuilderAssistant(new MybatisConfiguration(), ""), Appeal.class);
+        when(appealMapper.selectList(any())).thenReturn(List.of());
+
+        service.listPendingAppeals();
+
+        ArgumentCaptor<LambdaQueryWrapper> captor = ArgumentCaptor.forClass(LambdaQueryWrapper.class);
+        verify(appealMapper).selectList(captor.capture());
+        String sql = captor.getValue().getSqlSegment();
+        assertTrue(sql.contains("ORDER BY id DESC"), "截断保最新：必须按 id DESC 排序");
+        assertTrue(sql.endsWith("LIMIT 200"), "无界收口：SQL 末段必须是 LIMIT 200");
+    }
+
+    /** 行为面：当页行（DB 侧已按 LIMIT 截断）逐条映射为 AppealDTO */
+    @Test
+    void listPendingAppeals_mapsRowsToDtos() {
+        Appeal row = new Appeal();
+        row.setId(9L);
+        row.setRecordId(5L);
+        row.setUserId(100L);
+        when(appealMapper.selectList(any())).thenReturn(List.of(row));
+
+        List<AppealDTO> out = service.listPendingAppeals();
+
+        assertEquals(1, out.size());
+        assertEquals(9L, out.get(0).getId());
+        assertEquals(5L, out.get(0).getRecordId());
     }
 }

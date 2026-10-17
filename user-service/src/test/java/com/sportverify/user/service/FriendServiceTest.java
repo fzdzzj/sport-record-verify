@@ -574,6 +574,34 @@ class FriendServiceTest {
         assertThrows(IllegalArgumentException.class, () -> service.listFriends(null, 1, 20));
     }
 
+    /** 判别式（TASK-261 R2c，G4）：listPendingRequests 双钳制——page&lt;1 收敛 1、size 超限收敛 500 */
+    @Test
+    @SuppressWarnings("unchecked")
+    void listPendingRequests_clampsPageAndSize() {
+        when(requestMapper.selectPage(any(Page.class), any())).thenReturn(new Page<>(1, 20, 0));
+
+        service.listPendingRequests(2001L, 0, 100000);
+
+        ArgumentCaptor<Page> page = ArgumentCaptor.forClass(Page.class);
+        verify(requestMapper).selectPage(page.capture(), any());
+        assertEquals(1L, page.getValue().getCurrent(), "page<1 必须收敛到 1");
+        assertEquals(500L, page.getValue().getSize(), "size 超限必须收敛到 500");
+    }
+
+    /** 判别式（TASK-261 R2d，G4）：listFriends 双钳制——page&lt;1 收敛 1、size 超限收敛 500 */
+    @Test
+    @SuppressWarnings("unchecked")
+    void listFriends_clampsPageAndSize() {
+        when(friendshipMapper.selectPage(any(Page.class), any())).thenReturn(new Page<>(1, 20, 0));
+
+        service.listFriends(1001L, -5, 99999);
+
+        ArgumentCaptor<Page> page = ArgumentCaptor.forClass(Page.class);
+        verify(friendshipMapper).selectPage(page.capture(), any());
+        assertEquals(1L, page.getValue().getCurrent(), "page<1 必须收敛到 1");
+        assertEquals(500L, page.getValue().getSize(), "size 超限必须收敛到 500");
+    }
+
     // ==================== areFriends（TASK-221 好友对判断） ====================
 
     /** 绿：两点互为好友（规范化 user_low<user_high selectCount>0）→ true，且共享既有 normalized 查询 */

@@ -321,9 +321,11 @@ public class RecordLikeService {
      * <ol>
      *   <li><b>空安全</b>：入参 {@code null} 或空列表直接返回 {@code Collections.emptyList()}；</li>
      *   <li><b>去重保序</b>：过滤 null、按 {@link LinkedHashMap} 去重，保留首次出现顺序；</li>
-     *   <li><b>可见性保护</b>：逐 id 经 {@link SportRecordMapper#selectById} 加载记录，
-     *       存在且通过 {@link SportRecordService#assertCanView} 才纳入；记录不存在或校验失败
-     *       捕获 {@link BizException} 安全跳过，绝不因单条记录异常导致整批 Feed 报错；</li>
+     *   <li><b>可见性保护（TASK-261 R1 批量重构）</b>：整批经 {@link SportRecordMapper#selectBatchIds}
+     *       单次批量加载（消除逐条 {@code selectById} 的批内 N+1），按去重后 id 序重组；
+     *       授权裁决经 {@link SportRecordService#assertCanView(List, Long) assertCanView} 批量重载
+     *       （门矩阵与单条完全一致，FRIENDS 好友集整批至多懒拉一次）——记录不存在或未过门的
+     *       记录安全跳过，绝不因单条记录异常导致整批 Feed 报错；</li>
      *   <li><b>单次往返（RTT=1）</b>：经 {@code stringRedisTemplate.executePipelined} 批量查询
      *       各记录 count（GET {@code like:count:{id}}）与当前用户已赞态（SISMEMBER
      *       {@code like:record:{id}:users}），交互按序解包；</li>
@@ -354,22 +356,26 @@ public class RecordLikeService {
             return Collections.emptyList();
         }
 
-        // 可见性与记录过滤：不存在的记录或不可视的记录安全跳过（不影响整批）
-        List<SportRecord> authorized = new ArrayList<>();
-        for (Long id : distinctIds) {
-            SportRecord record;
-            try {
-                record = sportRecordMapper.selectById(id);
-                if (record == null) {
-                    continue;   // 记录不存在：跳过
-                }
-                sportRecordService.assertCanView(record, userId);
-            } catch (BizException e) {
-                log.debug("批量点赞态跳过不可视记录：recordId={}, userId={}", id, userId);
-                continue;       // 不可视：跳过（捕获异常，不影响整批）
+        // 可见性与记录过滤（TASK-261 R1 批量重构）：整批经 selectBatchIds 单次批量加载
+        // （消除逐条 selectById 的批内 N+1，最坏 50 次串行 DB RTT → 1 次），按 distinctIds
+        // 去重保序重组；授权裁决收敛 SportRecordService#assertCanView 批量重载
+        // （门矩阵同单条，FRIENDS 好友集整批至多懒拉一次）——不存在的记录或未过门的记录
+        // 安全跳过（等价原逐条捕获 BizException 跳过），绝不因单条记录异常导致整批 Feed 报错
+        List<SportRecord> loaded = sportRecordMapper.selectBatchIds(distinctIds);
+        Map<Long, SportRecord> byId = new LinkedHashMap<>();
+        if (loaded != null) {
+            for (SportRecord record : loaded) {
+                byId.put(record.getId(), record);
             }
-            authorized.add(record);
         }
+        List<SportRecord> ordered = new ArrayList<>(distinctIds.size());
+        for (Long id : distinctIds) {
+            SportRecord record = byId.get(id);
+            if (record != null) {
+                ordered.add(record);   // 记录不存在：跳过
+            }
+        }
+        List<SportRecord> authorized = sportRecordService.assertCanView(ordered, userId);
         if (authorized.isEmpty()) {
             return Collections.emptyList();
         }

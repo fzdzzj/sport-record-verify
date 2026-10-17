@@ -11,6 +11,7 @@ import com.sportverify.user.mapper.NotificationMapper;
 import org.apache.ibatis.builder.MapperBuilderAssistant;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.mockito.ArgumentCaptor;
 import org.mockito.ArgumentMatchers;
 
 import java.time.LocalDateTime;
@@ -100,6 +101,21 @@ class NotificationServiceTest {
     @Test
     void pageNotifications_nullUserId() {
         assertThrows(IllegalArgumentException.class, () -> service.pageNotifications(null, 1, 20));
+    }
+
+    /** 判别式（TASK-261 R2b，G4）：双钳制——page&lt;1 收敛 1、size 超限收敛 500（MAX_NOTIFICATION_PAGE_SIZE） */
+    @Test
+    @SuppressWarnings("unchecked")
+    void pageNotifications_clampsPageAndSize() {
+        when(mapper.selectPage(any(Page.class), ArgumentMatchers.<LambdaQueryWrapper<Notification>>any()))
+                .thenReturn(new Page<>(1, 20, 0));
+
+        service.pageNotifications(1001L, 0, 100000);
+
+        ArgumentCaptor<Page> page = ArgumentCaptor.forClass(Page.class);
+        verify(mapper).selectPage(page.capture(), ArgumentMatchers.<LambdaQueryWrapper<Notification>>any());
+        assertEquals(1L, page.getValue().getCurrent(), "page<1 必须收敛到 1");
+        assertEquals(500L, page.getValue().getSize(), "size 超限必须收敛到 500");
     }
 
     // ==================== 未读数 ====================

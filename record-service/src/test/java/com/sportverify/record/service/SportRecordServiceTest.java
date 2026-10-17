@@ -1220,6 +1220,24 @@ class SportRecordServiceTest {
         assertEquals(0, out.getRecords().size());
     }
 
+    /** 判别式（TASK-261 R2a，G4）：pagePoints 双钳制——page&lt;1 收敛 1、size 超限收敛 500（MAX_POINTS_PAGE_SIZE） */
+    @Test
+    @SuppressWarnings("unchecked")
+    void pagePoints_clampsPageAndSize() {
+        SportRecord record = new SportRecord();
+        record.setId(1L);
+        record.setUserId(100L);
+        when(sportRecordMapper.selectById(1L)).thenReturn(record);
+        when(trackPointMapper.selectPage(any(Page.class), any())).thenReturn(new Page<>(1, 20, 0));
+
+        service.pagePoints(1L, 100L, 0, 100000);
+
+        ArgumentCaptor<Page> page = ArgumentCaptor.forClass(Page.class);
+        verify(trackPointMapper).selectPage(page.capture(), any());
+        assertEquals(1L, page.getValue().getCurrent(), "page<1 必须收敛到 1");
+        assertEquals(500L, page.getValue().getSize(), "size 超限必须收敛到 500");
+    }
+
     // ==================== 归属校验（TASK-204，语义被 TASK-221 可见性门细化） ====================
 
     /** 红 R1a：PRIVATE 记录 caller 非归属人 → 403（FORBIDDEN），拒绝读取他人轨迹 */
@@ -1374,6 +1392,90 @@ class SportRecordServiceTest {
         var out = service.pagePoints(1L, null, 1, 20);
 
         assertEquals(0, out.getRecords().size());
+    }
+
+    // ==================== 批量可见性裁决（TASK-261 R1，getLikesBatch 授权承载） ====================
+
+    /** 门矩阵批量等价：归属人/PUBLIC/存量 null 可见性放行、PRIVATE 非归属人剔除、入参顺序保持；
+     *  无 FRIENDS 记录 → 零 Feign（懒拉触发条件） */
+    @Test
+    void assertCanViewBatch_matrixEquivalent_orderPreserved() {
+        List<SportRecord> out = service.assertCanView(List.of(
+                rec(1L, 100L, 1, 2, "5.00"),      // 归属人 × PRIVATE → 放行
+                rec(2L, 200L, 1, 0, "5.00"),      // 陌生人 × PUBLIC → 放行
+                rec(3L, 300L, 1, null, "5.00"),   // 存量行 visibility=null → 按 PUBLIC 放行
+                rec(4L, 400L, 1, 2, "5.00")),     // 陌生人 × PRIVATE → 剔除（等价单条 403）
+                100L);
+
+        assertEquals(List.of(1L, 2L, 3L), out.stream().map(SportRecord::getId).toList(),
+                "未过门记录必须剔除，且入参顺序保持");
+        verifyNoInteractions(userApi);
+    }
+
+    /** caller=null（降级态）→ 整批放行（与单条门同语义），零 Feign */
+    @Test
+    void assertCanViewBatch_callerNull_degradePassesAll() {
+        List<SportRecord> out = service.assertCanView(List.of(
+                rec(1L, 400L, 1, 2, "5.00"), rec(2L, 200L, 1, 0, "5.00")), null);
+
+        assertEquals(2, out.size());
+        verifyNoInteractions(userApi);
+    }
+
+    /** 好友集单拉判别式（TASK-261 R1）：listFriendIds 恰一次、逐条 areFriends 零调用
+     *  （批内 N 次串行 Feign → 至多 1 次） */
+    @Test
+    void assertCanViewBatch_friends_listFriendIdsOnce_areFriendsNever() {
+        when(userApi.listFriendIds(100L)).thenReturn(Result.success(List.of(200L, 300L)));
+
+        List<SportRecord> out = service.assertCanView(List.of(
+                rec(1L, 200L, 1, 1, "5.00"), rec(2L, 300L, 1, 1, "5.00")), 100L);
+
+        assertEquals(List.of(1L, 2L), out.stream().map(SportRecord::getId).toList(),
+                "好友集命中：FRIENDS 记录放行");
+        verify(userApi, times(1)).listFriendIds(100L);
+        verify(userApi, never()).areFriends(anyLong(), anyLong());
+    }
+
+    /** 懒拉时机判别式：归属人×FRIENDS 不触发懒拉、首个非归属人 FRIENDS 触发后整批不再拉
+     *  （混批恰一次；非好友 FRIENDS 剔除） */
+    @Test
+    void assertCanViewBatch_mixedBatch_friendSetFetchedExactlyOnce() {
+        when(userApi.listFriendIds(100L)).thenReturn(Result.success(List.of(300L)));
+
+        List<SportRecord> out = service.assertCanView(List.of(
+                rec(1L, 100L, 1, 1, "5.00"),    // 归属人 × FRIENDS → 放行，不触发懒拉
+                rec(2L, 200L, 1, 0, "5.00"),    // PUBLIC → 放行
+                rec(3L, 300L, 1, 1, "5.00"),    // FRIENDS × 好友 → 放行（此处触发唯一一次懒拉）
+                rec(4L, 400L, 1, 1, "5.00")),   // FRIENDS × 非好友 → 剔除
+                100L);
+
+        assertEquals(List.of(1L, 2L, 3L), out.stream().map(SportRecord::getId).toList());
+        verify(userApi, times(1)).listFriendIds(100L);
+    }
+
+    /** fail-safe 降级（TASK-261 R1）：listFriendIds 软降级空列表 → FRIENDS 全跳过，其余保留
+     *  （与 areFriends fallback false 同语义，隐私失败安全） */
+    @Test
+    void assertCanViewBatch_degradeEmptyFriendSet_friendsAllSkipped() {
+        when(userApi.listFriendIds(100L)).thenReturn(Result.success(List.of()));
+
+        List<SportRecord> out = service.assertCanView(List.of(
+                rec(1L, 200L, 1, 1, "5.00"), rec(2L, 300L, 1, 0, "5.00")), 100L);
+
+        assertEquals(List.of(2L), out.stream().map(SportRecord::getId).toList(),
+                "降级空好友集：FRIENDS 记录必须全部按非好友剔除");
+    }
+
+    /** fail-safe 异常（TASK-261 R1）：listFriendIds 抛错 → FRIENDS 剔除不阻断（不向上抛） */
+    @Test
+    void assertCanViewBatch_listFriendIdsThrows_friendsSkippedFailSafe() {
+        when(userApi.listFriendIds(100L)).thenThrow(new RuntimeException("熔断"));
+
+        List<SportRecord> out = service.assertCanView(
+                List.of(rec(1L, 200L, 1, 1, "5.00")), 100L);
+
+        assertTrue(out.isEmpty(), "好友集拉取异常：FRIENDS 记录按非好友剔除，绝不整批报错");
     }
 
     // ==================== 我的记录（TASK-211） ====================

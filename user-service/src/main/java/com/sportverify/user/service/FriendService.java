@@ -64,6 +64,12 @@ public class FriendService {
     private static final long LOCK_LEASE_SECONDS = 10;
 
     /**
+     * 好友域列表单页上限（TASK-261 R2c/R2d 分页钳制，两方法共用）.
+     * 值 500 对齐 record-service MAX_MY_RECORDS_SIZE 范式，防手滑超大一页。
+     */
+    private static final int MAX_FRIEND_PAGE_SIZE = 500;
+
+    /**
      * 同类自代理（E19，TASK-256）。批量流转 {@link #batchTransition} 经本字段委托
      * {@link #accept}/{@link #reject}，使每次调用经 Spring 事务代理——@Transactional 的
      * accept 在批量路径下同样获得「申请状态更新 + friendship 插入」两写原子性。
@@ -344,7 +350,11 @@ public class FriendService {
         if (userId == null) {
             throw new IllegalArgumentException("userId 不能为空");
         }
-        Page<FriendRequest> result = friendRequestMapper.selectPage(new Page<>(page, size),
+        // TASK-261 R2c（G4）：服务层双钳制（沿 record-service pageMyRecords 先例）
+        long safePage = Math.max(page, 1L);
+        long safeSize = Math.min(Math.max(size, 1L), MAX_FRIEND_PAGE_SIZE);
+        Page<FriendRequest> result = friendRequestMapper.selectPage(
+                new Page<>(safePage, safeSize),
                 new LambdaQueryWrapper<FriendRequest>()
                         .eq(FriendRequest::getToUser, userId)
                         .eq(FriendRequest::getStatus, FriendRequestStatus.PENDING.getCode())
@@ -429,7 +439,11 @@ public class FriendService {
         if (userId == null) {
             throw new IllegalArgumentException("userId 不能为空");
         }
-        Page<Friendship> result = friendshipMapper.selectPage(new Page<>(page, size),
+        // TASK-261 R2d（G4）：服务层双钳制（InternalFriendController 内部端点同走本方法，天然收敛）
+        long safePage = Math.max(page, 1L);
+        long safeSize = Math.min(Math.max(size, 1L), MAX_FRIEND_PAGE_SIZE);
+        Page<Friendship> result = friendshipMapper.selectPage(
+                new Page<>(safePage, safeSize),
                 new LambdaQueryWrapper<Friendship>()
                         .eq(Friendship::getUserLow, userId)
                         .or()

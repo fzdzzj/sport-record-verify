@@ -55,10 +55,12 @@ import java.time.LocalDateTime;
 import java.time.LocalTime;
 import java.time.ZoneId;
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Set;
 
 /**
  * 运动记录服务（规范「轨迹提交幂等」「轨迹分片存储」「校验状态机」）。
@@ -537,9 +539,15 @@ public class SportRecordService {
         // 归属人恒放行、PRIVATE 非归属人 403、FRIENDS 需互为好友、PUBLIC 恒放行。
         // 取代了此前的「caller==归属人」断言：PUBLIC/FRIENDS 记录因此对相应读取者可读（预期产品变更）。
         assertCanView(record, caller);
+        // TASK-261 R2a（G4）：分页双钳制（沿 pageMyRecords/pageFeed 先例）——page 下限 1、
+        // size 夹 [1,500]，归档分支与热分支共用钳制后参数；防超大一页拉全轨迹
+        // （ShardingSphere 广播 COUNT/LIMIT 内存合并放大）。500 对齐 B4 前端轨迹图
+        // 500 点/页消费口径（MAX_POINTS_PAGE_SIZE）。
+        long safePage = Math.max(page, 1L);
+        long safeSize = Math.min(Math.max(size, 1L), MAX_POINTS_PAGE_SIZE);
         Page<TrackPoint> result;
         if (Objects.equals(record.getArchived(), 1)) {
-            Page<TrackPointArchive> archPage = trackPointArchiveMapper.selectPage(new Page<>(page, size),
+            Page<TrackPointArchive> archPage = trackPointArchiveMapper.selectPage(new Page<>(safePage, safeSize),
                     new LambdaQueryWrapper<TrackPointArchive>()
                             .eq(TrackPointArchive::getRecordId, recordId)
                             .eq(TrackPointArchive::getUserId, record.getUserId())
@@ -547,7 +555,7 @@ public class SportRecordService {
             result = new Page<>(archPage.getCurrent(), archPage.getSize(), archPage.getTotal());
             result.setRecords(archPage.getRecords().stream().map(this::toHotPoint).toList());
         } else {
-            result = trackPointMapper.selectPage(new Page<>(page, size),
+            result = trackPointMapper.selectPage(new Page<>(safePage, safeSize),
                     new LambdaQueryWrapper<TrackPoint>()
                             .eq(TrackPoint::getRecordId, recordId)
                             .eq(TrackPoint::getUserId, record.getUserId())
@@ -1000,6 +1008,9 @@ public class SportRecordService {
     /** 我的记录列表单页上限（pageMyRecords / pageFeed 分页钳制共用）。 */
     private static final int MAX_MY_RECORDS_SIZE = 500;
 
+    /** 轨迹分页单页上限（TASK-261 R2a pagePoints 分页钳制）：对齐 B4 前端轨迹图 500 点/页消费口径。 */
+    private static final int MAX_POINTS_PAGE_SIZE = 500;
+
     /** 实体 → 记录概要 DTO（字段：id/sportType/distance/status/visibility/createdAt）。 */
     private RecordSummaryDTO toSummary(SportRecord record) {
         RecordSummaryDTO dto = new RecordSummaryDTO();
@@ -1189,6 +1200,82 @@ public class SportRecordService {
         }
         if (!friends) {
             throw new BizException(ResultCode.FORBIDDEN);
+        }
+    }
+
+    /**
+     * 批量可见性裁决（TASK-261 R1，getLikesBatch 批内 N+1 重构授权承载）：对一批已加载记录
+     * 执行与单条 {@link #assertCanView(SportRecord, Long)} 完全一致的门矩阵，返回通过校验的
+     * 子集（保持入参顺序，调用方按 distinctIds 去重保序组装输出）。单条语义是「不过门抛 403」，
+     * 批量语境下等价动作是「不过门剔除该记录」（getLikesBatch 契约：不可视记录安全跳过，
+     * 绝不因单条记录导致整批报错）。
+     *
+     * <p>与逐条 {@code assertCanView} 的唯一差异在 FRIENDS 分支数据源：整批<b>至多一次</b>
+     * {@code userApi.listFriendIds(caller)} 懒拉好友集，FRIENDS 判定改内存 {@code contains}——
+     * 消除批内逐条 {@code areFriends} Feign 往返（最坏 N 次串行 RTT → 至多 1 次）。
+     * 懒拉触发条件：caller 非空且批内存在「非归属人 + FRIENDS 可见性」记录时才拉取，
+     * PUBLIC-only / 纯归属人批零额外 Feign。</p>
+     *
+     * <p>门矩阵四分支语义逐字保持：caller=null（鉴权关闭降级态）整批放行；归属人放行；
+     * PUBLIC 或 visibility=null（存量行）放行；PRIVATE 非归属人剔除（等价逐条 403）；
+     * FRIENDS 非好友剔除（等价逐条 403，含归属人缺失的存量行）。</p>
+     *
+     * <p>fail-safe 对齐（UserApiFallback 先例）：listFriendIds 软降级空列表 / 拉取异常 → 空集，
+     * FRIENDS 记录按非好友剔除（与 {@code areFriends} fallback false 同语义，隐私失败安全）。</p>
+     *
+     * @param records 已加载的候选记录（顺序即期望输出顺序）
+     * @param caller  读取者（可能为 null，降级态）
+     * @return 通过可见性校验的记录子集（保持入参顺序，永不为 null）
+     */
+    public List<SportRecord> assertCanView(List<SportRecord> records, Long caller) {
+        if (records == null || records.isEmpty()) {
+            return List.of();
+        }
+        if (caller == null) {
+            // 降级态：单条门 caller=null 恒放行，同语义整批放行
+            return new ArrayList<>(records);
+        }
+        List<SportRecord> authorized = new ArrayList<>(records.size());
+        Set<Long> friendIds = null;   // 懒拉：首个「非归属人 + FRIENDS」记录触发，整批至多一次
+        for (SportRecord record : records) {
+            if (record.getUserId() != null && caller.equals(record.getUserId())) {
+                authorized.add(record);   // 归属人放行（含 PRIVATE / FRIENDS）
+                continue;
+            }
+            RecordVisibility visibility = RecordVisibility.fromCode(record.getVisibility());
+            if (visibility == null || visibility == RecordVisibility.PUBLIC) {
+                authorized.add(record);   // PUBLIC / 存量行 null 可见性放行
+                continue;
+            }
+            if (visibility == RecordVisibility.PRIVATE) {
+                continue;   // 等价单条门 403 → 批内剔除
+            }
+            // FRIENDS：懒拉好友集（整批一次），内存 contains 判定（非好友/归属人缺失 → 剔除）
+            if (friendIds == null) {
+                friendIds = loadFriendIdSet(caller);
+            }
+            if (record.getUserId() != null && friendIds.contains(record.getUserId())) {
+                authorized.add(record);
+            }
+        }
+        return authorized;
+    }
+
+    /**
+     * 批量裁决好友集懒拉（fail-safe，沿 {@link #listFeedFriendIds} 先例）：
+     * user-service 软降级（fallback 空列表）/ 返回缺数 / 异常 → 空集，
+     * FRIENDS 记录按非好友剔除（与 areFriends fallback false 同语义，不报错不阻断）。
+     */
+    private Set<Long> loadFriendIdSet(Long caller) {
+        try {
+            Result<List<Long>> resp = userApi.listFriendIds(caller);
+            if (resp == null || resp.getData() == null) {
+                return Set.of();
+            }
+            return new HashSet<>(resp.getData());
+        } catch (Exception e) {
+            log.warn("批量可见性好友集拉取异常，FRIENDS 记录按非好友剔除（fail-safe）：caller={}", caller, e);
+            return Set.of();
         }
     }
 

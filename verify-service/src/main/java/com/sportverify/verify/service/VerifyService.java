@@ -224,13 +224,24 @@ public class VerifyService {
     }
 
     /**
-     * 待审核申诉队列（B15）：按 id DESC 返回所有 PENDING 状态申诉单，
-     * 供管理后台 List<AppealDTO> 展示并驱动终判，终结盲打 ID。
+     * 待审申诉单查询上限（TASK-261 R3，G10 无界收口）.
+     * 值域沿 VerifyController EXHAUSTED_LIMIT_MAX=200 先例（=200）。
+     */
+    private static final int PENDING_APPEALS_LIMIT_MAX = 200;
+
+    /**
+     * 待审核申诉队列（B15）：按 id DESC 返回<b>最新至多
+     * {@value #PENDING_APPEALS_LIMIT_MAX} 条</b> PENDING 状态申诉单
+     * （TASK-261 R3 语义收窄：原语义为无界全量查询，积压异常态会整表倾倒；
+     * 正常待审规模远小于上限，超限积压本身属异常态），供管理后台
+     * List&lt;AppealDTO&gt; 展示并驱动终判，终结盲打 ID。
      */
     public List<AppealDTO> listPendingAppeals() {
         List<Appeal> list = appealMapper.selectList(new LambdaQueryWrapper<Appeal>()
                 .eq(Appeal::getStatus, AppealStatus.PENDING.getCode())
-                .orderByDesc(Appeal::getId));
+                .orderByDesc(Appeal::getId)
+                // LIMIT 硬编码常量拼接（无外部入参，无注入面）；截断保最新（id DESC）
+                .last("LIMIT " + PENDING_APPEALS_LIMIT_MAX));
         return list.stream().map(this::toDto).toList();
     }
 

@@ -41,6 +41,12 @@ public class NotificationService {
 
     private final NotificationMapper notificationMapper;
 
+    /**
+     * 通知列表单页上限（TASK-261 R2b 分页钳制）.
+     * 值 500 对齐 record-service MAX_MY_RECORDS_SIZE 范式，防手滑超大一页。
+     */
+    private static final int MAX_NOTIFICATION_PAGE_SIZE = 500;
+
     /** 通知偏好服务（TASK-187，权威闸门）：可选注入保证兼容，偏好与通知同库同命运 */
     @Autowired(required = false)
     NotificationPreferenceService notificationPreferenceService;
@@ -108,12 +114,20 @@ public class NotificationService {
 
     /**
      * 分页通知列表（仅收件人本人，id 倒序）。
+     *
+     * <p>分页边界（TASK-261 R2b，G4）：沿服务层双钳制范式（record-service pageMyRecords
+     * 先例）——page 下限 1、size 夹 [1,500]（{@link #MAX_NOTIFICATION_PAGE_SIZE}），
+     * 防手滑超大一页整表倾倒。</p>
      */
     public PageResult<NotificationView> pageNotifications(Long userId, long page, long size) {
         if (userId == null) {
             throw new IllegalArgumentException("userId 不能为空");
         }
-        Page<Notification> result = notificationMapper.selectPage(new Page<>(page, size),
+        long safePage = Math.max(page, 1L);
+        long safeSize =
+                Math.min(Math.max(size, 1L), MAX_NOTIFICATION_PAGE_SIZE);
+        Page<Notification> result = notificationMapper.selectPage(
+                new Page<>(safePage, safeSize),
                 new LambdaQueryWrapper<Notification>()
                         .eq(Notification::getUserId, userId)
                         .orderByDesc(Notification::getId));
