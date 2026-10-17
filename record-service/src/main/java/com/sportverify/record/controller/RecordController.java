@@ -1,6 +1,7 @@
 package com.sportverify.record.controller;
 
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
+import com.sportverify.api.common.PageResult;
 import com.sportverify.api.record.dto.MyStatsDTO;
 import com.sportverify.api.record.dto.MyStreakDTO;
 import com.sportverify.api.record.dto.RecordSubmitDTO;
@@ -19,17 +20,14 @@ import com.sportverify.common.result.Result;
 import com.sportverify.common.result.ResultCode;
 import com.sportverify.record.service.SportRecordService;
 import jakarta.servlet.http.HttpServletRequest;
-import jakarta.servlet.http.HttpServletResponse;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.format.annotation.DateTimeFormat;
-import org.springframework.http.HttpStatus;
 
 import java.time.LocalDate;
 import org.springframework.web.bind.annotation.DeleteMapping;
-import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -104,12 +102,12 @@ public class RecordController {
      * startDate/endDate（开始日期范围过滤，start<=end 校验）。非法参数抛 400（IllegalArgumentException）。
      * 全部缺省时不过滤，保持向后兼容。</p>
      *
-     * <p>分页：{@code page>=1}，{@code size} 默认 20、上限 500；响应形态对齐 points 端点的
-     * MyBatis-Plus {@code Page} 分页约定。首页统计卡与近 30 天里程自 TASK-231 起改由
+     * <p>分页：{@code page>=1}，{@code size} 默认 20、上限 500；响应形态为 api 契约
+     * {@link PageResult}（TASK-262 R3 由 MP {@code Page} 薄转换，跨服务分页统一口径）。首页统计卡与近 30 天里程自 TASK-231 起改由
      * {@code /my/stats} 全量聚合承担，本端点的 500 上限不再影响统计口径。</p>
      */
     @GetMapping("/my")
-    public Result<Page<RecordSummaryDTO>> myRecords(
+    public Result<PageResult<RecordSummaryDTO>> myRecords(
             @RequestParam(value = "userId", required = false) Long userId,
             @RequestParam(defaultValue = "1") long page,
             @RequestParam(defaultValue = "20") long size,
@@ -123,7 +121,8 @@ public class RecordController {
             throw new IllegalArgumentException("缺少必须的 userId 查询参数");
         }
         validateFilterParams(sportType, status, startDate, endDate);
-        return Result.success(sportRecordService.pageMyRecords(owner, page, size, sportType, status, startDate, endDate));
+        return Result.success(toPageResult(
+                sportRecordService.pageMyRecords(owner, page, size, sportType, status, startDate, endDate)));
     }
 
     /**
@@ -136,12 +135,12 @@ public class RecordController {
      * 陌生人记录不入 feed——预过滤与 {@code assertCanView} 在 feed 场景下等价（见判别式 R6）。</p>
      */
     @GetMapping("/feed")
-    public Result<Page<FeedItemDTO>> feed(
+    public Result<PageResult<FeedItemDTO>> feed(
             @RequestParam(defaultValue = "1") long page,
             @RequestParam(defaultValue = "20") long size,
             HttpServletRequest request) {
         Long caller = authEnabled ? resolveUserId(request, null) : null;
-        return Result.success(sportRecordService.pageFeed(caller, page, size));
+        return Result.success(toPageResult(sportRecordService.pageFeed(caller, page, size)));
     }
 
     /**
@@ -251,12 +250,12 @@ public class RecordController {
      * false 时 caller=null 降级旧行为。
      */
     @GetMapping("/{id}/points")
-    public Result<Page<TrackPointDTO>> points(@PathVariable("id") Long id,
-                                              @RequestParam(defaultValue = "1") long page,
-                                              @RequestParam(defaultValue = "20") long size,
-                                              HttpServletRequest request) {
+    public Result<PageResult<TrackPointDTO>> points(@PathVariable("id") Long id,
+                                                    @RequestParam(defaultValue = "1") long page,
+                                                    @RequestParam(defaultValue = "20") long size,
+                                                    HttpServletRequest request) {
         Long caller = authEnabled ? resolveUserId(request, null) : null;
-        return Result.success(sportRecordService.pagePoints(id, caller, page, size));
+        return Result.success(toPageResult(sportRecordService.pagePoints(id, caller, page, size)));
     }
 
     /**
@@ -328,17 +327,11 @@ public class RecordController {
     }
 
     /**
-     * 本控制器局部异常处理：1001 → HTTP 401、1002 → HTTP 403（规范以 HTTP 状态为准）；
-     * 其余业务码保持全局口径（HTTP 200 + body code）。
+     * MP {@code Page} → api 契约 {@link PageResult} 薄转换（TASK-262 R3/G14）：
+     * 字段语义与 MP Page 对齐（current/size/total/records），跨服务分页统一走 api 类型，
+     * 不再外抛 MP {@code Page}（序列化无 {@code pages} 等实现细节字段）。
      */
-    @ExceptionHandler(BizException.class)
-    public Result<Void> handleBizException(BizException e, HttpServletResponse response) {
-        log.warn("业务异常：code={}, message={}", e.getCode(), e.getMessage());
-        if (e.getCode() == ResultCode.UNAUTHORIZED.getCode()) {
-            response.setStatus(HttpStatus.UNAUTHORIZED.value());
-        } else if (e.getCode() == ResultCode.FORBIDDEN.getCode()) {
-            response.setStatus(HttpStatus.FORBIDDEN.value());
-        }
-        return Result.failure(e.getCode(), e.getMessage());
+    private static <T> PageResult<T> toPageResult(Page<T> page) {
+        return new PageResult<>(page.getCurrent(), page.getSize(), page.getTotal(), page.getRecords());
     }
 }

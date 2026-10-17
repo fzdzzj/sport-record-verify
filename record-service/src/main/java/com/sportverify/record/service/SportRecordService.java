@@ -491,18 +491,6 @@ public class SportRecordService {
     }
 
     /**
-     * 拉取记录全部轨迹点（用户端读路径，规范「记录本身不分片」）。
-     * 先查 sport_record 得到 user_id，再按 archived 标志冷热路由（WHERE 必须携带分片键）。
-     */
-    public List<TrackPointDTO> listPoints(Long recordId) {
-        SportRecord record = sportRecordMapper.selectById(recordId);
-        if (record == null) {
-            throw new BizException(ResultCode.RECORD_NOT_FOUND);
-        }
-        return routePoints(record).stream().map(this::toDto).toList();
-    }
-
-    /**
      * 一次性拉取记录详情与全部轨迹点（聚合查询，供 verify 校验输入）。
      * 先查一次 sport_record 得到元数据与 user_id，若不存在抛 3001；
      * 再按 user_id 路由对应分片查询全部轨迹点（按 seq 升序）。
@@ -1318,25 +1306,6 @@ public class SportRecordService {
         TrackPointDTO dto = new TrackPointDTO();
         BeanUtils.copyProperties(tp, dto);
         return dto;
-    }
-
-    /**
-     * 冷热路由（课题 3）：archived=1 查归档表，否则热表；两路径均携带
-     * (record_id, user_id) 双条件单分片路由并按 seq 升序。
-     */
-    private List<TrackPoint> routePoints(SportRecord record) {
-        if (Objects.equals(record.getArchived(), 1)) {
-            return trackPointArchiveMapper.selectList(
-                            new LambdaQueryWrapper<TrackPointArchive>()
-                                    .eq(TrackPointArchive::getRecordId, record.getId())
-                                    .eq(TrackPointArchive::getUserId, record.getUserId())
-                                    .orderByAsc(TrackPointArchive::getSeq))
-                    .stream().map(this::toHotPoint).toList();
-        }
-        return trackPointMapper.selectList(new LambdaQueryWrapper<TrackPoint>()
-                        .eq(TrackPoint::getRecordId, record.getId())
-                        .eq(TrackPoint::getUserId, record.getUserId())
-                        .orderByAsc(TrackPoint::getSeq));
     }
 
     /** 归档实体转热表实体形态（DTO 映射复用） */

@@ -8,7 +8,6 @@ import com.sportverify.record.dto.GoalUpsertDTO;
 import com.sportverify.record.entity.Goal;
 import com.sportverify.record.service.GoalService;
 import jakarta.servlet.http.HttpServletRequest;
-import jakarta.servlet.http.HttpServletResponse;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -126,23 +125,8 @@ public class GoalController {
     }
 
     /**
-     * 控制器局部业务异常处理：1001 → 401，1002 → 403，3001 → 404。
-     */
-    @ExceptionHandler(BizException.class)
-    public Result<Void> handleBizException(BizException e, HttpServletResponse response) {
-        log.warn("业务异常：code={}, message={}", e.getCode(), e.getMessage());
-        if (e.getCode() == ResultCode.UNAUTHORIZED.getCode()) {
-            response.setStatus(HttpStatus.UNAUTHORIZED.value());
-        } else if (e.getCode() == ResultCode.FORBIDDEN.getCode()) {
-            response.setStatus(HttpStatus.FORBIDDEN.value());
-        } else if (e.getCode() == ResultCode.RECORD_NOT_FOUND.getCode()) {
-            response.setStatus(HttpStatus.NOT_FOUND.value());
-        }
-        return Result.failure(e.getCode(), e.getMessage());
-    }
-
-    /**
-     * 非法参数异常处理：映射 400。
+     * 控制器局部参数异常处理：映射 400（业务异常统一由 common GlobalExceptionHandler 承接，
+     * TASK-262 R1 删除局部 BizException 副本，IllegalArgumentException 不在其映射范围故保留）。
      */
     @ExceptionHandler(IllegalArgumentException.class)
     @ResponseStatus(HttpStatus.BAD_REQUEST)

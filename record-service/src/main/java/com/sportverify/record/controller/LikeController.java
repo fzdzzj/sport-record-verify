@@ -7,16 +7,13 @@ import com.sportverify.common.result.Result;
 import com.sportverify.common.result.ResultCode;
 import com.sportverify.record.service.RecordLikeService;
 import jakarta.servlet.http.HttpServletRequest;
-import jakarta.servlet.http.HttpServletResponse;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 
 import java.util.List;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
-import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.DeleteMapping;
-import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -111,20 +108,5 @@ public class LikeController {
             return tokenUserId;
         }
         return claimed;
-    }
-
-    /**
-     * 本控制器局部异常处理：1001 → HTTP 401、1002 → HTTP 403（规范以 HTTP 状态为准）；
-     * 其余业务码（3001/6001 等）保持全局口径（HTTP 200 + body code）。
-     */
-    @ExceptionHandler(BizException.class)
-    public Result<Void> handleBizException(BizException e, HttpServletResponse response) {
-        log.warn("业务异常：code={}, message={}", e.getCode(), e.getMessage());
-        if (e.getCode() == ResultCode.UNAUTHORIZED.getCode()) {
-            response.setStatus(HttpStatus.UNAUTHORIZED.value());
-        } else if (e.getCode() == ResultCode.FORBIDDEN.getCode()) {
-            response.setStatus(HttpStatus.FORBIDDEN.value());
-        }
-        return Result.failure(e.getCode(), e.getMessage());
     }
 }

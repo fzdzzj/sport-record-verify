@@ -210,9 +210,9 @@ public class LikeEventConsumer {
         }
     }
 
-    /** 去重键：notification:event:{eventId} */
+    /** 去重键：前缀与 NotificationEventConsumer 收拢共用（TASK-262 R4）. */
     private String dedupKey(String eventId) {
-        return "notification:event:" + eventId;
+        return NotificationEventConsumer.DEDUP_KEY_PREFIX + eventId;
     }
 
     /** 删除去重键（失败后允许同 eventId 重投重试；Redis 异常不阻断主流程） */

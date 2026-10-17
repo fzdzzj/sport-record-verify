@@ -1,6 +1,7 @@
 package com.sportverify.record.controller;
 
 import com.sportverify.common.exception.BizException;
+import com.sportverify.common.exception.GlobalExceptionHandler;
 import com.sportverify.common.result.Result;
 import com.sportverify.common.result.ResultCode;
 import com.sportverify.record.dto.GoalDTO;
@@ -8,12 +9,12 @@ import com.sportverify.record.dto.GoalUpsertDTO;
 import com.sportverify.record.entity.Goal;
 import com.sportverify.record.service.GoalService;
 import jakarta.servlet.http.HttpServletRequest;
-import jakarta.servlet.http.HttpServletResponse;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.mock.web.MockHttpServletResponse;
 import org.springframework.test.util.ReflectionTestUtils;
 
 import java.math.BigDecimal;
@@ -36,9 +37,6 @@ class GoalControllerTest {
 
     @Mock
     private HttpServletRequest request;
-
-    @Mock
-    private HttpServletResponse response;
 
     @InjectMocks
     private GoalController controller;
@@ -150,27 +148,41 @@ class GoalControllerTest {
         assertEquals("缺少必须的 userId 查询参数", e.getMessage());
     }
 
+    // ==================== 公共层异常映射（TASK-262 R1 收敛公共层） ====================
+
+    /** 公共层映射：1001 → HTTP 401 + body code=1001（局部 handler 删除后由 GlobalExceptionHandler 承接） */
     @Test
-    void handleBizException_unauthorized_sets401() {
-        BizException e = new BizException(ResultCode.UNAUTHORIZED, "缺少 X-User-Id");
-        Result<Void> out = controller.handleBizException(e, response);
-        verify(response).setStatus(401);
+    void publicAdvice_unauthorized_maps401AndBodyCode() {
+        MockHttpServletResponse resp = new MockHttpServletResponse();
+
+        Result<Void> out = new GlobalExceptionHandler()
+                .handleBizException(new BizException(ResultCode.UNAUTHORIZED, "缺少 X-User-Id"), resp);
+
+        assertEquals(401, resp.getStatus());
         assertEquals(ResultCode.UNAUTHORIZED.getCode(), out.getCode());
     }
 
+    /** 公共层映射：1002 → HTTP 403 + body code=1002 */
     @Test
-    void handleBizException_forbidden_sets403() {
-        BizException e = new BizException(ResultCode.FORBIDDEN);
-        Result<Void> out = controller.handleBizException(e, response);
-        verify(response).setStatus(403);
+    void publicAdvice_forbidden_maps403AndBodyCode() {
+        MockHttpServletResponse resp = new MockHttpServletResponse();
+
+        Result<Void> out = new GlobalExceptionHandler()
+                .handleBizException(new BizException(ResultCode.FORBIDDEN), resp);
+
+        assertEquals(403, resp.getStatus());
         assertEquals(ResultCode.FORBIDDEN.getCode(), out.getCode());
     }
 
+    /** 公共层映射：3001 → HTTP 404 + body code=3001（局部形态与公共层同值，零 delta） */
     @Test
-    void handleBizException_notFound_sets404() {
-        BizException e = new BizException(ResultCode.RECORD_NOT_FOUND);
-        Result<Void> out = controller.handleBizException(e, response);
-        verify(response).setStatus(404);
+    void publicAdvice_notFound_maps404AndBodyCode() {
+        MockHttpServletResponse resp = new MockHttpServletResponse();
+
+        Result<Void> out = new GlobalExceptionHandler()
+                .handleBizException(new BizException(ResultCode.RECORD_NOT_FOUND), resp);
+
+        assertEquals(404, resp.getStatus());
         assertEquals(ResultCode.RECORD_NOT_FOUND.getCode(), out.getCode());
     }
 

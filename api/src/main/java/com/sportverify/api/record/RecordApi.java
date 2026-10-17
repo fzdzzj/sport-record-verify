@@ -5,7 +5,6 @@ import com.sportverify.api.record.dto.LikeRequestDTO;
 import com.sportverify.api.record.dto.RecordWithPointsDTO;
 import com.sportverify.api.record.dto.SportRecordDTO;
 import com.sportverify.api.record.dto.StatusCallbackDTO;
-import com.sportverify.api.record.dto.TrackPointDTO;
 import com.sportverify.common.result.Result;
 import org.springframework.cloud.openfeign.FeignClient;
 import org.springframework.web.bind.annotation.DeleteMapping;
@@ -14,8 +13,6 @@ import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestParam;
-
-import java.util.List;
 
 /**
  * record-service Feign 契约（record-api，接口与实现分离）。
@@ -44,13 +41,6 @@ public interface RecordApi {
      */
     @GetMapping("/records/{recordId}")
     Result<SportRecordDTO> getRecord(@PathVariable("recordId") Long recordId);
-
-    /**
-     * 拉取记录全部轨迹点（校验引擎输入）。
-     * record-service 内部先经 sport_record 解析 user_id，再按 user_id 路由单分片查询。
-     */
-    @GetMapping("/records/{recordId}/points")
-    Result<List<TrackPointDTO>> listPoints(@PathVariable("recordId") Long recordId);
 
     /**
      * 一次性拉取记录详情与全部轨迹点（聚合契约，供 verify 校验输入）。

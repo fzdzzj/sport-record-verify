@@ -18,9 +18,7 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpHeaders;
-import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseCookie;
-import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestHeader;
@@ -236,19 +234,5 @@ public class AuthController {
         }
         String remoteAddr = request.getRemoteAddr();
         return (remoteAddr != null && !remoteAddr.isBlank()) ? remoteAddr.trim() : null;
-    }
-
-    /**
-     * 认证域局部异常处理：1001（密码错误/token 无效）映射为 <b>HTTP 401</b>
-     * （规范「返回 401」以 HTTP 状态为准）；其余业务码（2001 等）保持全局口径
-     * （HTTP 200 + body code），避免覆盖 GlobalExceptionHandler 的 200/400/500 约定。
-     */
-    @ExceptionHandler(BizException.class)
-    public Result<Void> handleAuthBizException(BizException e, HttpServletResponse response) {
-        log.warn("认证异常：code={}, message={}", e.getCode(), e.getMessage());
-        if (e.getCode() == ResultCode.UNAUTHORIZED.getCode()) {
-            response.setStatus(HttpStatus.UNAUTHORIZED.value());
-        }
-        return Result.failure(e.getCode(), e.getMessage());
     }
 }

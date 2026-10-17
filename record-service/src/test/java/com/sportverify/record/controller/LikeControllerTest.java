@@ -3,13 +3,14 @@ package com.sportverify.record.controller;
 import com.sportverify.api.record.dto.LikeDTO;
 import com.sportverify.api.record.dto.LikeRequestDTO;
 import com.sportverify.common.exception.BizException;
+import com.sportverify.common.exception.GlobalExceptionHandler;
 import com.sportverify.common.result.Result;
 import com.sportverify.common.result.ResultCode;
 import com.sportverify.record.service.RecordLikeService;
 import jakarta.servlet.http.HttpServletRequest;
-import jakarta.servlet.http.HttpServletResponse;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.springframework.mock.web.MockHttpServletResponse;
 import org.springframework.test.util.ReflectionTestUtils;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -19,23 +20,22 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 /**
- * 点赞控制器单元测试（like/unlike/getLike 透传 + 鉴权降级路由与越权防护 + 局部异常处理）。
+ * 点赞控制器单元测试（like/unlike/getLike 透传 + 鉴权降级路由与越权防护 + 公共层异常映射）。
  *
  * <p>纯 Mockito。覆盖 auth.enabled=false 显式携带、true 网关头覆盖/缺头 1001/越权 1002，
- * 以及 unlike/getLike 的 query 参数透传。</p>
+ * 以及 unlike/getLike 的 query 参数透传。TASK-262 R1：局部 {@code @ExceptionHandler(BizException)}
+ * 删除，业务异常统一由 common {@link GlobalExceptionHandler} 承接，直测改写为公共层等价断言。</p>
  */
 class LikeControllerTest {
 
     private RecordLikeService recordLikeService;
     private HttpServletRequest request;
-    private HttpServletResponse response;
     private LikeController controller;
 
     @BeforeEach
     void setUp() {
         recordLikeService = mock(RecordLikeService.class);
         request = mock(HttpServletRequest.class);
-        response = mock(HttpServletResponse.class);
         controller = new LikeController(recordLikeService);
         ReflectionTestUtils.setField(controller, "authEnabled", false);
     }
@@ -122,36 +122,41 @@ class LikeControllerTest {
         verify(recordLikeService).unlike(7L, 100L);
     }
 
-    /** 局部异常处理：1001 → 401 */
+    // ==================== 公共层异常映射（TASK-262 R1 收敛公共层） ====================
+
+    /** 公共层映射：1001 → HTTP 401 + body code=1001（局部 handler 删除后由 GlobalExceptionHandler 承接） */
     @Test
-    void handleBizException_unauthorized_sets401() throws Exception {
-        BizException e = new BizException(ResultCode.UNAUTHORIZED);
+    void publicAdvice_unauthorized_maps401AndBodyCode() {
+        MockHttpServletResponse resp = new MockHttpServletResponse();
 
-        Result<Void> out = controller.handleBizException(e, response);
+        Result<Void> out = new GlobalExceptionHandler()
+                .handleBizException(new BizException(ResultCode.UNAUTHORIZED), resp);
 
-        verify(response).setStatus(401);
+        assertEquals(401, resp.getStatus());
         assertEquals(ResultCode.UNAUTHORIZED.getCode(), out.getCode());
     }
 
-    /** 局部异常处理：1002 → 403 */
+    /** 公共层映射：1002 → HTTP 403 + body code=1002 */
     @Test
-    void handleBizException_forbidden_sets403() throws Exception {
-        BizException e = new BizException(ResultCode.FORBIDDEN);
+    void publicAdvice_forbidden_maps403AndBodyCode() {
+        MockHttpServletResponse resp = new MockHttpServletResponse();
 
-        Result<Void> out = controller.handleBizException(e, response);
+        Result<Void> out = new GlobalExceptionHandler()
+                .handleBizException(new BizException(ResultCode.FORBIDDEN), resp);
 
-        verify(response).setStatus(403);
+        assertEquals(403, resp.getStatus());
         assertEquals(ResultCode.FORBIDDEN.getCode(), out.getCode());
     }
 
-    /** 局部异常处理：业务码（6001 未通过校验）→ 不设 HTTP 状态，body 透传 */
+    /** 公共层映射：业务码（6001 未通过校验）→ 不设 HTTP 状态（200）+ body 透传 */
     @Test
-    void handleBizException_otherCode_leavesStatusUnchanged() throws Exception {
-        BizException e = new BizException(ResultCode.RECORD_NOT_PASSED);
+    void publicAdvice_otherCode_keepsHttp200BodyOnly() {
+        MockHttpServletResponse resp = new MockHttpServletResponse();
 
-        Result<Void> out = controller.handleBizException(e, response);
+        Result<Void> out = new GlobalExceptionHandler()
+                .handleBizException(new BizException(ResultCode.RECORD_NOT_PASSED), resp);
 
-        verify(response, org.mockito.Mockito.never()).setStatus(org.mockito.ArgumentMatchers.anyInt());
+        assertEquals(200, resp.getStatus());
         assertEquals(ResultCode.RECORD_NOT_PASSED.getCode(), out.getCode());
     }
 }

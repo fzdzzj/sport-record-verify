@@ -5,7 +5,6 @@ import com.sportverify.api.record.dto.LikeRequestDTO;
 import com.sportverify.api.record.dto.RecordWithPointsDTO;
 import com.sportverify.api.record.dto.SportRecordDTO;
 import com.sportverify.api.record.dto.StatusCallbackDTO;
-import com.sportverify.api.record.dto.TrackPointDTO;
 import com.sportverify.common.result.Result;
 import com.sportverify.record.service.RecordLikeService;
 import com.sportverify.record.service.SportRecordService;
@@ -19,8 +18,6 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
-
-import java.util.List;
 
 /**
  * record-api Feign 契约实现（接口与实现分离，规范「服务间 Feign 契约」）。
@@ -42,12 +39,6 @@ public class InternalRecordController {
     @GetMapping("/records/{recordId}")
     public Result<SportRecordDTO> getRecord(@PathVariable("recordId") Long recordId) {
         return Result.success(sportRecordService.getDto(recordId));
-    }
-
-    /** 轨迹点列表（verify 判定输入；内部先解析 user_id 再路由分片） */
-    @GetMapping("/records/{recordId}/points")
-    public Result<List<TrackPointDTO>> listPoints(@PathVariable("recordId") Long recordId) {
-        return Result.success(sportRecordService.listPoints(recordId));
     }
 
     /** 记录详情与轨迹点列表聚合（供 verify 校验判定单次拉取） */

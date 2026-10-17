@@ -5,6 +5,7 @@ import com.sportverify.api.auth.dto.LogoutRequestDTO;
 import com.sportverify.api.auth.dto.RefreshRequestDTO;
 import com.sportverify.api.auth.dto.TokenDTO;
 import com.sportverify.common.exception.BizException;
+import com.sportverify.common.exception.GlobalExceptionHandler;
 import com.sportverify.common.result.Result;
 import com.sportverify.common.result.ResultCode;
 import com.sportverify.user.auth.service.AuthService;
@@ -14,8 +15,11 @@ import jakarta.validation.Validation;
 import jakarta.validation.Validator;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.springframework.http.MediaType;
 import org.springframework.mock.web.MockHttpServletRequest;
 import org.springframework.mock.web.MockHttpServletResponse;
+import org.springframework.test.web.servlet.MockMvc;
+import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 
 import java.util.Set;
 
@@ -28,6 +32,9 @@ import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 /**
  * AuthController cookie 下发通道单元测试（TASK-205，纯 JVM Mockito + MockHttpServletRequest/Response）。
@@ -247,5 +254,28 @@ class AuthControllerTest {
         BizException e = org.junit.jupiter.api.Assertions.assertThrows(BizException.class,
                 () -> controller.changePassword(dto, req));
         assertEquals(ResultCode.UNAUTHORIZED.getCode(), e.getCode(), "非法 X-User-Id 应 401");
+    }
+
+    // ==================== TASK-262 R1 契约 delta（Auth 1002 → HTTP 403） ====================
+
+    /**
+     * TASK-262 R1 契约 delta：账号锁定/禁用（1002）此前被局部 handler 恒置 200，
+     * 局部 handler 删除后由 common GlobalExceptionHandler 承接 → HTTP 403 + body code=1002。
+     * standalone MockMvc + 公共 advice 全链路（AuthService 打桩抛锁定语义 1002）。
+     */
+    @Test
+    void login_accountLocked_mapsHttp403ViaPublicAdvice() throws Exception {
+        when(authService.login(any(), any()))
+                .thenThrow(new BizException(ResultCode.FORBIDDEN, "账号已临时锁定，请稍后重试"));
+
+        MockMvc mockMvc = MockMvcBuilders.standaloneSetup(controller)
+                .setControllerAdvice(new GlobalExceptionHandler())
+                .build();
+
+        mockMvc.perform(post("/api/auth/login")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"phone\":\"13800138000\",\"password\":\"secret123\"}"))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.code").value(1002));
     }
 }

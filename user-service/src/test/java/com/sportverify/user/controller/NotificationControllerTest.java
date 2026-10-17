@@ -2,6 +2,7 @@ package com.sportverify.user.controller;
 
 import com.sportverify.api.common.PageResult;
 import com.sportverify.common.exception.BizException;
+import com.sportverify.common.exception.GlobalExceptionHandler;
 import com.sportverify.common.result.Result;
 import com.sportverify.common.result.ResultCode;
 import com.sportverify.user.dto.NotificationPreferenceView;
@@ -10,10 +11,9 @@ import com.sportverify.user.dto.UpdateNotificationPreferenceRequest;
 import com.sportverify.user.service.NotificationPreferenceService;
 import com.sportverify.user.service.NotificationService;
 import jakarta.servlet.http.HttpServletRequest;
-import jakarta.servlet.http.HttpServletResponse;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
-import org.mockito.ArgumentCaptor;
+import org.springframework.mock.web.MockHttpServletResponse;
 import org.springframework.test.util.ReflectionTestUtils;
 
 import java.util.List;
@@ -22,7 +22,6 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyLong;
-import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -32,8 +31,9 @@ import static org.mockito.Mockito.when;
  * 通知中心读取接口单元测试（TASK-182 add-notification-center）。
  *
  * <p>身份认定（ADR-0007）两态：auth.enabled=false 降级显式携带 / true 以网关注入 X-User-Id 为准、
- * 显式不一致 → 越权（安全护栏异常）；局部 {@code @ExceptionHandler(BizException)} 在纯单测下不自动
- * 托管，故越权路径断言抛异常 + 单独点测 handler 的业务码映射。纯 Mockito：服务层 mock。</p>
+ * 显式不一致 → 越权（安全护栏异常）。TASK-262 R1：局部 {@code @ExceptionHandler(BizException)}
+ * 删除，越权路径断言抛异常不变，handler 点测改写为 common 公共层等价断言（HTTP 状态 + body）。
+ * 纯 Mockito：服务层 mock。</p>
  */
 class NotificationControllerTest {
 
@@ -41,7 +41,6 @@ class NotificationControllerTest {
     private NotificationPreferenceService preferenceService;
     private NotificationController controller;
     private HttpServletRequest request;
-    private HttpServletResponse response;
 
     private NotificationView view(long id) {
         NotificationView v = new NotificationView();
@@ -55,7 +54,6 @@ class NotificationControllerTest {
         preferenceService = mock(NotificationPreferenceService.class);
         controller = new NotificationController(service, preferenceService);
         request = mock(HttpServletRequest.class);
-        response = mock(HttpServletResponse.class);
     }
 
     /** 降级态（auth=false，默认）：显式携带 userId 生效，命中分页服务 */
@@ -194,23 +192,34 @@ class NotificationControllerTest {
         verify(service, never()).cleanExpiredNotifications(any(Integer.class), any(Integer.class));
     }
 
-    /** 局部异常处理映射：越权 1002 → HTTP 403 + body 1002；401 → HTTP 401 */
+    // ==================== 公共层异常映射（TASK-262 R1 收敛公共层） ====================
+
+    /** 公共层映射：1002 → HTTP 403 + body code=1002；1001 → HTTP 401（局部 handler 删除后由 GlobalExceptionHandler 承接） */
     @Test
-    void handleBizException_mapsForbiddenAndUnauthorizedHttpStatus() {
-        Result<Void> forbidden = controller.handleBizException(
-                new BizException(ResultCode.FORBIDDEN, "无权限"), response);
+    void publicAdvice_mapsForbiddenAndUnauthorizedHttpStatus() {
+        GlobalExceptionHandler advice = new GlobalExceptionHandler();
+
+        MockHttpServletResponse forbiddenResp = new MockHttpServletResponse();
+        Result<Void> forbidden = advice.handleBizException(
+                new BizException(ResultCode.FORBIDDEN, "无权限"), forbiddenResp);
         assertEquals(ResultCode.FORBIDDEN.getCode(), forbidden.getCode());
-        ArgumentCaptor<Integer> status = ArgumentCaptor.forClass(Integer.class);
-        verify(response).setStatus(status.capture());
-        assertEquals(403, status.getValue().intValue());
+        assertEquals(403, forbiddenResp.getStatus());
+
+        MockHttpServletResponse unauthorizedResp = new MockHttpServletResponse();
+        advice.handleBizException(new BizException(ResultCode.UNAUTHORIZED, "缺少网关头"), unauthorizedResp);
+        assertEquals(401, unauthorizedResp.getStatus());
     }
 
     /** 非鉴权业务码（如 9999）保持全局口径不变：不污染 HTTP 状态 */
     @Test
-    void handleBizException_otherCodesKeepsHttp200BodyOnly() {
-        controller.handleBizException(new BizException(ResultCode.SYSTEM_ERROR), response);
-        verify(response, never()).setStatus(eq(403));
-        verify(response, never()).setStatus(eq(401));
+    void publicAdvice_otherCodesKeepsHttp200BodyOnly() {
+        MockHttpServletResponse resp = new MockHttpServletResponse();
+
+        Result<Void> out = new GlobalExceptionHandler()
+                .handleBizException(new BizException(ResultCode.SYSTEM_ERROR), resp);
+
+        assertEquals(200, resp.getStatus());
+        assertEquals(ResultCode.SYSTEM_ERROR.getCode(), out.getCode());
     }
 
     // ==================== 通知偏好端点契调（TASK-187） ====================

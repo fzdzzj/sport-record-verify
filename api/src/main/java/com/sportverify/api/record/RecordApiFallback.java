@@ -5,15 +5,12 @@ import com.sportverify.api.record.dto.LikeRequestDTO;
 import com.sportverify.api.record.dto.RecordWithPointsDTO;
 import com.sportverify.api.record.dto.SportRecordDTO;
 import com.sportverify.api.record.dto.StatusCallbackDTO;
-import com.sportverify.api.record.dto.TrackPointDTO;
 import com.sportverify.common.exception.BizException;
 import com.sportverify.common.result.Result;
 import com.sportverify.common.result.ResultCode;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.cloud.openfeign.FallbackFactory;
 import org.springframework.stereotype.Component;
-
-import java.util.List;
 
 /**
  * record-service Feign「显式失败」工厂（add-resilience-hardening）。
@@ -37,11 +34,6 @@ public class RecordApiFallback implements FallbackFactory<RecordApi> {
             @Override
             public Result<SportRecordDTO> getRecord(Long recordId) {
                 throw fail("getRecord:" + recordId, cause);
-            }
-
-            @Override
-            public Result<List<TrackPointDTO>> listPoints(Long recordId) {
-                throw fail("listPoints:" + recordId, cause);
             }
 
             @Override

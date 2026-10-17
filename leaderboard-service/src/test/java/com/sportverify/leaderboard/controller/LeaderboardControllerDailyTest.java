@@ -1,6 +1,7 @@
 package com.sportverify.leaderboard.controller;
 
 import com.sportverify.api.record.dto.LeaderboardDTO;
+import com.sportverify.common.exception.GlobalExceptionHandler;
 import com.sportverify.leaderboard.service.LeaderboardService;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -38,7 +39,11 @@ class LeaderboardControllerDailyTest {
     private LeaderboardService leaderboardService;
 
     private MockMvc mockMvc() {
-        return MockMvcBuilders.standaloneSetup(new LeaderboardController(leaderboardService)).build();
+        // TASK-262 R1：局部 BizException handler 删除后，业务异常统一由 common 公共层承接，
+        // standalone 桩同步注册公共 advice（400/403/404 等映射与生产口径一致）
+        return MockMvcBuilders.standaloneSetup(new LeaderboardController(leaderboardService))
+                .setControllerAdvice(new GlobalExceptionHandler())
+                .build();
     }
 
     @Test

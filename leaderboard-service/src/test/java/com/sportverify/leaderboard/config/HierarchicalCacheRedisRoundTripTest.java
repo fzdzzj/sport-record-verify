@@ -10,14 +10,15 @@ import org.springframework.data.redis.connection.RedisConnectionFactory;
 import org.springframework.data.redis.connection.RedisKeyCommands;
 import org.springframework.data.redis.connection.RedisStringCommands;
 import org.springframework.data.redis.core.types.Expiration;
-import org.springframework.data.redis.serializer.JdkSerializationRedisSerializer;
 import org.springframework.data.redis.serializer.RedisSerializer;
 
 import java.math.BigDecimal;
 import java.nio.charset.StandardCharsets;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 
@@ -31,11 +32,13 @@ import static org.mockito.Mockito.when;
  *
  * <p>{@link CacheConfigTest} 的 Redis 桩把 {@code set(...)} 整个 mock 掉（写进去立刻消失、读永远 miss），
  * 所以它只证明过"写穿被调用"，没证明"字节活得下来"。本类用内存 Map 假件承接<b>真实字节</b>：
- * 写入即把 {@code byte[]} 原样存进 Map，读取即吐回，因此 Jackson/JDK 序列化真的跑了一遍。
+ * 写入即把 {@code byte[]} 原样存进 Map，读取即吐回，因此 JSON 序列化真的跑了一遍。
  * 范式照 {@code RuleCacheServiceSerializationRoundTripTest}。</p>
  *
- * <p>三件事被钉住：值走 JDK 序列化且完整（不是 toString、不是空数组）、TTL 是 5 分钟、
- * 换一个实例（等价于另一台机器或 L1 刚重启）能原样读回并按 {@code @Cacheable} 语义跳过回源。</p>
+ * <p>三件事被钉住：值走 JSON 序列化且完整（TASK-262 R5：不是 JDK 二进制魔数、不是 toString、
+ * 不是空数组；键前缀带 {@code :v2} 版本后缀隔离旧 JDK 条目）、TTL 是 5min±60s 抖动值域
+ * （TASK-262 R2）、换一个实例（等价于另一台机器或 L1 刚重启）能原样读回并按
+ * {@code @Cacheable} 语义跳过回源。</p>
  *
  * <p>{@code stringCommands()} 与 {@code keyCommands()} 故意返回<b>同一个</b>假件：
  * Spring Data Redis 的缓存写路径在不同小版本里会在两者之间漂移，分开桩会静默漏测。</p>
@@ -43,11 +46,12 @@ import static org.mockito.Mockito.when;
 class HierarchicalCacheRedisRoundTripTest {
 
     private static final String CACHE_NAME = "leaderboard:overall";
-    private static final String REDIS_KEY = "leaderboard:overall::10";
+    private static final String REDIS_KEY = "leaderboard:overall:v2::10";
 
     private final Map<String, byte[]> redisStore = new HashMap<>();
     private final AtomicReference<Expiration> lastExpiration = new AtomicReference<>();
-    private final JdkSerializationRedisSerializer valueSerializer = new JdkSerializationRedisSerializer();
+    /** 用生产序列化器回读（TASK-262 R5 定制 WRAPPER_ARRAY typing），与写侧逐字对称。 */
+    private final RedisSerializer<Object> valueSerializer = CacheConfig.l2ValueSerializer();
 
     private final List<LeaderboardDTO> written = List.of(
             LeaderboardDTO.of(1, 1001L, "阿跑", new BigDecimal("12.50")),
@@ -97,20 +101,42 @@ class HierarchicalCacheRedisRoundTripTest {
     }
 
     @Test
-    void writeGoesThroughRealJdkSerializationWithFiveMinuteTtl() {
+    void writeGoesThroughRealJsonSerializationWithJitteredTtl() {
         productionCacheManager().getCache(CACHE_NAME).put(10, written);
 
         byte[] stored = redisStore.get(REDIS_KEY);
-        assertThat(stored).as("L2 必须以 @Cacheable 的 cache 名作前缀落键").isNotNull();
+        assertThat(stored).as("L2 必须以 @Cacheable 的 cache 名作前缀落键，且带 :v2 版本后缀").isNotNull();
         assertThat(RedisSerializer.byteArray().deserialize(stored))
                 .as("载荷不能是 toString 或空字节")
                 .isNotEmpty();
+        assertThat(stored[0])
+                .as("载荷必须是 JSON（默认 typing 的数组包装以 [ 开头），不是 JDK 序列化魔数 0xACED")
+                .isEqualTo((byte) '[');
 
         Object readBack = valueSerializer.deserialize(stored);
         assertThat(readBack).isEqualTo(written);
 
-        assertThat(lastExpiration.get()).as("TTL 必须真的传给 Redis，而不是配了 5 分钟却写死不过期").isNotNull();
-        assertThat(lastExpiration.get().getExpirationTimeInSeconds()).isEqualTo(300L);
+        assertThat(lastExpiration.get()).as("TTL 必须真的传给 Redis，而不是配了抖动却写死不过期").isNotNull();
+        long ttlSeconds = lastExpiration.get().getExpirationTimeInSeconds();
+        assertThat(ttlSeconds)
+                .as("L2 TTL 必须落在 5min±60s 抖动值域内（TASK-262 R2）")
+                .isBetween(240L, 360L);
+    }
+
+    /** TASK-262 R2 TTL 值域断言：多次取值均落在 [5min-60s, 5min+60s] 且不恒定（真抖动）。 */
+    @Test
+    void l2TtlJitter_staysWithinAmplitudeAndVaries() {
+        Set<Long> observed = new HashSet<>();
+        for (int i = 0; i < 1000; i++) {
+            long ttlMillis = CacheConfig.l2EntryTtl().getTimeToLive("k", "v").toMillis();
+            assertThat(ttlMillis)
+                    .as("每次抖动取值都必须落在 [240s, 360s] 毫秒值域内")
+                    .isBetween(240_000L, 360_000L);
+            observed.add(ttlMillis);
+        }
+        assertThat(observed.size())
+                .as("1000 次取值必须出现多个不同值（恒定值＝抖动失效，集中过期雪崩回归）")
+                .isGreaterThan(2);
     }
 
     @Test

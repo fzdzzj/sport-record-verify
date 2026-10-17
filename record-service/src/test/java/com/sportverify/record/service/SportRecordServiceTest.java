@@ -1139,23 +1139,6 @@ class SportRecordServiceTest {
         verify(verifyApi).getVerificationResult(1L);
     }
 
-    /** 拉取全部轨迹点：记录存在 → 按分片键路由 + 序号升序 */
-    @Test
-    void listPoints_routesByUserId() {
-        SportRecord record = new SportRecord();
-        record.setId(1L);
-        record.setUserId(100L);
-        when(sportRecordMapper.selectById(1L)).thenReturn(record);
-        TrackPoint tp = new TrackPoint();
-        tp.setId(9L);
-        when(trackPointMapper.selectList(any())).thenReturn(List.of(tp));
-
-        List<TrackPointDTO> out = service.listPoints(1L);
-
-        assertEquals(1, out.size());
-        verify(trackPointMapper).selectList(any());
-    }
-
     /** 聚合拉取：记录存在 → 单次查主表 + 单次携带分片键查轨迹，字段与顺序正确 */
     @Test
     @SuppressWarnings("unchecked")
@@ -1906,13 +1889,11 @@ class SportRecordServiceTest {
         assertEquals(RecordStatus.PASSED.getCode(), out.getStatus());
     }
 
-    /** 查询类方法：记录不存在 → 3001（listPoints/pagePoints/getDto 统一走该分支） */
+    /** 查询类方法：记录不存在 → 3001（pagePoints/getDto 统一走该分支） */
     @Test
     void queryMethods_recordNotFound_throws() {
         when(sportRecordMapper.selectById(1L)).thenReturn(null);
 
-        assertEquals(ResultCode.RECORD_NOT_FOUND.getCode(), assertThrows(
-                BizException.class, () -> service.listPoints(1L)).getCode());
         assertEquals(ResultCode.RECORD_NOT_FOUND.getCode(), assertThrows(
                 BizException.class, () -> service.pagePoints(1L, null, 1, 20)).getCode());
         assertEquals(ResultCode.RECORD_NOT_FOUND.getCode(), assertThrows(
@@ -2158,29 +2139,6 @@ class SportRecordServiceTest {
     }
 
     // ==================== 冷热路由与申诉防线（TASK-175） ====================
-
-    /** 冷热路由判别式：archived=1 → listPoints 读归档表，热表不被访问 */
-    @Test
-    void listPoints_archivedRecord_readsArchiveTable() {
-        SportRecord record = new SportRecord();
-        record.setId(1L);
-        record.setUserId(100L);
-        record.setArchived(1);
-        when(sportRecordMapper.selectById(1L)).thenReturn(record);
-        TrackPointArchive arch = new TrackPointArchive();
-        arch.setId(9L);
-        arch.setRecordId(1L);
-        arch.setUserId(100L);
-        arch.setSeq(3);
-        when(trackPointArchiveMapper.selectList(any())).thenReturn(List.of(arch));
-
-        List<TrackPointDTO> out = service.listPoints(1L);
-
-        assertEquals(1, out.size());
-        assertEquals(3, out.get(0).getSeq());
-        verify(trackPointArchiveMapper).selectList(any());
-        verify(trackPointMapper, never()).selectList(any());
-    }
 
     /** 冷热路由判别式：archived=1 → pagePoints 走归档分页（selectPage），热表不被访问 */
     @Test

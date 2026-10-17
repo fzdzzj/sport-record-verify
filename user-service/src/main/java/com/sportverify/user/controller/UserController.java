@@ -8,12 +8,9 @@ import com.sportverify.common.result.ResultCode;
 import com.sportverify.user.entity.User;
 import com.sportverify.user.mapper.UserMapper;
 import jakarta.servlet.http.HttpServletRequest;
-import jakarta.servlet.http.HttpServletResponse;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
-import org.springframework.http.HttpStatus;
-import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
@@ -122,17 +119,5 @@ public class UserController {
         } catch (NumberFormatException e) {
             throw new BizException(ResultCode.UNAUTHORIZED, "X-User-Id 格式非法");
         }
-    }
-
-    /**
-     * 本控制器局部异常处理：1001 → HTTP 401；其余业务码（2002 等）保持全局口径。
-     */
-    @ExceptionHandler(BizException.class)
-    public Result<Void> handleBizException(BizException e, HttpServletResponse response) {
-        log.warn("资料异常：code={}, message={}", e.getCode(), e.getMessage());
-        if (e.getCode() == ResultCode.UNAUTHORIZED.getCode()) {
-            response.setStatus(HttpStatus.UNAUTHORIZED.value());
-        }
-        return Result.failure(e.getCode(), e.getMessage());
     }
 }

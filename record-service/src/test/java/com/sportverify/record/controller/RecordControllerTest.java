@@ -1,6 +1,8 @@
 package com.sportverify.record.controller;
 
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.sportverify.api.common.PageResult;
 import com.sportverify.api.record.dto.MyStatsDTO;
 import com.sportverify.api.record.dto.MyStreakDTO;
 import com.sportverify.api.record.dto.RecordSubmitDTO;
@@ -12,46 +14,54 @@ import com.sportverify.api.verify.dto.AppealCreateDTO;
 import com.sportverify.api.verify.dto.AppealDTO;
 import com.sportverify.api.verify.dto.VerificationResultDTO;
 import com.sportverify.common.exception.BizException;
+import com.sportverify.common.exception.GlobalExceptionHandler;
 import com.sportverify.common.result.Result;
 import com.sportverify.common.result.ResultCode;
 import com.sportverify.record.service.SportRecordService;
 import jakarta.servlet.http.HttpServletRequest;
-import jakarta.servlet.http.HttpServletResponse;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.springframework.mock.web.MockHttpServletResponse;
 import org.springframework.test.util.ReflectionTestUtils;
+import org.springframework.test.web.servlet.MockMvc;
+import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 
 import java.time.LocalDate;
+import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 /**
- * 记录域控制器单元测试（提交幂等返回 / 鉴权降级真值路由 / 越权与缺头异常 / 局部异常处理）。
+ * 记录域控制器单元测试（提交幂等返回 / 鉴权降级真值路由 / 越权与缺头异常 / 公共层异常映射 / PageResult 薄转换）。
  *
  * <p>纯 Mockito：mock SportRecordService 与 Servlet 请求，不启动 Spring 上下文。
- * 覆盖身份认定（auth.enabled=false 显式携带 / true 网关头覆盖 / 缺头 1001 / 越权 1002）
- * 与 {@code @ExceptionHandler} 的 HTTP 401/403 映射分支。</p>
+ * 覆盖身份认定（auth.enabled=false 显式携带 / true 网关头覆盖 / 缺头 1001 / 越权 1002）。
+ * TASK-262 R1：局部 {@code @ExceptionHandler(BizException)} 删除，业务异常统一由 common
+ * {@link GlobalExceptionHandler} 承接——handler 直测改写为公共层等价断言（HTTP 状态 + body 双断言），
+ * 并新增 3001→404 契约 delta 用例（standalone MockMvc + 公共 advice 全链路）。</p>
  */
 class RecordControllerTest {
 
     private SportRecordService sportRecordService;
     private HttpServletRequest request;
-    private HttpServletResponse response;
     private RecordController controller;
 
     @BeforeEach
     void setUp() {
         sportRecordService = mock(SportRecordService.class);
         request = mock(HttpServletRequest.class);
-        response = mock(HttpServletResponse.class);
         controller = new RecordController(sportRecordService);
         // 默认 auth 关闭（旧行为显式携带）
         ReflectionTestUtils.setField(controller, "authEnabled", false);
@@ -62,6 +72,24 @@ class RecordControllerTest {
         dto.setRequestId("req-1");
         dto.setUserId(userId);
         return dto;
+    }
+
+    /** 构造带字段值的 MP Page（service mock 返回值，R3 薄转换断言的输入）。 */
+    private static <T> Page<T> pageOf(long current, long size, long total, List<T> records) {
+        Page<T> page = new Page<>();
+        page.setCurrent(current);
+        page.setSize(size);
+        page.setTotal(total);
+        page.setRecords(records);
+        return page;
+    }
+
+    /** R3 形态断言：PageResult 四字段与 MP Page 语义对齐（current/size/total/records）。 */
+    private static void assertPageResult(PageResult<?> out, long current, long size, long total, int recordCount) {
+        assertEquals(current, out.getCurrent());
+        assertEquals(size, out.getSize());
+        assertEquals(total, out.getTotal());
+        assertEquals(recordCount, out.getRecords().size());
     }
 
     /** 提交成功（auth 关）→ 透传 service 结果，code=0 */
@@ -178,43 +206,45 @@ class RecordControllerTest {
         verify(sportRecordService).appeal(5L, null, "理由");
     }
 
-    /** 轨迹分页查询（auth 关）→ 关键 caller 为 null 透传 page/size */
+    /** 轨迹分页查询（auth 关）→ 关键 caller 为 null 透传 page/size；R3 薄转换 PageResult 形态 */
     @Test
     void points_delegatesWithPagingParams() {
-        Page<TrackPointDTO> page = new Page<>();
-        when(sportRecordService.pagePoints(5L, null, 2, 50)).thenReturn(page);
+        when(sportRecordService.pagePoints(5L, null, 2, 50))
+                .thenReturn(pageOf(2, 50, 120, List.of(new TrackPointDTO())));
 
-        Page<TrackPointDTO> out = controller.points(5L, 2, 50, request).getData();
+        PageResult<TrackPointDTO> out = controller.points(5L, 2, 50, request).getData();
 
-        assertEquals(page, out);
+        assertPageResult(out, 2, 50, 120, 1);
         verify(sportRecordService).pagePoints(5L, null, 2, 50);
     }
 
     // ==================== 我的记录（TASK-211） ====================
 
-    /** R1a 绿（auth 开）：X-User-Id 解析为归属人 → 仅以此 userId 查服务层（mapper 过滤见 ServiceTest） */
+    /** R1a 绿（auth 开）：X-User-Id 解析为归属人 → 仅以此 userId 查服务层（mapper 过滤见 ServiceTest）；R3 PageResult 形态 */
     @Test
     void myRecords_authEnabled_resolvesOwnerFromHeader() {
         ReflectionTestUtils.setField(controller, "authEnabled", true);
         when(request.getHeader("X-User-Id")).thenReturn("200");
-        Page<RecordSummaryDTO> page = new Page<>();
-        when(sportRecordService.pageMyRecords(200L, 1, 20, null, null, null, null)).thenReturn(page);
+        when(sportRecordService.pageMyRecords(200L, 1, 20, null, null, null, null))
+                .thenReturn(pageOf(1, 20, 7, List.of(new RecordSummaryDTO())));
 
-        Page<RecordSummaryDTO> out = controller.myRecords(null, 1, 20, null, null, null, null, request).getData();
+        PageResult<RecordSummaryDTO> out =
+                controller.myRecords(null, 1, 20, null, null, null, null, request).getData();
 
-        assertEquals(page, out);
+        assertPageResult(out, 1, 20, 7, 1);
         verify(sportRecordService).pageMyRecords(200L, 1, 20, null, null, null, null);
     }
 
-    /** R1b 绿：page/size 原样透传服务层（边界夹取在服务层，见 ServiceTest） */
+    /** R1b 绿：page/size 原样透传服务层（边界夹取在服务层，见 ServiceTest）；R3 PageResult 形态 */
     @Test
     void myRecords_delegatesPageSize() {
-        Page<RecordSummaryDTO> page = new Page<>();
-        when(sportRecordService.pageMyRecords(100L, 3, 50, null, null, null, null)).thenReturn(page);
+        when(sportRecordService.pageMyRecords(100L, 3, 50, null, null, null, null))
+                .thenReturn(pageOf(3, 50, 30, List.of()));
 
-        Page<RecordSummaryDTO> out = controller.myRecords(100L, 3, 50, null, null, null, null, request).getData();
+        PageResult<RecordSummaryDTO> out =
+                controller.myRecords(100L, 3, 50, null, null, null, null, request).getData();
 
-        assertEquals(page, out);
+        assertPageResult(out, 3, 50, 30, 0);
         verify(sportRecordService).pageMyRecords(100L, 3, 50, null, null, null, null);
     }
 
@@ -237,29 +267,31 @@ class RecordControllerTest {
         assertEquals("缺少必须的 userId 查询参数", e.getMessage());
     }
 
-    /** R1c 绿（auth 关，显式 userId）→ 以此 userId 透传服务层 */
+    /** R1c 绿（auth 关，显式 userId）→ 以此 userId 透传服务层；R3 PageResult 形态 */
     @Test
     void myRecords_authDisabled_explicitUserId_delegates() {
-        Page<RecordSummaryDTO> page = new Page<>();
-        when(sportRecordService.pageMyRecords(88L, 1, 20, null, null, null, null)).thenReturn(page);
+        when(sportRecordService.pageMyRecords(88L, 1, 20, null, null, null, null))
+                .thenReturn(pageOf(1, 20, 5, List.of(new RecordSummaryDTO())));
 
-        Page<RecordSummaryDTO> out = controller.myRecords(88L, 1, 20, null, null, null, null, request).getData();
+        PageResult<RecordSummaryDTO> out =
+                controller.myRecords(88L, 1, 20, null, null, null, null, request).getData();
 
-        assertEquals(page, out);
+        assertPageResult(out, 1, 20, 5, 1);
         verify(sportRecordService).pageMyRecords(88L, 1, 20, null, null, null, null);
     }
 
     /** TASK-224 R2：携带过滤参数（sportType/status/startDate/endDate）原样透传服务层 */
     @Test
     void myRecords_withFilters_delegatesAllFilters() {
-        Page<RecordSummaryDTO> page = new Page<>();
         LocalDate start = LocalDate.of(2026, 10, 1);
         LocalDate end = LocalDate.of(2026, 10, 5);
-        when(sportRecordService.pageMyRecords(100L, 2, 30, 1, 2, start, end)).thenReturn(page);
+        when(sportRecordService.pageMyRecords(100L, 2, 30, 1, 2, start, end))
+                .thenReturn(pageOf(2, 30, 9, List.of(new RecordSummaryDTO())));
 
-        Page<RecordSummaryDTO> out = controller.myRecords(100L, 2, 30, 1, 2, start, end, request).getData();
+        PageResult<RecordSummaryDTO> out =
+                controller.myRecords(100L, 2, 30, 1, 2, start, end, request).getData();
 
-        assertEquals(page, out);
+        assertPageResult(out, 2, 30, 9, 1);
         verify(sportRecordService).pageMyRecords(100L, 2, 30, 1, 2, start, end);
     }
 
@@ -291,17 +323,16 @@ class RecordControllerTest {
 
     // ==================== 好友动态 feed（TASK-222 add-friend-feed） ====================
 
-    /** 绿 R2（auth 开）：X-User-Id 解析为 caller → 以此透传服务层 pageFeed /my 同构门 */
+    /** 绿 R2（auth 开）：X-User-Id 解析为 caller → 以此透传服务层 pageFeed /my 同构门；R3 PageResult 形态 */
     @Test
     void feed_authEnabled_resolvesCallerFromHeader() {
         ReflectionTestUtils.setField(controller, "authEnabled", true);
         when(request.getHeader("X-User-Id")).thenReturn("200");
-        Page<FeedItemDTO> page = new Page<>();
-        when(sportRecordService.pageFeed(200L, 2, 50)).thenReturn(page);
+        when(sportRecordService.pageFeed(200L, 2, 50)).thenReturn(pageOf(2, 50, 11, List.of(new FeedItemDTO())));
 
-        Page<FeedItemDTO> out = controller.feed(2, 50, request).getData();
+        PageResult<FeedItemDTO> out = controller.feed(2, 50, request).getData();
 
-        assertEquals(page, out);
+        assertPageResult(out, 2, 50, 11, 1);
         verify(sportRecordService).pageFeed(200L, 2, 50);
     }
 
@@ -317,50 +348,119 @@ class RecordControllerTest {
         verify(sportRecordService, never()).pageFeed(any(), anyLong(), anyLong());
     }
 
-    /** 红 R2 degrade（auth 关）：caller=null → 服务层 PAGE feed 走 PUBLIC-only（degrade 零扰动） */
+    /** 红 R2 degrade（auth 关）：caller=null → 服务层 PAGE feed 走 PUBLIC-only（degrade 零扰动）；R3 PageResult 形态 */
     @Test
     void feed_authDisabled_degrade_callerNull() {
-        Page<FeedItemDTO> page = new Page<>();
-        when(sportRecordService.pageFeed(null, 1, 20)).thenReturn(page);
+        when(sportRecordService.pageFeed(null, 1, 20)).thenReturn(pageOf(1, 20, 0, List.of()));
 
-        Page<FeedItemDTO> out = controller.feed(1, 20, request).getData();
+        PageResult<FeedItemDTO> out = controller.feed(1, 20, request).getData();
 
-        assertEquals(page, out);
+        assertPageResult(out, 1, 20, 0, 0);
         verify(sportRecordService).pageFeed(null, 1, 20);
     }
 
-    /** 局部异常处理：1001 → HTTP 401 + body code=1001 */
+    // ==================== 公共层异常映射（TASK-262 R1 收敛公共层） ====================
+
+    /** 公共层映射：1001 → HTTP 401 + body code=1001（局部 handler 删除后由 GlobalExceptionHandler 承接） */
     @Test
-    void handleBizException_unauthorized_sets401() throws Exception {
-        BizException e = new BizException(ResultCode.UNAUTHORIZED, "缺少 X-User-Id");
+    void publicAdvice_unauthorized_maps401AndBodyCode() {
+        GlobalExceptionHandler advice = new GlobalExceptionHandler();
+        MockHttpServletResponse resp = new MockHttpServletResponse();
 
-        Result<Void> out = controller.handleBizException(e, response);
+        Result<Void> out = advice.handleBizException(new BizException(ResultCode.UNAUTHORIZED, "缺少 X-User-Id"), resp);
 
-        verify(response).setStatus(401);
+        assertEquals(401, resp.getStatus());
         assertEquals(ResultCode.UNAUTHORIZED.getCode(), out.getCode());
     }
 
-    /** 局部异常处理：1002 → HTTP 403 + body code=1002 */
+    /** 公共层映射：1002 → HTTP 403 + body code=1002 */
     @Test
-    void handleBizException_forbidden_sets403() throws Exception {
-        BizException e = new BizException(ResultCode.FORBIDDEN);
+    void publicAdvice_forbidden_maps403AndBodyCode() {
+        GlobalExceptionHandler advice = new GlobalExceptionHandler();
+        MockHttpServletResponse resp = new MockHttpServletResponse();
 
-        Result<Void> out = controller.handleBizException(e, response);
+        Result<Void> out = advice.handleBizException(new BizException(ResultCode.FORBIDDEN), resp);
 
-        verify(response).setStatus(403);
+        assertEquals(403, resp.getStatus());
         assertEquals(ResultCode.FORBIDDEN.getCode(), out.getCode());
     }
 
-    /** 局部异常处理：其余业务码（如 3001）→ 不设 HTTP 状态，body 透传 code */
+    /** 公共层映射（TASK-262 R1 契约 delta 语义升级）：3001 局部恒 200 → 公共层 HTTP 404 + body code=3001 */
     @Test
-    void handleBizException_otherCode_leavesStatusUnchanged() throws Exception {
-        BizException e = new BizException(ResultCode.RECORD_NOT_FOUND);
+    void publicAdvice_recordNotFound_maps404AndBodyCode() {
+        GlobalExceptionHandler advice = new GlobalExceptionHandler();
+        MockHttpServletResponse resp = new MockHttpServletResponse();
 
-        Result<Void> out = controller.handleBizException(e, response);
+        Result<Void> out = advice.handleBizException(new BizException(ResultCode.RECORD_NOT_FOUND), resp);
 
-        verify(response, org.mockito.Mockito.never()).setStatus(org.mockito.ArgumentMatchers.anyInt());
+        assertEquals(404, resp.getStatus());
         assertEquals(ResultCode.RECORD_NOT_FOUND.getCode(), out.getCode());
-        assertNull(out.getData());
+    }
+
+    /** TASK-262 R1 契约 delta（record 3001→404）：详情路径记录不存在 → 公共层映射 HTTP 404 + body 3001（全链路） */
+    @Test
+    void recordDetail_recordNotFound_mapsHttp404ViaPublicAdvice() throws Exception {
+        when(sportRecordService.getRecordDetail(9L, null))
+                .thenThrow(new BizException(ResultCode.RECORD_NOT_FOUND));
+
+        MockMvc mockMvc = MockMvcBuilders.standaloneSetup(controller)
+                .setControllerAdvice(new GlobalExceptionHandler())
+                .build();
+
+        mockMvc.perform(get("/api/records/9"))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.code").value(3001));
+    }
+
+    // ==================== PageResult 序列化形态（TASK-262 R3/G14） ====================
+
+    /** /my：序列化为 PageResult 四字段，无 MP Page 的 pages 等实现细节字段 */
+    @Test
+    void myRecords_serializedPageResultShape_hasNoPagesField() throws Exception {
+        when(sportRecordService.pageMyRecords(100L, 1, 20, null, null, null, null))
+                .thenReturn(pageOf(1, 20, 3, List.of(new RecordSummaryDTO())));
+
+        Object data = controller.myRecords(100L, 1, 20, null, null, null, null, request).getData();
+        String json = new ObjectMapper().writeValueAsString(data);
+
+        assertTrue(json.contains("\"current\":1"), "实测=" + json);
+        assertTrue(json.contains("\"size\":20"), "实测=" + json);
+        assertTrue(json.contains("\"total\":3"), "实测=" + json);
+        assertTrue(json.contains("\"records\""), "实测=" + json);
+        assertFalse(json.contains("\"pages\""), "MP Page 实现细节字段不得外泄（G14 统一 PageResult），实测=" + json);
+    }
+
+    /** /feed：同上形态契约（前端按 PageResult 契约消费） */
+    @Test
+    void feed_serializedPageResultShape_hasNoPagesField() throws Exception {
+        when(sportRecordService.pageFeed(200L, 2, 50)).thenReturn(pageOf(2, 50, 11, List.of(new FeedItemDTO())));
+        ReflectionTestUtils.setField(controller, "authEnabled", true);
+        when(request.getHeader("X-User-Id")).thenReturn("200");
+
+        Object data = controller.feed(2, 50, request).getData();
+        String json = new ObjectMapper().writeValueAsString(data);
+
+        assertTrue(json.contains("\"current\":2"), "实测=" + json);
+        assertTrue(json.contains("\"size\":50"), "实测=" + json);
+        assertTrue(json.contains("\"total\":11"), "实测=" + json);
+        assertTrue(json.contains("\"records\""), "实测=" + json);
+        assertFalse(json.contains("\"pages\""), "MP Page 实现细节字段不得外泄（G14 统一 PageResult），实测=" + json);
+    }
+
+    /** /{id}/points：同上形态契约 */
+    @Test
+    void points_serializedPageResultShape_hasNoPagesField() throws Exception {
+        when(sportRecordService.pagePoints(5L, null, 2, 50))
+                .thenReturn(pageOf(2, 50, 120, List.of(new TrackPointDTO())));
+
+        Object data = controller.points(5L, 2, 50, request).getData();
+        String json = new ObjectMapper().writeValueAsString(data);
+
+        assertTrue(json.contains("\"current\":2"), "实测=" + json);
+        assertTrue(json.contains("\"size\":50"), "实测=" + json);
+        assertTrue(json.contains("\"total\":120"), "实测=" + json);
+        assertTrue(json.contains("\"records\""), "实测=" + json);
+        assertFalse(json.contains("\"pages\""), "MP Page 实现细节字段不得外泄（G14 统一 PageResult），实测=" + json);
     }
 
     // ==================== 连续打卡（TASK-220） ====================

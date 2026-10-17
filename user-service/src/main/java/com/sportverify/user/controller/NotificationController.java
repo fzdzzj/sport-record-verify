@@ -10,13 +10,10 @@ import com.sportverify.user.dto.UpdateNotificationPreferenceRequest;
 import com.sportverify.user.service.NotificationPreferenceService;
 import com.sportverify.user.service.NotificationService;
 import jakarta.servlet.http.HttpServletRequest;
-import jakarta.servlet.http.HttpServletResponse;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
-import org.springframework.http.HttpStatus;
-import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PatchMapping;
@@ -227,19 +224,5 @@ public class NotificationController {
             return tokenUserId;
         }
         return claimed;
-    }
-
-    /**
-     * 本控制器局部异常处理（与 FriendController 同源）：1002 → HTTP 403；其余业务码保持全局口径。
-     */
-    @ExceptionHandler(BizException.class)
-    public Result<Void> handleBizException(BizException e, HttpServletResponse response) {
-        log.warn("业务异常：code={}, message={}", e.getCode(), e.getMessage());
-        if (e.getCode() == ResultCode.UNAUTHORIZED.getCode()) {
-            response.setStatus(HttpStatus.UNAUTHORIZED.value());
-        } else if (e.getCode() == ResultCode.FORBIDDEN.getCode()) {
-            response.setStatus(HttpStatus.FORBIDDEN.value());
-        }
-        return Result.failure(e.getCode(), e.getMessage());
     }
 }

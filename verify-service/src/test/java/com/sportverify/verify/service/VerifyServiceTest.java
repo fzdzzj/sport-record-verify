@@ -32,6 +32,8 @@ import com.sportverify.verify.mapper.AppealMapper;
 import com.sportverify.verify.mapper.VerificationResultMapper;
 import com.sportverify.verify.mapper.VerifyEventOutboxMapper;
 import com.sportverify.verify.mq.VerifyEventProducer;
+import org.apache.ibatis.annotations.Delete;
+import org.apache.ibatis.annotations.Update;
 import org.apache.rocketmq.spring.core.RocketMQTemplate;
 import org.apache.ibatis.builder.MapperBuilderAssistant;
 import org.junit.jupiter.api.BeforeEach;
@@ -41,6 +43,7 @@ import org.springframework.dao.DuplicateKeyException;
 import org.springframework.messaging.Message;
 
 import java.math.BigDecimal;
+import java.time.LocalDateTime;
 import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -174,7 +177,7 @@ class VerifyServiceTest {
         verify(rocketMQTemplate, never()).syncSend(anyString(), any(Message.class));
     }
 
-    /** 判定前预取改走聚合契约：getRecordWithPoints 恰 1 次；原 getRecord / listPoints 恒 0 次 */
+    /** 判定前预取改走聚合契约：getRecordWithPoints 恰 1 次；原 getRecord 恒 0 次（listPoints 契约已随 TASK-262 R6 删除） */
     @Test
     void verify_usesAggregatedFetch_neverCallsLegacyEndpoints() {
         stubHappyVerify();
@@ -183,7 +186,51 @@ class VerifyServiceTest {
 
         verify(recordApi, times(1)).getRecordWithPoints(1L);
         verify(recordApi, never()).getRecord(1L);
-        verify(recordApi, never()).listPoints(1L);
+    }
+
+    // ==================== TASK-262 R4 outbox 状态字面量收拢：SQL 文本等价钉守 ====================
+
+    /**
+     * R4/G15：VerifyEventOutboxMapper 六个注解 SQL 的状态字面量收拢为常量拼接后，
+     * SQL 文本必须与收拢前<b>逐字等价</b>（MyBatis 注解值即最终 SQL，无运行时拼接）。
+     * 既有 {@code VerifyEventOutboxMapperSqlContractTest} 钉 selectPendingBatch 资格契约，
+     * 本用例钉其余五个语句的整文本等价。
+     */
+    @Test
+    void outboxMapperSql_literalsCollapsed_textEquivalent() throws Exception {
+        Class<VerifyEventOutboxMapper> mapper = VerifyEventOutboxMapper.class;
+
+        Update markSent = mapper.getMethod("markSent", Long.class).getAnnotation(Update.class);
+        assertEquals("UPDATE verify_event_outbox SET status = 'SENT', sent_at = NOW()"
+                        + " WHERE id = #{id} AND status = 'PENDING'",
+                String.join(" ", markSent.value()), "markSent SQL 文本须逐字等价");
+
+        Update incrRetry = mapper.getMethod("incrRetry", Long.class).getAnnotation(Update.class);
+        assertEquals("UPDATE verify_event_outbox SET retry_count = retry_count + 1"
+                        + " WHERE id = #{id} AND status = 'PENDING'",
+                String.join(" ", incrRetry.value()), "incrRetry SQL 文本须逐字等价");
+
+        Update markExhausted = mapper.getMethod("markExhausted", Long.class).getAnnotation(Update.class);
+        assertEquals("UPDATE verify_event_outbox SET status = 'EXHAUSTED'"
+                        + " WHERE id = #{id} AND status = 'PENDING'",
+                String.join(" ", markExhausted.value()), "markExhausted SQL 文本须逐字等价");
+
+        Update markSentBatch = mapper.getMethod("markSentBatch", List.class).getAnnotation(Update.class);
+        assertEquals("<script>UPDATE verify_event_outbox SET status = 'SENT', sent_at = NOW()"
+                        + " WHERE status = 'PENDING' AND id IN <foreach collection='ids' item='id' open='('"
+                        + " separator=',' close=')'>#{id}</foreach></script>",
+                String.join(" ", markSentBatch.value()), "markSentBatch SQL 文本须逐字等价");
+
+        Update replayExhausted = mapper.getMethod("replayExhausted", Long.class).getAnnotation(Update.class);
+        assertEquals("UPDATE verify_event_outbox SET status = 'PENDING', retry_count = 0"
+                        + " WHERE id = #{id} AND status = 'EXHAUSTED'",
+                String.join(" ", replayExhausted.value()), "replayExhausted SQL 文本须逐字等价");
+
+        Delete cleanSent = mapper.getMethod("cleanSentEvents", LocalDateTime.class, int.class)
+                .getAnnotation(Delete.class);
+        assertEquals("DELETE FROM verify_event_outbox WHERE status = 'SENT'"
+                        + " AND sent_at < #{before} LIMIT #{limit}",
+                String.join(" ", cleanSent.value()), "cleanSentEvents SQL 文本须逐字等价");
     }
 
     /** 结果已终判且 record 已同步 → 命中本地缓存直接返回，不重算、不重复排事件 */

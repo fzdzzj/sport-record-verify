@@ -58,6 +58,8 @@ public class NotificationEventConsumer {
     private static final int MAX_RECONSUME_TIMES = 3;
     /** 去重键 TTL（小时） */
     private static final long DEDUP_TTL_HOURS = 24;
+    /** 去重键前缀（TASK-262 R4 收拢：与 LikeEventConsumer 共用同一通知事件去重键域）. */
+    static final String DEDUP_KEY_PREFIX = "notification:event:";
     /** 订阅表达式：VERIFIED 记录通过 / REJECTED 记录驳回 */
     private static final String SUBSCRIBE_TAGS =
             RecordVerifyEvents.TAG_VERIFIED + " || " + RecordVerifyEvents.TAG_REJECTED;
@@ -213,9 +215,9 @@ public class NotificationEventConsumer {
         }
     }
 
-    /** 去重键：notification:event:{eventId} */
+    /** 去重键：DEDUP_KEY_PREFIX + eventId（前缀常量与 LikeEventConsumer 收拢共用）. */
     private String dedupKey(String eventId) {
-        return "notification:event:" + eventId;
+        return DEDUP_KEY_PREFIX + eventId;
     }
 
     /** 删除去重键（失败后允许同 eventId 重投重试；Redis 异常不阻断主流程） */
