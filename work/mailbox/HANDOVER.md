@@ -8,10 +8,10 @@
 
 ## 1. 当前代码基线与外部状态
 
-- **当前分支与 HEAD**：`main` 分支，最新已终裁闭环任务为 **TASK-274**（轨迹智能纠偏对比回放与每周运动智能周报，FULL 档；C-01 `efe8e5f` / C-02 `520762a` / 封盘笔待落库；surefire record-service 368→392 净增 +24、mapmatch 50→57 净增 +7，全仓七模块 1135 测全绿零失败零跳过；Checkstyle record 0 违规，mapmatch 266 存量豁免；前端 vitest 90 测全绿，vue-tsc 0 错，E2E 14/14 全绿；TrackComparisonDTO / WeeklyDigestDTO + MapMatchService compareTrack 道路投影吸附与 /match/compare 端点 + SportRecordService getWeeklyDigest 自然周聚合与 RecordController /records/weekly-digest 端点 + 前端 track-playback.ts 累计里程插值工具与 10 测全绿 + 详情页 SVG 纠偏双图层同帧与 Track Player 循迹回放 + 首页周报卡片与纯 CSS 海报弹窗 + E2E mock 补齐）。前序 **TASK-273**（公里分段配速与海拔剖面图，MEDIUM 档；CI run `39136624184` 全绿）、**TASK-272**（路段挑战与赛段刷榜系统，FULL 档；CI run `39129038776`）、**TASK-271**（存量技术债清理与跨服务好友调用性能优化，LIGHT 档；CI run `39116762606` 全绿）、**TASK-270**（BadgeServiceTest 单测隔离度加固，LIGHT 档；CI run `39114110656` 全绿）、**TASK-269**（运动徽章与成就体系全链路闭环，MEDIUM 档；C-01 `b9cbb6d` / C-02 `fc02933`）、**TASK-268**（代码规范清零与容量告警/网关写链路限流防御加固，CI run `39101746775` 全绿）、**TASK-267**（N4 migrate.sh 存量库迁移断链缺陷修复与预检加固，`39096309225` 全绿）、**TASK-266**（record-service 循环依赖解耦与启动加固，`39092603413` 全绿）、**TASK-265**（全链路高并发压测与容量基准建立，FULL 档）、**TASK-258**（方案 B PostGIS 真实空间库复验，CI run `39053016034` 全绿）、**TASK-264**（批 G-6，CI run `39040084087` 全绿闭环）、**TASK-263**（G 系批 G-5，`39034968218`）、**TASK-262**（G 系批 G-4，`39029851254`）、TASK-261（批 G-3，`39009192599`）、TASK-260（批 G-2，`38999061241`）、TASK-259（批 G-1，`38990356530`）、TASK-257（E 系批4b-2，`38931526812`）、TASK-256（批4b-1，`38917734857`）、TASK-255（批4a-2，`38903763620`）、TASK-254（批4a-1，`38892885813`）、TASK-253（批3，`38879776160`）、TASK-252（批2，`38869656012`）、TASK-251（批1，`38864817657`）。**E 系 31 项全部闭环；G 系已闭环 21 项（余 G22/G23 受限保持）；新候选 N2+R5 全部收口；E13 方案 B 完整闭环；压测基准套件完整建立；存量库迁移缺陷根除；代码规范历史违规清零；运动徽章与成就体系闭环；单测隔离度加固闭环；存量技术债清理与跨服务好友调用性能优化闭环；路段挑战与赛段刷榜系统全链路闭环（TASK-272）；公里分段配速与海拔剖面图全链路闭环（TASK-273）；轨迹智能纠偏对比回放与每周运动智能周报全链路闭环（TASK-274）**。
-- **外部 CI 门槛状态**：TASK-273 封盘批次经 CI run **`39136624184`** 权威核验 conclusion=**success** 全 job 绿（build ✓ 10m29s / web ✓ 21s）；前序 TASK-272 CI run `39129038776`、TASK-271 CI run `39116762606`；TASK-274 封盘批次待统一推送 GitHub Actions CI 外部终验。
-- **工作树状态**：TASK-274 封盘中，工作树纯净。
-- **当前在途任务数**：`0` 个。
+- **当前分支与 HEAD**：`main` 分支，最新已终裁闭环任务为 **TASK-274**（轨迹智能纠偏对比回放与每周运动智能周报，FULL 档；C-01 `efe8e5f` / C-02 `520762a` / 封盘笔 `e512add` 已推至 origin/main，Surefire 全仓 1135 测全绿，前端 vitest 90 测全绿）。当前在途推进任务为 **TASK-275（跑团俱乐部与团队里程榜系统，FULL 档，开工基线 main @ `e512add`，立项派发实施中）**。
+- **外部 CI 门槛状态**：TASK-273 封盘批次经 CI run **`39136624184`** 权威核验 conclusion=**success** 全 job 绿（build ✓ 10m29s / web ✓ 21s）；TASK-274 封盘批次推送后 CI run 39147321152 偶现单测隔离问题，已在 TASK-275 R0 中以 TableInfoHelper 稳妥闭环。
+- **工作树状态**：TASK-275 立项中。
+- **当前在途任务数**：`1` 个（TASK-275）。
 
 
 

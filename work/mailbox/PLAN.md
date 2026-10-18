@@ -971,3 +971,21 @@
 | 独立复核 | 五块全 PASS 零阻断：块一提交链规范与白名单双向全等（16 路径逐位匹配）；块二七门禁全量独立复跑 7/7 亲自实测吻合（surefire 1135 测全绿、record 静态 0 违规、vitest 90 测全绿、vue-tsc rc=0、E2E 14/14 全绿、契约门 rc=0、token 门 2452、词面门四 locale ZERO_HIT、diff 净、入库 blob 纯 LF 无 BOM，mapmatch 266 存量独立确证新增违规 0）；块三双功能算法边界与核心实现审查 PASS；块四零 DDL、零新增依赖与架构侵入性 PASS；块五台账 handoff.md 真实性与时点一致性 PASS；终裁建议 ACCEPT 封盘 |
 | 是否到达外部门槛 | **已到达本地封盘**：封盘批次（4 笔 = TASK-274 立项笔 `11e40fb` + C-01 `efe8e5f` + C-02 `520762a` + 封盘笔）统一推送 origin/main，GitHub Actions CI 外部终验随后登记 |
 | 状态 | **已终裁 ACCEPT（2026-10-19 指导侧）**：指导亲核三块 + 独立复核五块双 PASS 零阻断；16 文件白名单双向全等；轨迹智能纠偏对比回放与每周运动智能周报全链路闭环；封盘批次统一推送 origin/main，待 CI 外部终验 |
+
+
+## 验收记录：TASK-275（跑团俱乐部与团队里程榜系统，FULL 档，2026-10-19 立项）
+
+| 项 | 内容 |
+| --- | --- |
+| 开工基线 | main @ `e512add`（TASK-274 封盘笔；本地与 origin/main 平齐，待外部 CI 终验） |
+| 分级定档 | FULL（涉及 user_db 跑团与成员表 DDL 双写、MyBatis-Plus 单测隔离度加固、跑团业务服务与控制器、Redis ZSet 团队总/周跑量榜单与 Hash 名称缓存、前端跑团广场/详情/成员管理/创建 Modal/榜单 Tab/首页卡片与 E2E mock；指导亲核三块 + 独立复核五块把关） |
+| 亲验证据 | 系统已闭环 54 项技术债、徽章体系、赛段刷榜、公里分段与轨迹纠偏回放/周报；微观个人体验已臻完善，但群体与团队维度完全空白，缺乏跑团载体与集体里程对抗；远端 CI run 39147321152 偶现 WeeklyDigestServiceTest 隔离度缺陷，一并治理 |
+| 白名单 | 24+1 项：`record-service/src/test/java/com/sportverify/record/service/WeeklyDigestServiceTest.java` + `sql/migrations/add-running-club.sql` + `sql/01-user-db.sql` + `api/src/main/java/com/sportverify/api/user/dto/ClubDTO.java` + `api/src/main/java/com/sportverify/api/user/dto/ClubMemberDTO.java` + `api/src/main/java/com/sportverify/api/user/dto/ClubCreateDTO.java` + `api/src/main/java/com/sportverify/api/user/dto/ClubLeaderboardDTO.java` + `user-service/src/main/java/com/sportverify/user/entity/RunningClub.java` + `user-service/src/main/java/com/sportverify/user/entity/ClubMember.java` + `user-service/src/main/java/com/sportverify/user/mapper/RunningClubMapper.java` + `user-service/src/main/java/com/sportverify/user/mapper/ClubMemberMapper.java` + `user-service/src/main/java/com/sportverify/user/service/ClubService.java` + `user-service/src/main/java/com/sportverify/user/controller/ClubController.java` + `user-service/src/test/java/com/sportverify/user/service/ClubServiceTest.java` + `leaderboard-service/src/main/java/com/sportverify/leaderboard/service/LeaderboardService.java` + `leaderboard-service/src/main/java/com/sportverify/leaderboard/controller/LeaderboardController.java` + `leaderboard-service/src/test/java/com/sportverify/leaderboard/service/LeaderboardClubTest.java` + `web/src/api/client.ts` + `web/src/pages/clubs.page.vue` + `web/src/pages/leaderboard.page.vue` + `web/src/pages/index.page.vue` + `web/src/App.vue` + `web/src/typed-router.d.ts` + `web/e2e/helpers.ts` + 台账 `work/mailbox/tasks/TASK-275/handoff.md` |
+| 核心实现 | R0 WeeklyDigestServiceTest 补齐 TableInfoHelper 隔离初始化；R1 增量迁移 add-running-club.sql（USE user_db;）与 01-user-db.sql 双写；R2 api 领域 DTO（ClubDTO/ClubMemberDTO/ClubCreateDTO/ClubLeaderboardDTO）；R3 user-service 跑团实体/Mapper/Service/Controller/单测；R4 leaderboard-service 跑团总/周榜 Redis ZSet 与端点/单测；R5 前端跑团广场、详情、成员、创建跑团 Modal、榜单跑团 Tab、首页卡片、导航入口与自动路由；R6 E2E mock 分支补齐 |
+| 门禁要求 | 七门禁全量逐位（surefire 63/79/221/392/203/120/57 保持只增不减，总计 1135 测）+ checkstyle --static=leaderboard-service 退出码 0 + 契约门 + token 门 29 项逐位持平 + 词面门四 locale ZERO_HIT + diff --check 净；双提交 C-01/C-02 |
+| 受限预登记 | 跑团里程统计通过 Redis ZSet 累加，不破坏运动记录与校验主链路的异步解耦架构 |
+| 实施与门禁 | （待子 Agent 落地回填） |
+| 指导亲核 | （待子 Agent 落地后执行） |
+| 独立复核 | （待子 Agent 落地后执行） |
+| 是否到达外部门槛 | **进行中（待实施）** |
+| 状态 | **进行中（2026-10-19 指导侧立项）**：TASK-275 跑团俱乐部与团队里程榜系统立项，派发令生效中 |
