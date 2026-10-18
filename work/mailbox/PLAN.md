@@ -948,8 +948,8 @@
 | 核心实现 | R1 api 领域 DTO（KilometerSplitDTO/RecordSplitsDTO）；R2 record-service 千米插值切片与 /records/{id}/splits 端点；R3 前端 splits.ts 切片工具与 vitest 单元测试；R4 GPX 海拔双向增强（client.ts TrackPointDTO 扩展 ele 属性与 gpx.ts 解析/导出）；R5 前端详情页公里配速卡与海拔剖面可视化 + E2E mock 补齐 |
 | 门禁要求 | 七门禁全量逐位（surefire 63/79/221/351/203/120/50 保持只增不减）+ checkstyle --static=record-service 退出码 0 + 契约门 + token 门 29 项逐位持平 + 词面门四 locale ZERO_HIT + diff --check 净；双提交 C-01/C-02 |
 | 受限预登记 | 纯内存计算，零数据库表定义与迁移脚本变更，不阻塞运动记录写链路 |
-| 实施与门禁 | 待实施 |
-| 指导亲核 | 待亲核 |
+| 实施与门禁 | C-01 `bdd1dd7`（feat(record,web)，13 文件 +1364/−6：KilometerSplitDTO/RecordSplitsDTO + SportRecordService 插值切片与 RecordController /splits 端点 + 前端 splits.ts 工具与 vitest 测试 + GPX 海拔双向增强 + 记录详情页公里切片卡片与海拔折线 + E2E mock）+ C-02 `1d63fe2`（台账 1 文件 +68 行）；门禁全绿：surefire 1104 测全绿（0 失败 0 错误 0 跳过，record 351→368 净增 +17）、静态门 Checkstyle 违规保持 0、前端 vitest 80 全绿（63→80，splits 11 + gpx 6）+ vue-tsc 类型检查 0 错 + E2E 14/14 全绿、契约门判据 B 14 路径全等 rc=0、token 门基线 2394 逐位持平 + 终态 2423 精确吻合期望值（自枚举各 +1）、词面门四 locale ZERO_HIT、diff --check 净（纯 LF） |
+| 指导亲核 | MEDIUM 档亲核三块全 PASS：①Git 状态与提交链对账（porcelain 空、恰 2 笔、diff 14 文件与 handoff §2 逐位一致、零推送）；②高风险定向抽查（KilometerSplitDTO 与 RecordSplitsDTO 契约字段全集、getRecordSplits 线性插值算法与归属防护、GPX <ele> 提取与回显、纯前端 splits.ts 与详情页卡片、E2E mock 补齐）；③一致性裁决（门禁全绿、读数对账全通过，实施期端点参数顺序笔误如实登记并修复） |
 | 独立复核 | 免独立复核（MEDIUM 档由指导侧亲核三块把关） |
-| 是否到达外部门槛 | 待实施完成后封盘并统一推送 CI 外部终验 |
-| 状态 | **已立项待派发（2026-10-18 指导侧）**：开工基线 main @ `cddd0ac`，两件套已立项 |
+| 是否到达外部门槛 | **已到达本地封盘**：封盘批次（4 笔 = TASK-273 立项笔 `c53e951` + C-01 `bdd1dd7` + C-02 `1d63fe2` + 封盘笔）统一推送 origin/main，GitHub Actions CI 外部终验随后登记 |
+| 状态 | **已终裁 ACCEPT（2026-10-18 指导侧）**：指导亲核三块全 PASS 零阻断；14 文件白名单双向全等；公里分段配速与海拔剖面图全链路闭环；封盘批次统一推送 origin/main，待 CI 外部终验 |
