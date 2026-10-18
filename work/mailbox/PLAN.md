@@ -912,8 +912,8 @@
 | 核心实现 | R1 补齐 E2E 勋章相关 mock 路由；R2 fetchAllFriendIds 改直调 userApi.listFriendIds 并更新测试桩；R3 sharding.yaml 配置校正 |
 | 门禁要求 | 七门禁全量逐位（surefire 63/79/221/351/203/110/36 保持，总计 1063 测）+ checkstyle --static=leaderboard-service/record-service 退出码 0 + 契约门 + token 门 29 项逐位持平 + 词面门四 locale ZERO_HIT + diff --check 净；双提交 C-01/C-02 |
 | 受限预登记 | 保持微服务对外核心业务 API 契约与已有表结构不变 |
-| 实施与门禁 | 待实施 |
-| 指导亲核 | 待亲核 |
+| 实施与门禁 | C-01 `a8877aa`（feat(leaderboard,web,record)，5 文件 +75/−96）+ C-02 `51affe5`（台账 1 文件 +50 行）；门禁全绿：surefire leaderboard 110 测全绿、record 351 测全绿（全仓 1063 测保持）、leaderboard 静态检查 Checkstyle 违规保持 0、前端 vitest 63 测全绿 + vue-tsc 类型检查 0 错、契约门判据 B 6 路径全等 rc=0、token 门基线 2336 逐位持平 + 终态 2365 精确吻合期望值（自枚举各 +1）、词面门四 locale ZERO_HIT、diff --check 净（纯 LF） |
+| 指导亲核 | LIGHT 档亲核三块全 PASS：①Git 状态与提交链对账（porcelain 空、恰 2 笔、diff 6 文件与 handoff §2 逐位一致、零推送）；②高风险定向抽查（E2E mock 勋章 4 路由全覆盖、LeaderboardService 好友 ID 直调改造消除分页与批量查昵称回表、sharding.yaml 单表声明校正、单测覆盖保持 110 全绿）；③一致性裁决（门禁全绿、读数对账全通过） |
 | 独立复核 | 免独立复核（LIGHT 档由指导侧亲核三块把关） |
-| 是否到达外部门槛 | 待实施完成后封盘并统一推送 CI 外部终验 |
-| 状态 | **已立项待派发（2026-10-18 指导侧）**：开工基线 main @ `4c85635`，两件套已立项 |
+| 是否到达外部门槛 | **已到达本地封盘**：封盘批次（4 笔 = TASK-271 立项笔 `c3652fb` + C-01 `a8877aa` + C-02 `51affe5` + 封盘笔）统一推送 origin/main，GitHub Actions CI 外部终验随后登记 |
+| 状态 | **已终裁 ACCEPT（2026-10-18 指导侧）**：指导亲核三块全 PASS 零阻断；6 文件白名单双向全等；存量技术债清理与跨服务好友调用性能优化全链路闭环；封盘批次统一推送 origin/main，待 CI 外部终验 |
