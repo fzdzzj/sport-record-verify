@@ -894,8 +894,8 @@
 | 核心实现 | R1 在 BadgeServiceTest 增加 @BeforeEach setUp() 初始化 TableInfoHelper；R2 验证单用例与全量用例 |
 | 门禁要求 | 七门禁全量逐位（surefire 63/79/221/351/203/110/36 保持，总计 1063 测）+ checkstyle --static=record-service 退出码 0 + 契约门 + token 门 29 项逐位持平 + 词面门四 locale ZERO_HIT + diff --check 净；双提交 C-01/C-02 |
 | 受限预登记 | 纯测试代码改动，不碰任何生产代码与配置 |
-| 实施与门禁 | 待实施 |
-| 指导亲核 | 待亲核 |
+| 实施与门禁 | C-01 `6c32f23`（fix(record)，恰 1 文件 +6/−1：补齐 BadgeServiceTest 在 @BeforeEach 中的 LambdaCache 初始化消除用例执行序依赖）+ C-02 `e5ce7e7`（台账 1 文件 +44 行）；门禁全绿：surefire 351 测全绿（全仓 1063 测保持）、record 静态检查 Checkstyle 违规保持 0、契约门判据 B 2 路径全等 rc=0、token 门基线 2307 逐位持平 + 终态 2336 精确吻合期望值（自枚举各 +1）、词面门四 locale ZERO_HIT、单测隔离独立实证 1 测通过彻底根除 CI 错误、diff --check 净（纯 LF） |
+| 指导亲核 | LIGHT 档亲核三块全 PASS：①Git 状态与提交链对账（porcelain 空、恰 2 笔、diff 2 文件与 handoff §2 逐位一致、零推送）；②高风险定向抽查（@BeforeEach setUp 机制与仓内既有家法完全对齐、单用例独立运行与全量 351 测零失败零跳过）；③一致性裁决（门禁全绿、读数对账全通过） |
 | 独立复核 | 免独立复核（LIGHT 档由指导侧亲核三块把关） |
-| 是否到达外部门槛 | 待实施完成后封盘并统一推送 CI 外部终验 |
-| 状态 | **已立项待派发（2026-10-18 指导侧）**：开工基线 main @ `a7a3159`，两件套已立项 |
+| 是否到达外部门槛 | **已到达本地封盘**：封盘批次（4 笔 = TASK-270 立项笔 `bcd073e` + C-01 `6c32f23` + C-02 `e5ce7e7` + 封盘笔）统一推送 origin/main，GitHub Actions CI 外部终验随后登记 |
+| 状态 | **已终裁 ACCEPT（2026-10-18 指导侧）**：指导亲核三块全 PASS 零阻断；2 文件白名单双向全等；BadgeServiceTest 单测隔离度加固；封盘批次统一推送 origin/main，待 CI 外部终验 |
