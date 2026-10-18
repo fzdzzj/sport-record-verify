@@ -76,12 +76,18 @@ export function createStores(): Stores {
 export async function installRouteMocks(page: Page, ctx: ApiCtx, stores: Stores): Promise<void> {
   await page.route('**/record/api/**', (route) => handleRecord(route, ctx, stores))
   await page.route('**/user/api/**', (route) => handleUser(route, ctx, stores))
+  // TASK-272：赛段请求面（mapmatch 赛段列表/匹配 + leaderboard 赛段榜）由 route-mock 承接，
+  // 命中分支即无真实网络；未映射分支仍记入 ctx.unmocked 断言兜底（见 handleMapmatch 等）
+  await page.route('**/mapmatch/segments*', (route) => handleMapmatch(route, ctx))
+  await page.route('**/leaderboard/api/leaderboard/segments*', (route) => handleLeaderboardSegments(route, ctx))
   page.on('request', (req) => {
     const p = new URL(req.url()).pathname
     // 仅统计后端 API 前缀（排除 dev server 下的 /src/api/*.ts 源码模块）
     if (!API_PREFIX_RE.test(p)) return
     ctx.apiRequests.push(`${req.method()} ${p}`)
-    if (!p.startsWith('/record/api/') && !p.startsWith('/user/api/')) {
+    // 赛段请求面已由 route-mock 承接（上方两分支），不再计入 unhandled 真实网络风险面
+    const segmentMocked = p.startsWith('/mapmatch/segments') || p.startsWith('/leaderboard/api/leaderboard/segments/')
+    if (!p.startsWith('/record/api/') && !p.startsWith('/user/api/') && !segmentMocked) {
       ctx.unhandled.push(`${req.method()} ${p}`)
     }
   })
@@ -89,6 +95,81 @@ export async function installRouteMocks(page: Page, ctx: ApiCtx, stores: Stores)
 
 /** 后端 API 前缀白名单（两前缀 route-mock 之外的前缀命中即 unhandled） */
 const API_PREFIX_RE = /^\/(api|record|user|leaderboard|verify|admin|mapmatch)\//
+
+// ===== 赛段夹具（TASK-272）：与后端预置兜底赛段同口径（世纪公园内圈冲刺段 / 陆家嘴滨江挑战段） =====
+const SEGMENT_FIXTURES = [
+  { id: 1, name: '世纪公园内圈 1.2km 冲刺段', sportType: 1, distanceMeters: 1195.5, createdAt: null },
+  { id: 2, name: '陆家嘴滨江 2.0km 挑战段', sportType: 2, distanceMeters: 2014.1, createdAt: null },
+]
+
+/** 赛段匹配夹具：命中预置赛段一，isPr/isKom 为 null（上报后由 leaderboard 回填） */
+const SEGMENT_MATCH_FIXTURES = [
+  {
+    segmentId: 1,
+    segmentName: '世纪公园内圈 1.2km 冲刺段',
+    recordId: 9001,
+    userId: 100,
+    elapsedSeconds: 480,
+    startTime: 1700000000000,
+    endTime: 1700000480000,
+    avgSpeed: 2.49,
+    isPr: null,
+    isKom: null,
+  },
+]
+
+/** 赛段 KOM 榜夹具：耗时升序，rank 1 即擂主（KOM 👑） */
+const SEGMENT_BOARD_FIXTURES = [
+  { rank: 1, userId: 100, nickname: '演示用户', elapsedSeconds: 480, recordId: 9001, paceFormatted: "6'41\"" },
+  { rank: 2, userId: 101, nickname: '跑友甲', elapsedSeconds: 510, recordId: 9002, paceFormatted: "7'07\"" },
+]
+
+/** 赛段相关 mock（TASK-272）：GET /mapmatch/segments 列表 + POST /mapmatch/segments/match 匹配 */
+async function handleMapmatch(route: Route, ctx: ApiCtx): Promise<void> {
+  const req = route.request()
+  const p = new URL(req.url()).pathname
+  const method = req.method()
+  if (p === '/mapmatch/segments' && method === 'GET') {
+    route.fulfill(ok(SEGMENT_FIXTURES))
+    return
+  }
+  if (p === '/mapmatch/segments/match' && method === 'POST') {
+    route.fulfill(ok(SEGMENT_MATCH_FIXTURES))
+    return
+  }
+  ctx.unmocked.push(`${method} ${p}`)
+  route.fulfill({ status: 404, contentType: 'application/json', body: JSON.stringify({ code: 9999, message: 'mock unmapped: ' + p }) })
+}
+
+/** 赛段 KOM 榜 mock（TASK-272）：GET /leaderboard/api/leaderboard/segments/{id} + POST effort 回执 */
+async function handleLeaderboardSegments(route: Route, ctx: ApiCtx): Promise<void> {
+  const req = route.request()
+  const p = new URL(req.url()).pathname
+  const method = req.method()
+  const board = p.match(/^\/leaderboard\/api\/leaderboard\/segments\/(\d+)$/)
+  if (board && method === 'GET') {
+    route.fulfill(ok(SEGMENT_BOARD_FIXTURES))
+    return
+  }
+  const effort = p.match(/^\/leaderboard\/api\/leaderboard\/segments\/(\d+)\/effort$/)
+  if (effort && method === 'POST') {
+    const body = (req.postDataJSON() || {}) as Record<string, unknown>
+    route.fulfill(
+      ok({
+        segmentId: Number(effort[1]),
+        segmentName: null,
+        recordId: body.recordId ?? null,
+        userId: 100,
+        elapsedSeconds: body.elapsedSeconds ?? null,
+        isPr: true,
+        isKom: true,
+      }),
+    )
+    return
+  }
+  ctx.unmocked.push(`${method} ${p}`)
+  route.fulfill({ status: 404, contentType: 'application/json', body: JSON.stringify({ code: 9999, message: 'mock unmapped: ' + p }) })
+}
 
 async function handleRecord(route: Route, ctx: ApiCtx, stores: Stores): Promise<void> {
   const req = route.request()

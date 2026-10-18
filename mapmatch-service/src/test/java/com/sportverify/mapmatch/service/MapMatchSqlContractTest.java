@@ -47,6 +47,17 @@ class MapMatchSqlContractTest {
             "GEOMETRY(LINESTRING, 4326) NOT NULL",
             "CREATE INDEX IF NOT EXISTS idx_road_edge_geom ON road_edge USING GIST (geom)");
 
+    /**
+     * 赛段表（TASK-272）DDL 契约片段（逐字锁定）：表名 segment、运动类型缺省 RUNNING、
+     * 标称长度列、空间折线类型与 GIST 索引——两段式匹配（SQL 粗筛 + Java 精匹）的库端锚点。
+     */
+    private static final List<String> EXPECTED_SEGMENT_FRAGMENTS = List.of(
+            "CREATE TABLE IF NOT EXISTS segment",
+            "sport_type   SMALLINT     NOT NULL DEFAULT 1",
+            "distance_m   DOUBLE PRECISION NOT NULL",
+            "GEOMETRY(LINESTRING, 4326) NOT NULL",
+            "CREATE INDEX IF NOT EXISTS idx_segment_geom ON segment USING GIST (geom)");
+
     @Test
     void 候选SQL与路网表契约_空间函数SRID列序与GIST索引全锁定() throws IOException, ReflectiveOperationException {
         // ---- 生产常量逐字锁定：表名 / 空间函数 / SRID 4326 / 占位符形态 ----
@@ -76,6 +87,22 @@ class MapMatchSqlContractTest {
         }
         assertFalse(schemaDdl.contains("USING BTREE (geom)"),
                 "geom 列必须走 GIST 空间索引，不得退化为 BTREE（无法加速 ST_DWithin）");
+    }
+
+    /**
+     * 赛段表契约（TASK-272）：表名 / 运动类型缺省 / 标称长度 / 空间折线 SRID / GIST 索引逐字锁定。
+     * 与 road_edge 同款防线——粗筛 SQL 打桩看不见库端结构，只有本契约与真实库 IT 能拦住
+     * DDL 漂移（如索引误写成 BTREE、SRID 缺失导致 ST_DWithin 全表扫）。
+     */
+    @Test
+    void 赛段表契约_segment表结构与GIST空间索引全锁定() throws IOException {
+        String schemaDdl = readRepoFile("scripts/mapmatch/road_schema.sql");
+        for (String fragment : EXPECTED_SEGMENT_FRAGMENTS) {
+            assertTrue(schemaDdl.contains(fragment),
+                    "road_schema.sql 必须包含赛段契约片段: " + fragment);
+        }
+        assertFalse(schemaDdl.contains("USING BTREE (geom)"),
+                "segment.geom 列必须走 GIST 空间索引，不得退化为 BTREE（无法加速 ST_DWithin）");
     }
 
     /** 反射读取生产常量（不连库）：绑定编译产物，改 SQL 不改测试即红 */

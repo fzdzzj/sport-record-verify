@@ -2,6 +2,8 @@ package com.sportverify.leaderboard.service;
 
 import com.sportverify.api.record.RecordStatus;
 import com.sportverify.api.record.dto.LeaderboardDTO;
+import com.sportverify.api.mapmatch.dto.SegmentEffortDTO;
+import com.sportverify.api.mapmatch.dto.SegmentLeaderboardDTO;
 import com.sportverify.api.user.UserApi;
 import com.sportverify.api.user.dto.UserDTO;
 import com.sportverify.common.result.Result;
@@ -70,6 +72,10 @@ public class LeaderboardService {
 
     /** 总榜 ZSet 键（member=userId，score=累计 pass 里程，审批版 §4.5） */
     public static final String OVERALL_ZSET_KEY = "leaderboard:overall";
+    /** 赛段耗时榜 ZSet 键前缀（TASK-272，member=userId，score=个人最好 elapsed_seconds，升序 KOM） */
+    public static final String SEGMENT_ZSET_KEY_PREFIX = "leaderboard:segment:";
+    /** 赛段成绩附属 Hash 键后缀（TASK-272，field=userId，value=recordId，榜单条目回指完赛记录） */
+    public static final String SEGMENT_RECORD_HASH_SUFFIX = ":record";
     /** 入榜/回滚互斥锁前缀（同一记录串行化，审批版 §7.5） */
     public static final String ROLLBACK_LOCK_PREFIX = "lock:rollback:";
     /** 定时结算防重锁（多实例仅一个执行，审批版 §7.5） */
@@ -650,6 +656,122 @@ public class LeaderboardService {
                     row.getTotalDistance() == null ? BigDecimal.ZERO : row.getTotalDistance()));
         }
         return result;
+    }
+
+    // ==================== 赛段 KOM 榜（TASK-272） ====================
+
+    /**
+     * 赛段成绩上报（TASK-272 路段挑战与赛段刷榜）：Redis ZSet {@code leaderboard:segment:{segmentId}}
+     * （member=userId，score=个人最好 elapsed_seconds，<b>升序</b>——耗时最短即赛段擂主 KOM 👑）。
+     * <ol>
+     *   <li><b>PR 维护</b>：现成绩不存在或新成绩更优才 ZADD 覆盖（个人最好成绩），同时把 recordId
+     *       写入附属 Hash {@code leaderboard:segment:{segmentId}:record}（榜单条目回指完赛记录）；
+     *       与个人最好成绩持平（重放/重访口径）不重写 ZSet、不重复计数，但判定仍报 PR；</li>
+     *   <li><b>KOM 判定</b>：写后以 ZRANK（升序）取位次，rank=0 即全场第一；未刷新 PR
+     *       （本次成绩劣于自身最好成绩）时恒非 KOM——「当前用时」未进榜首语义。</li>
+     * </ol>
+     * <p>无分布式锁（与 applyVerified 的记录锚点域不同）：赛段榜是纯 Redis 单键写，ZADD 本身
+     * 原子；并发上报的瞬态位次竞态由下一次上报的判定收敛（最终一致，ADR-0009 同哲学）。</p>
+     */
+    public SegmentEffortDTO recordSegmentEffort(Long segmentId, Long userId, Long recordId, Long elapsedSeconds) {
+        if (segmentId == null || userId == null || elapsedSeconds == null || elapsedSeconds <= 0) {
+            throw new IllegalArgumentException("赛段成绩参数非法：segmentId/userId 必填且 elapsedSeconds 必须为正");
+        }
+        String key = SEGMENT_ZSET_KEY_PREFIX + segmentId;
+        String member = String.valueOf(userId);
+        Double current = stringRedisTemplate.opsForZSet().score(key, member);
+        boolean better = current == null || elapsedSeconds < current;
+        if (better) {
+            stringRedisTemplate.opsForZSet().add(key, member, elapsedSeconds.doubleValue());
+            stringRedisTemplate.opsForHash().put(key + SEGMENT_RECORD_HASH_SUFFIX, member,
+                    String.valueOf(recordId == null ? 0L : recordId));
+        }
+        boolean isPr = current == null || elapsedSeconds <= current;
+        Long rank = stringRedisTemplate.opsForZSet().rank(key, member);
+        boolean isKom = isPr && rank != null && rank == 0;
+        log.info("赛段成绩上报：segmentId={}, userId={}, recordId={}, elapsed={}s, pr={}, kom={}",
+                segmentId, userId, recordId, elapsedSeconds, isPr, isKom);
+        SegmentEffortDTO effort = new SegmentEffortDTO();
+        effort.setSegmentId(segmentId);
+        effort.setUserId(userId);
+        effort.setRecordId(recordId);
+        effort.setElapsedSeconds(elapsedSeconds);
+        effort.setIsPr(isPr);
+        effort.setIsKom(isKom);
+        return effort;
+    }
+
+    /**
+     * 赛段 KOM 榜查询（TASK-272）：{@code ZRANGE}（升序，耗时最短在前）取前 N，
+     * 批量补昵称（user-service 不可用时降级「用户{id}」占位，与总榜同路径）；recordId 经
+     * 附属 Hash 回指、配速由快照表记录里程派生（耗时/里程，分'秒"/km），记录缺失时配速为 "-"。
+     * 刻意不加 {@code @Cacheable}：CacheConfig 只注册了 {@code leaderboard:overall} 缓存名
+     * （同 {@link #dailyReport} 的注释口径），且赛段榜读面尚未有热读诉求，保持写路径零代理
+     * 哨兵口径（ADR-0009）。
+     */
+    public List<SegmentLeaderboardDTO> getSegmentLeaderboard(Long segmentId, Integer size) {
+        if (segmentId == null) {
+            throw new IllegalArgumentException("segmentId 不能为空");
+        }
+        int topN = (size == null || size <= 0) ? DEFAULT_TOP_N : Math.min(size, 1000);
+        String key = SEGMENT_ZSET_KEY_PREFIX + segmentId;
+        Set<TypedTuple<String>> tuples = stringRedisTemplate.opsForZSet().rangeWithScores(key, 0, topN - 1L);
+        if (tuples == null || tuples.isEmpty()) {
+            return List.of();
+        }
+        // rangeWithScores 升序返回（score 小在前）；保序收集以维护 rank=1 即 KOM 的语义
+        List<TypedTuple<String>> ordered = new ArrayList<>(tuples);
+        List<Long> userIds = ordered.stream().map(t -> Long.valueOf(t.getValue())).toList();
+        Map<Long, String> nicknames = resolveNicknames(userIds);
+        Map<Object, Object> recordRows = stringRedisTemplate.opsForHash().entries(key + SEGMENT_RECORD_HASH_SUFFIX);
+
+        List<SegmentLeaderboardDTO> result = new ArrayList<>(ordered.size());
+        for (int i = 0; i < ordered.size(); i++) {
+            TypedTuple<String> t = ordered.get(i);
+            Long uid = Long.valueOf(t.getValue());
+            long elapsed = t.getScore() == null ? 0L : Math.round(t.getScore());
+            Long recordId = parseRecordId(recordRows.get(uid.toString()));
+            SportRecordSnapshot snapshot = recordId > 0 ? sportRecordMapper.selectById(recordId) : null;
+            double distanceKm = snapshot == null || snapshot.getDistance() == null
+                    ? 0d : snapshot.getDistance().doubleValue();
+            result.add(assembleSegmentEntry(i + 1, uid,
+                    nicknames.getOrDefault(uid, "用户" + uid), elapsed, recordId, distanceKm));
+        }
+        return result;
+    }
+
+    /** 赛段榜单条目组装：rank（入参序即耗时升序）+ 回指记录 + 配速派生 */
+    private static SegmentLeaderboardDTO assembleSegmentEntry(int rank, Long userId, String nickname,
+                                                              long elapsedSeconds, Long recordId, double distanceKm) {
+        SegmentLeaderboardDTO dto = new SegmentLeaderboardDTO();
+        dto.setRank(rank);
+        dto.setUserId(userId);
+        dto.setNickname(nickname);
+        dto.setElapsedSeconds(elapsedSeconds);
+        dto.setRecordId(recordId);
+        dto.setPaceFormatted(distanceKm > 0 ? formatSegmentPace(elapsedSeconds / distanceKm) : "-");
+        return dto;
+    }
+
+    /** 配速格式化（秒每公里 → 分'秒"/km，如 4'05"；与前端配速展示同形） */
+    private static String formatSegmentPace(double secondsPerKm) {
+        int total = (int) Math.round(secondsPerKm);
+        return total / 60 + "'" + String.format("%02d", total % 60) + "\"";
+    }
+
+    /** 附属 Hash 的 recordId 解析（数值/字符串双形态容忍，缺失或非法回退 0=无记录） */
+    private static long parseRecordId(Object raw) {
+        if (raw instanceof Number number) {
+            return number.longValue();
+        }
+        if (raw == null) {
+            return 0L;
+        }
+        try {
+            return Long.parseLong(raw.toString());
+        } catch (NumberFormatException e) {
+            return 0L;
+        }
     }
 
     // ==================== 内部工具 ====================

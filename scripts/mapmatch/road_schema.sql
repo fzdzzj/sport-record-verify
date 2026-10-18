@@ -25,3 +25,27 @@ CREATE INDEX IF NOT EXISTS idx_road_edge_geom ON road_edge USING GIST (geom);
 COMMENT ON TABLE  road_edge              IS 'OSM 路网道路边表（真实 OSM 单城市切片导入，非手工假数据）';
 COMMENT ON COLUMN road_edge.road_level   IS '道路等级：1=高速/快速 2=主干 3=次干 4=支路/居住 5=步行/骑行';
 COMMENT ON COLUMN road_edge.geom         IS '道路折线 LINESTRING(WGS84)，匹配时 ST_DWithin 走 GIST 索引预筛候选边';
+
+-- ============================================================
+-- 赛段表（TASK-272 路段挑战与赛段刷榜）：一行 = 一个挑战赛段（KOM 空间主体）
+-- 与 road_edge 同库（road_db）同坐标系（WGS84 经纬度），幂等可重跑
+-- ============================================================
+
+-- 赛段表：LINESTRING 空间折线（首点=起点、末点=终点，供两段式匹配锚定）
+CREATE TABLE IF NOT EXISTS segment (
+    id           BIGSERIAL PRIMARY KEY,                   -- 代理主键
+    name         VARCHAR(128) NOT NULL,                   -- 赛段名（如「世纪公园内圈 1.2km 冲刺段」）
+    sport_type   SMALLINT     NOT NULL DEFAULT 1,         -- 运动类型：1 RUNNING, 2 CYCLING
+    distance_m   DOUBLE PRECISION NOT NULL,               -- 标称长度（米），匹配容差基准
+    geom         GEOMETRY(LINESTRING, 4326) NOT NULL,     -- 赛段折线（WGS84 经纬度）
+    created_at   TIMESTAMP WITHOUT TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);
+
+-- GIST 空间索引：粗筛 ST_DWithin(geom, 轨迹外接矩形, 半径) 的性能前提（语义同 idx_road_edge_geom，
+-- R-Tree 包围盒剪枝把全表赛段裁到候选集，精匹放 Java 侧）
+CREATE INDEX IF NOT EXISTS idx_segment_geom ON segment USING GIST (geom);
+
+COMMENT ON TABLE  segment              IS '挑战赛段表（TASK-272 KOM 赛段刷榜）：LINESTRING 折线 + 标称长度';
+COMMENT ON COLUMN segment.sport_type   IS '运动类型：1=RUNNING 2=CYCLING';
+COMMENT ON COLUMN segment.distance_m   IS '标称长度（米）：完赛判定容差（±25%）的分母基准';
+COMMENT ON COLUMN segment.geom         IS '赛段折线 LINESTRING(WGS84)，粗筛 ST_DWithin 走 GIST 索引预筛候选赛段';

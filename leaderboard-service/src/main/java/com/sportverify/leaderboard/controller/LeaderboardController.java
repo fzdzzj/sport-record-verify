@@ -1,6 +1,8 @@
 package com.sportverify.leaderboard.controller;
 
 import com.sportverify.api.record.dto.LeaderboardDTO;
+import com.sportverify.api.mapmatch.dto.SegmentEffortDTO;
+import com.sportverify.api.mapmatch.dto.SegmentLeaderboardDTO;
 import com.sportverify.common.exception.BizException;
 import com.sportverify.common.result.Result;
 import com.sportverify.common.result.ResultCode;
@@ -11,6 +13,9 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.format.annotation.DateTimeFormat;
+import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
@@ -91,6 +96,38 @@ public class LeaderboardController {
             throw new IllegalArgumentException("日期范围跨度不能超过 366 天");
         }
         return Result.success(leaderboardService.rangeReport(start, end, size));
+    }
+
+    /**
+     * 赛段 KOM 榜（TASK-272）：{@code GET /api/leaderboard/segments/{segmentId}?size=50}。
+     * 按 elapsed_seconds 升序前 N（耗时最短 = rank 1 = 赛段擂主 KOM 👑）；昵称/配速/回指记录
+     * 由 service 组装。
+     */
+    @GetMapping("/segments/{segmentId}")
+    public Result<List<SegmentLeaderboardDTO>> segmentLeaderboard(
+            @PathVariable("segmentId") Long segmentId,
+            @RequestParam(value = "size", defaultValue = "50") int size) {
+        return Result.success(leaderboardService.getSegmentLeaderboard(segmentId, size));
+    }
+
+    /**
+     * 赛段成绩上报（TASK-272）：{@code POST /api/leaderboard/segments/{segmentId}/effort}。
+     * body 复用 SegmentEffortDTO（取 recordId/userId/elapsedSeconds，其余字段忽略），
+     * 响应回填 isPr/isKom 判定；auth 会话下 userId 以网关 X-User-Id 为准（body 自报值仅
+     * auth.enabled=false 的降级口径使用，复用 {@link #resolveUserId} 同款越权拦截）。
+     */
+    @PostMapping("/segments/{segmentId}/effort")
+    public Result<SegmentEffortDTO> submitSegmentEffort(
+            @PathVariable("segmentId") Long segmentId,
+            @RequestBody SegmentEffortDTO effort,
+            HttpServletRequest request) {
+        if (effort == null || effort.getRecordId() == null
+                || effort.getElapsedSeconds() == null || effort.getElapsedSeconds() <= 0) {
+            throw new IllegalArgumentException("赛段成绩上报必须携带 recordId 与正数 elapsedSeconds");
+        }
+        Long userId = resolveUserId(request, effort.getUserId());
+        return Result.success(leaderboardService.recordSegmentEffort(
+                segmentId, userId, effort.getRecordId(), effort.getElapsedSeconds()));
     }
 
     /**

@@ -159,7 +159,47 @@
           停顿点（speed 缺失/为 0，或配速大于 60 分/公里）断线不连。
         </p>
       </div>
+
+      <!-- 赛段冲刺成果（TASK-272）：挂载期两段式匹配命中的经典赛段，成绩幂等上报后回填 PR/KOM 判定 -->
+      <div v-if="segmentEfforts.length" class="mt-4">
+        <div class="mb-1 text-sm font-medium">🏁 赛段冲刺成果 (Segment Efforts)</div>
+        <div
+          v-for="e in segmentEfforts"
+          :key="e.segmentId"
+          class="flex flex-wrap items-center gap-2 border border-gray-200 rounded p-2 mb-2"
+        >
+          <span class="font-medium">{{ e.segmentName || `赛段 #${e.segmentId}` }}</span>
+          <a-tag v-if="e.isKom" color="gold">👑 KOM（全场第一）</a-tag>
+          <a-tag v-else-if="e.isPr" color="green">PR（个人最好）</a-tag>
+          <span class="text-gray-600">完赛耗时 {{ formatElapsed(e.elapsedSeconds) }}</span>
+          <span class="text-gray-600">均速 {{ formatAvgSpeed(e.avgSpeed) }}</span>
+          <a-button size="small" type="link" @click="openSegmentBoard(e)">查看赛段 KOM 榜</a-button>
+        </div>
+        <p class="text-xs text-gray-500">
+          赛段成绩上报为幂等口径：服务端仅在新成绩优于个人最好成绩（PR）时写榜，PR/KOM 以服务端判定回填为准。
+        </p>
+      </div>
     </a-card>
+
+    <!-- 赛段 KOM 榜弹窗（TASK-272）：耗时升序，rank 1 即擂主（KOM 👑） -->
+    <a-modal v-model:open="segmentBoardOpen" :title="boardTitle" :footer="null">
+      <a-spin :spinning="boardLoading">
+        <a-alert v-if="boardError" type="error" :message="boardError" />
+        <a-table
+          v-else
+          :data-source="segmentBoard"
+          :columns="boardColumns"
+          row-key="rank"
+          size="small"
+          :pagination="false"
+        >
+          <template #bodyCell="{ column, record }">
+            <span v-if="column.key === 'elapsed'">{{ formatElapsed(record.elapsedSeconds) }}</span>
+            <span v-else>{{ record[column.dataIndex] }}</span>
+          </template>
+        </a-table>
+      </a-spin>
+    </a-modal>
   </div>
 </template>
 
@@ -175,10 +215,15 @@ import {
   unlikeRecord,
   getRecordDetail,
   updateRecordVisibility,
+  matchSegments,
+  getSegmentLeaderboard,
+  submitSegmentEffort,
   type TrackPointDTO,
   type VerificationResultDTO,
   type LikeDTO,
   type RecordDetailDTO,
+  type SegmentEffortDTO,
+  type SegmentLeaderboardDTO,
 } from '@/api/client'
 import { generateGpx } from '@/utils/gpx'
 import { computePaceSeries, formatPace, isDrawablePace } from '@/utils/pace'
@@ -459,6 +504,88 @@ function paceTitle(g: PaceDisplayItem): string {
   return `dist=${g.distKm.toFixed(2)}km pace=${formatPace(g.paceSec)} ts=${g.ts}`
 }
 
+// ===== 赛段冲刺成果（TASK-272 路段挑战与赛段刷榜）=====
+const segmentEfforts = ref<SegmentEffortDTO[]>([])
+const segmentBoardOpen = ref(false)
+const segmentBoard = ref<SegmentLeaderboardDTO[]>([])
+const boardLoading = ref(false)
+const boardError = ref('')
+const activeSegment = ref<SegmentEffortDTO | null>(null)
+
+const boardTitle = computed(() =>
+  `赛段 KOM 榜${activeSegment.value?.segmentName ? '：' + activeSegment.value.segmentName : ''}`,
+)
+
+const boardColumns = [
+  { title: 'rank', dataIndex: 'rank', key: 'rank' },
+  { title: 'nickname', dataIndex: 'nickname', key: 'nickname' },
+  { title: '耗时', key: 'elapsed' },
+  { title: '配速', dataIndex: 'paceFormatted', key: 'paceFormatted' },
+]
+
+/** 秒 → x时x分x秒（与详情耗时口径一致） */
+function formatElapsed(seconds?: number): string {
+  if (seconds == null || seconds < 0) return '—'
+  const h = Math.floor(seconds / 3600)
+  const m = Math.floor((seconds % 3600) / 60)
+  const s = Math.round(seconds % 60)
+  if (h > 0) return `${h}时${m}分${s}秒`
+  if (m > 0) return `${m}分${s}秒`
+  return `${s}秒`
+}
+
+/** 米每秒 → km/h（一位小数） */
+function formatAvgSpeed(avgSpeed?: number): string {
+  if (avgSpeed == null || avgSpeed <= 0) return '—'
+  return `${(avgSpeed * 3.6).toFixed(1)} km/h`
+}
+
+/**
+ * 挂载期赛段匹配（TASK-272）：有轨迹点即异步两段式匹配，命中成果逐条幂等上报
+ * （服务端仅在其优于个人最好成绩 PR 时写榜，重放/重访不重复计数）并以响应回填
+ * isPr/isKom 判定；任一环节失败静默降级——赛段能力缺失不影响轨迹/配速主渲染。
+ */
+async function loadSegmentEfforts() {
+  segmentEfforts.value = []
+  if (!points.value.length) return
+  try {
+    const res = await matchSegments({ recordId: Number(recordId.value), points: points.value })
+    const efforts = res.data || []
+    const judged = await Promise.allSettled(
+      efforts.map(async (e) => {
+        try {
+          const r = await submitSegmentEffort(e.segmentId, e)
+          return { ...e, ...(r.data || {}) }
+        } catch {
+          return e // 上报失败仅缺 PR/KOM 标识，成果本身照常展示
+        }
+      }),
+    )
+    segmentEfforts.value = judged
+      .map((s) => (s.status === 'fulfilled' ? s.value : null))
+      .filter((x): x is SegmentEffortDTO => x !== null)
+  } catch {
+    segmentEfforts.value = []
+  }
+}
+
+/** 打开该赛段 KOM 榜弹窗（打开时拉取，耗时升序，rank 1 即擂主） */
+async function openSegmentBoard(e: SegmentEffortDTO) {
+  activeSegment.value = e
+  segmentBoardOpen.value = true
+  boardLoading.value = true
+  boardError.value = ''
+  segmentBoard.value = []
+  try {
+    const res = await getSegmentLeaderboard(e.segmentId)
+    segmentBoard.value = res.data || []
+  } catch (err: any) {
+    boardError.value = err.code ? `[${err.code}] ${err.message}` : (err.message || '赛段榜单加载失败')
+  } finally {
+    boardLoading.value = false
+  }
+}
+
 async function load() {
   if (!recordId.value) return
   loading.value = true
@@ -483,6 +610,8 @@ async function load() {
       allPoints = allPoints.concat(nextBatch)
     }
     points.value = allPoints
+    // 赛段匹配（TASK-272）：有轨迹点即异步匹配 + 幂等上报，失败静默降级不阻断主渲染
+    void loadSegmentEfforts()
     // 摘要头 + 详情指标 + 点赞态：并发调取，任一失败静默降级（403 权限/非通过 6001/摘要缺失均不阻断轨迹渲染）
     await Promise.allSettled([
       getVerifyResult(recordId.value)

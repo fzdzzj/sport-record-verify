@@ -497,6 +497,72 @@ export async function getLeaderboardRange(start: string, size = 10, end?: string
   })
 }
 
+// ===== Segments / KOM (TASK-272 路段挑战与赛段刷榜) =====
+export interface SegmentDTO {
+  id: number
+  name: string
+  sportType: number // 1 RUNNING, 2 CYCLING
+  distanceMeters: number
+  createdAt?: string
+}
+
+// 赛段冲刺成果：匹配产出（isPr/isKom 为空）与成绩上报回执（isPr/isKom 由服务端判定回填）双角色复用
+export interface SegmentEffortDTO {
+  segmentId: number
+  segmentName?: string
+  recordId: number
+  userId?: number
+  elapsedSeconds: number
+  startTime?: number
+  endTime?: number
+  avgSpeed?: number
+  isPr?: boolean
+  isKom?: boolean
+}
+
+export interface SegmentMatchRequestDTO {
+  recordId?: number
+  userId?: number
+  sportType?: number
+  points: TrackPointDTO[]
+}
+
+// 赛段 KOM 榜条目：耗时升序，rank 1 即擂主（KOM 👑）
+export interface SegmentLeaderboardDTO {
+  rank: number
+  userId: number
+  nickname: string
+  elapsedSeconds: number
+  recordId: number
+  paceFormatted: string
+}
+
+/** 赛段列表（GET /mapmatch/segments，TASK-272）：可选 sportType 过滤；库空/库失联返回预置兜底赛段。 */
+export async function getSegments(sportType?: number): Promise<Result<SegmentDTO[]>> {
+  return api.get('/mapmatch/segments', { params: sportType != null ? { sportType } : undefined })
+}
+
+/** 赛段完赛匹配（POST /mapmatch/segments/match，TASK-272）：两段式匹配，返回命中成果列表（可为空）。 */
+export async function matchSegments(dto: SegmentMatchRequestDTO): Promise<Result<SegmentEffortDTO[]>> {
+  return api.post('/mapmatch/segments/match', dto)
+}
+
+/** 赛段 KOM 榜（GET /leaderboard/api/leaderboard/segments/{segmentId}，TASK-272）：耗时升序前 N。 */
+export async function getSegmentLeaderboard(
+  segmentId: number | string,
+  size = 50,
+): Promise<Result<SegmentLeaderboardDTO[]>> {
+  return api.get(`/leaderboard/api/leaderboard/segments/${segmentId}`, { params: { size } })
+}
+
+/** 赛段成绩上报（POST /leaderboard/api/leaderboard/segments/{segmentId}/effort，TASK-272）：幂等 PR 维护，响应回填 isPr/isKom。 */
+export async function submitSegmentEffort(
+  segmentId: number | string,
+  effort: SegmentEffortDTO,
+): Promise<Result<SegmentEffortDTO>> {
+  return api.post(`/leaderboard/api/leaderboard/segments/${segmentId}/effort`, effort)
+}
+
 export const SAMPLE_TRACK_POINTS: TrackPointDTO[] = [
   {"seq":0,"lat":31.2453307,"lng":121.4576321,"ts":1700000000000},
   {"seq":1,"lat":31.2440070,"lng":121.4580362,"ts":1700000015000},
