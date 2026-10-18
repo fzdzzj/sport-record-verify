@@ -917,3 +917,21 @@
 | 独立复核 | 免独立复核（LIGHT 档由指导侧亲核三块把关） |
 | 是否到达外部门槛 | **已到达本地封盘**：封盘批次（4 笔 = TASK-271 立项笔 `c3652fb` + C-01 `a8877aa` + C-02 `51affe5` + 封盘笔）统一推送 origin/main，GitHub Actions CI 外部终验随后登记 |
 | 状态 | **已终裁 ACCEPT（2026-10-18 指导侧）**：指导亲核三块全 PASS 零阻断；6 文件白名单双向全等；存量技术债清理与跨服务好友调用性能优化全链路闭环；封盘批次统一推送 origin/main，待 CI 外部终验 |
+
+
+## 验收记录：TASK-272（路段挑战与赛段刷榜系统，FULL 档，2026-10-18 立项）
+
+| 项 | 内容 |
+| --- | --- |
+| 开工基线 | main @ `f32551b`（TASK-271 封盘笔；本地与 origin/main 平齐） |
+| 分级定档 | FULL（涉及 PostGIS 赛段表、两段式空间匹配算法、Redis ZSet 赛段耗时升序榜单与前端详情/榜单交互；指导亲核三块 + 独立复核五块把关） |
+| 亲验证据 | 系统已闭环 54 项技术债与勋章体系；具备 PostGIS 空间库与 Redis 多级缓存能力，用户选定拓展路段挑战与赛段刷榜系统 |
+| 白名单 | 16+1 项：`scripts/mapmatch/road_schema.sql` + `mapmatch-service/src/test/java/com/sportverify/mapmatch/service/MapMatchSqlContractTest.java` + `api/src/main/java/com/sportverify/api/mapmatch/dto/SegmentDTO.java` + `api/src/main/java/com/sportverify/api/mapmatch/dto/SegmentMatchRequestDTO.java` + `api/src/main/java/com/sportverify/api/mapmatch/dto/SegmentEffortDTO.java` + `api/src/main/java/com/sportverify/api/mapmatch/dto/SegmentLeaderboardDTO.java` + `mapmatch-service/src/main/java/com/sportverify/mapmatch/service/SegmentService.java` + `mapmatch-service/src/main/java/com/sportverify/mapmatch/controller/SegmentController.java` + `mapmatch-service/src/test/java/com/sportverify/mapmatch/service/SegmentServiceTest.java` + `leaderboard-service/src/main/java/com/sportverify/leaderboard/service/LeaderboardService.java` + `leaderboard-service/src/main/java/com/sportverify/leaderboard/controller/LeaderboardController.java` + `leaderboard-service/src/test/java/com/sportverify/leaderboard/service/LeaderboardSegmentTest.java` + `web/src/api/client.ts` + `web/src/pages/record-detail.page.vue` + `web/src/pages/leaderboard.page.vue` + `web/e2e/helpers.ts` + 台账 `work/mailbox/tasks/TASK-272/handoff.md` |
+| 核心实现 | R1 PostGIS segment 表与契约锁定；R2 api 领域 DTO；R3 SegmentService 两段式匹配与预置赛段；R4 LeaderboardService 赛段耗时升序 ZSet 榜单与 KOM 判定；R5 前端详情页冲刺成果与榜单页 KOM 呈现 + E2E mock 补齐 |
+| 门禁要求 | 七门禁全量逐位（surefire 63/79/221/351/203/110/36 保持只增不减）+ checkstyle --static=leaderboard-service 退出码 0 + 契约门 + token 门 29 项逐位持平 + 词面门四 locale ZERO_HIT + diff --check 净；双提交 C-01/C-02 |
+| 受限预登记 | 赛段匹配保持在只读/异步层，不阻塞运动记录写链路 |
+| 实施与门禁 | 待实施 |
+| 指导亲核 | 待亲核 |
+| 独立复核 | 待独立复核（FULL 档独立复核五块把关） |
+| 是否到达外部门槛 | 待实施完成后封盘并统一推送 CI 外部终验 |
+| 状态 | **已立项待派发（2026-10-18 指导侧）**：开工基线 main @ `f32551b`，两件套已立项 |
