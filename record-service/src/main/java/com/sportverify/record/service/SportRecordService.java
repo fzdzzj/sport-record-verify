@@ -1072,7 +1072,14 @@ public class SportRecordService {
      */
     private static final ZoneId BUSINESS_ZONE = ZoneId.of("Asia/Shanghai");
 
-    /** 轨迹推导结果（TASK-234）：首末点时间/时长（东八墙钟，TASK-259 起）+ 相邻点 Haversine 距离（公里，两位小数）。 */
+    /**
+     * 轨迹推导结果（TASK-234）：首末点时间/时长（东八墙钟，TASK-259 起）+ 相邻点 Haversine 距离（公里，两位小数）。
+     *
+     * @param startTime 开始时间（东八墙钟）
+     * @param endTime 结束时间（东八墙钟）
+     * @param durationSeconds 运动时长（秒）
+     * @param distanceKm 运动距离（公里）
+     */
     private record DerivedTrackMetrics(LocalDateTime startTime, LocalDateTime endTime,
                                        int durationSeconds, BigDecimal distanceKm) {
     }

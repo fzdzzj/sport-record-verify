@@ -83,3 +83,26 @@ groups:
         annotations:
           summary: "JVM 堆使用率超 80%：{{ $labels.job }}（{{ $labels.instance }}）"
           description: "堆使用率连续 5 分钟超过 80%，当前 {{ $value | humanizePercentage }}，关注 GC 压力与内存泄漏。"
+
+  # ---------- 容量与稳定性：压测容量监控锚点（TASK-265 容量基准报告） ----------
+  - name: sport-verify-capacity
+    rules:
+      - alert: VerifyHikariPoolSaturated
+        # 异步校验链 Hikari 连接池触顶（10/10）持续 30 秒，表明消费吞吐与提交速率失配
+        expr: hikaricp_connections_active{job="verify-service"} >= 10
+        for: 30s
+        labels:
+          severity: warning
+        annotations:
+          summary: "Verify 服务数据库连接池饱和：{{ $labels.job }}"
+          description: "HikariCP 活跃连接达到或超过 10 持续 30 秒，异步校验链可能发生积压或处理迟缓。"
+
+      - alert: GatewayWrite504Spike
+        # 网关在 1 分钟窗口内产生 504 Gateway Timeout，表明写链路或底层连接池过载快速失败
+        expr: sum(rate(http_server_requests_seconds_count{job="gateway-service",status="504"}[1m])) > 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "网关写链路 504 超时激增：{{ $labels.job }}"
+          description: "网关近 1 分钟内出现 504 Gateway Timeout 响应，底层连接池可能已打满导致请求超时快速失败。"

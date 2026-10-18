@@ -2,7 +2,10 @@ package com.sportverify.gateway.config;
 
 import com.alibaba.csp.sentinel.adapter.gateway.common.rule.GatewayFlowRule;
 import org.junit.jupiter.api.Test;
+import org.springframework.test.util.ReflectionTestUtils;
 
+import java.util.Arrays;
+import java.util.HashSet;
 import java.util.Set;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -16,6 +19,10 @@ import static org.junit.jupiter.api.Assertions.assertNull;
  * 推送链路本机无 Nacos 不实测（spec §5 预注册 2），converter 为纯逻辑按三用例覆盖：合法空
  * 数组 → null（空规则集视为无效更新，保持上一版）、非 JSON 垃圾 → null（既有行为回归）、
  * 合法两条 → size==2。</p>
+ *
+ * <p>TASK-268 R3 追加：defaultRules() 兜底差异化——route-record-service 使用专属限流阈值，
+ * 其余路由保持全局兜底，7 路由全覆盖（经 ReflectionTestUtils 反射注入字段并调用包私有方法，
+ * 与 SentinelRouteCoverageTest 同款口径）。</p>
  */
 class SentinelGatewayRuleConfigTest {
 
@@ -42,5 +49,30 @@ class SentinelGatewayRuleConfigTest {
         Set<GatewayFlowRule> rules = config.toGatewayFlowRules(json);
         assertNotNull(rules);
         assertEquals(2, rules.size());
+    }
+
+    /** TASK-268 R3：写链路差异化限流兜底——record 路由用专属阈值 200，其余 6 路由保持全局 5000，7 路由全覆盖 */
+    @Test
+    void defaultRules_recordRouteUsesDedicatedThreshold() {
+        ReflectionTestUtils.setField(config, "qps", 5000L);
+        ReflectionTestUtils.setField(config, "recordRouteQps", 200L);
+        Set<GatewayFlowRule> rules = ReflectionTestUtils.invokeMethod(config, "defaultRules");
+        assertNotNull(rules);
+        assertEquals(7, rules.size());
+        Set<String> resources = new HashSet<>();
+        for (GatewayFlowRule rule : rules) {
+            resources.add(rule.getResource());
+            if ("route-record-service".equals(rule.getResource())) {
+                assertEquals(200.0, rule.getCount());
+            } else {
+                assertEquals(5000.0, rule.getCount());
+            }
+        }
+        // 7 个业务路由全覆盖（与 SentinelRouteCoverageTest 同口径，防漏配）
+        Set<String> expected = new HashSet<>(Arrays.asList(
+                "route-auth-service", "route-user-service", "route-record-service",
+                "route-leaderboard-service", "route-verify-service", "route-admin-service",
+                "route-mapmatch-service"));
+        assertEquals(expected, resources);
     }
 }

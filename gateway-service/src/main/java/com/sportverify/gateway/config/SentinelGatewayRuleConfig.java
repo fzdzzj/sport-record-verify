@@ -55,6 +55,10 @@ public class SentinelGatewayRuleConfig {
     @Value("${app.gateway.rate-limit.qps:5000}")
     private long qps;
 
+    /** 针对特定高负载写路由（route-record-service）的专属限流 QPS（默认 200，对齐 TASK-265 报告安全水位并保留弹性） */
+    @Value("${app.gateway.rate-limit.routes.route-record-service.qps:200}")
+    private long recordRouteQps;
+
     /** 统计窗口（秒），默认 1s */
     @Value("${app.gateway.rate-limit.interval-seconds:1}")
     private int intervalSeconds;
@@ -88,8 +92,13 @@ public class SentinelGatewayRuleConfig {
     private Set<GatewayFlowRule> defaultRules() {
         Set<GatewayFlowRule> rules = new HashSet<>();
         for (String routeId : ROUTE_IDS) {
+            // 写链路差异化兜底（TASK-268）：record 单机约 88 QPS 即触顶 DB 连接池（TASK-265 报告），
+            // 统一 5000 兜底在极端流量下无法快速背压；专属阈值 >0 时该路由提前 429 优雅限流，
+            // 其余 6 个路由继续使用全局 qps 兜底不变
+            long routeQps = "route-record-service".equals(routeId) && recordRouteQps > 0
+                    ? recordRouteQps : qps;
             GatewayFlowRule rule = new GatewayFlowRule(routeId)
-                    .setCount(qps)
+                    .setCount(routeQps)
                     .setIntervalSec(intervalSeconds)
                     .setGrade(RuleConstant.FLOW_GRADE_QPS); // QPS 流控（非并发线程数），窗口内超限即 429
             rules.add(rule);

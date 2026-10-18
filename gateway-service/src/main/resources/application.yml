@@ -162,6 +162,16 @@ app:
         group-id: DEFAULT_GROUP
         data-id: gateway-flow-rules
 
+  # 网关限流（TASK-268 写链路差异化防御）：全局兜底 qps 由 SentinelGatewayRuleConfig 的
+  # @Value 默认 5000 承担（Nacos 无规则或缺省时使用）；下方声明写链路专属阈值——
+  # record-service 单机约 88 QPS 即触顶 DB 连接池（TASK-265 容量基准），5000 兜底无法阻断
+  # 写过载，专属阈值让过载流量由 Sentinel 快速 429 优雅背压，防止请求堆积至 10s 网关超时（504）
+  gateway:
+    rate-limit:
+      routes:
+        route-record-service:
+          qps: 200 # 写链路专属限流阈值（对齐 TASK-265 单机容量基准 ~88 QPS，留 2~3 倍峰值弹性，防止 5000 虚高击穿连接池）
+
 # 健康检查端点（K8s/监控探针可用）
 management:
   endpoints:
