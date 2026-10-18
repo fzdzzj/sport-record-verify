@@ -935,3 +935,21 @@
 | 独立复核 | 五块全 PASS 零阻断：块一提交链规范与白名单双向全等（17 路径逐位匹配）；块二红线与零触碰严格遵守（生产业务与配置 100% 零越界）；块三双端门禁独立复测全过（surefire 1087 测、Checkstyle 0 违规、vitest 63 测、vue-tsc rc=0、契约门 rc=0、token 门 2394、词面门四 locale ZERO_HIT、diff 净、入库 blob 纯 LF）；块四证据链闭环与需求逐项实测达成（R1~R5 全量兑现）；块五结论一致性终裁 ACCEPT，具备封盘条件 |
 | 是否到达外部门槛 | **已到达本地封盘**：封盘批次（4 笔 = TASK-272 立项笔 `896ecb9` + C-01 `deda9a1` + C-02 `e964878` + 封盘笔）统一推送 origin/main，GitHub Actions CI 外部终验随后登记 |
 | 状态 | **已终裁 ACCEPT（2026-10-18 指导侧）**：指导亲核三块 + 独立复核五块双 PASS 零阻断；17 文件白名单双向全等；路段挑战与赛段刷榜系统全链路闭环；封盘批次统一推送 origin/main，待 CI 外部终验 |
+
+
+## 验收记录：TASK-273（公里分段配速与海拔剖面图，MEDIUM 档，2026-10-18 立项）
+
+| 项 | 内容 |
+| --- | --- |
+| 开工基线 | main @ `cddd0ac`（TASK-272 封盘笔；本地与 origin/main 平齐） |
+| 分级定档 | MEDIUM（涉及轨迹点千米线性插值切片算法、api 领域 DTO、SportRecordService 与 RecordController /splits 端点、前端 splits.ts 工具与 vitest 测试、GPX 海拔双向增强、记录详情页公里切片卡片与海拔剖面；指导亲核三块把关，免独立复核子 agent） |
+| 亲验证据 | 系统已闭环 54 项技术债、徽章体系与赛段刷榜系统；轨迹点已全量拉取并具备配速折线，但缺少专业跑者最看重的每公里分段配速对比（Splits）与海拔剖面图（Elevation Profile）；纯内存算法切片，零数据库表变更，收效立竿见影 |
+| 白名单 | 13+1 项：`api/src/main/java/com/sportverify/api/record/dto/KilometerSplitDTO.java` + `api/src/main/java/com/sportverify/api/record/dto/RecordSplitsDTO.java` + `record-service/src/main/java/com/sportverify/record/service/SportRecordService.java` + `record-service/src/main/java/com/sportverify/record/controller/RecordController.java` + `record-service/src/test/java/com/sportverify/record/service/RecordSplitsServiceTest.java` + `record-service/src/test/java/com/sportverify/record/controller/RecordControllerTest.java` + `web/src/api/client.ts` + `web/src/utils/splits.ts` + `web/src/utils/__tests__/splits.test.ts` + `web/src/utils/gpx.ts` + `web/src/utils/__tests__/gpx.test.ts` + `web/src/pages/record-detail.page.vue` + `web/e2e/helpers.ts` + 台账 `work/mailbox/tasks/TASK-273/handoff.md` |
+| 核心实现 | R1 api 领域 DTO（KilometerSplitDTO/RecordSplitsDTO）；R2 record-service 千米插值切片与 /records/{id}/splits 端点；R3 前端 splits.ts 切片工具与 vitest 单元测试；R4 GPX 海拔双向增强（client.ts TrackPointDTO 扩展 ele 属性与 gpx.ts 解析/导出）；R5 前端详情页公里配速卡与海拔剖面可视化 + E2E mock 补齐 |
+| 门禁要求 | 七门禁全量逐位（surefire 63/79/221/351/203/120/50 保持只增不减）+ checkstyle --static=record-service 退出码 0 + 契约门 + token 门 29 项逐位持平 + 词面门四 locale ZERO_HIT + diff --check 净；双提交 C-01/C-02 |
+| 受限预登记 | 纯内存计算，零数据库表定义与迁移脚本变更，不阻塞运动记录写链路 |
+| 实施与门禁 | 待实施 |
+| 指导亲核 | 待亲核 |
+| 独立复核 | 免独立复核（MEDIUM 档由指导侧亲核三块把关） |
+| 是否到达外部门槛 | 待实施完成后封盘并统一推送 CI 外部终验 |
+| 状态 | **已立项待派发（2026-10-18 指导侧）**：开工基线 main @ `cddd0ac`，两件套已立项 |
