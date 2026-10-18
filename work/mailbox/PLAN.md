@@ -930,8 +930,8 @@
 | 核心实现 | R1 PostGIS segment 表与契约锁定；R2 api 领域 DTO；R3 SegmentService 两段式匹配与预置赛段；R4 LeaderboardService 赛段耗时升序 ZSet 榜单与 KOM 判定；R5 前端详情页冲刺成果与榜单页 KOM 呈现 + E2E mock 补齐 |
 | 门禁要求 | 七门禁全量逐位（surefire 63/79/221/351/203/110/36 保持只增不减）+ checkstyle --static=leaderboard-service 退出码 0 + 契约门 + token 门 29 项逐位持平 + 词面门四 locale ZERO_HIT + diff --check 净；双提交 C-01/C-02 |
 | 受限预登记 | 赛段匹配保持在只读/异步层，不阻塞运动记录写链路 |
-| 实施与门禁 | 待实施 |
-| 指导亲核 | 待亲核 |
-| 独立复核 | 待独立复核（FULL 档独立复核五块把关） |
-| 是否到达外部门槛 | 待实施完成后封盘并统一推送 CI 外部终验 |
-| 状态 | **已立项待派发（2026-10-18 指导侧）**：开工基线 main @ `f32551b`，两件套已立项 |
+| 实施与门禁 | C-01 `deda9a1`（feat(mapmatch,leaderboard,api,web)，16 文件 +1695/−10：PostGIS segment 空间表与契约 + SegmentDTO 四组 DTO + SegmentService 两段式匹配与预置赛段 + LeaderboardService 耗时升序榜与 KOM + 前端成果卡/KOM 弹窗与赛段 Tab + E2E mock）+ C-02 `e964878`（台账 1 文件 +73 行）；门禁全绿：surefire 1087 测全绿（0 失败 0 错误 0 跳过，leaderboard 110→120 净增 +10、mapmatch 36→50 净增 +14）、静态门 Checkstyle 违规保持 0、前端 vitest 63 全绿 + vue-tsc 类型检查 0 错 + E2E 14/14 全绿、契约门判据 B 17 路径全等 rc=0、token 门基线 2365 逐位持平 + 终态 2394 精确吻合期望值（自枚举各 +1）、词面门四 locale ZERO_HIT、diff --check 净（纯 LF） |
+| 指导亲核 | FULL 档亲核三块全 PASS：①Git 状态与提交链对账（porcelain 空、恰 2 笔、diff 17 文件与 handoff §2 逐位一致、零推送）；②高风险定向抽查（road_schema.sql DDL 与 GIST 索引合规、MapMatchSqlContractTest 空间表结构与反向防 BTREE 退化契约、SegmentDTO 四组 DTO 契约、SegmentService 两段式匹配与容差防跳点、LeaderboardService 赛段耗时升序 ZSet 与 KOM 判定、前端 record-detail 成果卡/KOM 弹窗与 leaderboard 赛段 Tab、helpers.ts mock 补齐）；③一致性裁决（门禁全绿、读数对账全通过） |
+| 独立复核 | 五块全 PASS 零阻断：块一提交链规范与白名单双向全等（17 路径逐位匹配）；块二红线与零触碰严格遵守（生产业务与配置 100% 零越界）；块三双端门禁独立复测全过（surefire 1087 测、Checkstyle 0 违规、vitest 63 测、vue-tsc rc=0、契约门 rc=0、token 门 2394、词面门四 locale ZERO_HIT、diff 净、入库 blob 纯 LF）；块四证据链闭环与需求逐项实测达成（R1~R5 全量兑现）；块五结论一致性终裁 ACCEPT，具备封盘条件 |
+| 是否到达外部门槛 | **已到达本地封盘**：封盘批次（4 笔 = TASK-272 立项笔 `896ecb9` + C-01 `deda9a1` + C-02 `e964878` + 封盘笔）统一推送 origin/main，GitHub Actions CI 外部终验随后登记 |
+| 状态 | **已终裁 ACCEPT（2026-10-18 指导侧）**：指导亲核三块 + 独立复核五块双 PASS 零阻断；17 文件白名单双向全等；路段挑战与赛段刷榜系统全链路闭环；封盘批次统一推送 origin/main，待 CI 外部终验 |
