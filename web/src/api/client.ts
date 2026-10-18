@@ -389,6 +389,44 @@ export async function deleteGoal(id: number | string): Promise<Result<void>> {
   return api.delete(`/record/api/records/my/goals/${id}`)
 }
 
+// ===== Badges & achievements (TASK-269) =====
+// 服务端读时结算口径（BadgeType 9 大成就）：currentValue/targetValue 为公里数或天数，
+// progressPct 0..100；unlocked=false 时 unlockedAt 为空、isEquipped 恒 false。
+export interface BadgeDTO {
+  code: string
+  name: string
+  description: string
+  category: string // MILESTONE | STREAK | SPECIAL
+  tier: string     // BRONZE | SILVER | GOLD | PLATINUM
+  icon: string
+  unlocked: boolean
+  unlockedAt?: string
+  isEquipped: boolean
+  currentValue: number
+  targetValue: number
+  progressPct: number
+}
+
+/** 我的勋章墙（GET /record/api/records/my/badges，TASK-269）：读时结算自动解锁并追溯历史；auth 会话下 userId 由网关注入。 */
+export async function getMyBadges(): Promise<Result<BadgeDTO[]>> {
+  return api.get('/record/api/records/my/badges')
+}
+
+/** 佩戴勋章（PUT /record/api/records/my/badges/{code}/wear，TASK-269）：未解锁 400（BADGE_NOT_UNLOCKED）。 */
+export async function wearBadge(code: string): Promise<Result<void>> {
+  return api.put(`/record/api/records/my/badges/${code}/wear`)
+}
+
+/** 卸下勋章（PUT /record/api/records/my/badges/unwear，TASK-269）：幂等全量置 0。 */
+export async function unwearBadge(): Promise<Result<void>> {
+  return api.put('/record/api/records/my/badges/unwear')
+}
+
+/** 指定用户当前佩戴的勋章（GET /record/api/records/users/{userId}/equipped-badge，TASK-269）：未佩戴 data 为 null。 */
+export async function getUserEquippedBadge(userId: number | string): Promise<Result<BadgeDTO | null>> {
+  return api.get(`/record/api/records/users/${userId}/equipped-badge`)
+}
+
 
 // Friends
 export async function createFriendRequest(targetUserId: number): Promise<Result<FriendRequestDTO>> {

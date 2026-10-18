@@ -98,3 +98,18 @@ CREATE TABLE IF NOT EXISTS `sport_goal` (
     UNIQUE KEY `uk_user_period_metric` (`user_id`, `period_type`, `metric`)
 ) ENGINE = InnoDB
   DEFAULT CHARSET = utf8mb4 COMMENT ='运动目标表';
+
+-- 用户勋章与成就表（TASK-269）
+-- 与 sql/migrations/add-user-badge-table.sql 的同名 DDL 必须逐字一致
+CREATE TABLE IF NOT EXISTS `user_badge` (
+    `id`          BIGINT       NOT NULL AUTO_INCREMENT COMMENT '主键ID',
+    `user_id`     BIGINT       NOT NULL COMMENT '所属用户ID',
+    `badge_code`  VARCHAR(64)  NOT NULL COMMENT '勋章编码',
+    `is_equipped` TINYINT      NOT NULL DEFAULT 0 COMMENT '是否佩戴：0 否，1 是',
+    `unlocked_at` DATETIME     NOT NULL COMMENT '解锁时间',
+    `created_at`  DATETIME     DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+    PRIMARY KEY (`id`),
+    UNIQUE KEY `uk_user_badge` (`user_id`, `badge_code`),
+    KEY `idx_user_equipped` (`user_id`, `is_equipped`)
+) ENGINE = InnoDB
+  DEFAULT CHARSET = utf8mb4 COMMENT ='用户勋章与成就表';

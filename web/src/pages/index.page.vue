@@ -208,6 +208,51 @@
           </p>
         </template>
       </a-card>
+
+      <!-- 成就勋章墙（TASK-269）：读时结算自动解锁并追溯历史；已解锁高亮 + 佩戴/卸下交互，未解锁置灰 + 进度条 -->
+      <a-card title="成就勋章墙" class="mt-4">
+        <div v-if="badgesLoading" class="py-4 text-gray-500">加载勋章进度中…</div>
+        <a-alert v-else-if="badgesError" type="warning" show-icon :message="badgesError" />
+        <div v-else class="grid grid-cols-3 gap-3">
+          <div
+            v-for="b in badges"
+            :key="b.code"
+            class="rounded border p-3 text-center"
+            :class="b.unlocked ? 'border-amber-400 bg-amber-50/60' : 'border-gray-200 bg-gray-50 opacity-70'"
+          >
+            <div class="text-3xl" :class="{ 'grayscale opacity-40': !b.unlocked }">{{ b.icon }}</div>
+            <div class="mt-1 text-sm font-semibold text-gray-800">{{ b.name }}</div>
+            <div class="text-xs text-gray-500 mt-0.5">{{ b.description }}</div>
+            <div class="mt-1">
+              <a-tag v-if="b.isEquipped" color="gold">佩戴中</a-tag>
+              <a-tag v-else-if="b.unlocked" color="green">已解锁</a-tag>
+              <a-tag v-else>{{ tierLabel(b.tier) }}</a-tag>
+            </div>
+            <a-progress
+              v-if="!b.unlocked"
+              :percent="b.progressPct"
+              size="small"
+              :format="() => formatBadgeProgress(b)"
+            />
+            <div v-else class="text-xs text-gray-400 mt-1">{{ formatBadgeTime(b.unlockedAt) }} 解锁</div>
+            <div class="mt-2">
+              <a-button
+                v-if="b.unlocked && !b.isEquipped"
+                size="small"
+                type="primary"
+                :loading="badgeActionLoading"
+                @click="handleWear(b)"
+              >佩戴</a-button>
+              <a-button
+                v-if="b.isEquipped"
+                size="small"
+                :loading="badgeActionLoading"
+                @click="handleUnwear"
+              >卸下</a-button>
+            </div>
+          </div>
+        </div>
+      </a-card>
     </template>
 
     <a-alert type="info" class="mt-4" message="演示要求：网关+服务 app.auth.enabled=true ；前端始终带 Bearer；不伪造 userId。" />
@@ -255,11 +300,15 @@ import { useRouter } from 'vue-router/auto'
 import {
   delRecord,
   deleteGoal,
+  getMyBadges,
   getMyGoals,
   getMyRecords,
   getMyStats,
   getMyStreak,
+  unwearBadge,
   upsertGoal,
+  wearBadge,
+  type BadgeDTO,
   type GoalDTO,
   type MyRecordsFilterParams,
   type MyStatsDTO,
@@ -381,6 +430,73 @@ async function handleDeleteGoal(id: number) {
   } catch (e: any) {
     message.error(e.code ? `[${e.code}] ${e.message}` : (e.message || '删除失败'))
   }
+}
+
+/**
+ * 成就勋章墙（TASK-269）：来自 GET /record/api/records/my/badges 的服务端读时结算视图，
+ * 调用即自动解锁并追溯历史记录；软错误口径与统计卡一致（提示告警，不拖垮整页）。
+ */
+const badges = ref<BadgeDTO[]>([])
+const badgesLoading = ref(false)
+const badgesError = ref('')
+const badgeActionLoading = ref(false)
+
+async function loadBadges() {
+  if (!authed.value) return
+  badgesLoading.value = true
+  try {
+    const res = await getMyBadges()
+    badges.value = res.data || []
+    badgesError.value = ''
+  } catch (e: any) {
+    badgesError.value = e.code ? `[${e.code}] ${e.message}` : (e.message || '勋章数据加载失败')
+  } finally {
+    badgesLoading.value = false
+  }
+}
+
+/** 佩戴勋章（未解锁 400 由服务端拒绝）；成功后重拉勋章墙刷新佩戴态 */
+async function handleWear(b: BadgeDTO) {
+  badgeActionLoading.value = true
+  try {
+    await wearBadge(b.code)
+    message.success(`已佩戴「${b.name}」`)
+    await loadBadges()
+  } catch (e: any) {
+    message.error(e.code ? `[${e.code}] ${e.message}` : (e.message || '佩戴失败'))
+  } finally {
+    badgeActionLoading.value = false
+  }
+}
+
+/** 卸下勋章（幂等全量置 0）；成功后重拉勋章墙 */
+async function handleUnwear() {
+  badgeActionLoading.value = true
+  try {
+    await unwearBadge()
+    message.success('已卸下佩戴的勋章')
+    await loadBadges()
+  } catch (e: any) {
+    message.error(e.code ? `[${e.code}] ${e.message}` : (e.message || '卸下失败'))
+  } finally {
+    badgeActionLoading.value = false
+  }
+}
+
+/** 勋章阶梯中文标签（未解锁卡片展示） */
+function tierLabel(tier: string): string {
+  const m: Record<string, string> = { BRONZE: '青铜', SILVER: '白银', GOLD: '黄金', PLATINUM: '铂金' }
+  return m[tier] || tier
+}
+
+/** 勋章进度文案：currentValue / targetValue（公里数或天数，统一两位小数） */
+function formatBadgeProgress(b: BadgeDTO): string {
+  return `${Number(b.currentValue ?? 0).toFixed(2)} / ${Number(b.targetValue ?? 0).toFixed(2)}`
+}
+
+/** 解锁时间展示：ISO 串截断为 YYYY-MM-DD HH:mm */
+function formatBadgeTime(iso?: string): string {
+  return iso ? String(iso).slice(0, 16).replace('T', ' ') : '—'
 }
 
 const recentColumns = [
@@ -580,14 +696,14 @@ async function loadStreak() {
 }
 
 /**
- * 全量加载（仅首屏与删除记录后调用）：列表 + 统计卡 + 连续打卡 + 运动目标。
+ * 全量加载（仅首屏与删除记录后调用）：列表 + 统计卡 + 连续打卡 + 运动目标 + 成就勋章墙。
  * loading 闸门只在此处持有，翻页/筛选路径不经过它 → 统计卡与打卡不再闪烁。
  */
 async function loadData() {
   if (!authed.value) return
   loading.value = true
   try {
-    await Promise.all([loadRecords(), loadStats(), loadStreak(), loadGoals()])
+    await Promise.all([loadRecords(), loadStats(), loadStreak(), loadGoals(), loadBadges()])
   } finally {
     loading.value = false
   }

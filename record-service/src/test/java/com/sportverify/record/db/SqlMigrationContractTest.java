@@ -36,6 +36,10 @@ class SqlMigrationContractTest {
 
     private static final String LEADERBOARD_TABLE = "leaderboard_daily_summary";
 
+    private static final String BADGE_MIGRATION = MIGRATIONS_DIR + "/add-user-badge-table.sql";
+
+    private static final String BADGE_TABLE = "user_badge";
+
     @Test
     void everyMigrationFileDeclaresUseStatement_andLeaderboardSnapshotDdlMatchesMainDdl() throws IOException {
         Path migrationsDir = findRepoPath(MIGRATIONS_DIR);
@@ -46,8 +50,8 @@ class SqlMigrationContractTest {
                     .sorted(Comparator.comparing(p -> p.getFileName().toString()))
                     .toList();
         }
-        assertTrue(sqlFiles.size() >= 13,
-                MIGRATIONS_DIR + " 下应至少存在 13 个迁移脚本，实际 " + sqlFiles.size());
+        assertTrue(sqlFiles.size() >= 14,
+                MIGRATIONS_DIR + " 下应至少存在 14 个迁移脚本，实际 " + sqlFiles.size());
 
         for (Path sqlFile : sqlFiles) {
             String relativePath = MIGRATIONS_DIR + "/" + sqlFile.getFileName();
@@ -64,16 +68,31 @@ class SqlMigrationContractTest {
                 LEADERBOARD_MIGRATION + " 必须包含表名 " + LEADERBOARD_TABLE);
 
         String mainDdlContent = Files.readString(findRepoPath("sql/02-record-db.sql"), StandardCharsets.UTF_8);
-        assertEquals(extractCreateTable(mainDdlContent, "sql/02-record-db.sql"),
-                extractCreateTable(migrationContent, LEADERBOARD_MIGRATION),
+        assertEquals(extractCreateTable(mainDdlContent, "sql/02-record-db.sql", LEADERBOARD_TABLE),
+                extractCreateTable(migrationContent, LEADERBOARD_MIGRATION, LEADERBOARD_TABLE),
                 LEADERBOARD_MIGRATION + " 的建表 DDL 必须与 sql/02-record-db.sql 末尾同名表逐字一致（两处人工同步）");
     }
 
-    private static String extractCreateTable(String content, String source) {
-        int start = content.indexOf("CREATE TABLE IF NOT EXISTS `" + LEADERBOARD_TABLE + "`");
-        assertTrue(start >= 0, source + " 未找到 " + LEADERBOARD_TABLE + " 的 CREATE TABLE 语句");
+    /** 新装双写契约（TASK-269）：user_badge 建表 DDL 在主 DDL 与迁移脚本两处逐字一致。 */
+    @Test
+    void userBadgeMigrationDeclaresUseRecordDb_andBadgeDdlMatchesMainDdl() throws IOException {
+        String migrationContent = Files.readString(findRepoPath(BADGE_MIGRATION), StandardCharsets.UTF_8);
+        assertTrue(migrationContent.contains("USE record_db;"),
+                BADGE_MIGRATION + " 必须显式声明 USE record_db;");
+        assertTrue(migrationContent.contains("`" + BADGE_TABLE + "`"),
+                BADGE_MIGRATION + " 必须包含表名 " + BADGE_TABLE);
+
+        String mainDdlContent = Files.readString(findRepoPath("sql/02-record-db.sql"), StandardCharsets.UTF_8);
+        assertEquals(extractCreateTable(mainDdlContent, "sql/02-record-db.sql", BADGE_TABLE),
+                extractCreateTable(migrationContent, BADGE_MIGRATION, BADGE_TABLE),
+                BADGE_MIGRATION + " 的建表 DDL 必须与 sql/02-record-db.sql 末尾同名表逐字一致（两处人工同步）");
+    }
+
+    private static String extractCreateTable(String content, String source, String table) {
+        int start = content.indexOf("CREATE TABLE IF NOT EXISTS `" + table + "`");
+        assertTrue(start >= 0, source + " 未找到 " + table + " 的 CREATE TABLE 语句");
         int end = content.indexOf(';', start);
-        assertTrue(end > start, source + " 的 " + LEADERBOARD_TABLE + " CREATE TABLE 语句缺少收尾分号");
+        assertTrue(end > start, source + " 的 " + table + " CREATE TABLE 语句缺少收尾分号");
         return content.substring(start, end + 1);
     }
 

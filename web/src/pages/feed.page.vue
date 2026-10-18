@@ -22,6 +22,14 @@
                 {{ avatarChar(item) }}
               </a-avatar>
               <span class="font-medium">{{ authorName(item) }}</span>
+              <!-- TASK-269：作者佩戴勋章外显（未佩戴不渲染），数据随列表加载按作者去重批量拉取 -->
+              <a-tag
+                v-if="equippedBadgeMap[item.authorUserId]"
+                color="gold"
+                :title="equippedBadgeMap[item.authorUserId]?.description"
+              >
+                {{ equippedBadgeText(item.authorUserId) }}
+              </a-tag>
               <a-tag v-if="item.visibility === 2" color="red">仅自己</a-tag>
               <a-tag v-else-if="item.visibility === 1" color="blue">好友可见</a-tag>
               <span v-else class="text-xs text-gray-500">公开</span>
@@ -88,7 +96,7 @@
 import { ref, computed, onMounted } from 'vue'
 import { useRouter } from 'vue-router/auto'
 import { message } from 'ant-design-vue'
-import { getFeed, getLikesBatch, likeRecord, unlikeRecord, type FeedItemDTO } from '@/api/client'
+import { getFeed, getLikesBatch, getUserEquippedBadge, likeRecord, unlikeRecord, type BadgeDTO, type FeedItemDTO } from '@/api/client'
 import { hasAccessToken } from '@/utils/token'
 
 const router = useRouter()
@@ -217,6 +225,31 @@ async function loadLikes() {
   }
 }
 
+// ===== 作者佩戴勋章外显（TASK-269）：key=authorUserId → 佩戴中勋章（null=未佩戴/查询失败） =====
+const equippedBadgeMap = ref<Record<number, BadgeDTO | null>>({})
+
+function equippedBadgeText(userId: number): string {
+  const badge = equippedBadgeMap.value[userId]
+  return badge ? `${badge.icon} ${badge.name}` : ''
+}
+
+/**
+ * 列表加载完毕后按当页 distinct 作者批量拉取佩戴勋章（Promise.allSettled 容错：
+ * 单作者失败仅该作者不外显，不影响整页）；请求量 = 去重后作者数，非逐卡片 N 次。
+ */
+async function loadEquippedBadges() {
+  const authorIds = [...new Set(rows.value.map((r) => r.authorUserId).filter((id) => id != null))]
+  if (authorIds.length === 0) return
+  const results = await Promise.allSettled(
+    authorIds.map(async (id) => ({ id, badge: (await getUserEquippedBadge(id)).data || null })),
+  )
+  const next: Record<number, BadgeDTO | null> = {}
+  results.forEach((item, idx) => {
+    next[authorIds[idx]] = item.status === 'fulfilled' ? item.value.badge : null
+  })
+  equippedBadgeMap.value = next
+}
+
 async function toggleLike(item: FeedItemDTO) {
   if (likeLoadingMap.value[item.id]) return
   if (!loggedIn.value) {
@@ -264,6 +297,7 @@ async function loadList() {
       String(b.createdAt).localeCompare(String(a.createdAt)),
     )
     loadLikes()
+    loadEquippedBadges()
     if (!rows.value.length) rowsMessage.value = '暂无动态（没有本人或好友的可见记录）。'
   } catch (e: any) {
     if (seq !== loadSeq) return
