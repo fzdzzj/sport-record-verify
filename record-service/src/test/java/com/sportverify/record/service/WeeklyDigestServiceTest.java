@@ -1,5 +1,7 @@
 package com.sportverify.record.service;
 
+import com.baomidou.mybatisplus.core.MybatisConfiguration;
+import com.baomidou.mybatisplus.core.metadata.TableInfoHelper;
 import com.sportverify.api.record.dto.WeeklyDigestDTO;
 import com.sportverify.api.user.UserApi;
 import com.sportverify.api.user.dto.UserDTO;
@@ -14,6 +16,7 @@ import com.sportverify.record.mapper.SportRecordMapper;
 import com.sportverify.record.mapper.TrackPointArchiveMapper;
 import com.sportverify.record.mapper.TrackPointMapper;
 import com.sportverify.record.mq.RecordEventProducer;
+import org.apache.ibatis.builder.MapperBuilderAssistant;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
@@ -47,6 +50,11 @@ class WeeklyDigestServiceTest {
 
     @BeforeEach
     void setUp() {
+        // 单测隔离加固（TASK-275 R0，同 GoalServiceTest 家法）：显式注册 SportRecord 的
+        // MP LambdaCache，消除独立单跑（mvn test -Dtest=WeeklyDigestServiceTest）时
+        // 依赖其他用例先行触发表信息加载的用例序依赖（CI run 39147321152 偶发 MPE）。
+        TableInfoHelper.initTableInfo(
+                new MapperBuilderAssistant(new MybatisConfiguration(), ""), SportRecord.class);
         sportRecordMapper = mock(SportRecordMapper.class);
         userApi = mock(UserApi.class);
         service = new SportRecordService(sportRecordMapper,

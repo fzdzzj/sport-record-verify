@@ -5,6 +5,7 @@ import com.sportverify.api.record.dto.LeaderboardDTO;
 import com.sportverify.api.mapmatch.dto.SegmentEffortDTO;
 import com.sportverify.api.mapmatch.dto.SegmentLeaderboardDTO;
 import com.sportverify.api.user.UserApi;
+import com.sportverify.api.user.dto.ClubLeaderboardDTO;
 import com.sportverify.api.user.dto.UserDTO;
 import com.sportverify.common.result.Result;
 import com.sportverify.common.trace.TraceIds;
@@ -30,8 +31,10 @@ import org.springframework.stereotype.Service;
 
 import java.math.BigDecimal;
 import java.nio.charset.StandardCharsets;
+import java.time.DayOfWeek;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.LinkedHashSet;
@@ -76,6 +79,12 @@ public class LeaderboardService {
     public static final String SEGMENT_ZSET_KEY_PREFIX = "leaderboard:segment:";
     /** 赛段成绩附属 Hash 键后缀（TASK-272，field=userId，value=recordId，榜单条目回指完赛记录） */
     public static final String SEGMENT_RECORD_HASH_SUFFIX = ":record";
+    /** 跑团总榜 ZSet 键（TASK-275，member=clubId，score=累计里程米，降序取前 N） */
+    public static final String CLUB_OVERALL_ZSET_KEY = "leaderboard:club:overall";
+    /** 跑团周榜 ZSet 键前缀（TASK-275，{weekStart}=周一 ISO 日期，score=当周累计里程米） */
+    public static final String CLUB_WEEKLY_ZSET_KEY_PREFIX = "leaderboard:club:weekly:";
+    /** 跑团名称缓存 Hash 键（TASK-275，field=clubId，value=clubName，榜单条目补名称） */
+    public static final String CLUB_NAMES_HASH_KEY = "leaderboard:club:names";
     /** 入榜/回滚互斥锁前缀（同一记录串行化，审批版 §7.5） */
     public static final String ROLLBACK_LOCK_PREFIX = "lock:rollback:";
     /** 定时结算防重锁（多实例仅一个执行，审批版 §7.5） */
@@ -85,6 +94,10 @@ public class LeaderboardService {
 
     /** 榜单默认取前 N 名 */
     private static final int DEFAULT_TOP_N = 50;
+    /** 跑团榜默认取前 N 名（TASK-275） */
+    private static final int CLUB_DEFAULT_TOP_N = 20;
+    /** 跑团榜单次查询上限（防 {@code size} 传成超大值把整榜拉进内存，TASK-275） */
+    private static final int CLUB_MAX_TOP_N = 100;
     /** 报表单次查询上限（防 {@code size} 传成 10 万把整表拉进内存） */
     private static final int DAILY_REPORT_MAX_SIZE = 500;
     /** 好友榜整榜扫描批大小（TASK-239 前实现：分批 reverseRangeWithScores 窗口；已由 Redis
@@ -772,6 +785,89 @@ public class LeaderboardService {
         } catch (NumberFormatException e) {
             return 0L;
         }
+    }
+
+    // ==================== 跑团团队里程榜（TASK-275） ====================
+
+    /**
+     * 跑团里程上报（TASK-275 跑团俱乐部与团队里程榜）：原子 {@code ZINCRBY} 同时累加
+     * 总榜 {@code leaderboard:club:overall} 与对应周榜 {@code leaderboard:club:weekly:{weekStart}}
+     * （member=clubId，score=累计里程米），并把 clubName 同步进名称缓存 Hash
+     * {@code leaderboard:club:names}（field=clubId）供榜单条目补名称。
+     *
+     * <p>无分布式锁（与赛段榜同哲学）：纯 Redis 单键原子写，并发上报天然累加不丢增量；
+     * weekStart 缺省时归一化到当周周一（与 record-service 周报周一锚点同口径）。</p>
+     */
+    public void recordClubDistance(Long clubId, String clubName, Double distanceMeters, LocalDate weekStart) {
+        if (clubId == null || distanceMeters == null || distanceMeters <= 0) {
+            throw new IllegalArgumentException("跑团里程上报参数非法：clubId 必填且 distanceMeters 必须为正");
+        }
+        String member = String.valueOf(clubId);
+        stringRedisTemplate.opsForZSet().incrementScore(CLUB_OVERALL_ZSET_KEY, member, distanceMeters);
+        stringRedisTemplate.opsForZSet().incrementScore(clubWeeklyKey(weekStart), member, distanceMeters);
+        if (clubName != null && !clubName.isBlank()) {
+            stringRedisTemplate.opsForHash().put(CLUB_NAMES_HASH_KEY, member, clubName);
+        }
+        log.info("跑团里程入榜：clubId={}, +{}m, weekStart={}", clubId, distanceMeters, weekStart);
+    }
+
+    /**
+     * 跑团团队里程榜查询（TASK-275）：{@code ZREVRANGE} 降序取前 N（默认 20、上限 100），
+     * clubName 经名称缓存 Hash 补齐（缺失以「跑团{id}」占位，与总榜昵称降级同哲学）；
+     * 公里数保留 2 位小数并同步产出格式化串。
+     *
+     * <p>period：{@code overall}（缺省）读总榜键；{@code weekly} 读当周周一键；
+     * 其余值 400。memberCount 为预留字段（ZSet/Hash 不携带，恒 0），由后续计数同步链路填充。</p>
+     */
+    public List<ClubLeaderboardDTO> getClubLeaderboard(String period, Integer size) {
+        int topN = (size == null || size <= 0) ? CLUB_DEFAULT_TOP_N : Math.min(size, CLUB_MAX_TOP_N);
+        String key;
+        if (period == null || period.isBlank() || "overall".equalsIgnoreCase(period)) {
+            key = CLUB_OVERALL_ZSET_KEY;
+        } else if ("weekly".equalsIgnoreCase(period)) {
+            key = clubWeeklyKey(null);
+        } else {
+            throw new IllegalArgumentException("不支持的跑团榜单类型：" + period);
+        }
+        Set<TypedTuple<String>> tuples =
+                stringRedisTemplate.opsForZSet().reverseRangeWithScores(key, 0, topN - 1L);
+        if (tuples == null || tuples.isEmpty()) {
+            return List.of();
+        }
+        List<TypedTuple<String>> ordered = new ArrayList<>(tuples);
+        Map<Object, Object> clubNames = stringRedisTemplate.opsForHash().entries(CLUB_NAMES_HASH_KEY);
+
+        List<ClubLeaderboardDTO> result = new ArrayList<>(ordered.size());
+        for (int i = 0; i < ordered.size(); i++) {
+            TypedTuple<String> t = ordered.get(i);
+            Long clubId = Long.valueOf(t.getValue());
+            double meters = t.getScore() == null ? 0d : t.getScore();
+            // 米 → 公里保留 2 位小数（先放大两位再整圆回缩，规避二进制浮点截断误差）
+            double km = Math.round(meters / 10.0) / 100.0;
+            Object nameRaw = clubNames.get(String.valueOf(clubId));
+            result.add(assembleClubEntry(i + 1, clubId,
+                    nameRaw == null ? null : nameRaw.toString(), km));
+        }
+        return result;
+    }
+
+    /** 跑团榜单条目组装：rank（入参序即里程降序）+ Hash 名称补齐 + 公里格式化 */
+    private static ClubLeaderboardDTO assembleClubEntry(int rank, Long clubId, String clubName,
+                                                        double totalDistanceKm) {
+        ClubLeaderboardDTO dto = new ClubLeaderboardDTO();
+        dto.setRank(rank);
+        dto.setClubId(clubId);
+        dto.setClubName(clubName == null || clubName.isBlank() ? "跑团" + clubId : clubName);
+        dto.setMemberCount(0);
+        dto.setTotalDistanceKm(totalDistanceKm);
+        dto.setFormattedDistance(String.format("%.2f km", totalDistanceKm));
+        return dto;
+    }
+
+    /** 跑团周榜键：{weekStart}=周一 ISO 日期；入参缺失归一化到当周周一（Clock 相关分支） */
+    private static String clubWeeklyKey(LocalDate weekStart) {
+        LocalDate monday = weekStart == null ? LocalDate.now().with(DayOfWeek.MONDAY) : weekStart;
+        return CLUB_WEEKLY_ZSET_KEY_PREFIX + monday.format(DateTimeFormatter.ISO_LOCAL_DATE);
     }
 
     // ==================== 内部工具 ====================

@@ -8,6 +8,7 @@
         <a-button type="link" style="color: #fff;" @click="goTo('/friends')">好友</a-button>
         <a-button type="link" style="color: #fff;" @click="goTo('/feed')">动态</a-button>
         <a-button type="link" style="color: #fff;" @click="goTo('/leaderboard')">榜单</a-button>
+        <a-button type="link" style="color: #fff;" @click="goTo('/clubs')">跑团</a-button>
         <a-button v-if="isAdmin" type="link" style="color: #0ff; font-weight: bold;" @click="goTo('/admin-rules')">规则版本</a-button>
         <a-button v-if="isAdmin" type="link" style="color: #0ff; font-weight: bold;" @click="goTo('/admin-appeal')">申诉终判</a-button>
         <a-badge :count="unread" :overflow-count="99">

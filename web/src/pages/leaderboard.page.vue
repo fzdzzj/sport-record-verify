@@ -1,16 +1,22 @@
 <template>
   <div class="max-w-4xl mx-auto">
     <a-card title="榜单 - 总榜 / 好友榜" class="mb-4">
-      <p class="text-gray-600 mb-4">GET /leaderboard/api/leaderboard?type=overall|friend&amp;size=...（ZSet 总/好友榜）；下方 今日/本周/本月 走 GET /leaderboard/api/leaderboard/range（settled_at 半开窗口聚合 ACTIVE 贡献，周=ISO 周一、月=本月 1 号，end=今天）。rank 从 1 开始，distance 累计 pass 里程。</p>
+      <p class="text-gray-600 mb-4">GET /leaderboard/api/leaderboard?type=overall|friend&amp;size=...（ZSet 总/好友榜）；下方 今日/本周/本月 走 GET /leaderboard/api/leaderboard/range（settled_at 半开窗口聚合 ACTIVE 贡献，周=ISO 周一、月=本月 1 号，end=今天）。rank 从 1 开始，distance 累计 pass 里程。跑团里程榜走 GET /leaderboard/api/leaderboard/clubs（TASK-275）。</p>
 
       <div class="mb-4">
         <a-radio-group v-model:value="lbType" @change="onLbTypeChange">
           <a-radio-button value="overall">总榜 (overall)</a-radio-button>
           <a-radio-button value="friend">好友榜 (friend)</a-radio-button>
           <a-radio-button value="segment">🏁 赛段 KOM 榜</a-radio-button>
+          <a-radio-button value="club">🏃 跑团里程榜</a-radio-button>
         </a-radio-group>
         <span class="mx-2 text-gray-400">|</span>
-        <a-radio-group v-model:value="lbRange" @change="onLbRangeChange">
+        <!-- 跑团里程榜（TASK-275）：总榜/本周切换（weekly 读当周周一键） -->
+        <a-radio-group v-if="lbMode === 'club'" v-model:value="clubPeriod" @change="onClubPeriodChange">
+          <a-radio-button value="overall">总榜</a-radio-button>
+          <a-radio-button value="weekly">本周</a-radio-button>
+        </a-radio-group>
+        <a-radio-group v-else v-model:value="lbRange" @change="onLbRangeChange">
           <a-radio-button value="day">今日</a-radio-button>
           <a-radio-button value="week">本周</a-radio-button>
           <a-radio-button value="month">本月</a-radio-button>
@@ -51,20 +57,29 @@
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue'
 import {
+  getClubLeaderboard,
   getLeaderboard,
   getLeaderboardRange,
   getSegments,
   getSegmentLeaderboard,
+  type ClubLeaderboardDTO,
   type LeaderboardDTO,
   type SegmentLeaderboardDTO,
 } from '@/api/client'
 
-const lbType = ref<'overall' | 'friend' | 'segment'>('overall')
+const lbType = ref<'overall' | 'friend' | 'segment' | 'club'>('overall')
 const lbRange = ref<'day' | 'week' | 'month'>('day')
 const lbSize = ref(10)
-const lbData = ref<(LeaderboardDTO | SegmentLeaderboardDTO)[]>([])
+const lbData = ref<(LeaderboardDTO | SegmentLeaderboardDTO | ClubLeaderboardDTO)[]>([])
 const loading = ref(false)
 const lbError = ref('')
+
+// ===== 跑团里程榜（TASK-275）：总榜/本周切换，点击激活才发请求 =====
+const clubPeriod = ref<'overall' | 'weekly'>('overall')
+
+function onClubPeriodChange() {
+  loadLb()
+}
 
 // ===== 赛段 KOM 榜（TASK-272）：赛段下拉 + 耗时升序榜 =====
 const segmentId = ref<number | undefined>(undefined)
@@ -77,9 +92,10 @@ const segmentsLoaded = ref(false)
  * （'overall'|'friend' 封闭联合恒真 → getLeaderboardRange 分支永远不可达）。
  * 改为「最后一次点选的控制项获胜」：今日/本周/本月 → getLeaderboardRange（period 视图），
  * 总榜/好友榜 → getLeaderboard（ZSet 视图），TASK-272 增补赛段榜 → getSegmentLeaderboard
- * （耗时升序视图），三组按钮均真实生效、无缝协调。
+ * （耗时升序视图），TASK-275 增补跑团里程榜 → getClubLeaderboard（团队里程降序视图），
+ * 各组按钮均真实生效、无缝协调。
  */
-const lbMode = ref<'range' | 'zset' | 'segment'>('range')
+const lbMode = ref<'range' | 'zset' | 'segment' | 'club'>('range')
 
 function onLbRangeChange() {
   lbMode.value = 'range'
@@ -90,6 +106,11 @@ function onLbTypeChange() {
   if (lbType.value === 'segment') {
     lbMode.value = 'segment'
     ensureSegments().then(() => loadSegmentBoard())
+    return
+  }
+  if (lbType.value === 'club') {
+    lbMode.value = 'club'
+    loadClubBoard()
     return
   }
   lbMode.value = 'zset'
@@ -112,7 +133,21 @@ const segmentColumns = [
   { title: 'pace', dataIndex: 'paceFormatted', key: 'paceFormatted' },
 ]
 
-const lbColumns = computed(() => (lbMode.value === 'segment' ? segmentColumns : mileageColumns))
+/** 跑团里程榜列（TASK-275）：排名 / 跑团名称 / 成员数 / 累计跑量 */
+const clubColumns = [
+  { title: 'rank', dataIndex: 'rank', key: 'rank' },
+  { title: 'clubId', dataIndex: 'clubId', key: 'clubId' },
+  { title: '跑团名称', dataIndex: 'clubName', key: 'clubName' },
+  { title: '成员数', dataIndex: 'memberCount', key: 'memberCount' },
+  { title: '总里程 (km)', dataIndex: 'totalDistanceKm', key: 'totalDistanceKm' },
+  { title: 'formatted', dataIndex: 'formattedDistance', key: 'formattedDistance' },
+]
+
+const lbColumns = computed(() => {
+  if (lbMode.value === 'segment') return segmentColumns
+  if (lbMode.value === 'club') return clubColumns
+  return mileageColumns
+})
 
 /** 秒 → x时x分x秒（与记录详情耗时口径一致） */
 function formatElapsed(seconds?: number): string {
@@ -180,6 +215,11 @@ async function loadLb() {
     await loadSegmentBoard()
     return
   }
+  if (lbMode.value === 'club') {
+    // 查询按钮在跑团模式下路由到跑团榜加载（lbType='club' 不进入 ZSet/range 视图）
+    await loadClubBoard()
+    return
+  }
   const seq = ++loadSeq
   loading.value = true
   lbError.value = ''
@@ -220,6 +260,26 @@ async function loadSegmentBoard() {
   } catch (e: any) {
     if (seq !== loadSeq) return
     lbError.value = e.code ? `[${e.code}] ${e.message}` : (e.message || '赛段榜单加载失败')
+    lbData.value = []
+  } finally {
+    if (seq === loadSeq) {
+      loading.value = false
+    }
+  }
+}
+
+/** 跑团里程榜加载（TASK-275）：与 loadLb 共享请求序号守卫，快速切换总榜/本周/条数陈旧响应丢弃 */
+async function loadClubBoard() {
+  const seq = ++loadSeq
+  loading.value = true
+  lbError.value = ''
+  try {
+    const res = await getClubLeaderboard(clubPeriod.value, lbSize.value)
+    if (seq !== loadSeq) return
+    lbData.value = res.data || []
+  } catch (e: any) {
+    if (seq !== loadSeq) return
+    lbError.value = e.code ? `[${e.code}] ${e.message}` : (e.message || '跑团榜单加载失败')
     lbData.value = []
   } finally {
     if (seq === loadSeq) {

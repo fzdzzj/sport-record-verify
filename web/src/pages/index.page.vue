@@ -290,6 +290,29 @@
         </template>
         <div v-else class="py-4 text-gray-500">周报数据不可用。</div>
       </a-card>
+
+      <!-- 我的跑团（TASK-275）：已入团展示名称/角色/成员数，未入团引导前往跑团广场 -->
+      <a-card title="🏃 我的跑团" class="mt-4">
+        <div v-if="myClubLoading" class="py-4 text-gray-500">加载跑团信息中…</div>
+        <template v-else-if="myClub">
+          <div class="flex flex-wrap items-center gap-3">
+            <div class="text-2xl font-semibold text-blue-600">{{ myClub.name }}</div>
+            <a-tag v-if="myRoleLabel" color="gold">{{ myRoleLabel }}</a-tag>
+            <a-tag>{{ myClub.memberCount }} 人</a-tag>
+          </div>
+          <p class="text-sm text-gray-600 mt-2">{{ myClub.description || '暂无简介' }}</p>
+          <div class="mt-3">
+            <a-button type="primary" ghost @click="go('/clubs')">进入跑团广场</a-button>
+            <a-button class="ml-2" @click="go('/leaderboard')">查看跑团里程榜</a-button>
+          </div>
+        </template>
+        <div v-else class="py-2">
+          <p class="text-sm text-gray-500 mb-3">
+            还没有加入跑团——拉上好友组建跑团，把个人里程沉淀为团队贡献，共同冲击跑团里程榜！
+          </p>
+          <a-button type="primary" @click="go('/clubs')">前往跑团广场 &rarr;</a-button>
+        </div>
+      </a-card>
     </template>
 
     <a-alert type="info" class="mt-4" message="演示要求：网关+服务 app.auth.enabled=true ；前端始终带 Bearer；不伪造 userId。" />
@@ -374,15 +397,18 @@ import {
   delRecord,
   deleteGoal,
   getMyBadges,
+  getMyClub,
   getMyGoals,
   getMyRecords,
   getMyStats,
   getMyStreak,
   getWeeklyDigest,
+  getUserProfile,
   unwearBadge,
   upsertGoal,
   wearBadge,
   type BadgeDTO,
+  type ClubDTO,
   type GoalDTO,
   type MyRecordsFilterParams,
   type MyStatsDTO,
@@ -623,6 +649,36 @@ const primaryTypeLabel = computed(() => {
   return t ? (m[t] || t) : '—'
 })
 
+// ===== 我的跑团（TASK-275）：已入团展示名称/角色/成员数，未入团引导前往跑团广场 =====
+const myClub = ref<ClubDTO | null>(null)
+const myClubLoading = ref(false)
+const myRoleLabel = ref('')
+
+/** 我的跑团加载（软错误口径与统计卡一致）：未入团 data 为 null；角色经个人资料 id 与 creatorId 判定 */
+async function loadMyClub() {
+  if (!authed.value) return
+  myClubLoading.value = true
+  try {
+    const res = await getMyClub()
+    myClub.value = res.data || null
+    myRoleLabel.value = ''
+    if (myClub.value) {
+      try {
+        const profile = await getUserProfile()
+        if (profile.data && myClub.value) {
+          myRoleLabel.value = profile.data.id === myClub.value.creatorId ? '团长' : '团员'
+        }
+      } catch {
+        myRoleLabel.value = ''
+      }
+    }
+  } catch {
+    myClub.value = null
+  } finally {
+    myClubLoading.value = false
+  }
+}
+
 const recentColumns = [
   { title: 'id', dataIndex: 'id', key: 'id' },
   { title: '运动类型', dataIndex: 'sportType', key: 'sportType' },
@@ -827,7 +883,7 @@ async function loadData() {
   if (!authed.value) return
   loading.value = true
   try {
-    await Promise.all([loadRecords(), loadStats(), loadStreak(), loadGoals(), loadBadges(), loadDigest()])
+    await Promise.all([loadRecords(), loadStats(), loadStreak(), loadGoals(), loadBadges(), loadDigest(), loadMyClub()])
   } finally {
     loading.value = false
   }

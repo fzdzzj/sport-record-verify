@@ -77,3 +77,32 @@ CREATE TABLE IF NOT EXISTS `notification_preference` (
     PRIMARY KEY (`user_id`, `type`)
 ) ENGINE = InnoDB
   DEFAULT CHARSET = utf8mb4 COMMENT ='通知偏好表';
+
+-- 跑团表（TASK-275 add-running-club）
+CREATE TABLE IF NOT EXISTS `running_club` (
+    `id`           BIGINT       NOT NULL AUTO_INCREMENT COMMENT '跑团ID',
+    `name`         VARCHAR(64)  NOT NULL COMMENT '跑团名称（唯一）',
+    `description`  VARCHAR(255) DEFAULT '' COMMENT '跑团简介',
+    `badge_url`    VARCHAR(255) DEFAULT '' COMMENT '团徽 URL',
+    `creator_id`   BIGINT       NOT NULL COMMENT '团长用户ID',
+    `member_count` INT          NOT NULL DEFAULT 1 COMMENT '成员数（含团长，创建即 1）',
+    `status`       TINYINT      NOT NULL DEFAULT 1 COMMENT '状态：1 正常，0 解散（仅剩团长一人退团时置 0）',
+    `created_at`   DATETIME     NOT NULL COMMENT '创建时间',
+    `updated_at`   DATETIME     DEFAULT NULL COMMENT '更新时间',
+    PRIMARY KEY (`id`),
+    UNIQUE KEY `uk_name` (`name`)
+) ENGINE = InnoDB
+  DEFAULT CHARSET = utf8mb4 COMMENT ='跑团表';
+
+-- 跑团成员关系表（TASK-275 add-running-club）
+CREATE TABLE IF NOT EXISTS `club_member` (
+    `id`        BIGINT      NOT NULL AUTO_INCREMENT COMMENT '成员记录ID',
+    `club_id`   BIGINT      NOT NULL COMMENT '跑团ID',
+    `user_id`   BIGINT      NOT NULL COMMENT '成员用户ID',
+    `role`      VARCHAR(20) NOT NULL DEFAULT 'MEMBER' COMMENT '角色：CAPTAIN 团长 / MEMBER 团员',
+    `joined_at` DATETIME    NOT NULL COMMENT '加入时间',
+    PRIMARY KEY (`id`),
+    UNIQUE KEY `uk_user_club` (`user_id`),
+    KEY `idx_club_role` (`club_id`, `role`)
+) ENGINE = InnoDB
+  DEFAULT CHARSET = utf8mb4 COMMENT ='跑团成员关系表（一人一团）';

@@ -681,6 +681,95 @@ export async function getWeeklyDigest(weekStart?: string): Promise<Result<Weekly
   })
 }
 
+// ===== 跑团俱乐部与团队里程榜（TASK-275） =====
+/** 跑团（后端 ClubDTO 同构）：creatorNickname 由 user-service 回表补齐 */
+export interface ClubDTO {
+  id: number
+  name: string
+  description?: string
+  badgeUrl?: string
+  creatorId: number
+  creatorNickname?: string | null
+  memberCount: number
+  status: number // 1 正常，0 解散
+  createdAt?: string
+}
+
+/** 跑团成员（后端 ClubMemberDTO 同构）：role CAPTAIN 团长 / MEMBER 团员 */
+export interface ClubMemberDTO {
+  id: number
+  clubId: number
+  userId: number
+  nickname?: string | null
+  role: string
+  joinedAt?: string
+}
+
+/** 创建跑团载荷（一人一团：已入团 403；名称全站唯一） */
+export interface ClubCreatePayload {
+  name: string
+  description?: string
+  badgeUrl?: string
+}
+
+/** 跑团团队里程榜条目（后端 ClubLeaderboardDTO 同构）：ZSet 里程降序，rank 从 1 起 */
+export interface ClubLeaderboardDTO {
+  rank: number
+  clubId: number
+  clubName: string
+  memberCount: number
+  totalDistanceKm: number
+  formattedDistance: string
+}
+
+/** 跑团广场分页（GET /user/api/clubs）：keyword 名称模糊，page/size 钳制 1..100 */
+export async function getClubs(keyword?: string, page = 1, size = 20): Promise<Result<PageResult<ClubDTO>>> {
+  const params: Record<string, unknown> = { page, size }
+  if (keyword) {
+    params.keyword = keyword
+  }
+  return api.get('/user/api/clubs', { params })
+}
+
+/** 跑团详情（GET /user/api/clubs/{id}）：补齐团长昵称；不存在/已解散 404。 */
+export async function getClubDetail(clubId: number | string): Promise<Result<ClubDTO>> {
+  return api.get(`/user/api/clubs/${clubId}`)
+}
+
+/** 跑团成员列表（GET /user/api/clubs/{id}/members）：按加入时间升序，昵称批量补齐。 */
+export async function getClubMembers(clubId: number | string): Promise<Result<ClubMemberDTO[]>> {
+  return api.get(`/user/api/clubs/${clubId}/members`)
+}
+
+/** 创建跑团（POST /user/api/clubs）：一人一团 + 名称唯一，身份由网关注入。 */
+export async function createClub(payload: ClubCreatePayload): Promise<Result<ClubDTO>> {
+  return api.post('/user/api/clubs', payload)
+}
+
+/** 加入跑团（POST /user/api/clubs/{id}/join）：未入团且跑团正常，成员数原子累加。 */
+export async function joinClub(clubId: number | string): Promise<Result<ClubDTO>> {
+  return api.post(`/user/api/clubs/${clubId}/join`)
+}
+
+/** 退出跑团（POST /user/api/clubs/{id}/leave）：团长且有成员需先移交；仅剩团长一人即解散。 */
+export async function leaveClub(clubId: number | string): Promise<Result<void>> {
+  return api.post(`/user/api/clubs/${clubId}/leave`)
+}
+
+/** 我的跑团（GET /user/api/clubs/my）：未入团 data 为 null。 */
+export async function getMyClub(): Promise<Result<ClubDTO | null>> {
+  return api.get('/user/api/clubs/my')
+}
+
+/** 跑团团队里程榜（GET /leaderboard/api/leaderboard/clubs）：period overall 总榜 / weekly 本周。 */
+export async function getClubLeaderboard(
+  period: 'overall' | 'weekly' = 'overall',
+  size = 20,
+): Promise<Result<ClubLeaderboardDTO[]>> {
+  return api.get('/leaderboard/api/leaderboard/clubs', { params: { period, size } })
+}
+
+
 // ===== Admin Console (add-web-admin-console) =====
 export async function createRuleVersion(request: { version?: string; grayRatio?: number; rules?: any }): Promise<Result<any>> {
   return api.post('/verify/rules/versions', request)

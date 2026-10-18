@@ -82,14 +82,19 @@ export async function installRouteMocks(page: Page, ctx: ApiCtx, stores: Stores)
   // TASK-274：轨迹纠偏对比请求面由 route-mock 承接（命中分支即无真实网络）
   await page.route('**/mapmatch/match/compare*', (route) => handleMapmatch(route, ctx))
   await page.route('**/leaderboard/api/leaderboard/segments*', (route) => handleLeaderboardSegments(route, ctx))
+  // TASK-275：跑团团队里程榜请求面由 route-mock 承接（命中分支即无真实网络）
+  await page.route('**/leaderboard/api/leaderboard/clubs*', (route) => handleLeaderboardClubs(route, ctx))
   page.on('request', (req) => {
     const p = new URL(req.url()).pathname
     // 仅统计后端 API 前缀（排除 dev server 下的 /src/api/*.ts 源码模块）
     if (!API_PREFIX_RE.test(p)) return
     ctx.apiRequests.push(`${req.method()} ${p}`)
-    // 赛段请求面已由 route-mock 承接（上方两分支），不再计入 unhandled 真实网络风险面
-    const segmentMocked = p.startsWith('/mapmatch/segments') || p.startsWith('/mapmatch/match/compare') || p.startsWith('/leaderboard/api/leaderboard/segments/')
-    if (!p.startsWith('/record/api/') && !p.startsWith('/user/api/') && !segmentMocked) {
+    // 赛段与跑团请求面已由 route-mock 承接（上方分支），不再计入 unhandled 真实网络风险面
+    const prefixMocked = p.startsWith('/mapmatch/segments')
+      || p.startsWith('/mapmatch/match/compare')
+      || p.startsWith('/leaderboard/api/leaderboard/segments/')
+      || p.startsWith('/leaderboard/api/leaderboard/clubs')
+    if (!p.startsWith('/record/api/') && !p.startsWith('/user/api/') && !prefixMocked) {
       ctx.unhandled.push(`${req.method()} ${p}`)
     }
   })
@@ -184,6 +189,27 @@ const WEEKLY_DIGEST_FIXTURE = {
   recoveryAdvice: '本周节奏不错，保持现有频次，跑前充分热身、跑后注意拉伸与补水即可稳步进步。',
 }
 
+/** 跑团广场夹具（TASK-275）：正常跑团两支，creatorNickname 已由后端批量补齐 */
+const CLUB_LIST_FIXTURE = [
+  { id: 7, name: '黎明跑团', description: '晨跑为主的城市跑团', badgeUrl: '', creatorId: 100, creatorNickname: '演示用户', memberCount: 12, status: 1, createdAt: '2026-10-01T07:00:00' },
+  { id: 9, name: '晚风跑团', description: '夜跑与周末长距离', badgeUrl: '', creatorId: 101, creatorNickname: '跑友甲', memberCount: 5, status: 1, createdAt: '2026-10-03T20:00:00' },
+]
+
+/** 我的跑团夹具（TASK-275）：未入团 data 为 null（index「我的跑团」卡片引导态） */
+const MY_CLUB_FIXTURE = null
+
+/** 成员名单夹具（TASK-275）：按加入时间升序，团长/团员角色齐全 */
+const CLUB_MEMBERS_FIXTURE = [
+  { id: 1, clubId: 7, userId: 100, nickname: '演示用户', role: 'CAPTAIN', joinedAt: '2026-10-01T07:00:00' },
+  { id: 2, clubId: 7, userId: 101, nickname: '跑友甲', role: 'MEMBER', joinedAt: '2026-10-02T08:00:00' },
+]
+
+/** 跑团团队里程榜夹具（TASK-275）：ZSet 里程降序，memberCount 为预留字段 */
+const CLUB_BOARD_FIXTURE = [
+  { rank: 1, clubId: 7, clubName: '黎明跑团', memberCount: 12, totalDistanceKm: 15.35, formattedDistance: '15.35 km' },
+  { rank: 2, clubId: 9, clubName: '晚风跑团', memberCount: 5, totalDistanceKm: 8.0, formattedDistance: '8.00 km' },
+]
+
 /** 赛段相关 mock（TASK-272）：GET /mapmatch/segments 列表 + POST /mapmatch/segments/match 匹配；
  *  TASK-274：POST /mapmatch/match/compare 轨迹纠偏对比 */
 async function handleMapmatch(route: Route, ctx: ApiCtx): Promise<void> {
@@ -230,6 +256,19 @@ async function handleLeaderboardSegments(route: Route, ctx: ApiCtx): Promise<voi
         isKom: true,
       }),
     )
+    return
+  }
+  ctx.unmocked.push(`${method} ${p}`)
+  route.fulfill({ status: 404, contentType: 'application/json', body: JSON.stringify({ code: 9999, message: 'mock unmapped: ' + p }) })
+}
+
+/** 跑团团队里程榜 mock（TASK-275）：GET /leaderboard/api/leaderboard/clubs（period=overall|weekly） */
+async function handleLeaderboardClubs(route: Route, ctx: ApiCtx): Promise<void> {
+  const req = route.request()
+  const p = new URL(req.url()).pathname
+  const method = req.method()
+  if (p === '/leaderboard/api/leaderboard/clubs' && method === 'GET') {
+    route.fulfill(ok(CLUB_BOARD_FIXTURE))
     return
   }
   ctx.unmocked.push(`${method} ${p}`)
@@ -446,6 +485,40 @@ async function handleUser(route: Route, ctx: ApiCtx, stores: Stores): Promise<vo
   if (p === '/user/api/user/profile' && method === 'GET') {
     // TASK-257 E14 清障补 mock（此前兜底 404）：settings 页挂载 loadProfile 拉取个人资料
     route.fulfill(ok({ id: 100, nickname: '演示用户' }))
+    return
+  }
+  // TASK-275：跑团请求面（index「我的跑团」卡片挂载期拉取 /my；广场页其余分支为防御性覆盖）
+  if (p === '/user/api/clubs/my' && method === 'GET') {
+    route.fulfill(ok(MY_CLUB_FIXTURE))
+    return
+  }
+  if (p === '/user/api/clubs' && method === 'GET') {
+    route.fulfill(okPage(CLUB_LIST_FIXTURE, CLUB_LIST_FIXTURE.length, 1, 20))
+    return
+  }
+  if (p === '/user/api/clubs' && method === 'POST') {
+    const body = (req.postDataJSON() || {}) as Record<string, unknown>
+    route.fulfill(ok({ ...CLUB_LIST_FIXTURE[0], name: body.name || '黎明跑团', memberCount: 1 }))
+    return
+  }
+  const clubJoin = p.match(/^\/user\/api\/clubs\/(\d+)\/join$/)
+  if (clubJoin && method === 'POST') {
+    route.fulfill(ok(CLUB_LIST_FIXTURE[0]))
+    return
+  }
+  const clubLeave = p.match(/^\/user\/api\/clubs\/(\d+)\/leave$/)
+  if (clubLeave && method === 'POST') {
+    route.fulfill(ok(null))
+    return
+  }
+  const clubDetail = p.match(/^\/user\/api\/clubs\/(\d+)$/)
+  if (clubDetail && method === 'GET') {
+    route.fulfill(ok(CLUB_LIST_FIXTURE[0]))
+    return
+  }
+  const clubMembers = p.match(/^\/user\/api\/clubs\/(\d+)\/members$/)
+  if (clubMembers && method === 'GET') {
+    route.fulfill(ok(CLUB_MEMBERS_FIXTURE))
     return
   }
   ctx.unmocked.push(`${method} ${p}`)

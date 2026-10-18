@@ -51,6 +51,13 @@ declare module 'vue-router/auto-routes' {
       Record<never, never>,
       | never
     >,
+    '/clubs': RouteRecordInfo<
+      '/clubs',
+      '/clubs',
+      Record<never, never>,
+      Record<never, never>,
+      | never
+    >,
     '/feed': RouteRecordInfo<
       '/feed',
       '/feed',
@@ -162,6 +169,12 @@ declare module 'vue-router/auto-routes' {
     'src/pages/admin-rules.page.vue': {
       routes:
         | '/admin-rules'
+      views:
+        | never
+    }
+    'src/pages/clubs.page.vue': {
+      routes:
+        | '/clubs'
       views:
         | never
     }

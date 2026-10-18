@@ -3,11 +3,13 @@ package com.sportverify.leaderboard.controller;
 import com.sportverify.api.record.dto.LeaderboardDTO;
 import com.sportverify.api.mapmatch.dto.SegmentEffortDTO;
 import com.sportverify.api.mapmatch.dto.SegmentLeaderboardDTO;
+import com.sportverify.api.user.dto.ClubLeaderboardDTO;
 import com.sportverify.common.exception.BizException;
 import com.sportverify.common.result.Result;
 import com.sportverify.common.result.ResultCode;
 import com.sportverify.leaderboard.service.LeaderboardService;
 import jakarta.servlet.http.HttpServletRequest;
+import lombok.Data;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
@@ -131,6 +133,18 @@ public class LeaderboardController {
     }
 
     /**
+     * 跑团团队里程榜（TASK-275）：{@code GET /api/leaderboard/clubs?period=overall|weekly&size=20}。
+     * ZSet 降序前 N（默认 20、上限 100）；period=weekly 读当周周一键，clubName 经名称缓存
+     * Hash 补齐，由 service 组装 {@link ClubLeaderboardDTO}。
+     */
+    @GetMapping("/clubs")
+    public Result<List<ClubLeaderboardDTO>> clubLeaderboard(
+            @RequestParam(value = "period", required = false) String period,
+            @RequestParam(value = "size", required = false) Integer size) {
+        return Result.success(leaderboardService.getClubLeaderboard(period, size));
+    }
+
+    /**
      * 身份认定（数据隔离核心，见 ADR-0007）：true 时以网关 X-User-Id 为准，
      * 显式携带值不一致 → 403（1002，越权）；false 时降级为显式携带值（旧行为）。
      */
@@ -149,5 +163,45 @@ public class LeaderboardController {
             return tokenUserId;
         }
         return claimed;
+    }
+}
+
+/**
+ * 跑团里程上报内部接口（TASK-275）：{@code POST /internal/leaderboard/clubs/distance}。
+ *
+ * <p>与 {@link LeaderboardController} 同文件托管的包级私有控制器——/internal/** 路径无法
+ * 挂在该控制器的类级 {@code /api/leaderboard} 前缀下，而独立新文件不在本任务白名单内；
+ * Spring 组件扫描按包扫描，包级私有顶级类同样被装配。供跑团域（后续链路）服务间上报
+ * 累计里程使用：ZINCRBY 累加总榜与周榜，并同步 clubName 进名称缓存 Hash。</p>
+ */
+@RestController
+@RequestMapping("/internal/leaderboard/clubs")
+@RequiredArgsConstructor
+class ClubLeaderboardInternalController {
+
+    private final LeaderboardService leaderboardService;
+
+    /** 跑团里程上报（POST /internal/leaderboard/clubs/distance）：body 携带 clubId/clubName/distanceMeters/weekStart */
+    @PostMapping("/distance")
+    public Result<Boolean> recordDistance(@RequestBody ClubDistancePayload payload) {
+        if (payload == null || payload.getClubId() == null) {
+            throw new IllegalArgumentException("跑团里程上报必须携带 clubId");
+        }
+        leaderboardService.recordClubDistance(payload.getClubId(), payload.getClubName(),
+                payload.getDistanceMeters(), payload.getWeekStart());
+        return Result.success(Boolean.TRUE);
+    }
+
+    /** 上报请求体（weekStart 为周一 ISO 日期；缺省时服务端归一化到当周周一） */
+    @Data
+    static class ClubDistancePayload {
+        /** 跑团ID */
+        private Long clubId;
+        /** 跑团名称（同步进名称缓存 Hash；可空则不更新名称） */
+        private String clubName;
+        /** 本次累计里程（米，必须为正） */
+        private Double distanceMeters;
+        /** 周一锚点日期（ISO yyyy-MM-dd） */
+        private LocalDate weekStart;
     }
 }
