@@ -73,11 +73,8 @@ class LeaderboardCacheInvocationTest {
             UserApi userApi = context.getBean(UserApi.class);
             StringRedisTemplate redis = context.getBean(StringRedisTemplate.class);
             ZSetOperations<String, String> zSet = context.getBean(ZSetOperations.class);
-            FriendDTO friend = new FriendDTO();
-            friend.setUserId(100L);
-
-            when(userApi.listFriends(7L, 1L, 1000L))
-                    .thenReturn(Result.success(new PageResult<>(1, 1000, 1, List.of(friend))));
+            when(userApi.listFriendIds(7L))
+                    .thenReturn(Result.success(List.of(100L)));
             // TASK-239：好友榜改为 Redis Pipeline 单次往返批量点查（ZSCORE），不再走 ZSet 整榜扫描
             when(redis.executePipelined(any(RedisCallback.class)))
                     .thenReturn(List.of((Object) 42.5d));
@@ -87,7 +84,7 @@ class LeaderboardCacheInvocationTest {
 
             // TASK-246 B23：好友榜引入 15s 本地 Caffeine 缓存防穿透——第二次命中缓存，
             // Feign 好友列表与 Redis Pipeline 仅各触发一次（不再每请求穿透 user-service）
-            verify(userApi, times(1)).listFriends(7L, 1L, 1000L);
+            verify(userApi, times(1)).listFriendIds(7L);
             verify(redis, times(1)).executePipelined(any(RedisCallback.class));
             // 好友榜仍不经"总体榜"Spring @Cacheable（本地缓存独立）；且不触碰 ZSet 操作
             verifyNoInteractions(zSet);
@@ -100,11 +97,11 @@ class LeaderboardCacheInvocationTest {
             LeaderboardService service = context.getBean(LeaderboardService.class);
             UserApi userApi = context.getBean(UserApi.class);
             ZSetOperations<String, String> zSet = context.getBean(ZSetOperations.class);
-            when(userApi.listFriends(7L, 1L, 1000L)).thenThrow(new IllegalStateException("user-service down"));
+            when(userApi.listFriendIds(7L)).thenThrow(new IllegalStateException("user-service down"));
 
             assertThat(service.top("friend", 7L, 10)).isEmpty();
 
-            verify(userApi).listFriends(7L, 1L, 1000L);
+            verify(userApi).listFriendIds(7L);
             verifyNoInteractions(zSet);
         });
     }
@@ -121,16 +118,14 @@ class LeaderboardCacheInvocationTest {
             StringRedisTemplate redis = context.getBean(StringRedisTemplate.class);
 
             // 首次：user-service 不可用 → topFriends 降级空榜
-            when(userApi.listFriends(7L, 1L, 1000L))
+            when(userApi.listFriendIds(7L))
                     .thenThrow(new IllegalStateException("user-service down"));
             assertThat(service.top("friend", 7L, 10)).isEmpty();
 
             // 重打桩坑（沿 LeaderboardServiceTest L380 先例）：对已 thenThrow 的桩必须用 doReturn，
             // when 写法会先触发旧桩抛异常。恢复后返回 1 位好友，Redis Pipeline 点查得分为 [42.5]。
-            FriendDTO friend = new FriendDTO();
-            friend.setUserId(100L);
-            doReturn(Result.success(new PageResult<>(1, 1000, 1, List.of(friend))))
-                    .when(userApi).listFriends(7L, 1L, 1000L);
+            doReturn(Result.success(List.of(100L)))
+                    .when(userApi).listFriendIds(7L);
             doReturn(List.of((Object) 42.5d))
                     .when(redis).executePipelined(any(RedisCallback.class));
 
@@ -138,7 +133,7 @@ class LeaderboardCacheInvocationTest {
             assertThat(service.top("friend", 7L, 10)).isNotEmpty();
 
             // 穿透计数：好友列表 Feign 两次都真实穿透（空榜未进缓存）
-            verify(userApi, times(2)).listFriends(7L, 1L, 1000L);
+            verify(userApi, times(2)).listFriendIds(7L);
             // 首次降级在 fetchAllFriendIds 第一步即抛异常，未触达 Pipeline；仅恢复路径执行一次点查。
             // 若该分支被误改（去掉 isEmpty 判定、错误回填空缓存），第二次将命中缓存导致此处 verify 失败。
             verify(redis, times(1)).executePipelined(any(RedisCallback.class));
@@ -154,15 +149,15 @@ class LeaderboardCacheInvocationTest {
             LeaderboardService service = context.getBean(LeaderboardService.class);
             UserApi userApi = context.getBean(UserApi.class);
 
-            // 无好友路径：返回空页（total=0）
-            when(userApi.listFriends(8L, 1L, 1000L))
-                    .thenReturn(Result.success(new PageResult<>(1, 1000, 0, List.of())));
+            // 无好友路径：返回空列表
+            when(userApi.listFriendIds(8L))
+                    .thenReturn(Result.success(List.of()));
 
             assertThat(service.top("friend", 8L, 10)).isEmpty();
             assertThat(service.top("friend", 8L, 10)).isEmpty();
 
             // 两次均穿透 → 空榜未进缓存
-            verify(userApi, times(2)).listFriends(8L, 1L, 1000L);
+            verify(userApi, times(2)).listFriendIds(8L);
         });
     }
 

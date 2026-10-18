@@ -45,7 +45,8 @@ rules:
     tables:
       - ds0.sport_record
       - ds0.record_like
-      - ds0.leaderboard_contribution
+      - ds0.sport_goal
+      - ds0.user_badge
   - !SHARDING
     tables:
       track_point:

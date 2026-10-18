@@ -41,6 +41,7 @@ import java.util.List;
 import java.util.Set;
 import java.util.concurrent.TimeUnit;
 import java.util.stream.IntStream;
+import java.util.stream.LongStream;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
@@ -279,8 +280,8 @@ class LeaderboardServiceTest {
     /** 规范差异「只显示好友」：Pipeline 只点查好友积分，非好友（300）不入榜；本人不在榜 */
     @Test
     void topFriend_filtersNonFriends() {
-        when(userApi.listFriends(200L, 1L, 1000L)).thenReturn(Result.success(
-                new PageResult<>(1, 1000, 1, List.of(friend(100L)))));
+        when(userApi.listFriendIds(200L)).thenReturn(Result.success(
+                List.of(100L)));
         // Pipeline 单次往返：distinctFriendIds=[100]，点查 1 条 → 返回 [42.5]（非好友 300/200 根本不查询）
         when(redis.executePipelined(any(RedisCallback.class))).thenReturn(List.of((Object) 42.5));
 
@@ -291,16 +292,11 @@ class LeaderboardServiceTest {
         assertEquals(1, board.get(0).getRank());
     }
 
-    /** 分页契约：好友总数超过单页 1000 时，继续读取后续页，避免静默截断。 */
+    /** 好友榜拉取契约：好友总数达到 1001 时，单次拉齐全部好友 ID，正确完成 Pipeline 点查与排序。 */
     @Test
-    void topFriend_readsAllFriendPages_whenFriendsExceedSinglePage() {
-        List<FriendDTO> firstPage = IntStream.rangeClosed(1, 1000)
-                .mapToObj(i -> friend((long) i))
-                .toList();
-        when(userApi.listFriends(200L, 1L, 1000L)).thenReturn(Result.success(
-                new PageResult<>(1, 1000, 1001, firstPage)));
-        when(userApi.listFriends(200L, 2L, 1000L)).thenReturn(Result.success(
-                new PageResult<>(2, 1000, 1001, List.of(friend(1001L)))));
+    void topFriend_handlesLargeFriendList_whenFriendsExceedOneThousand() {
+        List<Long> allFriendIds = LongStream.rangeClosed(1, 1001).boxed().toList();
+        when(userApi.listFriendIds(200L)).thenReturn(Result.success(allFriendIds));
         // Pipeline 返回 1001 个点查结果：仅末位好友 1001 上榜（42.5），其余好友未上榜（null 被过滤）
         List<Object> scores = IntStream.rangeClosed(1, 1001)
                 .mapToObj(i -> i == 1001 ? (Object) 42.5 : null)
@@ -311,21 +307,14 @@ class LeaderboardServiceTest {
 
         assertEquals(List.of(1001L), board.stream().map(LeaderboardDTO::getUserId).toList());
         assertEquals(1, board.get(0).getRank());
-        verify(userApi).listFriends(200L, 2L, 1000L);
+        verify(userApi).listFriendIds(200L);
     }
 
-    /** UserApiFallback 第二页为空时，不得把第一页的部分好友继续用于好友榜。 */
+    /** UserApiFallback 返回 null 结果时，不得报错，优雅降级为空榜。 */
     @Test
-    void topFriend_secondPageFallback_returnsEmptyInsteadOfPartialBoard() {
-        List<FriendDTO> firstPage = IntStream.rangeClosed(1, 1000)
-                .mapToObj(i -> friend((long) i))
-                .toList();
-        when(userApi.listFriends(200L, 1L, 1000L)).thenReturn(Result.success(
-                new PageResult<>(1, 1000, 1001, firstPage)));
-        // UserApiFallback 的 listFriends 降级形态：空 records，total=0。
-        when(userApi.listFriends(200L, 2L, 1000L)).thenReturn(Result.success(
-                new PageResult<>(2, 1000, 0, List.of())));
-        // 好友未拉齐 → 在进入 Pipeline 前已返回空榜（该桩保持与既有实现一致，实际不会被消费）
+    void topFriend_nullResultFallback_returnsEmptyInsteadOfError() {
+        when(userApi.listFriendIds(200L)).thenReturn(null);
+        // 好友未拉到 → 在进入 Pipeline 前已返回空榜
         when(redis.executePipelined(any(RedisCallback.class))).thenReturn(List.of((Object) 42.5));
 
         List<LeaderboardDTO> board = service.top("friend", 200L, 10);
@@ -333,15 +322,10 @@ class LeaderboardServiceTest {
         assertTrue(board.isEmpty());
     }
 
-    /** 已收集数量小于 total 却提前收到短页时，不得返回不完整好友榜。 */
+    /** UserApiFallback 返回 null data 时，同样优雅降级为空榜。 */
     @Test
-    void topFriend_shortPageBeforeExpectedTotal_returnsEmptyInsteadOfPartialBoard() {
-        List<FriendDTO> shortFirstPage = IntStream.rangeClosed(1, 999)
-                .mapToObj(i -> friend((long) i))
-                .toList();
-        when(userApi.listFriends(200L, 1L, 1000L)).thenReturn(Result.success(
-                new PageResult<>(1, 1000, 1001, shortFirstPage)));
-        // 好友未拉齐 → 在进入 Pipeline 前已返回空榜（该桩保持与既有实现一致，实际不会被消费）
+    void topFriend_nullDataFallback_returnsEmptyInsteadOfError() {
+        when(userApi.listFriendIds(200L)).thenReturn(Result.success(null));
         when(redis.executePipelined(any(RedisCallback.class))).thenReturn(List.of((Object) 42.5));
 
         List<LeaderboardDTO> board = service.top("friend", 200L, 10);
@@ -352,8 +336,7 @@ class LeaderboardServiceTest {
     /** Pipeline 单次往返：好友积分一次点查拉齐，不再整榜分批扫描——executePipelined 恰 1 次，ZREVRANGE 0 次。 */
     @Test
     void topFriend_usesPipeline_batchRetrievesFriendScoresInSingleRoundTrip() {
-        when(userApi.listFriends(200L, 1L, 1000L)).thenReturn(Result.success(
-                new PageResult<>(1, 1000, 1, List.of(friend(9999L)))));
+        when(userApi.listFriendIds(200L)).thenReturn(Result.success(List.of(9999L)));
         when(redis.executePipelined(any(RedisCallback.class))).thenReturn(List.of((Object) 1.0));
 
         List<LeaderboardDTO> board = service.top("friend", 200L, 10);
@@ -370,9 +353,8 @@ class LeaderboardServiceTest {
     @Test
     void topFriend_sortsFriendsByScoreDescending_andTiesByMemberDescending() {
         // 好友 100/200/300 上榜：200→88.0，100/300 同分 42.5（member 降序 300 先于 100）；400 未上榜（null）
-        when(userApi.listFriends(200L, 1L, 1000L)).thenReturn(Result.success(
-                new PageResult<>(1, 1000, 4,
-                        List.of(friend(100L), friend(200L), friend(300L), friend(400L)))));
+        when(userApi.listFriendIds(200L)).thenReturn(Result.success(
+                List.of(100L, 200L, 300L, 400L)));
         when(redis.executePipelined(any(RedisCallback.class)))
                 .thenReturn(Arrays.asList((Object) 42.5, (Object) 88.0, (Object) 42.5, null));
 
@@ -391,16 +373,15 @@ class LeaderboardServiceTest {
     @Test
     void topFriend_emptyOrDegraded_returnsEmpty() {
         // 无好友
-        when(userApi.listFriends(200L, 1L, 1000L)).thenReturn(Result.success(
-                new PageResult<>(1, 1000, 0, List.of())));
+        when(userApi.listFriendIds(200L)).thenReturn(Result.success(List.of()));
         assertTrue(service.top("friend", 200L, 10).isEmpty());
         // Feign 失败 → 降级空榜
-        when(userApi.listFriends(200L, 1L, 1000L)).thenThrow(new RuntimeException("down"));
+        when(userApi.listFriendIds(200L)).thenThrow(new RuntimeException("down"));
         assertTrue(service.top("friend", 200L, 10).isEmpty());
         // Pipeline 点查返回 null 分数（好友均无 pass 里程/未上榜）→ 候选为空 → 空榜
         // 注意：对已 thenThrow 的桩重打桩必须用 doReturn（when 写法会先触发旧桩抛异常）
-        doReturn(Result.success(new PageResult<>(1, 1000, 1, List.of(friend(100L)))))
-                .when(userApi).listFriends(200L, 1L, 1000L);
+        doReturn(Result.success(List.of(100L)))
+                .when(userApi).listFriendIds(200L);
         when(redis.executePipelined(any(RedisCallback.class)))
                 .thenReturn(Collections.singletonList(null));
         assertTrue(service.top("friend", 200L, 10).isEmpty());
@@ -409,9 +390,8 @@ class LeaderboardServiceTest {
     /** B23 防穿透：连续调用 2 次 topFriends 命中本地缓存，第二次 Feign 依赖次数不增 */
     @Test
     void topFriend_secondCallHitsLocalCache_friendFeignNotRepeated() {
-        when(userApi.listFriends(200L, 1L, 1000L)).thenReturn(Result.success(
-                new PageResult<>(1, 1000, 2,
-                        List.of(friend(100L), friend(200L)))));
+        when(userApi.listFriendIds(200L)).thenReturn(Result.success(
+                List.of(100L, 200L)));
         when(redis.executePipelined(any(RedisCallback.class)))
                 .thenReturn(Arrays.asList((Object) 42.5, (Object) 88.0));
 
@@ -421,8 +401,8 @@ class LeaderboardServiceTest {
         // 两次都返回完整好友榜
         assertEquals(List.of(200L, 100L), first.stream().map(LeaderboardDTO::getUserId).toList());
         assertEquals(List.of(200L, 100L), second.stream().map(LeaderboardDTO::getUserId).toList());
-        // 关键：Feign（listFriends）与 Redis Pipeline 都仅被调用一次——第二次从本地缓存命中
-        verify(userApi).listFriends(200L, 1L, 1000L);
+        // 关键：Feign（listFriendIds）与 Redis Pipeline 都仅被调用一次——第二次从本地缓存命中
+        verify(userApi).listFriendIds(200L);
         verify(redis, org.mockito.Mockito.times(1)).executePipelined(any(RedisCallback.class));
     }
 

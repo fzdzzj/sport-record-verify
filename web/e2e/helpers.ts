@@ -197,6 +197,25 @@ async function handleRecord(route: Route, ctx: ApiCtx, stores: Stores): Promise<
     route.fulfill(ok({ recordId: id, likeCount, liked }))
     return
   }
+  // TASK-271: 补齐勋章墙与佩戴状态 mock（解决 TASK-269 遗留 unmocked 缺口）
+  if (p === '/record/api/records/my/badges' && method === 'GET') {
+    route.fulfill(ok([]))
+    return
+  }
+  const equipped = p.match(/^\/record\/api\/records\/users\/(\d+)\/equipped-badge$/)
+  if (equipped && method === 'GET') {
+    route.fulfill(ok(null))
+    return
+  }
+  const wear = p.match(/^\/record\/api\/records\/my\/badges\/([A-Za-z0-9_]+)\/wear$/)
+  if (wear && method === 'PUT') {
+    route.fulfill(ok(null))
+    return
+  }
+  if (p === '/record/api/records/my/badges/unwear' && method === 'PUT') {
+    route.fulfill(ok(null))
+    return
+  }
   ctx.unmocked.push(`${method} ${p}`)
   route.fulfill({ status: 404, contentType: 'application/json', body: JSON.stringify({ code: 9999, message: 'mock unmapped: ' + p }) })
 }

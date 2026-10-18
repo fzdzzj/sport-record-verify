@@ -2,10 +2,9 @@ package com.sportverify.leaderboard.service;
 
 import com.sportverify.api.record.RecordStatus;
 import com.sportverify.api.record.dto.LeaderboardDTO;
-import com.sportverify.api.common.PageResult;
 import com.sportverify.api.user.UserApi;
-import com.sportverify.api.user.dto.FriendDTO;
 import com.sportverify.api.user.dto.UserDTO;
+import com.sportverify.common.result.Result;
 import com.sportverify.common.trace.TraceIds;
 import com.sportverify.leaderboard.entity.LeaderboardContribution;
 import com.sportverify.leaderboard.entity.LeaderboardDailySummary;
@@ -82,8 +81,6 @@ public class LeaderboardService {
     private static final int DEFAULT_TOP_N = 50;
     /** 报表单次查询上限（防 {@code size} 传成 10 万把整表拉进内存） */
     private static final int DAILY_REPORT_MAX_SIZE = 500;
-    /** 好友列表分页大小：与 user-service 分页接口配合，逐页拉齐好友集合。 */
-    private static final long FRIEND_FETCH_SIZE = 1000;
     /** 好友榜整榜扫描批大小（TASK-239 前实现：分批 reverseRangeWithScores 窗口；已由 Redis
      *  Pipeline 批量点查取代，保留字段仅作历史注释，不再被引用）。 */
     private static final long FRIEND_SCAN_BATCH = 500;
@@ -281,12 +278,12 @@ public class LeaderboardService {
     }
 
     /**
-     * 好友榜（规范差异「好友榜查询」）：按 user-service 分页契约拉齐好友列表 → Redis Pipeline
+     * 好友榜（规范差异「好友榜查询」）：调用 user-service listFriendIds 单次拉齐全部好友 ID → Redis Pipeline
      * 单次往返批量点查各好友在总榜的积分（ZSCORE），内存过滤/排序/截断，不再整榜分批扫描。
      *
      * <p>降级口径（产品决策，add-resilience-hardening）：user-service 不可用 → <b>返回空榜</b>，
      * 不选「不过滤」。不过滤会把总榜非好友泄露进好友榜（隐私/语义错误）；空榜仅短暂降级。
-     * UserApiFallback 对 listFriends 返回空页，或异常被本方法 catch 后同样空榜。</p>
+     * UserApiFallback 对 listFriendIds 返回空列表，或异常被本方法 catch 后同样空榜。</p>
      */
     public List<LeaderboardDTO> topFriends(Long userId, int size) {
         // B23 防穿透：入口优先命中本地缓存（userId:size 维度），未命中才穿透拉取并回填
@@ -304,12 +301,12 @@ public class LeaderboardService {
     }
 
     /**
-     * 好友榜原始拉取（B23 缓存未命中才执行）：按 user-service 分页契约拉齐好友列表 →
+     * 好友榜原始拉取（B23 缓存未命中才执行）：调用 user-service listFriendIds 拉齐好友 ID →
      * Redis Pipeline 单次往返批量点查各好友在总榜的积分（ZSCORE），内存过滤/排序/截断。
      *
      * <p>降级口径（产品决策，add-resilience-hardening）：user-service 不可用 → <b>返回空榜</b>，
      * 不选「不过滤」。不过滤会把总榜非好友泄露进好友榜（隐私/语义错误）；空榜仅短暂降级。
-     * UserApiFallback 对 listFriends 返回空页，或异常被本方法 catch 后同样空榜。</p>
+     * UserApiFallback 对 listFriendIds 返回空列表，或异常被本方法 catch 后同样空榜。</p>
      */
     private List<LeaderboardDTO> loadTopFriendsWithoutCache(Long userId, int size) {
         List<Long> friendIds;
@@ -327,7 +324,7 @@ public class LeaderboardService {
             return List.of();
         }
 
-        // 去重好友 ID（分页拉取可能含重复），每个好友只点查一次积分
+        // 去重好友 ID（每个好友只点查一次积分）
         List<Long> distinctFriendIds = new ArrayList<>(new LinkedHashSet<>(friendIds));
         // 单次往返批量 ZSCORE：Pipeline 内按 distinctFriendIds 顺序逐条点查，返回序与入参一一对应
         List<Object> rawScores = stringRedisTemplate.executePipelined((RedisCallback<Object>) connection -> {
@@ -363,30 +360,17 @@ public class LeaderboardService {
         return assemble(top);
     }
 
-    /** 按 user-service 的 PageResult.total 继续读取好友页，避免单页 1000 条静默截断。 */
+    /**
+     * 读取全量好友 ID（TASK-271 优化）：
+     * 直接调用 userApi.listFriendIds 单次拉齐全部好友 ID，消除原 while 分页循环的
+     * 多轮 Feign 网络往返以及 user-service 侧无意义的昵称批量回表负载。
+     */
     private List<Long> fetchAllFriendIds(Long userId) {
-        List<Long> friendIds = new ArrayList<>();
-        long expectedTotal = -1;
-        long page = 1;
-        while (true) {
-            PageResult<FriendDTO> pageResult = userApi.listFriends(userId, page, FRIEND_FETCH_SIZE).getData();
-            if (pageResult == null || pageResult.getRecords() == null) {
-                return List.of();
-            }
-            if (page == 1) {
-                expectedTotal = pageResult.getTotal();
-            }
-            List<FriendDTO> records = pageResult.getRecords();
-            friendIds.addAll(records.stream().map(FriendDTO::getUserId).toList());
-            if (friendIds.size() >= expectedTotal) {
-                return friendIds;
-            }
-            // 空页或短页但仍未达到第一页声明的 total，说明分页结果不完整，不能返回部分好友榜。
-            if (records.isEmpty() || records.size() < FRIEND_FETCH_SIZE) {
-                return List.of();
-            }
-            page++;
+        Result<List<Long>> res = userApi.listFriendIds(userId);
+        if (res == null || res.getData() == null) {
+            return List.of();
         }
+        return res.getData();
     }
 
     /**
