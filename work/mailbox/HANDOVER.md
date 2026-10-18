@@ -8,10 +8,10 @@
 
 ## 1. 当前代码基线与外部状态
 
-- **当前分支与 HEAD**：`main` 分支，最新已终裁闭环任务为 **TASK-266**（N3 record-service 循环依赖解耦与启动加固，MEDIUM 档；C-01 `fe5a2e7` / C-02 `ffa70bf`，指导亲核三块全 PASS 零阻断，surefire record-service 321→322 净增 +1，全仓七模块 1033 测零失败零跳过；双向 setter @Lazy 解耦 + 显式 spring.main.allow-circular-references=false 严格模式防线 + 编程式无污染容器契约单测；封盘批次统一推送 origin/main，待 CI 外部终验）。前一封盘 **TASK-265**（全链路高并发压测与容量基准建立，FULL 档）、**TASK-258**（方案 B PostGIS 真实空间库复验，CI run `39053016034` 全绿）、**TASK-264**（批 G-6，CI run `39040084087` 全绿闭环）、**TASK-263**（G 系批 G-5，`39034968218`）、**TASK-262**（G 系批 G-4，`39029851254`）、TASK-261（批 G-3，`39009192599`）、TASK-260（批 G-2，`38999061241`）、TASK-259（批 G-1，`38990356530`）、TASK-257（E 系批4b-2，`38931526812`）、TASK-256（批4b-1，`38917734857`）、TASK-255（批4a-2，`38903763620`）、TASK-254（批4a-1，`38892885813`）、TASK-253（批3，`38879776160`）、TASK-252（批2，`38869656012`）、TASK-251（批1，`38864817657`）。**E 系 31 项全部闭环；G 系已闭环 21 项（余 G22/G23 受限保持）；新候选 N2+R5 全部收口；E13 方案 B 完整闭环；压测基准套件完整建立；当前在途 0**。
-- **外部 CI 门槛状态**：TASK-258 封盘批次经 CI run **`39053016034`** 权威核验 conclusion=**success** 全 job 绿（`web` ✓ 23s / `build` ✓ 11m18s / `probe-ubuntu26` skipped=if 门禁正确生效旁证；headSha `6227056` 匹配）；TASK-265 封盘批次已推送；TASK-266 封盘批次随本批统一推送 origin/main。
-- **工作树状态**：TASK-267 立项笔落库，两件套与看板对齐；工作树纯净。
-- **当前在途任务数**：`1` 个——**TASK-267**（N4 migrate.sh 存量库迁移断链缺陷修复与预检加固，MEDIUM 档，待派发）。
+- **当前分支与 HEAD**：`main` 分支，最新已终裁闭环任务为 **TASK-267**（N4 migrate.sh 存量库迁移断链缺陷修复与预检加固，MEDIUM 档；C-01 `fcfc370` / C-02 `e585feb`，指导亲核三块全 PASS 零阻断，surefire record-service 322→323 净增 +1，全仓七模块 1034 测零失败零跳过；add-leaderboard-daily-summary.sql 补齐 `USE record_db;` + migrate.sh 静态预检拦截防御 + SqlMigrationContractTest 纯 JVM 契约单测；封盘批次统一推送 origin/main，待 CI 外部终验）。前序 **TASK-266**（record-service 循环依赖解耦与启动加固，MEDIUM 档）、**TASK-265**（全链路高并发压测与容量基准建立，FULL 档）、**TASK-258**（方案 B PostGIS 真实空间库复验，CI run `39053016034` 全绿）、**TASK-264**（批 G-6，CI run `39040084087` 全绿闭环）、**TASK-263**（G 系批 G-5，`39034968218`）、**TASK-262**（G 系批 G-4，`39029851254`）、TASK-261（批 G-3，`39009192599`）、TASK-260（批 G-2，`38999061241`）、TASK-259（批 G-1，`38990356530`）、TASK-257（E 系批4b-2，`38931526812`）、TASK-256（批4b-1，`38917734857`）、TASK-255（批4a-2，`38903763620`）、TASK-254（批4a-1，`38892885813`）、TASK-253（批3，`38879776160`）、TASK-252（批2，`38869656012`）、TASK-251（批1，`38864817657`）。**E 系 31 项全部闭环；G 系已闭环 21 项（余 G22/G23 受限保持）；新候选 N2+R5 全部收口；E13 方案 B 完整闭环；压测基准套件完整建立；存量库迁移缺陷根除；当前在途 0**。
+- **外部 CI 门槛状态**：TASK-258 封盘批次经 CI run **`39053016034`** 权威核验 conclusion=**success** 全 job 绿（`web` ✓ 23s / `build` ✓ 11m18s / `probe-ubuntu26` skipped=if 门禁正确生效旁证；headSha `6227056` 匹配）；TASK-265、TASK-266、TASK-267 封盘批次统一推送 origin/main 待 CI 外部终验。
+- **工作树状态**：TASK-267 封盘笔落库，五看板与两件套对齐；工作树纯净。
+- **当前在途任务数**：`0` 个。
 
 
 
@@ -119,11 +119,10 @@
 
 ## 4. 当前推进与唯一推荐动作
 
-- **当前推进**：**TASK-267（N4 migrate.sh 存量库迁移断链缺陷修复与预检加固，MEDIUM 档）已立项待派发**（开工基线 main @ `970c404`；白名单 3+1 文件，修复 add-leaderboard-daily-summary.sql 缺少 USE 库限定词、migrate.sh 增加预检防御与纯 JVM 契约单测）；当前在途 1。
+- **当前推进**：**TASK-267（N4 migrate.sh 存量库迁移断链缺陷修复与预检加固，MEDIUM 档）已封盘闭环**（开工基线 main @ `970c404`；C-01 `fcfc370` / C-02 `e585feb`，白名单 3+1 文件，修复 add-leaderboard-daily-summary.sql 缺少 USE 库限定词、migrate.sh 增加预检防御与纯 JVM 契约单测，七门禁全绿，指导亲核三块全 PASS 终裁 ACCEPT）；当前在途 0。
   - **唯一推荐动作**：
-    1. 派发 TASK-267 实施子 agent 完成 USE 补齐、脚本预检防御与纯 JVM 契约测试；
-    2. 监控 TASK-266 GitHub Actions CI 外部终验状态；
-    3. **10-19 必做事项（沿挂账）**：ubuntu-26.04 标签可用后，手动 `workflow_dispatch` 触发 probe26=true 试跑 probe-ubuntu26 job，读数随补记笔登记；通过后另立课题平移 runs-on 并摘除钉扎注释；
+    1. 监控 TASK-266 与 TASK-267 封盘批次 GitHub Actions CI 外部终验状态；
+    2. **10-19 必做事项（沿挂账）**：ubuntu-26.04 标签可用后，手动 `workflow_dispatch` 触发 probe26=true 试跑 probe-ubuntu26 job，读数随补记笔登记；通过后另立课题平移 runs-on 并摘除钉扎注释；
   - **治理挂账（非阻断，随下一课题/批次顺手）**：token 计数口径统一（TASK-254 N2：逐项 git grep -cF 文件出现次数为权威口径）、零触碰面路径书写以仓内实存路径为准（N1）。
 
 
