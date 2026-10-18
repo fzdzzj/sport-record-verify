@@ -813,3 +813,20 @@
 | 独立复核 | 五块全 PASS 零阻断（块一 4 笔提交链全等；块二红线与零触碰 6 项全 PASS；块三双端门禁实测 5 项亲自复跑全 PASS：契约门纯净 worktree rc=0、token 门 2191 精确持平、词面门四 locale ZERO_HIT+探针对照、checkstyle delta=0 且改动集不在扫描面、diff 净、ls-files 纯 LF；块四证据链核对 PASS，报告与原始产物四方互证，两项环境缺陷登记合规；块五只改清单三向全等 4=4=4）；非阻断 5 项集中登记封盘笔（N1 spec 基线口径微漂 / N2 token 自枚举指针 / N3 C-02 哈希自引用局限 / N4 四方数据对账替代 / N5 codex 外部 worktree 未动） |
 | 是否到达外部门槛 | **已到达本地封盘**：封盘批次（5 笔 = TASK-258 补记笔 `c4ad1b1` + 立项笔 `eeb8400` + C-01 `b61806e` + C-02 `7d108b5` + 封盘笔）统一推送 origin/main，GitHub Actions CI 外部终验随后登记 |
 | 状态 | **已终裁 ACCEPT（2026-10-18 指导侧）**：指导亲核三块 + 独立复核五块双 PASS 零阻断；4 文件白名单双向全等；全链路高并发压测套件与容量基准建立闭环；封盘批次统一推送 origin/main，待 CI 外部终验 |
+
+## 验收记录：`TASK-266`（N3 record-service 循环依赖解耦与启动加固，MEDIUM 档，2026-10-18 立项）
+
+| 项 | 内容 |
+| --- | --- |
+| 开工基线 | main @ `20c3a05`（TASK-265 封盘笔；本地与 origin/main 平齐） |
+| 分级定档 | MEDIUM（涉及生产 Service 依赖注入修饰符 @Lazy 声明、application.properties 严格模式配置、无循环引用测试新增；指导亲核三块把关，免独立复核子 agent） |
+| 亲验证据 | 两项全部坐实：①生产 jar 启动实测报 UnsatisfiedDependencyException / Requested bean is currently in creation: Is there an unresolvable circular reference?，SportRecordService 与 RecordLikeService 双向 @Autowired setter 注入成环；②Spring Boot 3.2 默认 forbid circular references，且既有单测/探针未能覆盖急切实例化路径 |
+| 白名单 | 4+1 项：`record-service/src/main/java/com/sportverify/record/service/SportRecordService.java` + `record-service/src/main/java/com/sportverify/record/service/RecordLikeService.java` + `record-service/src/main/resources/application.properties` + `record-service/src/test/java/com/sportverify/record/service/RecordServiceCircularDependencyTest.java` + 台账 `work/mailbox/tasks/TASK-266/handoff.md`（零触碰其他微服务/pom/web/sql） |
+| 核心实现 | R1 在 SportRecordService 与 RecordLikeService 注入点添加 @Lazy 注解打破依赖循环；R2 在 application.properties 显式声明 spring.main.allow-circular-references=false 杜绝倒退；R3 新增 RecordServiceCircularDependencyTest 容器注入契约单测 |
+| 门禁要求 | 七门禁全量逐位（surefire 63/78/221/321/203/110/36 只增不减，record-service 321→322 净增 1 测，总计 1033 测）+ 契约门（判据 B 机器比对）+ token 门 29 项逐位持平（期望值口径：C-02 树 = 2191 + 29 = 2220）+ 词面门四 locale ZERO_HIT + 探针阳性对照 + checkstyle delta=0 + diff --check 净；双提交 C-01/C-02 |
+| 受限预登记 | 保持既有业务逻辑与 Mockito 测试兼容，不变更权限判定规则与缓存清理实现 |
+| 实施与门禁 | 待实施 |
+| 指导亲核 | 待亲核 |
+| 独立复核 | 免独立复核（MEDIUM 档） |
+| 是否到达外部门槛 | 本地代码修复课题，不引入新外部依赖 |
+| 状态 | **已立项待派发（2026-10-18 指导侧）**：开工基线 main @ 20c3a05，两件套已落库，待派发实施子 agent |
