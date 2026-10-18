@@ -3,6 +3,8 @@
 -- 联合主键 (stat_date, user_id) 即幂等保证——每轮结算重复 upsert 同一日同一用户只留一行。
 -- 与 sql/02-record-db.sql 末尾的同名 DDL 必须逐字一致（本仓无 Flyway/Liquibase，两处人工同步）。
 
+USE record_db;
+
 CREATE TABLE IF NOT EXISTS `leaderboard_daily_summary` (
     `stat_date`      DATE          NOT NULL COMMENT '统计日期（服务器时区，快照当日累计）',
     `user_id`        BIGINT        NOT NULL COMMENT '用户ID',

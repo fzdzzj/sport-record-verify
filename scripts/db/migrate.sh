@@ -36,6 +36,16 @@ if [[ ${#files[@]} -eq 0 ]]; then
   exit 0
 fi
 
+# 预检防御（TASK-267）：执行前逐个静态校验迁移脚本必须显式声明 USE <database>;，
+# 缺失即 fail-fast，杜绝 "No database selected" 中断全量迁移或写入错误库
+for f in "${files[@]}"; do
+  base="$(basename "$f")"
+  if ! grep -q -E '^[[:space:]]*USE[[:space:]]+[a-zA-Z0-9_]+;' "$f"; then
+    echo "错误: 迁移脚本 ${base} 缺少 USE <database>; 语句，可能导致迁移中断或写入错误库！" >&2
+    exit 1
+  fi
+done
+
 ok=0
 total=0
 # 用 sort 保证顺序；不用 mapfile 以兼容 Git Bash 旧版本
