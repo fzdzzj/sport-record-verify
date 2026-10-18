@@ -7,6 +7,7 @@ import com.sportverify.api.record.dto.MyStatsDTO;
 import com.sportverify.api.record.dto.MyStreakDTO;
 import com.sportverify.api.record.dto.RecordSubmitDTO;
 import com.sportverify.api.record.dto.RecordSubmitResultDTO;
+import com.sportverify.api.record.dto.RecordSplitsDTO;
 import com.sportverify.api.record.dto.RecordSummaryDTO;
 import com.sportverify.api.record.dto.FeedItemDTO;
 import com.sportverify.api.record.dto.TrackPointDTO;
@@ -614,5 +615,78 @@ class RecordControllerTest {
 
         assertEquals(0, out.getCode());
         verify(sportRecordService).deleteRecord(88L, 100L);
+    }
+
+    // ==================== 公里分段配速切片（TASK-273） ====================
+
+    /** R1 绿（auth 关）：caller=null 降级透传 → Result SUCCESS 携 service 分片 DTO */
+    @Test
+    void splits_delegates() {
+        RecordSplitsDTO dto = new RecordSplitsDTO();
+        dto.setRecordId(5L);
+        when(sportRecordService.getRecordSplits(null, 5L)).thenReturn(dto);
+
+        Result<RecordSplitsDTO> out = controller.splits(5L, request);
+
+        assertEquals(0, out.getCode());
+        assertEquals(dto, out.getData());
+        verify(sportRecordService).getRecordSplits(null, 5L);
+    }
+
+    /** R1 绿（auth 开）：X-User-Id 解析为 caller → 以此透传服务层（读取面授权同 /{id} 详情门） */
+    @Test
+    void splits_authEnabled_resolvesCallerFromHeader() {
+        ReflectionTestUtils.setField(controller, "authEnabled", true);
+        when(request.getHeader("X-User-Id")).thenReturn("200");
+        RecordSplitsDTO dto = new RecordSplitsDTO();
+        dto.setRecordId(3L);
+        when(sportRecordService.getRecordSplits(200L, 3L)).thenReturn(dto);
+
+        Result<RecordSplitsDTO> out = controller.splits(3L, request);
+
+        assertEquals(0, out.getCode());
+        assertEquals(dto, out.getData());
+        verify(sportRecordService).getRecordSplits(200L, 3L);
+    }
+
+    /** R1 红（auth 开，缺网关头）→ 1001 缺少 X-User-Id（沿 /{id} 详情缺头先例） */
+    @Test
+    void splits_authEnabled_missingHeader_throwsUnauthorized() {
+        ReflectionTestUtils.setField(controller, "authEnabled", true);
+        when(request.getHeader("X-User-Id")).thenReturn(null);
+
+        BizException e = assertThrows(BizException.class,
+                () -> controller.splits(3L, request));
+        assertEquals(ResultCode.UNAUTHORIZED.getCode(), e.getCode());
+    }
+
+    /** 公共层映射：/splits 路径记录不存在（3001）→ HTTP 404 + body code=3001（全链路） */
+    @Test
+    void splits_recordNotFound_mapsHttp404ViaPublicAdvice() throws Exception {
+        when(sportRecordService.getRecordSplits(null, 9L))
+                .thenThrow(new BizException(ResultCode.RECORD_NOT_FOUND));
+
+        MockMvc mockMvc = MockMvcBuilders.standaloneSetup(controller)
+                .setControllerAdvice(new GlobalExceptionHandler())
+                .build();
+
+        mockMvc.perform(get("/api/records/9/splits"))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.code").value(3001));
+    }
+
+    /** 公共层映射：/splits 路径越权（1002）→ HTTP 403 + body code=1002（全链路） */
+    @Test
+    void splits_forbidden_mapsHttp403ViaPublicAdvice() throws Exception {
+        when(sportRecordService.getRecordSplits(null, 9L))
+                .thenThrow(new BizException(ResultCode.FORBIDDEN));
+
+        MockMvc mockMvc = MockMvcBuilders.standaloneSetup(controller)
+                .setControllerAdvice(new GlobalExceptionHandler())
+                .build();
+
+        mockMvc.perform(get("/api/records/9/splits"))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.code").value(1002));
     }
 }

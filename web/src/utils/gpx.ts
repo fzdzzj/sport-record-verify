@@ -22,7 +22,7 @@ function escapeXml(value: string): string {
  * 生成 GPX 1.1 字符串（纯前端导出，无任何新依赖）：
  * - 完整结构：<?xml?> 头 + gpx(version=1.1, creator 默认 sport-verify-web) + metadata(name 默认 record-track, time=首点 ts)
  *   + trk/trkseg + 逐点 trkpt（lat/lon 属性固定 6 位小数、<time>=new Date(ts).toISOString()，保持原始顺序）。
- * - TrackPointDTO 无海拔字段（client.ts:11-19），GPX <ele> 合法省略。
+ * - 点位包含 ele（TASK-273 海拔增强）时在 <trkpt> 节点内输出 <ele>（GPX schema 中先于 <time>），缺失省略。
  * - 空 points 数组抛 Error（防御；页面按钮已按 points.length 门控）。
  */
 export function generateGpx(points: TrackPointDTO[], opts?: GpxOptions): string {
@@ -46,6 +46,9 @@ export function generateGpx(points: TrackPointDTO[], opts?: GpxOptions): string 
   lines.push('    <trkseg>')
   for (const p of points) {
     lines.push(`      <trkpt lat="${p.lat.toFixed(6)}" lon="${p.lng.toFixed(6)}">`)
+    if (p.ele != null) {
+      lines.push(`        <ele>${p.ele.toFixed(1)}</ele>`)
+    }
     lines.push(`        <time>${new Date(p.ts).toISOString()}</time>`)
     lines.push('      </trkpt>')
   }
@@ -59,9 +62,9 @@ export function generateGpx(points: TrackPointDTO[], opts?: GpxOptions): string 
  * 解析 GPX 1.1 字符串为轨迹点数组（TASK-245 B28 前端导入解析，与 {@link generateGpx} 形成双向闭环）。
  *
  * <p>纯正则解析（零新依赖），不依赖浏览器 {@code DOMParser}（vitest/Node 环境与浏览器通用）：
- * 逐 {@code <trkpt lat="..." lon="...">} 节点提取经纬度与内部 {@code <time>} 文本；每个点自动补
- * {@code seq}（文档序 0..N-1）、{@code ts}（epoch 毫秒，非法/缺失时间戳按首点递推或置 0）、
- * {@code speed}（相邻点球面距离/时间差，m/s；首点不做速度计算则该字段缺省）。</p>
+ * 逐 {@code <trkpt lat="..." lon="...">} 节点提取经纬度、内部 {@code <time>} 与 {@code <ele>}（TASK-273，
+ * 存在时填入 {@code point.ele}）文本；每个点自动补 {@code seq}（文档序 0..N-1）、{@code ts}（epoch 毫秒，
+ * 非法/缺失时间戳按首点递推或置 0）、{@code speed}（相邻点球面距离/时间差，m/s；首点不做速度计算则该字段缺省）。</p>
  *
  * <p>异常防御：输入为空/非字符串 → 格式错误；解析不到任何 trkpt → 格式错误（同时给出已解析
  * 到的行级提示以便排查）；经纬度缺失的点跳过但若最终零有效点仍报错。</p>
@@ -78,10 +81,11 @@ export function parseGpx(xmlString: string): TrackPointDTO[] {
   // 逐个 <trkpt ...>...</trkpt> 节点：非贪婪跨点捕获（属性段 + 内部子元素段）
   const trkptRe = /<trkpt([^>]*)>([\s\S]*?)<\/trkpt>/g
   const timeRe = /<time>\s*([^<]+?)\s*<\/time>/
+  const eleRe = /<ele>\s*([-\d.]+)\s*<\/ele>/
   const latAttrRe = /lat\s*=\s*["']([^"']+)["']/
   const lonAttrRe = /lon\s*=\s*["']([^"']+)["']/
 
-  const parsed: { lat: number; lng: number; ts: number }[] = []
+  const parsed: { lat: number; lng: number; ts: number; ele?: number }[] = []
   let m: RegExpExecArray | null
   while ((m = trkptRe.exec(xmlString)) !== null) {
     const attrs = m[1] || ''
@@ -105,7 +109,16 @@ export function parseGpx(xmlString: string): TrackPointDTO[] {
         ts = t
       }
     }
-    parsed.push({ lat, lng, ts })
+    const item: { lat: number; lng: number; ts: number; ele?: number } = { lat, lng, ts }
+    // TASK-273 海拔增强：<ele> 存在且为有限数值时填入 point.ele，缺失/非法省略
+    const eleMatch = eleRe.exec(body)
+    if (eleMatch) {
+      const ele = Number.parseFloat(eleMatch[1])
+      if (Number.isFinite(ele)) {
+        item.ele = ele
+      }
+    }
+    parsed.push(item)
   }
 
   if (parsed.length === 0) {
@@ -132,6 +145,9 @@ export function parseGpx(xmlString: string): TrackPointDTO[] {
     const point: TrackPointDTO = { seq, lat: p.lat, lng: p.lng, ts }
     if (speed !== undefined) {
       point.speed = speed
+    }
+    if (p.ele !== undefined) {
+      point.ele = p.ele
     }
     return point
   })

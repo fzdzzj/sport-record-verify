@@ -14,6 +14,8 @@ export interface TrackPointDTO {
   lng: number
   ts: number
   speed?: number
+  // 海拔（米，可选；TASK-273：GPX 导入/导出透出；后端 track_point 暂无海拔列，服务端回传恒缺省）
+  ele?: number
   // 后端 com.sportverify.api.record.dto.TrackPointDTO 会带出所属记录与用户，前端「提取 myUserId」用到
   userId?: number
 }
@@ -269,6 +271,38 @@ export interface RecordAppealDTO {
 /** 申诉追踪（TASK-245 B26）：GET /record/api/records/{id}/appeal，归属由服务端校验；无申诉时 data.status 为 null。 */
 export async function getRecordAppeal(recordId: number | string): Promise<Result<RecordAppealDTO>> {
   return api.get(`/record/api/records/${recordId}/appeal`)
+}
+
+// ===== 公里分段配速与海拔剖面（TASK-273） =====
+/** 单公里切片（后端 KilometerSplitDTO 同构；末尾余程段 distanceMeters < 1000，isFastest/isSlowest 恒 false） */
+export interface KilometerSplitDTO {
+  km: number
+  distanceMeters: number
+  elapsedSeconds: number
+  paceFormatted: string
+  avgSpeed: number
+  isFastest: boolean
+  isSlowest: boolean
+  elevationGain: number
+  elevationLoss: number
+}
+
+/** 记录分段全景（后端 RecordSplitsDTO 同构；无满 1km 时 fastestKm/slowestKm 为 null） */
+export interface RecordSplitsDTO {
+  recordId: number
+  totalDistanceMeters: number
+  totalElapsedSeconds?: number | null
+  splits: KilometerSplitDTO[]
+  fastestKm?: number | null
+  slowestKm?: number | null
+  totalElevationGain: number
+  totalElevationLoss: number
+  hasElevationData: boolean
+}
+
+/** 公里分段配速切片（GET /record/api/records/{id}/splits，TASK-273）；归属由服务端校验（本人可查）。 */
+export async function getRecordSplits(recordId: number | string): Promise<Result<RecordSplitsDTO>> {
+  return api.get(`/record/api/records/${recordId}/splits`)
 }
 
 // ===== My-records (add-personal-stats TASK-211) =====

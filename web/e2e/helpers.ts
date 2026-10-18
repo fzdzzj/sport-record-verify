@@ -124,6 +124,24 @@ const SEGMENT_BOARD_FIXTURES = [
   { rank: 2, userId: 101, nickname: '跑友甲', elapsedSeconds: 510, recordId: 9002, paceFormatted: "7'07\"" },
 ]
 
+/** 公里分段切片夹具（TASK-273）：3.5km 四段（300/360/330s + 500m 余程 200s），最快第 1 公里、最慢第 2 公里 */
+const RECORD_SPLITS_FIXTURE = {
+  recordId: 9001,
+  totalDistanceMeters: 3500,
+  totalElapsedSeconds: 1190,
+  splits: [
+    { km: 1, distanceMeters: 1000, elapsedSeconds: 300, paceFormatted: "5'00\"", avgSpeed: 3.33, isFastest: true, isSlowest: false, elevationGain: 0, elevationLoss: 0 },
+    { km: 2, distanceMeters: 1000, elapsedSeconds: 360, paceFormatted: "6'00\"", avgSpeed: 2.78, isFastest: false, isSlowest: true, elevationGain: 0, elevationLoss: 0 },
+    { km: 3, distanceMeters: 1000, elapsedSeconds: 330, paceFormatted: "5'30\"", avgSpeed: 3.03, isFastest: false, isSlowest: false, elevationGain: 0, elevationLoss: 0 },
+    { km: 4, distanceMeters: 500, elapsedSeconds: 200, paceFormatted: "6'40\"", avgSpeed: 2.5, isFastest: false, isSlowest: false, elevationGain: 0, elevationLoss: 0 },
+  ],
+  fastestKm: 1,
+  slowestKm: 2,
+  totalElevationGain: 0,
+  totalElevationLoss: 0,
+  hasElevationData: false,
+}
+
 /** 赛段相关 mock（TASK-272）：GET /mapmatch/segments 列表 + POST /mapmatch/segments/match 匹配 */
 async function handleMapmatch(route: Route, ctx: ApiCtx): Promise<void> {
   const req = route.request()
@@ -252,6 +270,12 @@ async function handleRecord(route: Route, ctx: ApiCtx, stores: Stores): Promise<
   const points = p.match(/^\/record\/api\/records\/(\d+)\/points$/)
   if (points && method === 'GET') {
     route.fulfill(okPage([], 0, 1, 5))
+    return
+  }
+  // TASK-273：公里分段切片 mock（详情页 /splits；points mock 为空时页面不发起，分支为防御性兜底）
+  const splits = p.match(/^\/record\/api\/records\/(\d+)\/splits$/)
+  if (splits && method === 'GET') {
+    route.fulfill(ok(RECORD_SPLITS_FIXTURE))
     return
   }
   const verify = p.match(/^\/record\/api\/records\/(\d+)\/verify-result$/)

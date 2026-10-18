@@ -10,6 +10,8 @@ import com.sportverify.api.record.RecordVisibility;
 import com.sportverify.api.record.SportType;
 import com.sportverify.api.record.dto.MyStatsDTO;
 import com.sportverify.api.record.dto.MyStreakDTO;
+import com.sportverify.api.record.dto.KilometerSplitDTO;
+import com.sportverify.api.record.dto.RecordSplitsDTO;
 import com.sportverify.api.record.dto.RecordSubmitDTO;
 import com.sportverify.api.record.dto.RecordSubmitResultDTO;
 import com.sportverify.api.record.dto.RecordSummaryDTO;
@@ -624,6 +626,176 @@ public class SportRecordService {
         BeanUtils.copyProperties(record, dto);
         dto.setVisibility(visibility); // 局部变量携带新值（不整行回写，E30 同款）
         return dto;
+    }
+
+    // ==================== 公里分段配速切片（TASK-273） ====================
+
+    /** 千米切片阈值步长（米）。 */
+    private static final double SPLIT_THRESHOLD_METERS = 1000.0;
+
+    /** 末尾余程独立成段的最小米数（不足 10m 的零头不单列）。 */
+    private static final double SPLIT_TAIL_MIN_METERS = 10.0;
+
+    /** 距离/均速保留小数位（HALF_UP，对齐 sport_record.distance DECIMAL(8,2) 口径）。 */
+    private static final int SPLIT_SCALE = 2;
+
+    /**
+     * 公里分段配速切片（TASK-273）：全程 Haversine 累计路程跨 1000m, 2000m... 阈值时，
+     * 在跨线相邻两点间按距离比例线性插值求穿越时刻（ts_cross = ts_{i-1} + (ts_i - ts_{i-1}) ×
+     * (k·1000 − dist_{i-1}) / (dist_i − dist_{i-1})），逐公里切出耗时/配速/均速，末尾余程
+     * ≥10m 独立成段；在满 1000m 分段中标记最快/最慢公里。轨迹点为空优雅返回空切片。
+     *
+     * <p>归属校验（与 getRecordDetail/deleteRecord/appeal 同款，ADR-0007）：caller 非空且
+     * 非记录归属人 → 403 越权；caller=null（鉴权关闭降级态）放行。轨迹点按 seq ASC 读取；
+     * 已归档记录冷数据已迁走，热表读空同样优雅返回空切片（与申诉拒绝归档记录的口径一致）。</p>
+     *
+     * @param recordId 记录 id
+     * @param caller   调用者 userId（鉴权开启时为网关注入，关闭时为 null）
+     * @return 分段全景（splits 升序，hasElevationData 恒 false——track_point 无海拔列，零 DDL 红线）
+     */
+    public RecordSplitsDTO getRecordSplits(Long caller, Long recordId) {
+        SportRecord record = sportRecordMapper.selectById(recordId);
+        if (record == null) {
+            throw new BizException(ResultCode.RECORD_NOT_FOUND);
+        }
+        if (caller != null && !caller.equals(record.getUserId())) {
+            throw new BizException(ResultCode.FORBIDDEN);
+        }
+        List<TrackPoint> rows = trackPointMapper.selectList(new LambdaQueryWrapper<TrackPoint>()
+                .eq(TrackPoint::getRecordId, recordId)
+                .eq(TrackPoint::getUserId, record.getUserId())
+                .orderByAsc(TrackPoint::getSeq));
+        return buildRecordSplits(recordId, rows.stream().map(this::toDto).toList());
+    }
+
+    /** 切片装配：点位 DTO 列表 → 分段全景（纯内存数学插值，零 DB 访问；供单测直测算法本体）。 */
+    RecordSplitsDTO buildRecordSplits(Long recordId, List<TrackPointDTO> pts) {
+        RecordSplitsDTO dto = new RecordSplitsDTO();
+        dto.setRecordId(recordId);
+        dto.setTotalElevationGain(0.0);
+        dto.setTotalElevationLoss(0.0);
+        dto.setHasElevationData(false);
+        if (pts.isEmpty()) {
+            dto.setTotalDistanceMeters(0.0);
+            dto.setSplits(List.of());
+            return dto;
+        }
+        // 累计路程：dist[0]=0，逐段 Haversine 累加（单调非递减）
+        double[] dist = new double[pts.size()];
+        for (int i = 1; i < pts.size(); i++) {
+            dist[i] = dist[i - 1] + haversineMeters(pts.get(i - 1), pts.get(i));
+        }
+        double totalMeters = dist[dist.length - 1];
+        dto.setTotalDistanceMeters(round2(totalMeters));
+        Long firstTs = pts.get(0).getTs();
+        Long lastTs = pts.get(pts.size() - 1).getTs();
+        if (firstTs != null && lastTs != null) {
+            dto.setTotalElapsedSeconds((int) Math.round((lastTs - firstTs) / 1000.0));
+        }
+
+        // 逐阈值切片：i 为跨线段右端点游标（跨线相邻两点 P_{i-1}/P_i 间线性插值越线时刻）
+        List<KilometerSplitDTO> fullSplits = new ArrayList<>();
+        KilometerSplitDTO tail = null;
+        long prevCrossTs = tsOrZero(pts.get(0));
+        int i = 1;
+        int k = 1;
+        while (k * SPLIT_THRESHOLD_METERS <= totalMeters) {
+            double threshold = k * SPLIT_THRESHOLD_METERS;
+            while (i < pts.size() && dist[i] < threshold) {
+                i++;
+            }
+            long crossTs = crossTimestamp(pts, dist, i, threshold);
+            fullSplits.add(newSplit(k, SPLIT_THRESHOLD_METERS, crossTs - prevCrossTs));
+            prevCrossTs = crossTs;
+            k++;
+        }
+        double remainder = totalMeters - (k - 1) * SPLIT_THRESHOLD_METERS;
+        if (remainder >= SPLIT_TAIL_MIN_METERS) {
+            tail = newSplit(k, remainder, tsOrZero(pts.get(pts.size() - 1)) - prevCrossTs);
+        }
+        int[] fastestSlowest = markFastestSlowest(fullSplits);
+        if (tail != null) {
+            fullSplits.add(tail);
+        }
+        dto.setSplits(fullSplits);
+        if (fastestSlowest != null) {
+            dto.setFastestKm(fastestSlowest[0]);
+            dto.setSlowestKm(fastestSlowest[1]);
+        }
+        return dto;
+    }
+
+    /**
+     * 跨线时刻线性插值：第 i 段（dist[i-1] < 阈值 ≤ dist[i]）内按距离比例求穿越时刻。
+     * 段长退化（相邻点同坐标）防除零回退右端点时刻；ts 缺失按 0 兜底（提交契约 ts 必填，仅防御）。
+     */
+    private static long crossTimestamp(List<TrackPointDTO> pts, double[] dist, int i, double threshold) {
+        double segLen = dist[i] - dist[i - 1];
+        long tsPrev = tsOrZero(pts.get(i - 1));
+        long tsCur = tsOrZero(pts.get(i));
+        if (segLen <= 0) {
+            return tsCur;
+        }
+        double ratio = (threshold - dist[i - 1]) / segLen;
+        return Math.round(tsPrev + (tsCur - tsPrev) * ratio);
+    }
+
+    /** 单段装配：耗时（秒）、配速格式化（非正耗时回退 --）、均速（m/s 两位小数，零耗时 0.0）。 */
+    private static KilometerSplitDTO newSplit(int km, double distMeters, long elapsedMs) {
+        KilometerSplitDTO s = new KilometerSplitDTO();
+        s.setKm(km);
+        s.setDistanceMeters(round2(distMeters));
+        s.setElapsedSeconds((int) Math.round(elapsedMs / 1000.0));
+        s.setPaceFormatted(formatSplitPace(elapsedMs, distMeters));
+        s.setAvgSpeed(elapsedMs > 0 ? round2(distMeters / (elapsedMs / 1000.0)) : 0.0);
+        s.setIsFastest(false);
+        s.setIsSlowest(false);
+        s.setElevationGain(0.0);
+        s.setElevationLoss(0.0);
+        return s;
+    }
+
+    /** 配速秒（耗时 × 1000/距离）→ m'ss"（如 5'24"）；非正耗时/异常回退 --。 */
+    private static String formatSplitPace(long elapsedMs, double distMeters) {
+        if (elapsedMs <= 0 || distMeters <= 0) {
+            return "--";
+        }
+        long totalSec = Math.round((elapsedMs / 1000.0) * (1000.0 / distMeters));
+        return (totalSec / 60) + "'" + String.format("%02d", totalSec % 60) + "\"";
+    }
+
+    /** 满 1000m 分段内标记最快/最慢公里（并列取先出现者）；无满公里返回 null（DTO 序号恒 null）。 */
+    private static int[] markFastestSlowest(List<KilometerSplitDTO> fullSplits) {
+        if (fullSplits.isEmpty()) {
+            return null;
+        }
+        int fastestKm = fullSplits.get(0).getKm();
+        int slowestKm = fullSplits.get(0).getKm();
+        int minElapsed = Integer.MAX_VALUE;
+        int maxElapsed = Integer.MIN_VALUE;
+        for (KilometerSplitDTO s : fullSplits) {
+            if (s.getElapsedSeconds() < minElapsed) {
+                minElapsed = s.getElapsedSeconds();
+                fastestKm = s.getKm();
+            }
+            if (s.getElapsedSeconds() > maxElapsed) {
+                maxElapsed = s.getElapsedSeconds();
+                slowestKm = s.getKm();
+            }
+        }
+        for (KilometerSplitDTO s : fullSplits) {
+            s.setIsFastest(s.getKm() == fastestKm);
+            s.setIsSlowest(s.getKm() == slowestKm);
+        }
+        return new int[] {fastestKm, slowestKm};
+    }
+
+    private static double round2(double v) {
+        return BigDecimal.valueOf(v).setScale(SPLIT_SCALE, RoundingMode.HALF_UP).doubleValue();
+    }
+
+    private static long tsOrZero(TrackPointDTO p) {
+        return p.getTs() == null ? 0L : p.getTs();
     }
 
     /**

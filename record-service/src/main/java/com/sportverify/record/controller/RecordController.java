@@ -4,6 +4,7 @@ import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.sportverify.api.common.PageResult;
 import com.sportverify.api.record.dto.MyStatsDTO;
 import com.sportverify.api.record.dto.MyStreakDTO;
+import com.sportverify.api.record.dto.RecordSplitsDTO;
 import com.sportverify.api.record.dto.RecordSubmitDTO;
 import com.sportverify.api.record.dto.RecordSubmitResultDTO;
 import com.sportverify.api.record.dto.RecordSummaryDTO;
@@ -256,6 +257,20 @@ public class RecordController {
                                                     HttpServletRequest request) {
         Long caller = authEnabled ? resolveUserId(request, null) : null;
         return Result.success(toPageResult(sportRecordService.pagePoints(id, caller, page, size)));
+    }
+
+    /**
+     * 公里分段配速切片（TASK-273，GET /api/records/{id}/splits）：全程 Haversine 累计路程跨
+     * 整公里阈值线性插值越线时刻逐公里切片，返回逐段耗时/配速/均速、最快最慢公里与余程段。
+     *
+     * <p>归属校验（与 /{id} 详情同款，ADR-0007）：auth enabled=true 时以网关注入 X-User-Id
+     * 为调用者，服务层断言调用者==记录归属人（非本人 → 403/1002）；false 时 caller=null 降级旧行为。</p>
+     */
+    @GetMapping("/{id}/splits")
+    public Result<RecordSplitsDTO> splits(@PathVariable("id") Long id,
+                                          HttpServletRequest request) {
+        Long caller = authEnabled ? resolveUserId(request, null) : null;
+        return Result.success(sportRecordService.getRecordSplits(caller, id));
     }
 
     /**

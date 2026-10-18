@@ -145,3 +145,73 @@ describe('gpx.ts parseGpx（TASK-245 B28）', () => {
     expect(out[1].lat).toBe(31.2)
   })
 })
+
+describe('gpx.ts 海拔增强（TASK-273）', () => {
+  // R1：带 ele 的点位导出 → <trkpt> 内输出 <ele>（toFixed(1)，先于 <time>，GPX schema 顺序）
+  it('R1 导出含 ele 点位输出 <ele> 节点', () => {
+    const xml = generateGpx([
+      { seq: 0, lat: 31.230416, lng: 121.473701, ts: 1700000000000, ele: 12.34 },
+      { seq: 1, lat: 31.2305, lng: 121.4738, ts: 1700000001000, ele: 15.0 },
+    ])
+    expect(xml).toContain('<ele>12.3</ele>')
+    expect(xml).toContain('<ele>15.0</ele>')
+    const trkpt = xml.match(/<trkpt[^>]*>[\s\S]*?<\/trkpt>/g) || []
+    expect(trkpt[0].indexOf('<ele>')).toBeGreaterThanOrEqual(0)
+    expect(trkpt[0].indexOf('<ele>')).toBeLessThan(trkpt[0].indexOf('<time>'))
+  })
+
+  // R2：无 ele 点位导出 → 不输出 <ele>（向后兼容既有行为）
+  it('R2 导出无 ele 点位省略 <ele> 节点', () => {
+    const xml = generateGpx([pt(0, 31.230416, 121.473701, 1700000000000)])
+    expect(xml).not.toContain('<ele>')
+  })
+
+  // R3：混合 ele（部分点缺失）→ 缺失点省略 <ele>，携带点正常输出
+  it('R3 混合 ele 点位导出逐点按有无输出', () => {
+    const xml = generateGpx([
+      { seq: 0, lat: 31.230416, lng: 121.473701, ts: 1700000000000, ele: 8.8 },
+      pt(1, 31.2305, 121.4738, 1700000001000),
+    ])
+    expect(xml).toContain('<ele>8.8</ele>')
+    const trkpt = xml.match(/<trkpt[^>]*>[\s\S]*?<\/trkpt>/g) || []
+    expect(trkpt[0]).toContain('<ele>')
+    expect(trkpt[1]).not.toContain('<ele>')
+  })
+
+  // R4：解析带 <ele> 的 GPX → point.ele 填充（含负海拔与整数形态）
+  it('R4 parseGpx 提取 <ele> 至 point.ele', () => {
+    const xml = `<?xml version="1.0"?>
+<gpx><trk><trkseg>
+  <trkpt lat="31.1" lon="121.1"><ele>12.5</ele><time>2023-11-14T22:13:20.000Z</time></trkpt>
+  <trkpt lat="31.2" lon="121.2"><ele>-3.25</ele><time>2023-11-14T22:13:21.000Z</time></trkpt>
+</trkseg></trk></gpx>`
+    const out = parseGpx(xml)
+    expect(out).toHaveLength(2)
+    expect(out[0].ele).toBe(12.5)
+    expect(out[1].ele).toBe(-3.25)
+  })
+
+  // R5：无 <ele> 的 GPX 解析 → ele 缺省（undefined），既有行为零扰动
+  it('R5 parseGpx 无 <ele> 时 ele 缺省', () => {
+    const xml = `<?xml version="1.0"?>
+<gpx><trk><trkseg>
+  <trkpt lat="31.1" lon="121.1"><time>2023-11-14T22:13:20.000Z</time></trkpt>
+</trkseg></trk></gpx>`
+    const out = parseGpx(xml)
+    expect(out[0].ele).toBeUndefined()
+  })
+
+  // R6：带海拔 GPX 双向闭环：parseGpx(generateGpx(points)) 还原 ele（导出按 toFixed(1)，取一位小数可精确表示值）
+  it('R6 带海拔 round-trip 还原 ele', () => {
+    const points: TrackPointDTO[] = [
+      { seq: 0, lat: 31.230416, lng: 121.473701, ts: 1700000000000, ele: 7.2 },
+      { seq: 1, lat: 31.2305, lng: 121.4738, ts: 1700000001000, ele: 9.8 },
+      { seq: 2, lat: 31.2306, lng: 121.4739, ts: 1700000002000, ele: 11.1 },
+    ]
+    const out = parseGpx(generateGpx(points))
+    expect(out).toHaveLength(3)
+    out.forEach((p, i) => {
+      expect(p.ele).toBe(points[i].ele)
+    })
+  })
+})

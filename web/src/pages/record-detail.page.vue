@@ -160,6 +160,65 @@
         </p>
       </div>
 
+      <!-- 公里分段配速（TASK-273）：后端 /splits 切片，任一环节失败无缝降级前端本地切片 -->
+      <div v-if="splits && splits.splits.length" class="mt-4">
+        <div class="mb-1 text-sm font-medium">📊 公里分段配速 (Kilometer Splits)</div>
+        <div class="flex flex-wrap items-center gap-3 mb-2 text-xs text-gray-600">
+          <span>总里程 <b>{{ splitsTotalKm }}</b></span>
+          <a-tag v-if="fastestSplit" color="green">
+            ⚡ 最快 {{ fastestSplit.km }}km {{ fastestSplit.paceFormatted }} /km
+          </a-tag>
+          <a-tag v-if="slowestSplit" color="orange">
+            🐢 最慢 {{ slowestSplit.km }}km {{ slowestSplit.paceFormatted }} /km
+          </a-tag>
+        </div>
+        <div class="border border-gray-200 rounded p-2">
+          <div v-for="s in splits.splits" :key="s.km" class="flex items-center gap-2 mb-1">
+            <span class="w-16 text-xs text-gray-600 shrink-0">{{ splitLabel(s) }}</span>
+            <div class="flex-1 h-3 bg-gray-100 rounded overflow-hidden">
+              <div
+                class="h-full rounded"
+                :style="{ width: barWidthPct(s) + '%', backgroundColor: barColor(s) }"
+              ></div>
+            </div>
+            <span class="w-20 text-xs text-gray-600 text-right shrink-0">{{ formatElapsed(s.elapsedSeconds) }}</span>
+            <span class="w-16 text-xs text-gray-600 text-right shrink-0">{{ s.paceFormatted }} /km</span>
+            <span class="w-20 text-xs text-gray-500 text-right shrink-0">{{ formatAvgSpeed(s.avgSpeed) }}</span>
+          </div>
+        </div>
+        <p v-if="!hasElevationData" class="mt-1 text-xs text-gray-400">
+          该记录暂无海拔数据：轨迹点含海拔（GPX 导入 &lt;ele&gt;）即可查看海拔剖面与累计爬升/下降。
+        </p>
+        <p v-else class="mt-1 text-xs text-gray-500">
+          柱长按满公里耗时相对比例渲染（越快越长）：⚡绿=最快公里、🐢橙=最慢公里、末尾余程灰。
+        </p>
+      </div>
+
+      <!-- 海拔剖面（TASK-273）：数据含海拔（hasElevationData 或点位带 ele）时的高度折线与爬升/下降 -->
+      <div v-if="hasElevationData && elePoints.length > 1" class="mt-4">
+        <div class="mb-1 text-sm font-medium">⛰️ 海拔剖面 (Elevation Profile)</div>
+        <div class="flex flex-wrap items-center gap-4 mb-2 text-xs text-gray-600">
+          <span>累计爬升 <b class="text-green-600">+{{ splits?.totalElevationGain ?? 0 }} m</b></span>
+          <span>累计下降 <b class="text-orange-500">-{{ splits?.totalElevationLoss ?? 0 }} m</b></span>
+          <span>最高海拔 <b>{{ eleMinMax.max }} m</b></span>
+          <span>最低海拔 <b>{{ eleMinMax.min }} m</b></span>
+        </div>
+        <svg
+          :viewBox="`0 0 ${PW} ${PH}`"
+          class="w-full border border-gray-200 rounded"
+          style="max-height:200px"
+          role="img"
+          aria-label="海拔剖面示意图"
+        >
+          <polyline :points="elevationPolyline" fill="none" stroke="#52c41a" stroke-width="2" />
+          <text :x="PW - 8" :y="16" text-anchor="end" font-size="12" fill="#888">{{ eleMinMax.max }} m</text>
+          <text :x="PW - 8" :y="PH - 10" text-anchor="end" font-size="12" fill="#888">{{ eleMinMax.min }} m</text>
+        </svg>
+        <p class="mt-1 text-xs text-gray-500">
+          X=累计公里，Y=海拔（米，高在上）；累计爬升/下降与分段高差由轨迹点 ele 逐点累加。
+        </p>
+      </div>
+
       <!-- 赛段冲刺成果（TASK-272）：挂载期两段式匹配命中的经典赛段，成绩幂等上报后回填 PR/KOM 判定 -->
       <div v-if="segmentEfforts.length" class="mt-4">
         <div class="mb-1 text-sm font-medium">🏁 赛段冲刺成果 (Segment Efforts)</div>
@@ -215,6 +274,7 @@ import {
   unlikeRecord,
   getRecordDetail,
   updateRecordVisibility,
+  getRecordSplits,
   matchSegments,
   getSegmentLeaderboard,
   submitSegmentEffort,
@@ -222,11 +282,14 @@ import {
   type VerificationResultDTO,
   type LikeDTO,
   type RecordDetailDTO,
+  type RecordSplitsDTO,
+  type KilometerSplitDTO,
   type SegmentEffortDTO,
   type SegmentLeaderboardDTO,
 } from '@/api/client'
 import { generateGpx } from '@/utils/gpx'
 import { computePaceSeries, formatPace, isDrawablePace } from '@/utils/pace'
+import { computeKilometerSplits } from '@/utils/splits'
 import { hasAccessToken } from '@/utils/token'
 
 const route = useRoute()
@@ -504,6 +567,101 @@ function paceTitle(g: PaceDisplayItem): string {
   return `dist=${g.distKm.toFixed(2)}km pace=${formatPace(g.paceSec)} ts=${g.ts}`
 }
 
+// ===== 公里分段配速与海拔剖面（TASK-273）=====
+// 优先消费后端 /splits 切片；任一环节失败静默降级为前端本地切片（computeKilometerSplits 同算法口径），
+// 绝不阻塞轨迹与配速主渲染。海拔维度：后端 track_point 暂无海拔列（恒 hasElevationData=false），
+// GPX 导入点位带 ele 时由本地切片/点位直接透出海拔剖面。
+const splits = ref<RecordSplitsDTO | null>(null)
+
+/** 轨迹加载后异步切片；后端失败 → 纯前端本地切片无缝兜底 */
+async function loadSplits() {
+  splits.value = null
+  if (!points.value.length) return
+  try {
+    const res = await getRecordSplits(recordId.value)
+    splits.value = res.data
+  } catch {
+    splits.value = computeKilometerSplits(points.value, Number(recordId.value) || 0)
+  }
+}
+
+const splitsTotalKm = computed(() =>
+  splits.value ? `${(splits.value.totalDistanceMeters / 1000).toFixed(2)} km` : '—',
+)
+
+function splitOf(km: number | null | undefined): KilometerSplitDTO | null {
+  if (km == null || !splits.value) return null
+  return splits.value.splits.find((s) => s.km === km) || null
+}
+
+const fastestSplit = computed(() => splitOf(splits.value?.fastestKm))
+const slowestSplit = computed(() => splitOf(splits.value?.slowestKm))
+
+/** 公里号标签：整公里 1km/2km...，末尾余程 +0.35km 形态 */
+function splitLabel(s: KilometerSplitDTO): string {
+  return s.distanceMeters >= 1000 ? `${s.km}km` : `+${(s.distanceMeters / 1000).toFixed(2)}km`
+}
+
+// 配速柱相对比例基准：满公里段耗时 min/max（零耗时退化段不参与）
+const paceRangeOfSplits = computed(() => {
+  const vals = (splits.value?.splits || [])
+    .filter((s) => s.distanceMeters >= 1000 && s.elapsedSeconds > 0)
+    .map((s) => s.elapsedSeconds)
+  if (!vals.length) return null
+  return { min: Math.min(...vals), max: Math.max(...vals) }
+})
+
+/** 柱长：越快越长（最快 100%、最慢 30%、区间外钳制）；余程段灰条固定 60% */
+function barWidthPct(s: KilometerSplitDTO): number {
+  if (s.distanceMeters < 1000) return 60
+  const range = paceRangeOfSplits.value
+  if (!range || range.max === range.min) return 100
+  const pct = 100 - ((s.elapsedSeconds - range.min) / (range.max - range.min)) * 70
+  return Math.round(Math.max(30, Math.min(100, pct)))
+}
+
+/** 柱色：⚡绿=最快、🐢橙=最慢、末尾余程灰、其余蓝 */
+function barColor(s: KilometerSplitDTO): string {
+  if (s.distanceMeters < 1000) return '#bfbfbf'
+  if (s.isFastest) return '#52c41a'
+  if (s.isSlowest) return '#fa8c16'
+  return '#1677ff'
+}
+
+// ===== 海拔剖面 =====
+const elePoints = computed(() =>
+  points.value.filter((p) => p.ele != null && Number.isFinite(p.ele)),
+)
+
+const hasElevationData = computed(
+  () => !!splits.value?.hasElevationData || elePoints.value.length > 0,
+)
+
+const eleMinMax = computed(() => {
+  const es = elePoints.value.map((p) => p.ele as number)
+  if (!es.length) return { min: 0, max: 0 }
+  return { min: Math.min(...es), max: Math.max(...es) }
+})
+
+/** 高度折线：X=累计公里（复用配速序列口径），Y=海拔归一化（高在上）；全程同海拔退化为中位横线 */
+const elevationPolyline = computed(() => {
+  const pts = points.value
+  const series = paceSeries.value
+  const total = totalKm.value
+  const { min, max } = eleMinMax.value
+  const innerW = PW - PAD * 2
+  const innerH = PH - PAD * 2
+  const coords: string[] = []
+  for (let i = 0; i < pts.length; i++) {
+    const ele = pts[i].ele
+    if (ele == null || !Number.isFinite(ele)) continue
+    const fx = total > 0 ? series[i].distKm / total : 0.5
+    const fy = max > min ? (ele - min) / (max - min) : 0.5
+    coords.push(`${(PAD + fx * innerW).toFixed(2)},${(PH - PAD - fy * innerH).toFixed(2)}`)
+  }
+  return coords.join(' ')
+})
+
 // ===== 赛段冲刺成果（TASK-272 路段挑战与赛段刷榜）=====
 const segmentEfforts = ref<SegmentEffortDTO[]>([])
 const segmentBoardOpen = ref(false)
@@ -612,6 +770,8 @@ async function load() {
     points.value = allPoints
     // 赛段匹配（TASK-272）：有轨迹点即异步匹配 + 幂等上报，失败静默降级不阻断主渲染
     void loadSegmentEfforts()
+    // 公里分段切片（TASK-273）：有轨迹点即异步调取 /splits，失败降级本地切片，不阻断主渲染
+    void loadSplits()
     // 摘要头 + 详情指标 + 点赞态：并发调取，任一失败静默降级（403 权限/非通过 6001/摘要缺失均不阻断轨迹渲染）
     await Promise.allSettled([
       getVerifyResult(recordId.value)
