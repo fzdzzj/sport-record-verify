@@ -848,3 +848,19 @@
 | 是否到达外部门槛 | **已到达本地封盘**：封盘批次（4 笔 = TASK-267 立项笔 `cabaebc` + C-01 `fcfc370` + C-02 `e585feb` + 封盘笔）统一推送 origin/main，GitHub Actions CI 外部终验随后登记 |
 | 状态 | **已终裁 ACCEPT（2026-10-18 指导侧）**：指导亲核三块全 PASS 零阻断；4 文件白名单双向全等；存量库迁移脚本断链缺陷彻底修复并增设预检防御网；封盘批次统一推送 origin/main，待 CI 外部终验 |
 
+## 验收记录：`TASK-268`（代码规范清零与容量告警/网关写链路限流防御加固，MEDIUM 档，2026-10-18 立项）
+
+| 项 | 内容 |
+| --- | --- |
+| 开工基线 | main @ `c27e94b`（TASK-267 封盘笔；本地与 origin/main 平齐） |
+| 分级定档 | MEDIUM（涉及 record-service 存量 Checkstyle 4 项清零、Prometheus 告警规则扩充容量锚点、网关写链路差异化 Sentinel 流控规则支持与单测；指导亲核三块把关，免独立复核子 agent） |
+| 亲验证据 | 三项全部坐实：①mvn-verify.sh --mode=offline --static=record-service 退出码 1，恰 4 项 JavadocType 违规均在 SportRecordService.java:1076 的 DerivedTrackMetrics；②TASK-265 压测报告证实高并发下 verify Hikari 池触顶与网关 504 快速失败，prometheus/alert-rules.yml 缺位相应监控告警规则；③网关 Sentinel 目前统一兜底 5000 QPS 虚高，写链路单机承重 ~88 QPS 易被冲垮，需差异化配置与兜底支持 |
+| 白名单 | 5+1 项：`record-service/src/main/java/com/sportverify/record/service/SportRecordService.java` + `prometheus/alert-rules.yml` + `gateway-service/src/main/java/com/sportverify/gateway/config/SentinelGatewayRuleConfig.java` + `gateway-service/src/main/resources/application.yml` + `gateway-service/src/test/java/com/sportverify/gateway/config/SentinelGatewayRuleConfigTest.java` + 台账 `work/mailbox/tasks/TASK-268/handoff.md` |
+| 核心实现 | R1 在 SportRecordService.java:1076 补齐 DerivedTrackMetrics 4 项 @param 注释标签清零存量违规；R2 在 alert-rules.yml 增加 VerifyHikariPoolSaturated 与 GatewayWrite504Spike 容量规则；R3 网关支持 route-record-service 差异化专属限流 QPS 配置与单测守卫 |
+| 门禁要求 | 七门禁全量逐位（surefire 63/78/221/323/203/110/36 只增不减，gateway-service 78→79，总计 1035 测）+ checkstyle --static=record-service 退出码 0 + 契约门（判据 B 机器比对）+ token 门 29 项逐位持平（期望值口径：C-02 树 = 2249 + 29 = 2278）+ 词面门四 locale ZERO_HIT + 探针阳性对照 + diff --check 净；双提交 C-01/C-02 |
+| 受限预登记 | 保持依赖纯净，不变更微服务对外核心业务 API 契约 |
+| 实施与门禁 | 待实施 |
+| 指导亲核 | 待亲核 |
+| 独立复核 | 免独立复核（MEDIUM 档） |
+| 是否到达外部门槛 | 本地代码规范、告警与网关流控配置课题，不引入新外部依赖 |
+| 状态 | **已立项待派发（2026-10-18 指导侧）**：开工基线 main @ c27e94b，两件套已立项，待派发实施子 agent |
