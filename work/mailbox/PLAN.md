@@ -881,3 +881,21 @@
 | 独立复核 | 免独立复核（MEDIUM 档由指导侧亲核三块把关） |
 | 是否到达外部门槛 | **已到达本地封盘**：封盘批次（4 笔 = TASK-269 立项笔 `20b82dd` + C-01 `b9cbb6d` + C-02 `fc02933` + 封盘笔）统一推送 origin/main，GitHub Actions CI 外部终验随后登记 |
 | 状态 | **已终裁 ACCEPT（2026-10-18 指导侧）**：指导亲核三块全 PASS 零阻断；16 文件白名单双向全等；运动徽章与成就体系全链路闭环；封盘批次统一推送 origin/main，待 CI 外部终验 |
+
+
+## 验收记录：TASK-270（BadgeServiceTest 单测隔离度加固，LIGHT 档，2026-10-18 立项）
+
+| 项 | 内容 |
+| --- | --- |
+| 开工基线 | main @ `a7a3159`（TASK-269 封盘笔；本地与 origin/main 平齐） |
+| 分级定档 | LIGHT（涉及 BadgeServiceTest 单测 @BeforeEach 补齐 TableInfo 初始化以消除用例执行序依赖；指导亲核三块把关，免独立复核子 agent） |
+| 亲验证据 | CI run `39107840592` 在 Build and test 阶段因 BadgeServiceTest.unwearBadge_resetsAllEquippedFlags 缺少 UserBadge 的 LambdaCache 报 MPE 退出 1；本地单测复现坐实 |
+| 白名单 | 1+1 项：`record-service/src/test/java/com/sportverify/record/service/BadgeServiceTest.java` + 台账 `work/mailbox/tasks/TASK-270/handoff.md` |
+| 核心实现 | R1 在 BadgeServiceTest 增加 @BeforeEach setUp() 初始化 TableInfoHelper；R2 验证单用例与全量用例 |
+| 门禁要求 | 七门禁全量逐位（surefire 63/79/221/351/203/110/36 保持，总计 1063 测）+ checkstyle --static=record-service 退出码 0 + 契约门 + token 门 29 项逐位持平 + 词面门四 locale ZERO_HIT + diff --check 净；双提交 C-01/C-02 |
+| 受限预登记 | 纯测试代码改动，不碰任何生产代码与配置 |
+| 实施与门禁 | 待实施 |
+| 指导亲核 | 待亲核 |
+| 独立复核 | 免独立复核（LIGHT 档由指导侧亲核三块把关） |
+| 是否到达外部门槛 | 待实施完成后封盘并统一推送 CI 外部终验 |
+| 状态 | **已立项待派发（2026-10-18 指导侧）**：开工基线 main @ `a7a3159`，两件套已立项 |
