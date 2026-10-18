@@ -876,8 +876,8 @@
 | 核心实现 | R1 user_badge DDL 与迁移脚本；R2 9 大初始成就枚举定义；R3 BadgeService 判定与佩戴；R4 BadgeController 端点；R5 前端个人主页勋章墙与动态流外显；R6 测试全覆盖 |
 | 门禁要求 | 七门禁全量逐位（surefire record-service 323 测净增，全仓 1035+ 测）+ checkstyle --static=record-service 退出码 0 + 契约门（判据 B 机器比对）+ token 门 29 项逐位持平 + 词面门四 locale ZERO_HIT + 探针阳性对照 + diff --check 净；双提交 C-01/C-02 |
 | 受限预登记 | 保持依赖纯净，不变更微服务对外核心业务 API 契约与已有表结构 |
-| 实施与门禁 | 待实施 |
-| 指导亲核 | 待亲核 |
+| 实施与门禁 | C-01 `b9cbb6d`（feat(record,web)，恰 15 文件 +1392/−11：落地 user_badge 表 DDL 与迁移脚本 + 9 大初始成就枚举 BadgeType + BadgeService 读时结算与佩戴解耦 + BadgeController + 前端个人中心勋章墙与动态流外显）+ C-02 `fc02933`（台账 1 文件 +66 行）；门禁全绿：surefire record-service 323→351 净增 +28（全量七模块 63/79/221/351/203/110/36 严格持平或净增，总计 1063 测零失败零跳过）、record-service 静态检查 Checkstyle 违规保持 0（BUILD SUCCESS 退出码 0）、契约门纯净 worktree 判据 B 16 路径全等 rc=0、token 门基线 2278 逐位持平 + 终态 2307 精确吻合期望值（自枚举各 +1）、词面门四 locale ZERO_HIT + 探针阳性对照、diff --check 净（纯 LF） |
+| 指导亲核 | MEDIUM 档亲核三块全 PASS：①Git 状态与提交链对账（porcelain 空、恰 2 笔、diff 16 文件与 handoff §2 逐位一致、零推送）；②高风险定向抽查（user_badge DDL 双写逐字一致、SqlMigrationContractTest 契约保护、BadgeType 9 徽章与 BigDecimal 解析、BadgeService 读时结算与并发幂等、BadgeController 路由与 400 映射、前端勋章墙与动态流外显）；③一致性裁决（门禁全绿、读数对账全通过，enums/package-info.java 偏差追认） |
 | 独立复核 | 免独立复核（MEDIUM 档由指导侧亲核三块把关） |
-| 是否到达外部门槛 | 待实施完成后封盘并统一推送 CI 外部终验 |
-| 状态 | **已立项待派发（2026-10-18 指导侧）**：开工基线 main @ 3b34b81，两件套已立项，待派发实施子 agent |
+| 是否到达外部门槛 | **已到达本地封盘**：封盘批次（4 笔 = TASK-269 立项笔 `20b82dd` + C-01 `b9cbb6d` + C-02 `fc02933` + 封盘笔）统一推送 origin/main，GitHub Actions CI 外部终验随后登记 |
+| 状态 | **已终裁 ACCEPT（2026-10-18 指导侧）**：指导亲核三块全 PASS 零阻断；16 文件白名单双向全等；运动徽章与成就体系全链路闭环；封盘批次统一推送 origin/main，待 CI 外部终验 |
