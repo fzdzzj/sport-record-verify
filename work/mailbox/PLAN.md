@@ -825,8 +825,8 @@
 | 核心实现 | R1 在 SportRecordService 与 RecordLikeService 注入点添加 @Lazy 注解打破依赖循环；R2 在 application.properties 显式声明 spring.main.allow-circular-references=false 杜绝倒退；R3 新增 RecordServiceCircularDependencyTest 容器注入契约单测 |
 | 门禁要求 | 七门禁全量逐位（surefire 63/78/221/321/203/110/36 只增不减，record-service 321→322 净增 1 测，总计 1033 测）+ 契约门（判据 B 机器比对）+ token 门 29 项逐位持平（期望值口径：C-02 树 = 2191 + 29 = 2220）+ 词面门四 locale ZERO_HIT + 探针阳性对照 + checkstyle delta=0 + diff --check 净；双提交 C-01/C-02 |
 | 受限预登记 | 保持既有业务逻辑与 Mockito 测试兼容，不变更权限判定规则与缓存清理实现 |
-| 实施与门禁 | 待实施 |
-| 指导亲核 | 待亲核 |
-| 独立复核 | 免独立复核（MEDIUM 档） |
-| 是否到达外部门槛 | 本地代码修复课题，不引入新外部依赖 |
-| 状态 | **已立项待派发（2026-10-18 指导侧）**：开工基线 main @ 20c3a05，两件套已落库，待派发实施子 agent |
+| 实施与门禁 | C-01 `fe5a2e7`（fix(record)，恰 4 文件 +146/−4：@Lazy 双向 setter 解耦 + application.properties 严格模式防线 + RecordServiceCircularDependencyTest 容器注入契约单测）+ C-02 `ffa70bf`（台账 1 文件 +52 行）；门禁全绿：surefire record-service 321→322 净增 +1（全量七模块 63/78/221/322/203/110/36 严格持平或净增，总计 1033 测零失败零跳过）、契约门纯净 worktree 判据 B 5 路径全等 rc=0、token 门基线 2191 逐位持平 + 终态 2220 精确吻合期望值（自枚举各 +1）、词面门四 locale ZERO_HIT + 探针阳性对照、checkstyle delta=0（4 存量 JavadocType 行位移）、diff --check 净（纯 LF） |
+| 指导亲核 | MEDIUM 档亲核三块全 PASS：①Git 状态与提交链对账（porcelain 空、恰 2 笔、diff 5 文件与 handoff §2 逐位一致、零推送）；②高风险定向抽查（@Lazy 落点对称规范、application.properties 严格模式声明、RecordServiceCircularDependencyTest 编程式无 @Configuration 隔离测试、生产业务代码 100% 零触碰）；③一致性裁决（门禁全绿、读数对账全通过） |
+| 独立复核 | 免独立复核（MEDIUM 档由指导侧亲核三块把关） |
+| 是否到达外部门槛 | **已到达本地封盘**：封盘批次（4 笔 = TASK-266 立项笔 `83ebeaf` + C-01 `fe5a2e7` + C-02 `ffa70bf` + 封盘笔）统一推送 origin/main，GitHub Actions CI 外部终验随后登记 |
+| 状态 | **已终裁 ACCEPT（2026-10-18 指导侧）**：指导亲核三块全 PASS 零阻断；5 文件白名单双向全等；record-service 循环依赖解耦与启动加固闭环；封盘批次统一推送 origin/main，待 CI 外部终验 |
