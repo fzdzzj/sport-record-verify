@@ -610,6 +610,77 @@ export const SAMPLE_TRACK_POINTS: TrackPointDTO[] = [
   {"seq":9,"lat":31.2327292,"lng":121.4623708,"ts":1700000135000}
 ]
 
+// ===== 轨迹智能纠偏对比（TASK-274 方向一） =====
+/** 匹配轨迹点（后端 MapMatchPointDTO 同构；seq 必填，ts 毫秒） */
+export interface MapMatchPointDTO {
+  seq: number
+  lat: number
+  lng: number
+  ts?: number
+}
+
+/** 轨迹纠偏对比结果（后端 TrackComparisonDTO 同构）：吸附中线点列 + 纠偏指标 */
+export interface TrackComparisonDTO {
+  /** 吸附到道路中线后的点位序列（未吸附点保持原经纬度） */
+  snappedPoints: MapMatchPointDTO[]
+  /** 实际发生坐标纠偏的点数（垂距 ≤ 阈值且位移 > 1.0m） */
+  correctedCount: number
+  /** 路网吸附率 0.0~1.0 */
+  matchedRatio: number
+  /** 离路比例 0.0~1.0 */
+  offRoadRatio: number
+  /** 平均偏离距离（米，1 位小数） */
+  avgOffRoadDistance: number
+  /** 最大偏离距离（米，1 位小数） */
+  maxOffRoadDistance: number
+  /** 采样计算总点数 */
+  totalPoints: number
+}
+
+/** 轨迹智能纠偏对比（POST /mapmatch/match/compare，TASK-274）：点列按垂足投影吸附至路网中线。 */
+export async function getTrackComparison(points: TrackPointDTO[]): Promise<Result<TrackComparisonDTO>> {
+  return api.post('/mapmatch/match/compare', { points })
+}
+
+// ===== 每周运动智能周报（TASK-274 方向四） =====
+/** 每周运动智能周报（后端 WeeklyDigestDTO 同构）：自然周聚合 + 环比 + 恢复建议 */
+export interface WeeklyDigestDTO {
+  userId: number
+  /** user-service 不可用时为 null，前端回退 userId 渲染 */
+  nickname?: string | null
+  /** 周一 ISO 日期（如 2026-10-12） */
+  weekStartDate: string
+  /** 周日 ISO 日期（如 2026-10-18） */
+  weekEndDate: string
+  /** 自然周总有效运动里程（米） */
+  totalDistanceMeters: number
+  /** 自然周总运动耗时（秒） */
+  totalElapsedSeconds: number
+  /** 自然周估算消耗总热量（kcal） */
+  totalCalories: number
+  /** 自然周运动完成次数 */
+  workoutCount: number
+  /** 出勤活跃天数 0~7 */
+  activeDays: number
+  /** 周里程环比（0.152 = +15.2%；前一周无数据且本周有数据为 1.0） */
+  distanceGrowthRate: number
+  /** 击败跑者比例 0.0~0.99（周跑量分位数推算） */
+  beatRatio: number
+  /** 主修运动类型枚举名（RUNNING/CYCLING/WALKING；无记录 null） */
+  primarySportType?: string | null
+  /** 最佳满公里配速（如 4'35"；无则为 --） */
+  fastestPaceFormatted: string
+  /** 个性化体能恢复与训练建议 */
+  recoveryAdvice: string
+}
+
+/** 每周运动智能周报（GET /record/api/records/weekly-digest，TASK-274）；auth 会话下 userId 由网关注入。 */
+export async function getWeeklyDigest(weekStart?: string): Promise<Result<WeeklyDigestDTO>> {
+  return api.get('/record/api/records/weekly-digest', {
+    params: weekStart ? { weekStart } : undefined,
+  })
+}
+
 // ===== Admin Console (add-web-admin-console) =====
 export async function createRuleVersion(request: { version?: string; grayRatio?: number; rules?: any }): Promise<Result<any>> {
   return api.post('/verify/rules/versions', request)

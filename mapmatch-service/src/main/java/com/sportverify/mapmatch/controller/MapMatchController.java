@@ -2,6 +2,7 @@ package com.sportverify.mapmatch.controller;
 
 import com.sportverify.api.mapmatch.dto.MapMatchRequestDTO;
 import com.sportverify.api.mapmatch.dto.MapMatchResultDTO;
+import com.sportverify.api.mapmatch.dto.TrackComparisonDTO;
 import com.sportverify.common.result.Result;
 import com.sportverify.mapmatch.service.MapMatchService;
 import jakarta.validation.Valid;
@@ -27,5 +28,19 @@ public class MapMatchController {
     @PostMapping("/match")
     public Result<MapMatchResultDTO> match(@Valid @RequestBody MapMatchRequestDTO request) {
         return Result.success(mapMatchService.match(request));
+    }
+
+    /**
+     * 提交轨迹点 → 返回智能纠偏对比结果（TASK-274：吸附中线点列 + 纠偏指标）.
+     * 网关转发路径 {@code POST /mapmatch/match/compare}（StripPrefix=1 后同为
+     * /match/compare）；请求契约与 /match 一致。
+     *
+     * @param request 轨迹点（按时间升序）
+     * @return 吸附点列（snappedPoints）与纠偏对比指标
+     */
+    @PostMapping("/match/compare")
+    public Result<TrackComparisonDTO> compare(
+            @Valid @RequestBody final MapMatchRequestDTO request) {
+        return Result.success(mapMatchService.compareTrack(request));
     }
 }

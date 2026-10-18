@@ -3,6 +3,7 @@ package com.sportverify.mapmatch.service;
 import com.sportverify.api.mapmatch.dto.MapMatchPointDTO;
 import com.sportverify.api.mapmatch.dto.MapMatchRequestDTO;
 import com.sportverify.api.mapmatch.dto.MapMatchResultDTO;
+import com.sportverify.api.mapmatch.dto.TrackComparisonDTO;
 import com.sportverify.mapmatch.config.MatchProperties;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -115,6 +116,176 @@ public class MapMatchService {
                 raw.size(), n, result.getMatchedRatio(), result.getOffRoadRatio(),
                 String.format("%.1f", result.getAvgOffRoadDistance()), String.format("%.1f", result.getMaxOffRoadDistance()));
         return result;
+    }
+
+    /** 纠偏计数最小位移（米）：吸附位移不超过该值视为 GPS 噪声，不计纠偏. */
+    private static final double CORRECTION_MIN_METERS = 1.0;
+
+    /** 偏离距离指标 1 位小数的舍入因子（round1 专用，消 MagicNumber）. */
+    private static final double ROUND1_FACTOR = 10.0;
+
+    /**
+     * 对轨迹做智能纠偏对比并返回吸附点列与指标（TASK-274 轨迹纠偏对比回放）.
+     *
+     * <p>复用 {@link #match} 的抽稀与候选边预筛两段式，为每个采样点额外求最近垂足
+     * 投影坐标：点到线段投影参数 t ∈ [0,1] 反算 WGS84 经纬度插值坐标，垂距 ≤
+     * 吸附阈值的点采纳投影坐标（lat/lng 吸附至路网中线）、垂距 &gt;
+     * {@link #CORRECTION_MIN_METERS} 记 1 次纠偏（亚米级吸附视为 GPS 噪声）；
+     * 无候选边或垂距超阈值的点保持原经纬度不变。</p>
+     *
+     * @param request 轨迹点（按时间升序；空轨迹返回空点集与全零指标，不报错）
+     * @return 吸附点列与纠偏对比指标
+     */
+    public TrackComparisonDTO compareTrack(final MapMatchRequestDTO request) {
+        List<MapMatchPointDTO> raw =
+                request == null ? null : request.getPoints();
+        if (raw == null || raw.isEmpty()) {
+            log.warn("纠偏对比请求无轨迹点，返回空点集与全零指标");
+            return new TrackComparisonDTO(List.of(), 0, 0.0, 0.0, 0.0, 0.0, 0);
+        }
+
+        List<MapMatchPointDTO> sampled = thin(raw, props.getMaxSampledPoints());
+        List<MapMatchPointDTO> snapped = new ArrayList<>(sampled.size());
+        int matched = 0;
+        int corrected = 0;
+        double sumDist = 0;
+        double maxDist = 0;
+        int chunkSize = Math.max(1, props.getPrefilterChunkPoints());
+        for (int start = 0; start < sampled.size(); start += chunkSize) {
+            List<MapMatchPointDTO> block = sampled.subList(
+                    start, Math.min(sampled.size(), start + chunkSize));
+            double[][][] candidates =
+                    preparseCandidates(fetchCandidates(block));
+            for (MapMatchPointDTO p : block) {
+                double[] proj = nearestProjection(p.getLat(), p.getLng(),
+                        candidates, props.getSearchRadiusMeters());
+                double dist = proj == null
+                        ? props.getSearchRadiusMeters() : proj[0];
+                sumDist += dist;
+                maxDist = Math.max(maxDist, dist);
+                MapMatchPointDTO out = copyPoint(p);
+                if (proj != null && dist <= props.getSnapThresholdMeters()) {
+                    matched++;
+                    out.setLat(proj[1]);
+                    out.setLng(proj[2]);
+                    if (dist > CORRECTION_MIN_METERS) {
+                        corrected++;
+                    }
+                }
+                snapped.add(out);
+            }
+        }
+
+        int n = sampled.size();
+        TrackComparisonDTO result = new TrackComparisonDTO(snapped, corrected,
+                (double) matched / n, (double) (n - matched) / n,
+                round1(sumDist / n), round1(maxDist), n);
+        log.info("纠偏对比完成：total={}, sampled={}, corrected={}, "
+                        + "matchedRatio={}, avgOffRoad={}m, maxOffRoad={}m",
+                raw.size(), n, corrected, result.getMatchedRatio(),
+                String.format("%.1f", result.getAvgOffRoadDistance()),
+                String.format("%.1f", result.getMaxOffRoadDistance()));
+        return result;
+    }
+
+    /**
+     * 单点到候选边集合的最近垂足投影，返回 {垂距(米), 垂足lat, 垂足lng} 三元组.
+     * 无候选边或全部垂距 ≥ capMeters 时返回 null。初值取 capMeters 且只在
+     * d &lt; best 时收敛（单调截断），语义与 {@link #nearestEdgeIndex} 一致。
+     *
+     * <p>垂足换算沿用局部等距圆柱投影（以原始点为参考点，与
+     * {@link #pointToCoordsMeters} 同帧同系数）：局部平面垂足 (fx, fy)
+     * 按每度米数反算回 WGS84 经纬度，构成吸附中线坐标。</p>
+     *
+     * @param lat 原始点纬度
+     * @param lng 原始点经度
+     * @param coords 预解析候选边坐标数组（见 {@link #preparseCandidates}）
+     * @param capMeters 垂距上限（查询半径，米）
+     * @return {垂距, 垂足lat, 垂足lng}；无有效投影时 null
+     */
+    private static double[] nearestProjection(
+            final double lat, final double lng,
+            final double[][][] coords, final double capMeters) {
+        final double metersPerDegLng =
+                METERS_PER_DEG_LAT * Math.cos(Math.toRadians(lat));
+        double best = capMeters;
+        double bestLat = 0;
+        double bestLng = 0;
+        boolean found = false;
+        for (final double[][] edge : coords) {
+            double[] prev = null;
+            for (final double[] vertex : edge) {
+                // 局部等距圆柱投影（与 pointToCoordsMeters 同帧）：经纬度差转米
+                final double[] cur = {
+                        (vertex[0] - lng) * metersPerDegLng,
+                        (vertex[1] - lat) * METERS_PER_DEG_LAT};
+                if (prev != null) {
+                    final double[] foot = pointToSegmentFoot(
+                            cur[0], cur[1], prev[0], prev[1]);
+                    if (foot[0] < best) {
+                        best = foot[0];
+                        bestLat = lat + foot[2] / METERS_PER_DEG_LAT;
+                        bestLng = lng + foot[1] / metersPerDegLng;
+                        found = true;
+                    }
+                }
+                prev = cur;
+            }
+        }
+        return found ? new double[] {best, bestLat, bestLng} : null;
+    }
+
+    /**
+     * 点(0,0) 到线段(prev→cur) 的最近点（米，局部平面坐标系内），
+     * 返回 {垂距, 垂足x, 垂足y} 三元组.
+     * 垂足落在线段外时钳制到端点（t ∈ [0,1]）；垂距分量与
+     * {@link #pointToSegmentMeters} 同公式（输出逐位一致）。
+     *
+     * @param cx 线段右端点局部 x（米）
+     * @param cy 线段右端点局部 y（米）
+     * @param ax 线段左端点局部 x（米）
+     * @param ay 线段左端点局部 y（米）
+     * @return {垂距, 垂足x, 垂足y}
+     */
+    private static double[] pointToSegmentFoot(
+            final double cx, final double cy,
+            final double ax, final double ay) {
+        final double dx = cx - ax;
+        final double dy = cy - ay;
+        final double lenSq = dx * dx + dy * dy;
+        if (lenSq == 0) {                    // 线段退化为点
+            return new double[] {Math.hypot(ax, ay), ax, ay};
+        }
+        // t∈[0,1] 为垂足在线段上的投影参数，clamp 到端点
+        final double t = Math.max(0, Math.min(1, -(ax * dx + ay * dy) / lenSq));
+        final double fx = ax + t * dx;
+        final double fy = ay + t * dy;
+        return new double[] {Math.hypot(fx, fy), fx, fy};
+    }
+
+    /**
+     * 点位浅拷贝，seq/ts 原样保留，lat/lng 由调用方按吸附结果覆写.
+     *
+     * @param p 原始采样点
+     * @return 新点位对象（不共享引用）
+     */
+    private static MapMatchPointDTO copyPoint(final MapMatchPointDTO p) {
+        MapMatchPointDTO c = new MapMatchPointDTO();
+        c.setSeq(p.getSeq());
+        c.setLat(p.getLat());
+        c.setLng(p.getLng());
+        c.setTs(p.getTs());
+        return c;
+    }
+
+    /**
+     * 偏离距离指标保留 1 位小数（HALF_UP；输入非负，舍入方向确定）.
+     *
+     * @param v 待舍入的非负距离（米）
+     * @return 保留 1 位小数后的值
+     */
+    private static double round1(final double v) {
+        return Math.round(v * ROUND1_FACTOR) / ROUND1_FACTOR;
     }
 
     /**

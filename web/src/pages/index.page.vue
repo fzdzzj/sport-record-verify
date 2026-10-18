@@ -253,9 +253,82 @@
           </div>
         </div>
       </a-card>
+      <!-- 每周运动智能周报（TASK-274 方向四）：跑量/环比/出勤/击败比例/恢复贴士 + 分享长图海报 -->
+      <a-card title="📅 每周运动小结 (Weekly Digest)" class="mt-4">
+        <div v-if="digestLoading" class="py-4 text-gray-500">加载周报中…</div>
+        <a-alert v-else-if="digestError" type="warning" show-icon :message="digestError" />
+        <template v-else-if="digest">
+          <div class="flex flex-wrap items-center gap-4 mb-3">
+            <div>
+              <div class="text-3xl font-semibold text-cyan-600">{{ digestKm }}</div>
+              <div class="text-xs text-gray-500 mt-1">
+                本周跑量 (km) · {{ digest.weekStartDate }} ~ {{ digest.weekEndDate }}
+              </div>
+            </div>
+            <a-tag :color="growthLabel.color" class="text-sm px-3 py-1">{{ growthLabel.text }}</a-tag>
+            <div class="text-sm text-gray-700">
+              🏃 {{ digest.workoutCount }} 次 · 🔥 {{ digest.totalCalories }} kcal ·
+              最佳配速 {{ digest.fastestPaceFormatted }} /km · 主修 {{ primaryTypeLabel }}
+            </div>
+          </div>
+          <div class="mb-2">
+            <div class="flex justify-between text-xs text-gray-500 mb-1">
+              <span>出勤 {{ digest.activeDays }} / 7 天</span>
+              <span>击败全站 {{ beatPct }}% 跑者</span>
+            </div>
+            <a-progress
+              :percent="activeDaysPct"
+              :show-info="false"
+              size="small"
+              stroke-color="#13c2c2"
+            />
+          </div>
+          <div class="border border-cyan-100 bg-cyan-50/50 rounded p-2 text-xs text-cyan-800 mb-3">
+            💡 {{ digest.recoveryAdvice }}
+          </div>
+          <a-button type="primary" ghost @click="posterOpen = true">查看分享长图</a-button>
+        </template>
+        <div v-else class="py-4 text-gray-500">周报数据不可用。</div>
+      </a-card>
     </template>
 
     <a-alert type="info" class="mt-4" message="演示要求：网关+服务 app.auth.enabled=true ；前端始终带 Bearer；不伪造 userId。" />
+
+    <!-- 周报分享长图海报 Modal（TASK-274）：纯 CSS 渐变卡面，可截屏分享 -->
+    <a-modal v-model:open="posterOpen" title="每周运动小结 · 分享长图" :footer="null" width="420px">
+      <div
+        v-if="digest"
+        class="rounded-xl p-5 text-white"
+        style="background: linear-gradient(135deg, #0e7a7a 0%, #13c2c2 60%, #5cdbd3 100%)"
+      >
+        <div class="text-sm opacity-90">🏃 每周运动智能周报</div>
+        <div class="text-xs opacity-75 mb-4">{{ digest.weekStartDate }} ~ {{ digest.weekEndDate }}</div>
+        <div class="text-5xl font-bold leading-none">{{ digestKm }}</div>
+        <div class="text-sm opacity-90 mt-1 mb-3">本周跑量 (km)</div>
+        <div class="inline-block bg-white/20 rounded-full px-3 py-1 text-sm mb-4">
+          {{ growthLabel.text }}
+        </div>
+        <div class="grid grid-cols-2 gap-3 text-sm">
+          <div class="bg-white/15 rounded-lg p-2">
+            <div class="text-lg font-semibold">{{ digest.workoutCount }} 次</div>
+            <div class="text-xs opacity-80">出勤 {{ digest.activeDays }}/7 天</div>
+          </div>
+          <div class="bg-white/15 rounded-lg p-2">
+            <div class="text-lg font-semibold">{{ digest.totalCalories }} kcal</div>
+            <div class="text-xs opacity-80">击败 {{ beatPct }}% 跑者</div>
+          </div>
+        </div>
+        <div class="bg-white/15 rounded-lg p-3 mt-3 text-xs leading-5">
+          💡 {{ digest.recoveryAdvice }}
+        </div>
+        <div class="text-center text-xs opacity-75 mt-4">
+          运动记录校验平台 · 每周运动小结 · 主修 {{ primaryTypeLabel }}
+        </div>
+      </div>
+      <p class="mt-2 text-xs text-gray-400">
+        长图由前端样式渲染（纯 CSS/SVG，零新依赖），可截屏保存或分享到社交平台。
+      </p>
+    </a-modal>
 
     <!-- 运动目标设置/编辑对话框（TASK-225） -->
     <a-modal
@@ -305,6 +378,7 @@ import {
   getMyRecords,
   getMyStats,
   getMyStreak,
+  getWeeklyDigest,
   unwearBadge,
   upsertGoal,
   wearBadge,
@@ -314,6 +388,7 @@ import {
   type MyStatsDTO,
   type MyStreakDTO,
   type RecordSummaryDTO,
+  type WeeklyDigestDTO,
 } from '@/api/client'
 
 import { message } from 'ant-design-vue'
@@ -498,6 +573,55 @@ function formatBadgeProgress(b: BadgeDTO): string {
 function formatBadgeTime(iso?: string): string {
   return iso ? String(iso).slice(0, 16).replace('T', ' ') : '—'
 }
+
+// ===== 每周运动智能周报（TASK-274 方向四） =====
+const digest = ref<WeeklyDigestDTO | null>(null)
+const digestLoading = ref(false)
+const digestError = ref('')
+const posterOpen = ref(false)
+
+/** 周报加载（软错误口径与统计卡一致）：失败只提示卡区，不拖垮仪表盘 */
+async function loadDigest() {
+  if (!authed.value) return
+  digestLoading.value = true
+  try {
+    const res = await getWeeklyDigest()
+    digest.value = res.data || null
+    digestError.value = ''
+  } catch (e: any) {
+    digestError.value = e.code ? `[${e.code}] ${e.message}` : (e.message || '周报数据加载失败')
+  } finally {
+    digestLoading.value = false
+  }
+}
+
+const digestKm = computed(() =>
+  digest.value ? (Number(digest.value.totalDistanceMeters) / 1000).toFixed(2) : '0.00',
+)
+
+/** 环比标签：+15.2% ↗ 绿色 / -3.5% ↘ 灰色 / 持平 –；前一周无数据（1.0）呈 +100.0% ↗ */
+const growthLabel = computed<{ text: string; color: string }>(() => {
+  if (!digest.value) return { text: '--', color: 'default' }
+  const rate = Number(digest.value.distanceGrowthRate)
+  const pct = (rate * 100).toFixed(1)
+  if (rate > 0) return { text: `+${pct}% ↗`, color: 'green' }
+  if (rate < 0) return { text: `${pct}% ↘`, color: 'default' }
+  return { text: '持平 –', color: 'default' }
+})
+
+const activeDaysPct = computed(() =>
+  digest.value ? Math.round((Number(digest.value.activeDays) / 7) * 100) : 0,
+)
+
+const beatPct = computed(() =>
+  digest.value ? Math.round(Number(digest.value.beatRatio) * 100) : 0,
+)
+
+const primaryTypeLabel = computed(() => {
+  const t = digest.value?.primarySportType
+  const m: Record<string, string> = { RUNNING: '跑步', CYCLING: '骑行', WALKING: '健走' }
+  return t ? (m[t] || t) : '—'
+})
 
 const recentColumns = [
   { title: 'id', dataIndex: 'id', key: 'id' },
@@ -696,14 +820,14 @@ async function loadStreak() {
 }
 
 /**
- * 全量加载（仅首屏与删除记录后调用）：列表 + 统计卡 + 连续打卡 + 运动目标 + 成就勋章墙。
+ * 全量加载（仅首屏与删除记录后调用）：列表 + 统计卡 + 连续打卡 + 运动目标 + 成就勋章墙 + 周报。
  * loading 闸门只在此处持有，翻页/筛选路径不经过它 → 统计卡与打卡不再闪烁。
  */
 async function loadData() {
   if (!authed.value) return
   loading.value = true
   try {
-    await Promise.all([loadRecords(), loadStats(), loadStreak(), loadGoals(), loadBadges()])
+    await Promise.all([loadRecords(), loadStats(), loadStreak(), loadGoals(), loadBadges(), loadDigest()])
   } finally {
     loading.value = false
   }

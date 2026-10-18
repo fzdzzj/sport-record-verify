@@ -11,6 +11,7 @@ import com.sportverify.api.record.dto.RecordSplitsDTO;
 import com.sportverify.api.record.dto.RecordSummaryDTO;
 import com.sportverify.api.record.dto.FeedItemDTO;
 import com.sportverify.api.record.dto.TrackPointDTO;
+import com.sportverify.api.record.dto.WeeklyDigestDTO;
 import com.sportverify.api.verify.dto.AppealCreateDTO;
 import com.sportverify.api.verify.dto.AppealDTO;
 import com.sportverify.api.verify.dto.VerificationResultDTO;
@@ -686,6 +687,89 @@ class RecordControllerTest {
                 .build();
 
         mockMvc.perform(get("/api/records/9/splits"))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.code").value(1002));
+    }
+
+    // ==================== 每周运动智能周报（TASK-274） ====================
+
+    /** R1 绿（auth 开）：X-User-Id 解析为归属人 → getWeeklyDigest(caller=userId) 透传服务层 */
+    @Test
+    void weeklyDigest_authEnabled_resolvesOwnerFromHeader() {
+        ReflectionTestUtils.setField(controller, "authEnabled", true);
+        when(request.getHeader("X-User-Id")).thenReturn("200");
+        WeeklyDigestDTO dto = new WeeklyDigestDTO();
+        dto.setUserId(200L);
+        dto.setTotalDistanceMeters(15000.0);
+        when(sportRecordService.getWeeklyDigest(200L, 200L, null)).thenReturn(dto);
+
+        Result<WeeklyDigestDTO> out = controller.weeklyDigest(null, null, request);
+
+        assertEquals(0, out.getCode());
+        assertEquals(15000.0, out.getData().getTotalDistanceMeters());
+        verify(sportRecordService).getWeeklyDigest(200L, 200L, null);
+    }
+
+    /** R1 绿：显式 weekStart 原样透传服务层（周一归一化在服务层承担） */
+    @Test
+    void weeklyDigest_passesWeekStartThrough() {
+        LocalDate weekStart = LocalDate.of(2026, 10, 12);
+        when(sportRecordService.getWeeklyDigest(88L, 88L, weekStart))
+                .thenReturn(new WeeklyDigestDTO());
+
+        Result<WeeklyDigestDTO> out = controller.weeklyDigest(88L, weekStart, request);
+
+        assertEquals(0, out.getCode());
+        verify(sportRecordService).getWeeklyDigest(88L, 88L, weekStart);
+    }
+
+    /** R1 红（auth 开，缺网关头）→ 1001 缺少 X-User-Id（沿 /my 缺头先例） */
+    @Test
+    void weeklyDigest_authEnabled_missingHeader_throwsUnauthorized() {
+        ReflectionTestUtils.setField(controller, "authEnabled", true);
+        when(request.getHeader("X-User-Id")).thenReturn(null);
+
+        BizException e = assertThrows(BizException.class,
+                () -> controller.weeklyDigest(null, null, request));
+        assertEquals(ResultCode.UNAUTHORIZED.getCode(), e.getCode());
+    }
+
+    /** R1 红（auth 关，缺显式 userId）→ 400 非法参数（沿 /my 先例） */
+    @Test
+    void weeklyDigest_authDisabled_missingUserId_throwsIllegalArgument() {
+        IllegalArgumentException e = assertThrows(IllegalArgumentException.class,
+                () -> controller.weeklyDigest(null, null, request));
+
+        assertEquals("缺少必须的 userId 查询参数", e.getMessage());
+        verify(sportRecordService, never()).getWeeklyDigest(any(), any(), any());
+    }
+
+    /** R1 绿（auth 关，显式 userId）→ 以此 userId 透传服务层 */
+    @Test
+    void weeklyDigest_authDisabled_explicitUserId_delegates() {
+        WeeklyDigestDTO dto = new WeeklyDigestDTO();
+        when(sportRecordService.getWeeklyDigest(88L, 88L, null)).thenReturn(dto);
+
+        Result<WeeklyDigestDTO> out = controller.weeklyDigest(88L, null, request);
+
+        assertEquals(0, out.getCode());
+        assertEquals(dto, out.getData());
+        verify(sportRecordService).getWeeklyDigest(88L, 88L, null);
+    }
+
+    /** 公共层映射：/weekly-digest 路径越权（1002）→ HTTP 403 + body code=1002（全链路） */
+    @Test
+    void weeklyDigest_forbidden_mapsHttp403ViaPublicAdvice() throws Exception {
+        ReflectionTestUtils.setField(controller, "authEnabled", true);
+        when(request.getHeader("X-User-Id")).thenReturn("88");
+        when(sportRecordService.getWeeklyDigest(88L, 88L, null))
+                .thenThrow(new BizException(ResultCode.FORBIDDEN));
+
+        MockMvc mockMvc = MockMvcBuilders.standaloneSetup(controller)
+                .setControllerAdvice(new GlobalExceptionHandler())
+                .build();
+
+        mockMvc.perform(get("/api/records/weekly-digest").header("X-User-Id", "88"))
                 .andExpect(status().isForbidden())
                 .andExpect(jsonPath("$.code").value(1002));
     }

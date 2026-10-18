@@ -122,6 +122,122 @@
         <a-button size="small" @click="exportGpx">导出 GPX</a-button>
       </div>
 
+      <!-- 智能纠偏对比双图层（TASK-274）：灰色虚线原始轨迹 vs 青色实线吸附中线同屏叠加 -->
+      <div v-if="points.length" class="mt-4">
+        <div class="flex flex-wrap items-center gap-3 mb-2">
+          <span class="text-sm font-medium">🤖 智能纠偏 (Track Correction)</span>
+          <a-switch v-model:checked="showOriginal" size="small" />
+          <span class="text-xs text-gray-500">显示原始对比</span>
+        </div>
+        <a-spin :spinning="compareLoading">
+          <a-alert v-if="compareError" type="warning" :message="compareError" />
+          <template v-else-if="comparison">
+            <!-- 徽标卡片：算法价值外显 -->
+            <div class="inline-flex flex-wrap items-center gap-2 border border-cyan-200 bg-cyan-50/60 rounded px-3 py-2 mb-2 text-sm">
+              <span class="font-medium text-cyan-700">
+                🤖 智能纠偏：已校正 {{ comparison.correctedCount }} 处漂移点，路网吸附率 {{ matchedRatioPct }}%
+              </span>
+              <a-tag color="blue">平均偏离 {{ comparison.avgOffRoadDistance }}m</a-tag>
+              <a-tag color="orange">最大偏离 {{ comparison.maxOffRoadDistance }}m</a-tag>
+              <a-tag>采样 {{ comparison.totalPoints }} 点</a-tag>
+            </div>
+            <svg
+              :viewBox="`0 0 ${W} ${H}`"
+              class="w-full border border-gray-200 rounded"
+              style="max-height:420px"
+              role="img"
+              aria-label="纠偏对比双图层示意"
+            >
+              <polyline
+                v-if="showOriginal && projected.length > 1"
+                :points="polylinePoints"
+                fill="none"
+                stroke="#8c8c8c"
+                stroke-width="2"
+                stroke-dasharray="4 4"
+              />
+              <polyline
+                v-if="projectedSnapped.length > 1"
+                :points="snappedPolyline"
+                fill="none"
+                stroke="#13c2c2"
+                stroke-width="3"
+              />
+              <circle
+                v-for="(p, i) in projectedSnapped"
+                :key="i"
+                :cx="p.x"
+                :cy="p.y"
+                :r="i === 0 || i === projectedSnapped.length - 1 ? 5 : 2"
+                :fill="i === 0 ? '#52c41a' : i === projectedSnapped.length - 1 ? '#ff4d4f' : '#13c2c2'"
+              />
+            </svg>
+            <p class="mt-1 text-xs text-gray-500">
+              灰色虚线=原始 GPS 采样轨迹，青色实线=PostGIS 路网中线吸附结果（垂距投影纠偏）；
+              绿点起点、红点终点，两图层共用同一投影框。
+            </p>
+          </template>
+        </a-spin>
+      </div>
+
+      <!-- 动态回放控制器 Track Player（TASK-274）：播放/暂停/倍速/时间滑块 + 小人循迹 + 浮动配速气泡 -->
+      <div v-if="projectedSnapped.length > 1" class="mt-4 border border-gray-200 rounded p-3">
+        <div class="text-sm font-medium mb-2">🎬 轨迹回放 (Track Player)</div>
+        <svg
+          :viewBox="`0 0 ${W} ${H}`"
+          class="w-full border border-gray-100 rounded bg-gray-50/50"
+          style="max-height:360px"
+          role="img"
+          aria-label="轨迹动态回放示意"
+        >
+          <polyline
+            v-if="projectedSnapped.length > 1"
+            :points="snappedPolyline"
+            fill="none"
+            stroke="#d9d9d9"
+            stroke-width="2"
+          />
+          <polyline
+            v-if="playedPolyline"
+            :points="playedPolyline"
+            fill="none"
+            stroke="#13c2c2"
+            stroke-width="3"
+          />
+          <g v-if="playerPos" :transform="`translate(${playerPos.x}, ${playerPos.y})`">
+            <rect x="-44" y="-64" width="88" height="22" rx="6" fill="#ffffff" stroke="#13c2c2" />
+            <text x="0" y="-48" text-anchor="middle" font-size="11" fill="#0e7a7a">
+              {{ playerClock }} · {{ playerPaceText }}
+            </text>
+            <text x="0" y="6" text-anchor="middle" font-size="16">🏃</text>
+          </g>
+        </svg>
+        <div class="flex flex-wrap items-center gap-3 mt-2">
+          <a-button size="small" type="primary" @click="togglePlay">
+            {{ playing ? '⏸ 暂停' : '▶ 播放' }}
+          </a-button>
+          <a-radio-group v-model:value="playSpeed" size="small">
+            <a-radio-button :value="1">1x</a-radio-button>
+            <a-radio-button :value="2">2x</a-radio-button>
+            <a-radio-button :value="4">4x</a-radio-button>
+          </a-radio-group>
+          <a-slider
+            v-model:value="progressPct"
+            class="flex-1"
+            style="min-width:160px"
+            :min="0"
+            :max="1000"
+            :disabled="playerTotalMs <= 0"
+            @change="onSeek"
+          />
+          <span class="text-xs text-gray-500">{{ Math.round(progressPct / 10) }}%</span>
+        </div>
+        <p class="mt-1 text-xs text-gray-500">
+          小人沿纠偏中线按时间轴平滑循迹，气泡实时显示当前时刻与瞬时配速（速度缺失时显示 --）；
+          播完自动停在终点，可拖动滑块回跳或切换倍速。
+        </p>
+      </div>
+
       <!-- 配速趋势（纯前端，TASK-219：复用已拉取 points；X=累计 km、Y=配速秒/公里倒置快在上；停顿断线） -->
       <div v-if="paceSectionVisible" class="mt-4">
         <div class="mb-1 text-sm font-medium">配速趋势</div>
@@ -263,7 +379,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, onBeforeUnmount } from 'vue'
 import { useRoute, useRouter } from 'vue-router/auto'
 import { message } from 'ant-design-vue'
 import {
@@ -278,6 +394,7 @@ import {
   matchSegments,
   getSegmentLeaderboard,
   submitSegmentEffort,
+  getTrackComparison,
   type TrackPointDTO,
   type VerificationResultDTO,
   type LikeDTO,
@@ -286,10 +403,12 @@ import {
   type KilometerSplitDTO,
   type SegmentEffortDTO,
   type SegmentLeaderboardDTO,
+  type TrackComparisonDTO,
 } from '@/api/client'
 import { generateGpx } from '@/utils/gpx'
 import { computePaceSeries, formatPace, isDrawablePace } from '@/utils/pace'
 import { computeKilometerSplits } from '@/utils/splits'
+import { formatInstantPace, formatPlaybackClock, getPointAtProgress } from '@/utils/track-playback'
 import { hasAccessToken } from '@/utils/token'
 
 const route = useRoute()
@@ -478,6 +597,211 @@ function pointTitle(p: TrackPointDTO): string {
   const speed = p.speed === undefined || p.speed === null ? '-' : p.speed
   return `seq=${p.seq} speed=${speed} ts=${p.ts}`
 }
+
+// ===== 智能纠偏对比双图层（TASK-274 方向一） =====
+const comparison = ref<TrackComparisonDTO | null>(null)
+const compareLoading = ref(false)
+const compareError = ref('')
+const showOriginal = ref(true)
+
+const matchedRatioPct = computed(() =>
+  comparison.value ? Math.round(comparison.value.matchedRatio * 1000) / 10 : 0,
+)
+
+/** 轨迹加载后异步调取纠偏对比（POST /mapmatch/match/compare）；失败降级为仅原始轨迹，不阻断主渲染 */
+async function loadComparison() {
+  comparison.value = null
+  compareError.value = ''
+  resetPlayback()
+  if (!points.value.length) return
+  compareLoading.value = true
+  try {
+    const res = await getTrackComparison(
+      points.value.map((p) => ({ seq: p.seq, lat: Number(p.lat), lng: Number(p.lng), ts: p.ts })),
+    )
+    comparison.value = res.data
+  } catch {
+    compareError.value = '纠偏对比服务暂不可用，已降级为仅原始轨迹展示。'
+  } finally {
+    compareLoading.value = false
+  }
+}
+
+/**
+ * 与主轨迹 SVG 同帧的投影器（同一 validPoints bbox / cos 纬度修正 / 等比缩放 /
+ * 居中留边，算法与 projected computed 逐字一致），供吸附中线与回放器共用坐标框。
+ */
+const snapProjector = computed(() => {
+  const pts = validPoints.value.map((p) => ({ lat: Number(p.lat), lng: Number(p.lng) }))
+  if (!pts.length) return () => ({ x: W / 2, y: H / 2 })
+  const minLat = Math.min(...pts.map((v) => v.lat))
+  const maxLat = Math.max(...pts.map((v) => v.lat))
+  const minLng = Math.min(...pts.map((v) => v.lng))
+  const maxLng = Math.max(...pts.map((v) => v.lng))
+  const avgLat = (minLat + maxLat) / 2
+  const cosLat = Math.cos((avgLat * Math.PI) / 180)
+  const spanX = (maxLng - minLng) * cosLat
+  const spanY = maxLat - minLat
+  const innerW = W - PAD * 2
+  const innerH = H - PAD * 2
+  if (spanX <= 1e-9 && spanY <= 1e-9) {
+    const cx = PAD + innerW / 2
+    const cy = H - PAD - innerH / 2
+    return () => ({ x: cx, y: cy })
+  }
+  const scaleX = spanX > 1e-9 ? innerW / spanX : 0
+  const scaleY = spanY > 1e-9 ? innerH / spanY : 0
+  const scale = spanX > 1e-9 && spanY > 1e-9 ? Math.min(scaleX, scaleY) : (scaleX || scaleY)
+  const drawW = spanX * scale
+  const drawH = spanY * scale
+  const offsetX = PAD + (innerW - drawW) / 2
+  const offsetY = PAD + (innerH - drawH) / 2
+  return (lat: number, lng: number) => ({
+    x: Number((offsetX + (lng - minLng) * cosLat * scale).toFixed(2)),
+    y: Number((H - offsetY - (lat - minLat) * scale).toFixed(2)),
+  })
+})
+
+/** 吸附中线点列（过滤非法坐标），投影到与主轨迹同帧的 SVG 坐标 */
+const projectedSnapped = computed(() => {
+  const snapped = comparison.value?.snappedPoints || []
+  const projector = snapProjector.value
+  return snapped
+    .filter((p) => Number.isFinite(Number(p.lat)) && Number.isFinite(Number(p.lng)))
+    .map((p) => projector(Number(p.lat), Number(p.lng)))
+})
+
+const snappedPolyline = computed(() =>
+  projectedSnapped.value.map((p) => `${p.x},${p.y}`).join(' '),
+)
+
+// ===== 动态回放控制器（Track Player，TASK-274） =====
+const playing = ref(false)
+const playSpeed = ref<1 | 2 | 4>(1)
+/** 进度滑块（0..1000 归一，避免 a-slider 小数步进抖动） */
+const progressPct = ref(0)
+const playerElapsedMs = ref(0)
+let rafId = 0
+let lastTick = 0
+
+/** 回放时间轴总长（毫秒）：优先吸附点列首末 ts，回退原始轨迹 */
+const playerTotalMs = computed(() => {
+  const snapped = comparison.value?.snappedPoints || []
+  const first = snapped[0]?.ts
+  const last = snapped[snapped.length - 1]?.ts
+  if (first != null && last != null && last > first) return last - first
+  const pts = validPoints.value
+  if (pts.length > 1 && pts[0].ts != null) {
+    const t0 = pts[0].ts
+    const t1 = pts[pts.length - 1].ts
+    if (t1 > t0) return t1 - t0
+  }
+  return 0
+})
+
+/** 回放进度 0..1 */
+const playerProgress = computed(() =>
+  playerTotalMs.value > 0 ? playerElapsedMs.value / playerTotalMs.value : 0,
+)
+
+/** 回放帧：沿吸附中线按里程归一插值取当前点（平滑循迹） */
+const playerPos = computed(() => {
+  if (projectedSnapped.value.length < 2) return null
+  const snapped = (comparison.value?.snappedPoints || []).filter(
+    (p) => Number.isFinite(Number(p.lat)) && Number.isFinite(Number(p.lng)),
+  )
+  const at = getPointAtProgress(
+    snapped.map((p) => ({ seq: p.seq, lat: Number(p.lat), lng: Number(p.lng), ts: p.ts ?? 0 })),
+    playerProgress.value,
+  )
+  if (!at) return null
+  return snapProjector.value(at.lat, at.lng)
+})
+
+/** 气泡：当前时刻（墙钟）+ 瞬时配速（原始轨迹 speed，缺失 --） */
+const playerClock = computed(() => {
+  const snapped = comparison.value?.snappedPoints || []
+  const baseTs = snapped[0]?.ts ?? validPoints.value[0]?.ts ?? Number.NaN
+  return formatPlaybackClock(baseTs, playerElapsedMs.value)
+})
+
+const playerPaceText = computed(() => {
+  const at = getPointAtProgress(validPoints.value, playerProgress.value)
+  return formatInstantPace(at?.speed ?? null) + ' /km'
+})
+
+/** 已播片段折线（青色高亮：从起点画到当前帧所在线段，提供循迹视觉反馈） */
+const playedPolyline = computed(() => {
+  const all = projectedSnapped.value
+  if (all.length < 2 || !playerPos.value) return ''
+  return all.slice(0, Math.max(2, Math.ceil(playerProgress.value * (all.length - 1)) + 1))
+    .map((p) => `${p.x},${p.y}`)
+    .join(' ')
+})
+
+function togglePlay() {
+  if (playerTotalMs.value <= 0) return
+  playing.value = !playing.value
+  if (playing.value) {
+    // 播完后再点播放：从头开始
+    if (playerElapsedMs.value >= playerTotalMs.value) {
+      playerElapsedMs.value = 0
+      progressPct.value = 0
+    }
+    lastTick = performance.now()
+    rafId = requestAnimationFrame(tickPlayback)
+  } else if (rafId) {
+    cancelAnimationFrame(rafId)
+    rafId = 0
+  }
+}
+
+function tickPlayback(now: number) {
+  if (!playing.value) return
+  const dt = now - lastTick
+  lastTick = now
+  const total = playerTotalMs.value
+  let next = playerElapsedMs.value + dt * playSpeed.value
+  if (next >= total) {
+    next = total
+    playing.value = false
+  }
+  playerElapsedMs.value = next
+  progressPct.value = Math.round((next / total) * 1000)
+  if (playing.value) {
+    rafId = requestAnimationFrame(tickPlayback)
+  } else {
+    rafId = 0
+  }
+}
+
+/** 滑块回跳：按归一进度重置已播时长（保持播放态连续） */
+function onSeek(value: number | [number, number]) {
+  const v = Array.isArray(value) ? value[0] : value
+  playerElapsedMs.value = (v / 1000) * playerTotalMs.value
+  if (playing.value && !rafId) {
+    lastTick = performance.now()
+    rafId = requestAnimationFrame(tickPlayback)
+  }
+}
+
+function resetPlayback() {
+  playing.value = false
+  if (rafId) {
+    cancelAnimationFrame(rafId)
+    rafId = 0
+  }
+  playerElapsedMs.value = 0
+  progressPct.value = 0
+}
+
+onBeforeUnmount(() => {
+  if (rafId) {
+    cancelAnimationFrame(rafId)
+    rafId = 0
+  }
+})
+
 
 // ===== 配速趋势（纯前端，TASK-219）=====
 // 折线几何：X=累计 km（haversine 逐段累加），Y=配速秒/公里反转（快在上，配速图惯例）；
@@ -772,6 +1096,8 @@ async function load() {
     void loadSegmentEfforts()
     // 公里分段切片（TASK-273）：有轨迹点即异步调取 /splits，失败降级本地切片，不阻断主渲染
     void loadSplits()
+    // 智能纠偏对比（TASK-274）：有轨迹点即异步调取 /match/compare，失败降级纯原始轨迹
+    void loadComparison()
     // 摘要头 + 详情指标 + 点赞态：并发调取，任一失败静默降级（403 权限/非通过 6001/摘要缺失均不阻断轨迹渲染）
     await Promise.allSettled([
       getVerifyResult(recordId.value)

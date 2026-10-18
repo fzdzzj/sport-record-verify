@@ -11,6 +11,7 @@ import com.sportverify.api.record.dto.RecordSummaryDTO;
 import com.sportverify.api.record.dto.FeedItemDTO;
 import com.sportverify.api.record.dto.SportRecordDTO;
 import com.sportverify.api.record.dto.TrackPointDTO;
+import com.sportverify.api.record.dto.WeeklyDigestDTO;
 import com.sportverify.api.verify.dto.AppealCreateDTO;
 import com.sportverify.api.verify.dto.AppealDTO;
 import com.sportverify.api.verify.dto.VerificationResultDTO;
@@ -291,6 +292,30 @@ public class RecordController {
         }
         sportRecordService.deleteRecord(caller, id);
         return Result.success();
+    }
+
+    /**
+     * 每周运动智能周报（TASK-274，GET /api/records/weekly-digest）：自然周（周一至周日）
+     * 通过终态记录聚合总里程/耗时/热量/出勤天数/主修类型/最快配速，叠加环比前一周
+     * 增减率与个性化恢复建议（网关转发路径 /record/api/records/weekly-digest）。
+     *
+     * <p>身份语义与 {@code /my} 完全一致（见 myRecords javadoc）：true 时从网关注入的
+     * {@code X-User-Id} 读取归属人，缺失或空白 → 1001（HTTP 401）；false 时降级为显式
+     * {@code userId} 查询参数，必填缺失 → 400 PARAM。服务层再断言 caller==userId
+     * （非本人 → 403/1002，双层防护）。可选 {@code weekStart}（ISO 日期，服务层归一化
+     * 到所在周周一；缺省取上一完整自然周）。</p>
+     */
+    @GetMapping("/weekly-digest")
+    public Result<WeeklyDigestDTO> weeklyDigest(
+            @RequestParam(value = "userId", required = false) Long userId,
+            @RequestParam(value = "weekStart", required = false)
+            @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate weekStart,
+            HttpServletRequest request) {
+        Long owner = authEnabled ? resolveUserId(request, null) : userId;
+        if (!authEnabled && owner == null) {
+            throw new IllegalArgumentException("缺少必须的 userId 查询参数");
+        }
+        return Result.success(sportRecordService.getWeeklyDigest(owner, owner, weekStart));
     }
 
     /**

@@ -79,6 +79,8 @@ export async function installRouteMocks(page: Page, ctx: ApiCtx, stores: Stores)
   // TASK-272：赛段请求面（mapmatch 赛段列表/匹配 + leaderboard 赛段榜）由 route-mock 承接，
   // 命中分支即无真实网络；未映射分支仍记入 ctx.unmocked 断言兜底（见 handleMapmatch 等）
   await page.route('**/mapmatch/segments*', (route) => handleMapmatch(route, ctx))
+  // TASK-274：轨迹纠偏对比请求面由 route-mock 承接（命中分支即无真实网络）
+  await page.route('**/mapmatch/match/compare*', (route) => handleMapmatch(route, ctx))
   await page.route('**/leaderboard/api/leaderboard/segments*', (route) => handleLeaderboardSegments(route, ctx))
   page.on('request', (req) => {
     const p = new URL(req.url()).pathname
@@ -86,7 +88,7 @@ export async function installRouteMocks(page: Page, ctx: ApiCtx, stores: Stores)
     if (!API_PREFIX_RE.test(p)) return
     ctx.apiRequests.push(`${req.method()} ${p}`)
     // 赛段请求面已由 route-mock 承接（上方两分支），不再计入 unhandled 真实网络风险面
-    const segmentMocked = p.startsWith('/mapmatch/segments') || p.startsWith('/leaderboard/api/leaderboard/segments/')
+    const segmentMocked = p.startsWith('/mapmatch/segments') || p.startsWith('/mapmatch/match/compare') || p.startsWith('/leaderboard/api/leaderboard/segments/')
     if (!p.startsWith('/record/api/') && !p.startsWith('/user/api/') && !segmentMocked) {
       ctx.unhandled.push(`${req.method()} ${p}`)
     }
@@ -142,7 +144,48 @@ const RECORD_SPLITS_FIXTURE = {
   hasElevationData: false,
 }
 
-/** 赛段相关 mock（TASK-272）：GET /mapmatch/segments 列表 + POST /mapmatch/segments/match 匹配 */
+/** 轨迹纠偏对比夹具（TASK-274）：10 点采样、4 处纠偏、吸附率 0.85 */
+const TRACK_COMPARE_FIXTURE = {
+  snappedPoints: [
+    { seq: 0, lat: 31.2453307, lng: 121.4576321, ts: 1700000000000 },
+    { seq: 1, lat: 31.2440070, lng: 121.4580362, ts: 1700000015000 },
+    { seq: 2, lat: 31.2407742, lng: 121.4593788, ts: 1700000030000 },
+    { seq: 3, lat: 31.2388112, lng: 121.4603849, ts: 1700000045000 },
+    { seq: 4, lat: 31.2368527, lng: 121.4615065, ts: 1700000060000 },
+    { seq: 5, lat: 31.2363787, lng: 121.4616759, ts: 1700000075000 },
+    { seq: 6, lat: 31.2351912, lng: 121.4619259, ts: 1700000090000 },
+    { seq: 7, lat: 31.2339695, lng: 121.4621549, ts: 1700000105000 },
+    { seq: 8, lat: 31.2332522, lng: 121.4623037, ts: 1700000120000 },
+    { seq: 9, lat: 31.2327292, lng: 121.4623708, ts: 1700000135000 },
+  ],
+  correctedCount: 4,
+  matchedRatio: 0.85,
+  offRoadRatio: 0.15,
+  avgOffRoadDistance: 12.5,
+  maxOffRoadDistance: 45.0,
+  totalPoints: 10,
+}
+
+/** 每周运动智能周报夹具（TASK-274）：周一至周日，环比 +15.2%、出勤 3/7、击败 62% */
+const WEEKLY_DIGEST_FIXTURE = {
+  userId: 100,
+  nickname: '演示用户',
+  weekStartDate: '2026-10-12',
+  weekEndDate: '2026-10-18',
+  totalDistanceMeters: 18450.0,
+  totalElapsedSeconds: 6300,
+  totalCalories: 1240.5,
+  workoutCount: 4,
+  activeDays: 3,
+  distanceGrowthRate: 0.152,
+  beatRatio: 0.62,
+  primarySportType: 'RUNNING',
+  fastestPaceFormatted: "5'24\"",
+  recoveryAdvice: '本周节奏不错，保持现有频次，跑前充分热身、跑后注意拉伸与补水即可稳步进步。',
+}
+
+/** 赛段相关 mock（TASK-272）：GET /mapmatch/segments 列表 + POST /mapmatch/segments/match 匹配；
+ *  TASK-274：POST /mapmatch/match/compare 轨迹纠偏对比 */
 async function handleMapmatch(route: Route, ctx: ApiCtx): Promise<void> {
   const req = route.request()
   const p = new URL(req.url()).pathname
@@ -153,6 +196,10 @@ async function handleMapmatch(route: Route, ctx: ApiCtx): Promise<void> {
   }
   if (p === '/mapmatch/segments/match' && method === 'POST') {
     route.fulfill(ok(SEGMENT_MATCH_FIXTURES))
+    return
+  }
+  if (p === '/mapmatch/match/compare' && method === 'POST') {
+    route.fulfill(ok(TRACK_COMPARE_FIXTURE))
     return
   }
   ctx.unmocked.push(`${method} ${p}`)
@@ -276,6 +323,11 @@ async function handleRecord(route: Route, ctx: ApiCtx, stores: Stores): Promise<
   const splits = p.match(/^\/record\/api\/records\/(\d+)\/splits$/)
   if (splits && method === 'GET') {
     route.fulfill(ok(RECORD_SPLITS_FIXTURE))
+    return
+  }
+  // TASK-274：每周运动智能周报 mock（首页周报卡片挂载期拉取）
+  if (p === '/record/api/records/weekly-digest' && method === 'GET') {
+    route.fulfill(ok(WEEKLY_DIGEST_FIXTURE))
     return
   }
   const verify = p.match(/^\/record\/api\/records\/(\d+)\/verify-result$/)

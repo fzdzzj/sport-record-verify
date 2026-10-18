@@ -20,6 +20,7 @@ import com.sportverify.api.record.dto.SportRecordDTO;
 import com.sportverify.api.record.dto.StatusCallbackDTO;
 import com.sportverify.api.record.dto.TrackPointDTO;
 import com.sportverify.api.record.dto.FeedItemDTO;
+import com.sportverify.api.record.dto.WeeklyDigestDTO;
 import com.sportverify.api.user.UserApi;
 import com.sportverify.api.user.dto.UserDTO;
 import com.sportverify.api.verify.AppealStatus;
@@ -52,11 +53,13 @@ import org.springframework.transaction.support.TransactionSynchronizationManager
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
+import java.time.DayOfWeek;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.LocalTime;
 import java.time.ZoneId;
+import java.time.temporal.TemporalAdjusters;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
@@ -796,6 +799,222 @@ public class SportRecordService {
 
     private static long tsOrZero(TrackPointDTO p) {
         return p.getTs() == null ? 0L : p.getTs();
+    }
+
+    // ==================== 每周运动智能周报（TASK-274） ====================
+
+    /** 周里程环比保留小数位（0.152 = +15.2%，HALF_UP）。 */
+    private static final int DIGEST_GROWTH_SCALE = 3;
+
+    /** 击败比例封顶值（分位数推算不宣称全站第一）。 */
+    private static final double DIGEST_BEAT_CAP = 0.99;
+
+    /** 击败比例推算曲线的饱和尺度（km）：1 − e^(−km/20) 拟合全站周跑量分位。 */
+    private static final double DIGEST_BEAT_SCALE_KM = 20.0;
+
+    /** 最佳满公里配速的入围门槛：满 1 公里且耗时为正的记录才参与评选。 */
+    private static final double DIGEST_PACE_MIN_KM = 1.0;
+
+    /**
+     * 每周运动智能周报（TASK-274 方向四）：自然周（周一 00:00:00 至周日 23:59:59，
+     * 东八墙钟）维度聚合通过终态记录（PASSED / RE_PASSED，与 myStreak/myStats 同款
+     * 入账口径），产出总里程/耗时/热量/出勤天数/主修类型/最快配速 + 环比前一周
+     * 增减率 + 周跑量分位数推算的击败比例 + 个性化体能恢复建议。
+     *
+     * <p>权限防护（ADR-0007）：caller 非空且非本人 → 1002 (FORBIDDEN)；
+     * caller=null（鉴权关闭降级态）放行。时间口径沿 G11（TASK-260 R4）：
+     * COALESCE(start_time, created_at) 归窗，离线补传记录按运动时间归属自然周；
+     * 出勤天数按锚点时间归日去重（0~7）。热量为按运动类型公里系数的估算口径
+     * （零 DDL 红线，库内无热量列）；击败比例为启发式推算（零跨服务全站查询）。</p>
+     *
+     * @param caller    调用者 userId（鉴权开启时为网关注入，关闭时为 null）
+     * @param userId    周报归属用户（控制器按身份语义解析，非空）
+     * @param weekStart 周起始日（可空；缺省取东八墙钟上一完整自然周的周一，
+     *                  显式传入时归一化到所在周的周一）
+     * @return 周报聚合 DTO
+     */
+    public WeeklyDigestDTO getWeeklyDigest(Long caller, Long userId, LocalDate weekStart) {
+        if (userId == null) {
+            throw new IllegalArgumentException("缺少必须的 userId 查询参数");
+        }
+        if (caller != null && !caller.equals(userId)) {
+            throw new BizException(ResultCode.FORBIDDEN);
+        }
+        LocalDate monday = weekStart != null
+                ? weekStart.with(TemporalAdjusters.previousOrSame(DayOfWeek.MONDAY))
+                : LocalDate.now(BUSINESS_ZONE).minusWeeks(1)
+                        .with(TemporalAdjusters.previousOrSame(DayOfWeek.MONDAY));
+        List<SportRecord> weekRows =
+                selectPassedRecordsInWeek(userId, monday, monday.plusDays(6));
+        List<SportRecord> prevRows = selectPassedRecordsInWeek(userId,
+                monday.minusWeeks(1), monday.minusDays(1));
+        WeeklyDigestDTO dto = buildWeeklyDigest(userId, monday, weekRows, prevRows);
+        dto.setNickname(resolveNickname(userId));
+        return dto;
+    }
+
+    /**
+     * 周报装配（纯内存聚合，零 DB 访问；供单测直测算法本体）：
+     * 汇总里程/耗时/热量、活动日去重出勤、主修类型计数、最佳满公里配速，
+     * 并以同口径前一周行集计算环比增减率。
+     */
+    WeeklyDigestDTO buildWeeklyDigest(Long userId, LocalDate monday,
+                                      List<SportRecord> weekRows,
+                                      List<SportRecord> prevRows) {
+        WeeklyDigestDTO dto = new WeeklyDigestDTO();
+        dto.setUserId(userId);
+        dto.setWeekStartDate(monday.toString());
+        dto.setWeekEndDate(monday.plusDays(6).toString());
+
+        double totalMeters = 0;
+        int totalSeconds = 0;
+        double totalCalories = 0;
+        double bestPaceSecPerKm = Double.MAX_VALUE;
+        Set<LocalDate> activeDates = new HashSet<>();
+        Map<Integer, Integer> typeCounts = new LinkedHashMap<>();
+        for (SportRecord row : weekRows) {
+            double km = row.getDistance() == null
+                    ? 0.0 : row.getDistance().doubleValue();
+            Integer duration = row.getDuration();
+            totalMeters += km * 1000.0;
+            totalSeconds += duration == null ? 0 : duration;
+            totalCalories += km * caloriesPerKm(row.getSportType());
+            LocalDateTime anchor = row.getStartTime() != null
+                    ? row.getStartTime() : row.getCreatedAt();
+            if (anchor != null) {
+                activeDates.add(anchor.toLocalDate());
+            }
+            if (row.getSportType() != null) {
+                typeCounts.merge(row.getSportType(), 1, Integer::sum);
+            }
+            if (km >= DIGEST_PACE_MIN_KM && duration != null && duration > 0) {
+                bestPaceSecPerKm = Math.min(bestPaceSecPerKm, duration / km);
+            }
+        }
+
+        double prevMeters = 0;
+        for (SportRecord row : prevRows) {
+            prevMeters += row.getDistance() == null
+                    ? 0.0 : row.getDistance().doubleValue() * 1000.0;
+        }
+
+        dto.setTotalDistanceMeters(round2(totalMeters));
+        dto.setTotalElapsedSeconds(totalSeconds);
+        dto.setTotalCalories(round2(totalCalories));
+        dto.setWorkoutCount(weekRows.size());
+        dto.setActiveDays(activeDates.size());
+        dto.setPrimarySportType(dominantSportType(typeCounts));
+        dto.setFastestPaceFormatted(bestPaceSecPerKm == Double.MAX_VALUE
+                ? "--" : formatDigestPace(bestPaceSecPerKm));
+        dto.setDistanceGrowthRate(growthRate(totalMeters, prevMeters));
+        dto.setBeatRatio(round2(beatRatio(totalMeters / 1000.0)));
+        dto.setRecoveryAdvice(recoveryAdvice(
+                weekRows.size(), activeDates.size(), totalMeters / 1000.0));
+        return dto;
+    }
+
+    /**
+     * 周报窗口查询：归属人 + 通过终态 + 活动时间口径 COALESCE(start_time, created_at)
+     * 归窗（G11/TASK-260 R4 与 myStats/pageMyRecords 统一）；单列投影个人量级无分页。
+     */
+    private List<SportRecord> selectPassedRecordsInWeek(Long userId, LocalDate start,
+                                                        LocalDate end) {
+        return sportRecordMapper.selectList(new LambdaQueryWrapper<SportRecord>()
+                .select(SportRecord::getStartTime, SportRecord::getCreatedAt,
+                        SportRecord::getDistance, SportRecord::getDuration,
+                        SportRecord::getSportType)
+                .eq(SportRecord::getUserId, userId)
+                .in(SportRecord::getStatus, PASS_STATUS_CODES)
+                .apply("COALESCE(start_time, created_at) >= {0}", start.atStartOfDay())
+                .apply("COALESCE(start_time, created_at) <= {0}", end.atTime(LocalTime.MAX)));
+    }
+
+    /** 热量估算系数（kcal/km）：跑步 65（~1kcal/kg/km×65kg）、骑行 25、步行 50；未知类型回退跑步系数。 */
+    private static double caloriesPerKm(Integer sportType) {
+        if (sportType != null && sportType == SportType.CYCLING.getCode()) {
+            return 25.0;
+        }
+        if (sportType != null && sportType == SportType.WALKING.getCode()) {
+            return 50.0;
+        }
+        return 65.0;
+    }
+
+    /** 当周主修类型：完成次数最多的运动类型枚举名（并列取先出现者）；无记录返回 null。 */
+    private static String dominantSportType(Map<Integer, Integer> typeCounts) {
+        Integer bestCode = null;
+        int bestCount = 0;
+        for (Map.Entry<Integer, Integer> e : typeCounts.entrySet()) {
+            if (e.getValue() > bestCount) {
+                bestCount = e.getValue();
+                bestCode = e.getKey();
+            }
+        }
+        SportType type = SportType.fromCode(bestCode);
+        return type == null ? null : type.name();
+    }
+
+    /** 配速秒/公里 → m'ss"（如 275.4 → 4'35"）；非法输入回退 --。 */
+    private static String formatDigestPace(double paceSecPerKm) {
+        if (paceSecPerKm <= 0 || Double.isInfinite(paceSecPerKm)) {
+            return "--";
+        }
+        long totalSec = Math.round(paceSecPerKm);
+        return (totalSec / 60) + "'" + String.format("%02d", totalSec % 60) + "\"";
+    }
+
+    /**
+     * 周里程环比增减率：(本周 − 前一周) / 前一周（HALF_UP 保留 3 位）；
+     * 前一周无里程时本封周有数据为 1.0（+100%，spec 口径）、双周皆无为 0.0（无变化）。
+     */
+    private static double growthRate(double currentMeters, double prevMeters) {
+        if (prevMeters <= 0) {
+            return currentMeters > 0 ? 1.0 : 0.0;
+        }
+        return BigDecimal.valueOf((currentMeters - prevMeters) / prevMeters)
+                .setScale(DIGEST_GROWTH_SCALE, RoundingMode.HALF_UP).doubleValue();
+    }
+
+    /**
+     * 击败比例推算（周跑量分位数启发式）：以指数饱和曲线 1 − e^(−km/20) 拟合全站
+     * 周跑量分布的分位位置（5km≈0.22、20km≈0.63、50km≈0.92），封顶 0.99；零跑量为 0.0。
+     * 推算口径不跨服务查询全站分布（零新增依赖红线），保留 2 位小数输出。
+     */
+    private static double beatRatio(double weekKm) {
+        if (weekKm <= 0) {
+            return 0.0;
+        }
+        double ratio = 1.0 - Math.exp(-weekKm / DIGEST_BEAT_SCALE_KM);
+        return Math.min(DIGEST_BEAT_CAP, ratio);
+    }
+
+    /** 个性化恢复建议：按完成次数 × 出勤天数 × 周跑量分档匹配文案（确定性规则，单测逐字锁定）。 */
+    private static String recoveryAdvice(int workoutCount, int activeDays, double weekKm) {
+        if (workoutCount == 0) {
+            return "本周还没有通过校验的运动记录，从一次 20 分钟轻松跑开始，先动起来比强度更重要。";
+        }
+        if (activeDays >= 5 || weekKm >= 40) {
+            return "本周训练量较大，建议安排 1~2 天完全休息，保证睡眠并做下肢拉伸放松，让身体充分恢复。";
+        }
+        if (activeDays <= 2 && weekKm < 10) {
+            return "本周出勤较少，建议下周保持每周 3 次左右的节奏，以有氧慢跑为主，逐步找回状态。";
+        }
+        return "本周节奏不错，保持现有频次，跑前充分热身、跑后注意拉伸与补水即可稳步进步。";
+    }
+
+    /** 昵称补齐：user-service 不可用/缺数 → null（前端回退 userId 渲染，fail-safe 同 feed 先例）。 */
+    private String resolveNickname(Long userId) {
+        try {
+            Result<java.util.List<UserDTO>> resp = userApi.listUsersByIds(List.of(userId));
+            if (resp == null || resp.getData() == null || resp.getData().isEmpty()) {
+                return null;
+            }
+            UserDTO user = resp.getData().get(0);
+            return user == null ? null : user.getNickname();
+        } catch (Exception e) {
+            log.warn("周报昵称拉取异常，回退 null：userId={}", userId, e);
+            return null;
+        }
     }
 
     /**
