@@ -899,3 +899,21 @@
 | 独立复核 | 免独立复核（LIGHT 档由指导侧亲核三块把关） |
 | 是否到达外部门槛 | **已到达本地封盘**：封盘批次（4 笔 = TASK-270 立项笔 `bcd073e` + C-01 `6c32f23` + C-02 `e5ce7e7` + 封盘笔）统一推送 origin/main，GitHub Actions CI 外部终验随后登记 |
 | 状态 | **已终裁 ACCEPT（2026-10-18 指导侧）**：指导亲核三块全 PASS 零阻断；2 文件白名单双向全等；BadgeServiceTest 单测隔离度加固；封盘批次统一推送 origin/main，待 CI 外部终验 |
+
+
+## 验收记录：TASK-271（存量技术债清理与跨服务好友调用性能优化，LIGHT 档，2026-10-18 立项）
+
+| 项 | 内容 |
+| --- | --- |
+| 开工基线 | main @ `4c85635`（TASK-270 封盘笔；本地与 origin/main 平齐） |
+| 分级定档 | LIGHT（涉及 E2E mock 补齐、LeaderboardService 好友 ID 直调优化、sharding.yaml 单表声明校正；指导亲核三块把关，免独立复核子 agent） |
+| 亲验证据 | ①TASK-269 遗留 E2E 挂载期勋章 API 未 mock 缺口；②LeaderboardService while 分页拉取好友在 user-service 引发无意义批量查昵称回表；③sharding.yaml 遗留表与新增单表未声明 |
+| 白名单 | 5+1 项：`web/e2e/helpers.ts` + `leaderboard-service/src/main/java/com/sportverify/leaderboard/service/LeaderboardService.java` + `leaderboard-service/src/test/java/com/sportverify/leaderboard/service/LeaderboardServiceTest.java` + `leaderboard-service/src/test/java/com/sportverify/leaderboard/service/LeaderboardCacheInvocationTest.java` + `record-service/src/main/resources/sharding.yaml` + 台账 `work/mailbox/tasks/TASK-271/handoff.md` |
+| 核心实现 | R1 补齐 E2E 勋章相关 mock 路由；R2 fetchAllFriendIds 改直调 userApi.listFriendIds 并更新测试桩；R3 sharding.yaml 配置校正 |
+| 门禁要求 | 七门禁全量逐位（surefire 63/79/221/351/203/110/36 保持，总计 1063 测）+ checkstyle --static=leaderboard-service/record-service 退出码 0 + 契约门 + token 门 29 项逐位持平 + 词面门四 locale ZERO_HIT + diff --check 净；双提交 C-01/C-02 |
+| 受限预登记 | 保持微服务对外核心业务 API 契约与已有表结构不变 |
+| 实施与门禁 | 待实施 |
+| 指导亲核 | 待亲核 |
+| 独立复核 | 免独立复核（LIGHT 档由指导侧亲核三块把关） |
+| 是否到达外部门槛 | 待实施完成后封盘并统一推送 CI 外部终验 |
+| 状态 | **已立项待派发（2026-10-18 指导侧）**：开工基线 main @ `4c85635`，两件套已立项 |
