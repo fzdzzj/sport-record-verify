@@ -13,6 +13,7 @@ import com.sportverify.record.enums.BadgeType;
 import com.sportverify.record.mapper.SportRecordMapper;
 import com.sportverify.record.mapper.UserBadgeMapper;
 import org.apache.ibatis.builder.MapperBuilderAssistant;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
@@ -61,6 +62,11 @@ class BadgeServiceTest {
 
     @InjectMocks
     private BadgeService badgeService;
+
+    @BeforeEach
+    void setUp() {
+        TableInfoHelper.initTableInfo(new MapperBuilderAssistant(new MybatisConfiguration(), ""), UserBadge.class);
+    }
 
     // ==================== 读时结算：9 大徽章判定 ====================
 
@@ -308,7 +314,6 @@ class BadgeServiceTest {
         unlocked.setBadgeCode("TEN_KM_RUN");
         unlocked.setIsEquipped(0);
         when(userBadgeMapper.selectOne(any())).thenReturn(unlocked);
-        TableInfoHelper.initTableInfo(new MapperBuilderAssistant(new MybatisConfiguration(), ""), UserBadge.class);
 
         badgeService.wearBadge(USER_ID, "TEN_KM_RUN");
 
