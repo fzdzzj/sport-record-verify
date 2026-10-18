@@ -830,3 +830,21 @@
 | 独立复核 | 免独立复核（MEDIUM 档由指导侧亲核三块把关） |
 | 是否到达外部门槛 | **已到达本地封盘**：封盘批次（4 笔 = TASK-266 立项笔 `83ebeaf` + C-01 `fe5a2e7` + C-02 `ffa70bf` + 封盘笔）统一推送 origin/main，GitHub Actions CI 外部终验随后登记 |
 | 状态 | **已终裁 ACCEPT（2026-10-18 指导侧）**：指导亲核三块全 PASS 零阻断；5 文件白名单双向全等；record-service 循环依赖解耦与启动加固闭环；封盘批次统一推送 origin/main，待 CI 外部终验 |
+
+## 验收记录：`TASK-267`（N4 存量库迁移脚本断链缺陷修复与预检加固，MEDIUM 档，2026-10-18 立项）
+
+| 项 | 内容 |
+| --- | --- |
+| 开工基线 | main @ `970c404`（TASK-266 封盘笔；本地与 origin/main 平齐） |
+| 分级定档 | MEDIUM（涉及生产 SQL 迁移文件语法订正、migrate.sh 自动化脚本预检防御加固、纯 JVM 迁移契约测试新增；指导亲核三块把关，免独立复核子 agent） |
+| 亲验证据 | 两项全部坐实：①执行 scripts/db/migrate.sh 在 add-leaderboard-daily-summary.sql 处报 ERROR 1046 (3D000): No database selected 导致迁移中止，其后 4 个迁移脚本漏执行（TASK-265 压测存量卷实测暴露）；②除该文件外其余 12 个迁移文件均声明了 USE 语句，且 migrate.sh 缺少对无库限定词脚本的预检机制 |
+| 白名单 | 3+1 项：`sql/migrations/add-leaderboard-daily-summary.sql` + `scripts/db/migrate.sh` + `record-service/src/test/java/com/sportverify/record/db/SqlMigrationContractTest.java` + 台账 `work/mailbox/tasks/TASK-267/handoff.md`（零触碰生产 Java 源码/既有单测/pom/web/docker-compose） |
+| 核心实现 | R1 在 add-leaderboard-daily-summary.sql 补齐 USE record_db;；R2 在 migrate.sh 增加执行前针对 USE 语句的静态预检拦截防御；R3 新增 SqlMigrationContractTest 纯 JVM 契约单测 |
+| 门禁要求 | 七门禁全量逐位（surefire 63/78/221/322/203/110/36 只增不减，record-service 322→323 净增 1 测，总计 1034 测）+ 契约门（判据 B 机器比对）+ token 门 29 项逐位持平（期望值口径：C-02 树 = 2220 + 29 = 2249）+ 词面门四 locale ZERO_HIT + 探针阳性对照 + checkstyle delta=0 + diff --check 净；双提交 C-01/C-02 |
+| 受限预登记 | 保持既有表定义与字段注释不变，不变更其他迁移文件 |
+| 实施与门禁 | 待实施 |
+| 指导亲核 | 待亲核 |
+| 独立复核 | 免独立复核（MEDIUM 档） |
+| 是否到达外部门槛 | 本地脚本与 SQL 修复课题，不引入新外部依赖 |
+| 状态 | **已立项待派发（2026-10-18 指导侧）**：开工基线 main @ 970c404，两件套已立项，待派发实施子 agent |
+
