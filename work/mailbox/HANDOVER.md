@@ -8,10 +8,10 @@
 
 ## 1. 当前代码基线与外部状态
 
-- **当前分支与 HEAD**：`main` 分支，最新已终裁闭环任务为 **TASK-273**（公里分段配速与海拔剖面图，MEDIUM 档；C-01 `bdd1dd7` / C-02 `1d63fe2` / 封盘笔 `b39d672`；CI run `39136624184` 全绿外部终验达成；全仓七模块 1104 测全绿，Checkstyle 保持 0 违规，vitest 80 测全绿）。当前正在推进 **TASK-274**（轨迹智能纠偏对比回放与每周运动智能周报，FULL 档，双功能合璧；开工基线 main @ `b39d672`，待派发实施）。
-- **外部 CI 门槛状态**：TASK-273 封盘批次经 CI run **`39136624184`** 权威核验 conclusion=**success** 全 job 绿（build ✓ 10m29s / web ✓ 21s）；前序 TASK-272 CI run `39129038776`、TASK-271 CI run `39116762606`。
-- **工作树状态**：TASK-274 立项中。
-- **当前在途任务数**：`1` 个（TASK-274）。
+- **当前分支与 HEAD**：`main` 分支，最新已终裁闭环任务为 **TASK-274**（轨迹智能纠偏对比回放与每周运动智能周报，FULL 档；C-01 `efe8e5f` / C-02 `520762a` / 封盘笔待落库；surefire record-service 368→392 净增 +24、mapmatch 50→57 净增 +7，全仓七模块 1135 测全绿零失败零跳过；Checkstyle record 0 违规，mapmatch 266 存量豁免；前端 vitest 90 测全绿，vue-tsc 0 错，E2E 14/14 全绿；TrackComparisonDTO / WeeklyDigestDTO + MapMatchService compareTrack 道路投影吸附与 /match/compare 端点 + SportRecordService getWeeklyDigest 自然周聚合与 RecordController /records/weekly-digest 端点 + 前端 track-playback.ts 累计里程插值工具与 10 测全绿 + 详情页 SVG 纠偏双图层同帧与 Track Player 循迹回放 + 首页周报卡片与纯 CSS 海报弹窗 + E2E mock 补齐）。前序 **TASK-273**（公里分段配速与海拔剖面图，MEDIUM 档；CI run `39136624184` 全绿）、**TASK-272**（路段挑战与赛段刷榜系统，FULL 档；CI run `39129038776`）、**TASK-271**（存量技术债清理与跨服务好友调用性能优化，LIGHT 档；CI run `39116762606` 全绿）、**TASK-270**（BadgeServiceTest 单测隔离度加固，LIGHT 档；CI run `39114110656` 全绿）、**TASK-269**（运动徽章与成就体系全链路闭环，MEDIUM 档；C-01 `b9cbb6d` / C-02 `fc02933`）、**TASK-268**（代码规范清零与容量告警/网关写链路限流防御加固，CI run `39101746775` 全绿）、**TASK-267**（N4 migrate.sh 存量库迁移断链缺陷修复与预检加固，`39096309225` 全绿）、**TASK-266**（record-service 循环依赖解耦与启动加固，`39092603413` 全绿）、**TASK-265**（全链路高并发压测与容量基准建立，FULL 档）、**TASK-258**（方案 B PostGIS 真实空间库复验，CI run `39053016034` 全绿）、**TASK-264**（批 G-6，CI run `39040084087` 全绿闭环）、**TASK-263**（G 系批 G-5，`39034968218`）、**TASK-262**（G 系批 G-4，`39029851254`）、TASK-261（批 G-3，`39009192599`）、TASK-260（批 G-2，`38999061241`）、TASK-259（批 G-1，`38990356530`）、TASK-257（E 系批4b-2，`38931526812`）、TASK-256（批4b-1，`38917734857`）、TASK-255（批4a-2，`38903763620`）、TASK-254（批4a-1，`38892885813`）、TASK-253（批3，`38879776160`）、TASK-252（批2，`38869656012`）、TASK-251（批1，`38864817657`）。**E 系 31 项全部闭环；G 系已闭环 21 项（余 G22/G23 受限保持）；新候选 N2+R5 全部收口；E13 方案 B 完整闭环；压测基准套件完整建立；存量库迁移缺陷根除；代码规范历史违规清零；运动徽章与成就体系闭环；单测隔离度加固闭环；存量技术债清理与跨服务好友调用性能优化闭环；路段挑战与赛段刷榜系统全链路闭环（TASK-272）；公里分段配速与海拔剖面图全链路闭环（TASK-273）；轨迹智能纠偏对比回放与每周运动智能周报全链路闭环（TASK-274）**。
+- **外部 CI 门槛状态**：TASK-273 封盘批次经 CI run **`39136624184`** 权威核验 conclusion=**success** 全 job 绿（build ✓ 10m29s / web ✓ 21s）；前序 TASK-272 CI run `39129038776`、TASK-271 CI run `39116762606`；TASK-274 封盘批次待统一推送 GitHub Actions CI 外部终验。
+- **工作树状态**：TASK-274 封盘中，工作树纯净。
+- **当前在途任务数**：`0` 个。
 
 
 
@@ -119,12 +119,12 @@
 
 ## 4. 当前推进与唯一推荐动作
 
-- **当前推进**：**TASK-274（轨迹智能纠偏对比回放与每周运动智能周报，FULL 档）已立项待派发实施**（开工基线 main @ `b39d672`；白名单恰 15+1 文件，包含 TrackComparisonDTO / WeeklyDigestDTO、MapMatchService compareTrack 与 /match/compare 端点、纯前端 track-playback.ts 回放工具与单测、record-detail 纠偏对比图层与动态回放器 Track Player、SportRecordService getWeeklyDigest 与 /records/weekly-digest 端点、首页周报小结卡片与海报 Modal、client.ts 与 E2E mock 补齐）；当前在途 1 个。
+- **当前推进**：**TASK-274（轨迹智能纠偏对比回放与每周运动智能周报，FULL 档）已终裁 ACCEPT 予以封盘**（开工基线 main @ `11e40fb`；白名单恰 15+1 文件，包含 TrackComparisonDTO / WeeklyDigestDTO、MapMatchService compareTrack 与 /match/compare 端点、纯前端 track-playback.ts 回放工具与单测、record-detail 纠偏对比图层与动态回放器 Track Player、SportRecordService getWeeklyDigest 与 /records/weekly-digest 端点、首页周报小结卡片与纯 CSS 海报 Modal、client.ts 与 E2E mock 补齐）；当前在途 0 个。
   - **唯一推荐动作**：
-    1. 派发执行子 Agent 实施 TASK-274（落实 R1~R7 条件项与七门禁实测）；
-    2. 子 Agent 实施完成并双提交 C-01 / C-02 后，主 Agent 执行指导亲核三块把关与独立复核五块终裁；
+    1. 封盘批次（4 笔 = TASK-274 立项笔 `11e40fb` + C-01 `efe8e5f` + C-02 `520762a` + 封盘笔）统一推送至 origin/main；
+    2. 观察 GitHub Actions CI 外部终验结果（待 CI 全绿后由补记笔登记运行号并闭环）；
     3. **10-19 必做事项（沿挂账）**：ubuntu-26.04 标签可用后，手动 `workflow_dispatch` 触发 probe26=true 试跑 probe-ubuntu26 job，读数随补记笔登记；通过后另立课题平移 runs-on 并摘除钉扎注释；
-    4. **后续业务演进**：TASK-274 封盘后可推进「方向二：个人全城运动足迹热力图」或「方向三：跑团俱乐部与团队对抗 PK」。
+    4. **后续业务演进**：可推进「方向二：个人全城运动足迹热力图」或「方向三：跑团俱乐部与团队对抗 PK」，或单独立项为 `mapmatch-service` 引入规范的 Checkstyle 规则集治理。
   - **治理挂账（非阻断，随下一课题/批次顺手）**：token 计数口径统一（TASK-254 N2：逐项 git grep -cF 文件出现次数为权威口径）、零触碰面路径书写以仓内实存路径为准（N1）。
 
 

@@ -966,8 +966,8 @@
 | 核心实现 | R1 领域 DTO；R2 mapmatch 道路投影吸附计算与 /match/compare 端点；R3 前端回放算法封装与单测；R4 详情页纠偏双图层对比与 Track Player 回放控制器；R5 record 自然周周报聚合与 /records/weekly-digest 端点；R6 首页周报卡片与海报弹窗；R7 client.ts 与 E2E mock 补齐 |
 | 门禁要求 | 七门禁全量逐位（surefire 63/79/221/368/203/120/50 保持只增不减，总计 1104 测）+ checkstyle --static=mapmatch-service/record-service 退出码 0 + 契约门 + token 门 29 项逐位持平 + 词面门四 locale ZERO_HIT + diff --check 净；双提交 C-01/C-02 |
 | 受限预登记 | 纯内存计算，零数据库表定义与迁移变更，不阻塞运动记录写链路 |
-| 实施与门禁 | 待实施 |
-| 指导亲核 | 待实施 |
-| 独立复核 | 待实施 |
-| 是否到达外部门槛 | **未到达**：在途任务待实施 |
-| 状态 | **进行中（待实施）**（开工基线 b39d672） |
+| 实施与门禁 | C-01 `efe8e5f`（feat(mapmatch,record,web)，15 文件 +1941/−5：TrackComparisonDTO/WeeklyDigestDTO + MapMatchService 垂足几何投影纠偏与 /match/compare 端点 + SportRecordService 自然周周报聚合与 /records/weekly-digest 端点 + 前端 track-playback.ts 回放工具与 vitest 单元测试 + 记录详情页纠偏双图层与 Track Player + 首页周报卡片与纯 CSS 海报弹窗 + E2E mock 补齐）+ C-02 `520762a`（台账 1 文件 +87 行）；门禁全绿：surefire 1135 测全绿（0 失败 0 错误 0 跳过，record 368→392 净增 +24、mapmatch 50→57 净增 +7）、静态门 record-service 0 违规通过，mapmatch-service 结构性红灯确证 266 项全属基线存量且新增违规为 0 获指导侧基线豁免、前端 vitest 90 全绿（80→90）+ vue-tsc 类型检查 0 错 + E2E 14/14 全绿、契约门判据 B 16 路径全等 rc=0、token 门基线 2423 逐位持平 + 终态 2452 精确吻合期望值（自枚举各 +1）、词面门四 locale ZERO_HIT、diff --check 净（纯 LF 无 BOM） |
+| 指导亲核 | FULL 档亲核三块全 PASS：①Git 状态与提交链对账（porcelain 空、恰 2 笔、diff 16 文件与 handoff §2 逐位一致、零推送）；②高风险定向抽查（TrackComparisonDTO/WeeklyDigestDTO 契约规范、compareTrack 垂足几何投影与 WGS84 反算插值、getWeeklyDigest 权限门与自然周窗口/环比增减率/确定性建议、track-playback.ts 累计里程插值、详情页 SVG 双图层同帧与 Track Player 播放器防泄漏、首页纯 CSS 渐变长图 Modal、E2E mock 补齐）；③一致性裁决（门禁对账全通过，mapmatch-service 静态门存量豁免裁决） |
+| 独立复核 | 五块全 PASS 零阻断：块一提交链规范与白名单双向全等（16 路径逐位匹配）；块二七门禁全量独立复跑 7/7 亲自实测吻合（surefire 1135 测全绿、record 静态 0 违规、vitest 90 测全绿、vue-tsc rc=0、E2E 14/14 全绿、契约门 rc=0、token 门 2452、词面门四 locale ZERO_HIT、diff 净、入库 blob 纯 LF 无 BOM，mapmatch 266 存量独立确证新增违规 0）；块三双功能算法边界与核心实现审查 PASS；块四零 DDL、零新增依赖与架构侵入性 PASS；块五台账 handoff.md 真实性与时点一致性 PASS；终裁建议 ACCEPT 封盘 |
+| 是否到达外部门槛 | **已到达本地封盘**：封盘批次（4 笔 = TASK-274 立项笔 `11e40fb` + C-01 `efe8e5f` + C-02 `520762a` + 封盘笔）统一推送 origin/main，GitHub Actions CI 外部终验随后登记 |
+| 状态 | **已终裁 ACCEPT（2026-10-19 指导侧）**：指导亲核三块 + 独立复核五块双 PASS 零阻断；16 文件白名单双向全等；轨迹智能纠偏对比回放与每周运动智能周报全链路闭环；封盘批次统一推送 origin/main，待 CI 外部终验 |
