@@ -864,3 +864,20 @@
 | 独立复核 | 免独立复核（MEDIUM 档由指导侧亲核三块把关） |
 | 是否到达外部门槛 | **已到达本地封盘**：封盘批次（4 笔 = TASK-268 立项笔 `0b928ab` + C-01 `e37107b` + C-02 `c0544cb` + 封盘笔）统一推送 origin/main，GitHub Actions CI 外部终验随后登记 |
 | 状态 | **已终裁 ACCEPT（2026-10-18 指导侧）**：指导亲核三块全 PASS 零阻断；6 文件白名单双向全等；record-service 存量 Checkstyle 违规首次清零；Prometheus 容量监控告警规则扩充；网关写链路差异化限流防御闭环；封盘批次统一推送 origin/main，待 CI 外部终验 |
+
+## 验收记录：TASK-269（运动徽章与成就体系全链路闭环，MEDIUM 档，2026-10-18 立项）
+
+| 项 | 内容 |
+| --- | --- |
+| 开工基线 | main @ 3b34b81（TASK-268 封盘笔；本地与 origin/main 平齐，CI run 39101746775 全绿） |
+| 分级定档 | MEDIUM（涉及 record_db 新增 user_badge 表与迁移、9 大徽章定义、BadgeService 读时结算与佩戴、BadgeController、前端个人中心勋章墙与动态流外显；指导亲核三块把关，免独立复核子 agent） |
+| 亲验证据 | 三项全部坐实：①平台具备完善的运动记录状态机、连续打卡天数与运动目标，但缺少正向激励的成就勋章系统；②读时结算+增量幂等持久化模式对 submitRecord 写链路 0 侵入、0 性能损耗，并能自动追溯历史记录达成；③静态检查与测试基准稳固（1035 测全绿，Checkstyle 0 违规） |
+| 白名单 | 14+1 项：sql/02-record-db.sql + sql/migrations/add-user-badge-table.sql + ecord-service/src/test/java/com/sportverify/record/db/SqlMigrationContractTest.java + ecord-service/src/main/java/com/sportverify/record/entity/UserBadge.java + ecord-service/src/main/java/com/sportverify/record/enums/BadgeType.java + ecord-service/src/main/java/com/sportverify/record/dto/BadgeDTO.java + ecord-service/src/main/java/com/sportverify/record/mapper/UserBadgeMapper.java + ecord-service/src/main/java/com/sportverify/record/service/BadgeService.java + ecord-service/src/main/java/com/sportverify/record/controller/BadgeController.java + ecord-service/src/test/java/com/sportverify/record/service/BadgeServiceTest.java + ecord-service/src/test/java/com/sportverify/record/controller/BadgeControllerTest.java + web/src/pages/index.page.vue + web/src/pages/feed.page.vue + web/src/api/client.ts + 台账 work/mailbox/tasks/TASK-269/handoff.md |
+| 核心实现 | R1 user_badge DDL 与迁移脚本；R2 9 大初始成就枚举定义；R3 BadgeService 判定与佩戴；R4 BadgeController 端点；R5 前端个人主页勋章墙与动态流外显；R6 测试全覆盖 |
+| 门禁要求 | 七门禁全量逐位（surefire record-service 323 测净增，全仓 1035+ 测）+ checkstyle --static=record-service 退出码 0 + 契约门（判据 B 机器比对）+ token 门 29 项逐位持平 + 词面门四 locale ZERO_HIT + 探针阳性对照 + diff --check 净；双提交 C-01/C-02 |
+| 受限预登记 | 保持依赖纯净，不变更微服务对外核心业务 API 契约与已有表结构 |
+| 实施与门禁 | 待实施 |
+| 指导亲核 | 待亲核 |
+| 独立复核 | 免独立复核（MEDIUM 档由指导侧亲核三块把关） |
+| 是否到达外部门槛 | 待实施完成后封盘并统一推送 CI 外部终验 |
+| 状态 | **已立项待派发（2026-10-18 指导侧）**：开工基线 main @ 3b34b81，两件套已立项，待派发实施子 agent |
