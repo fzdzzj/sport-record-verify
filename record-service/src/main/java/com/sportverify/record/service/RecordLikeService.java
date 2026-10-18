@@ -19,6 +19,7 @@ import org.redisson.api.RedissonClient;
 import com.sportverify.record.mq.LikeEventProducer;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.context.annotation.Lazy;
 import org.springframework.data.redis.connection.RedisConnection;
 import org.springframework.data.redis.core.RedisCallback;
 import org.springframework.data.redis.core.StringRedisTemplate;
@@ -133,10 +134,11 @@ public class RecordLikeService {
 
     /**
      * 注入记录读取面授权协作器（TASK-221）。点赞三端点读同一 {@code assertCanView} 门，
-     * 使门矩阵与 pagePoints/getVerifyResult 测试等价（蓝队测试经 setter 注入 mock）。
+     * 使门矩阵与 pagePoints/getVerifyResult 测试等价（蓝队测试经 setter 注入 mock）；
+     * {@code @Lazy} 懒加载代理注入解耦与 SportRecordService 的双向 setter 注入循环（TASK-266）。
      */
     @Autowired
-    public void setSportRecordService(SportRecordService sportRecordService) {
+    public void setSportRecordService(@Lazy SportRecordService sportRecordService) {
         this.sportRecordService = sportRecordService;
     }
 

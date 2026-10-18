@@ -41,6 +41,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.BeanUtils;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.context.annotation.Lazy;
 import org.springframework.dao.DuplicateKeyException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -116,9 +117,9 @@ public class SportRecordService {
         this.recordLikeMapper = recordLikeMapper;
     }
 
-    /** 注入点赞 Service（TASK-223 缓存清理）。 */
+    /** 注入点赞 Service（TASK-223 缓存清理；@Lazy 懒代理解耦双向 setter 注入循环，TASK-266）。 */
     @Autowired
-    public void setRecordLikeService(RecordLikeService recordLikeService) {
+    public void setRecordLikeService(@Lazy RecordLikeService recordLikeService) {
         this.recordLikeService = recordLikeService;
     }
 
