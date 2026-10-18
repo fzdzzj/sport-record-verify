@@ -801,15 +801,15 @@
 
 | 项 | 内容 |
 | --- | --- |
-| 开工基线 | main @ `c4ad1b1`（TASK-258 外部终验补记笔；实测领先 origin 1 笔，本地保留随批次推送） |
+| 开工基线 | main @ `eeb8400`（TASK-265 立项笔；实测领先 origin 2 笔：TASK-258 外部终验补记笔 `c4ad1b1` + 立项笔 `eeb8400`，本地保留随批次推送） |
 | 分级定档 | FULL（全链路多服务高并发压测、LoadTest 虚拟线程引擎增强、自动化编排脚本与容量基准报告产出；跨压测脚本、测试工程与性能数据；独立复核子 agent + 指导亲核） |
 | 亲验证据 | 三项全部坐实：①中间件全栈（MySQL 3307、PostGIS 5433、Nacos 8848、RocketMQ 9876/10909、Redis 6379）已全量启动就绪；②既有 LoadTest 仅覆盖单个提交接口，缺少 Feed 流、批量点赞与榜单聚合等多业务链路场景覆盖；③全仓 54 项治理闭环后亟需建立标准高并发容量基准与连接池表现报告 |
 | 白名单 | 3+1 项：`scripts/perf/LoadTest.java` + `scripts/perf/benchmark-e2e.sh` + `docs/perf/benchmark-e2e-capacity-report.md` + 台账 `work/mailbox/tasks/TASK-265/handoff.md`（零触碰生产 Java 代码/常规单测/配置/pom/web） |
 | 核心实现 | R1 扩展 LoadTest.java 支持多端点、自定义请求头与细粒度状态码统计；R2 新增自动化压测编排脚本 benchmark-e2e.sh（100755）；R3 产出全链路容量基准报告 benchmark-e2e-capacity-report.md |
 | 门禁要求 | 七门禁全量逐位（surefire 63/78/221/321/203/110/36 严格保持）+ 契约门（判据 B 机器比对）+ token 门 29 项逐位持平（期望值口径：C-02 树 = 2162 + 29 = 2191）+ 词面门四 locale ZERO_HIT + 探针阳性对照 + checkstyle delta=0 + diff --check 净；双提交 C-01/C-02 |
 | 受限预登记 | 压测依赖本地运行环境与内存，按机器能力分档测试，生产 Java 业务代码保持零修改 |
-| 实施与门禁 | 待实施 |
-| 指导亲核 | 待亲核 |
-| 独立复核 | 待复核 |
-| 是否到达外部门槛 | 本地压测治理课题，不触碰微服务核心依赖 |
-| 状态 | **已立项待派发（2026-10-18 指导侧）**：开工基线 main @ c4ad1b1，两件套已落库，待派发实施子 agent |
+| 实施与门禁 | C-01 `b61806e`（perf(benchmark)，恰 3 文件 +564/−14：LoadTest.java 多场景与请求头支持 + benchmark-e2e.sh 100755 一键编排 + benchmark-e2e-capacity-report.md 容量报告）+ C-02 `7d108b5`（台账 1 文件 +53 行）；七门禁全绿：offline 七模块 surefire 63/78/221/321/203/110/36 严格持平基线（0 败 0 错 0 跳）、压测实测 12 档全落盘、契约门纯净 worktree 判据 B 4 路径全等 rc=0、token 门基线 2162 逐位持平 + 终态 2191 精确吻合期望值（自枚举各 +1）、词面门四 locale ZERO_HIT + 探针阳性对照、checkstyle delta=0、diff --check 净（纯 LF） |
+| 指导亲核 | FULL 档亲核三块全 PASS：①Git 摘要（porcelain 空、恰 2 笔、diff 4 文件与 handoff §2 逐位一致、零推送）；②定向抽查（LoadTest.java 纯 JVM 零依赖 javac 编译通过、benchmark-e2e.sh 脚本可执行权限 100755 与纯 LF、容量报告 12 档全读数与监控锚点、生产业务代码 100% 零触碰）；③一致性裁决（门禁全绿、两处环境既有缺陷真实性认可并如实登记） |
+| 独立复核 | 五块全 PASS 零阻断（块一 4 笔提交链全等；块二红线与零触碰 6 项全 PASS；块三双端门禁实测 5 项亲自复跑全 PASS：契约门纯净 worktree rc=0、token 门 2191 精确持平、词面门四 locale ZERO_HIT+探针对照、checkstyle delta=0 且改动集不在扫描面、diff 净、ls-files 纯 LF；块四证据链核对 PASS，报告与原始产物四方互证，两项环境缺陷登记合规；块五只改清单三向全等 4=4=4）；非阻断 5 项集中登记封盘笔（N1 spec 基线口径微漂 / N2 token 自枚举指针 / N3 C-02 哈希自引用局限 / N4 四方数据对账替代 / N5 codex 外部 worktree 未动） |
+| 是否到达外部门槛 | **已到达本地封盘**：封盘批次（5 笔 = TASK-258 补记笔 `c4ad1b1` + 立项笔 `eeb8400` + C-01 `b61806e` + C-02 `7d108b5` + 封盘笔）统一推送 origin/main，GitHub Actions CI 外部终验随后登记 |
+| 状态 | **已终裁 ACCEPT（2026-10-18 指导侧）**：指导亲核三块 + 独立复核五块双 PASS 零阻断；4 文件白名单双向全等；全链路高并发压测套件与容量基准建立闭环；封盘批次统一推送 origin/main，待 CI 外部终验 |

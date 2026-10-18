@@ -164,4 +164,7 @@
    - ②**R5 查询形态决策与 scratch 库清理**：受限于「全局禁加索引红线」，确认 `pageFeed` filesort 无法通过 wrapper 层面改写消除，正式受限关闭决策，保持现有实现不变；成功销毁清理 `task260_scratch` 临时库；
    - 指导亲核三块 PASS 零阻断，终裁 ACCEPT；CI 外部终验随补记笔登记；
 8. **方案 B 已封盘 TASK-258（2026-10-18，FULL 档）**：针对 mapmatch-service 内联 ST_DWithin / ST_MakeEnvelope 空间预筛 SQL 与真实 PostGIS 16-3.4 引擎执行端到端复验（C-01 `97ddde9` / C-02 `68afd35`，指导亲核 + 独立复核五块全 PASS 零阻断，真机 5 用例实跑全绿，MapMatchSqlContractTest 纯 JVM 契约测试 + verify-postgis.sh，surefire 35→36 新基线，CI run `39053016034` 全绿外部终验达成）。**全仓 E 系 31 项全量 + G 系 21 项已收口 + 新候选 2 项全部闭环，累计闭环候选总数达到 54 项，全量已定案优化项全部收口！**
-9. **压测治理批已立项 TASK-265（2026-10-18，FULL 档）**：针对全仓 54 项治理闭环稳态，构建覆盖写路径（运动记录提交）、读路径（Feed 流与批量点赞）、聚合路径（排行榜查询）的全链路高并发压测基准与容量报告（开工基线 main @ `c4ad1b1`，两件套已落库，待派发实施）。
+9. **压测治理批已封盘 TASK-265（2026-10-18，FULL 档）**：针对全仓 54 项治理闭环稳态，构建覆盖写路径（运动记录提交）、读路径（Feed 流与批量点赞）、聚合路径（排行榜查询）的全链路高并发压测基准与容量报告（C-01 `b61806e` / C-02 `7d108b5`，指导亲核三块 + 独立复核五块双 PASS 零阻断，12 档压测矩阵完整落盘，LoadTest 虚拟线程引擎增强 + benchmark-e2e.sh 100755，全量七模块 surefire 63/78/221/321/203/110/36 保持，待 CI 外部终验）。
+10. **新增候选待立项（压测实测暴露的 2 项工程技术债）**：
+    - **N3（新候选）：record-service 生产 jar 启动循环依赖**：SportRecordService ↔ RecordLikeService 双向 @Autowired setter 注入成环，Boot 3.2 默认禁止循环引用导致 prod jar 启动失败（本次以运行时参数 `--spring.main.allow-circular-references=true` 临时拉起）；需代码级解耦消除循环依赖环，并常态化 prod jar 冒烟；
+    - **N4（新候选）：migrate.sh 脚本迁移断链缺陷**：add-leaderboard-daily-summary.sql 缺少 USE 库限定词导致 migrate.sh 全量跑时报「No database selected」中止，后续迁移（如 add-record-visibility.sql）漏执行；需修复该 SQL 与脚本容错。
