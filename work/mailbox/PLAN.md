@@ -859,8 +859,8 @@
 | 核心实现 | R1 在 SportRecordService.java:1076 补齐 DerivedTrackMetrics 4 项 @param 注释标签清零存量违规；R2 在 alert-rules.yml 增加 VerifyHikariPoolSaturated 与 GatewayWrite504Spike 容量规则；R3 网关支持 route-record-service 差异化专属限流 QPS 配置与单测守卫 |
 | 门禁要求 | 七门禁全量逐位（surefire 63/78/221/323/203/110/36 只增不减，gateway-service 78→79，总计 1035 测）+ checkstyle --static=record-service 退出码 0 + 契约门（判据 B 机器比对）+ token 门 29 项逐位持平（期望值口径：C-02 树 = 2249 + 29 = 2278）+ 词面门四 locale ZERO_HIT + 探针阳性对照 + diff --check 净；双提交 C-01/C-02 |
 | 受限预登记 | 保持依赖纯净，不变更微服务对外核心业务 API 契约 |
-| 实施与门禁 | 待实施 |
-| 指导亲核 | 待亲核 |
-| 独立复核 | 免独立复核（MEDIUM 档） |
-| 是否到达外部门槛 | 本地代码规范、告警与网关流控配置课题，不引入新外部依赖 |
-| 状态 | **已立项待派发（2026-10-18 指导侧）**：开工基线 main @ c27e94b，两件套已立项，待派发实施子 agent |
+| 实施与门禁 | C-01 `e37107b`（feat(gateway,record)，恰 5 文件 +83/−2：补齐 DerivedTrackMetrics 4 项 @param 注释 + 扩充容量告警组 + 网关写链路差异化限流与单测）+ C-02 `c0544cb`（台账 1 文件 +51 行）；门禁全绿：surefire gateway-service 78→79 净增 +1（全量七模块 63/79/221/323/203/110/36 严格持平或净增，总计 1035 测零失败零跳过）、record-service 静态检查 Checkstyle 违规 4→0 存量彻底清零（BUILD SUCCESS 退出码 0）、契约门纯净 worktree 判据 B 6 路径全等 rc=0、token 门基线 2249 逐位持平 + 终态 2278 精确吻合期望值（自枚举各 +1）、词面门四 locale ZERO_HIT + 探针阳性对照、diff --check 净（纯 LF） |
+| 指导亲核 | MEDIUM 档亲核三块全 PASS：①Git 状态与提交链对账（porcelain 空、恰 2 笔、diff 6 文件与 handoff §2 逐位一致、零推送）；②高风险定向抽查（SportRecordService @param 注释规范、alert-rules.yml 容量告警组结构合规、SentinelGatewayRuleConfig 三元路由专属限流逻辑正确、SentinelGatewayRuleConfigTest 7 路由全覆盖反射单测通过、生产代码 100% 零越界）；③一致性裁决（门禁全绿、读数对账全通过） |
+| 独立复核 | 免独立复核（MEDIUM 档由指导侧亲核三块把关） |
+| 是否到达外部门槛 | **已到达本地封盘**：封盘批次（4 笔 = TASK-268 立项笔 `0b928ab` + C-01 `e37107b` + C-02 `c0544cb` + 封盘笔）统一推送 origin/main，GitHub Actions CI 外部终验随后登记 |
+| 状态 | **已终裁 ACCEPT（2026-10-18 指导侧）**：指导亲核三块全 PASS 零阻断；6 文件白名单双向全等；record-service 存量 Checkstyle 违规首次清零；Prometheus 容量监控告警规则扩充；网关写链路差异化限流防御闭环；封盘批次统一推送 origin/main，待 CI 外部终验 |
