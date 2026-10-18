@@ -951,5 +951,23 @@
 | 实施与门禁 | C-01 `bdd1dd7`（feat(record,web)，13 文件 +1364/−6：KilometerSplitDTO/RecordSplitsDTO + SportRecordService 插值切片与 RecordController /splits 端点 + 前端 splits.ts 工具与 vitest 测试 + GPX 海拔双向增强 + 记录详情页公里切片卡片与海拔折线 + E2E mock）+ C-02 `1d63fe2`（台账 1 文件 +68 行）；门禁全绿：surefire 1104 测全绿（0 失败 0 错误 0 跳过，record 351→368 净增 +17）、静态门 Checkstyle 违规保持 0、前端 vitest 80 全绿（63→80，splits 11 + gpx 6）+ vue-tsc 类型检查 0 错 + E2E 14/14 全绿、契约门判据 B 14 路径全等 rc=0、token 门基线 2394 逐位持平 + 终态 2423 精确吻合期望值（自枚举各 +1）、词面门四 locale ZERO_HIT、diff --check 净（纯 LF） |
 | 指导亲核 | MEDIUM 档亲核三块全 PASS：①Git 状态与提交链对账（porcelain 空、恰 2 笔、diff 14 文件与 handoff §2 逐位一致、零推送）；②高风险定向抽查（KilometerSplitDTO 与 RecordSplitsDTO 契约字段全集、getRecordSplits 线性插值算法与归属防护、GPX <ele> 提取与回显、纯前端 splits.ts 与详情页卡片、E2E mock 补齐）；③一致性裁决（门禁全绿、读数对账全通过，实施期端点参数顺序笔误如实登记并修复） |
 | 独立复核 | 免独立复核（MEDIUM 档由指导侧亲核三块把关） |
-| 是否到达外部门槛 | **已到达本地封盘**：封盘批次（4 笔 = TASK-273 立项笔 `c53e951` + C-01 `bdd1dd7` + C-02 `1d63fe2` + 封盘笔）统一推送 origin/main，GitHub Actions CI 外部终验随后登记 |
-| 状态 | **已终裁 ACCEPT（2026-10-18 指导侧）**：指导亲核三块全 PASS 零阻断；14 文件白名单双向全等；公里分段配速与海拔剖面图全链路闭环；封盘批次统一推送 origin/main，待 CI 外部终验 |
+| 是否到达外部门槛 | **已到达外部门槛（外部终验达成）**：封盘批次已统一推送 origin/main，GitHub Actions CI run `39136624184` 权威核验 conclusion=success 全 job 绿（build ✓ 10m29s / web ✓ 21s） |
+| 状态 | **已终裁 ACCEPT（2026-10-18 指导侧）**：指导亲核三块全 PASS 零阻断；14 文件白名单双向全等；公里分段配速与海拔剖面图全链路闭环；CI run `39136624184` 全绿外部终验达成 |
+
+
+## 验收记录：TASK-274（轨迹智能纠偏对比回放与每周运动智能周报，FULL 档，2026-10-18 立项）
+
+| 项 | 内容 |
+| --- | --- |
+| 开工基线 | main @ `b39d672`（TASK-273 封盘笔；本地与 origin/main 平齐，CI run `39136624184` 全绿） |
+| 分级定档 | FULL（涉及 PostGIS 道路投影吸附反算经纬度、前端 SVG 双图层纠偏对比与 Track Player 动态回放插值控制器、record-service 自然周跑量聚合与环比变化及智能建议、前端首页周报卡片与海报 Modal；指导亲核三块 + 独立复核五块把关） |
+| 亲验证据 | 系统已闭环 54 项技术债、徽章体系、赛段刷榜与公里分段；轨迹点具备路网偏离粗筛但未外显吸附后中线同屏对比与动态循迹回放，宏观上缺乏自然周维度的运动周报总结与健康恢复建议；纯内存几何计算与聚合，零数据库表变更，收益显著 |
+| 白名单 | 15+1 项：`api/src/main/java/com/sportverify/api/mapmatch/dto/TrackComparisonDTO.java` + `api/src/main/java/com/sportverify/api/record/dto/WeeklyDigestDTO.java` + `mapmatch-service/src/main/java/com/sportverify/mapmatch/service/MapMatchService.java` + `mapmatch-service/src/main/java/com/sportverify/mapmatch/controller/MapMatchController.java` + `mapmatch-service/src/test/java/com/sportverify/mapmatch/service/MapMatchComparisonTest.java` + `record-service/src/main/java/com/sportverify/record/service/SportRecordService.java` + `record-service/src/main/java/com/sportverify/record/controller/RecordController.java` + `record-service/src/test/java/com/sportverify/record/service/WeeklyDigestServiceTest.java` + `record-service/src/test/java/com/sportverify/record/controller/RecordControllerTest.java` + `web/src/api/client.ts` + `web/src/utils/track-playback.ts` + `web/src/utils/__tests__/track-playback.test.ts` + `web/src/pages/record-detail.page.vue` + `web/src/pages/index.page.vue` + `web/e2e/helpers.ts` + 台账 `work/mailbox/tasks/TASK-274/handoff.md` |
+| 核心实现 | R1 领域 DTO；R2 mapmatch 道路投影吸附计算与 /match/compare 端点；R3 前端回放算法封装与单测；R4 详情页纠偏双图层对比与 Track Player 回放控制器；R5 record 自然周周报聚合与 /records/weekly-digest 端点；R6 首页周报卡片与海报弹窗；R7 client.ts 与 E2E mock 补齐 |
+| 门禁要求 | 七门禁全量逐位（surefire 63/79/221/368/203/120/50 保持只增不减，总计 1104 测）+ checkstyle --static=mapmatch-service/record-service 退出码 0 + 契约门 + token 门 29 项逐位持平 + 词面门四 locale ZERO_HIT + diff --check 净；双提交 C-01/C-02 |
+| 受限预登记 | 纯内存计算，零数据库表定义与迁移变更，不阻塞运动记录写链路 |
+| 实施与门禁 | 待实施 |
+| 指导亲核 | 待实施 |
+| 独立复核 | 待实施 |
+| 是否到达外部门槛 | **未到达**：在途任务待实施 |
+| 状态 | **进行中（待实施）**（开工基线 b39d672） |
