@@ -8,10 +8,10 @@
 
 ## 1. 当前代码基线与外部状态
 
-- **当前分支与 HEAD**：`main` 分支，最新已终裁闭环任务为 **TASK-275**（跑团俱乐部与团队里程榜系统，FULL 档；立项笔 `a642d5d` / C-01 `53732b0` / C-02 `ec7f517` / 封盘笔已统一推送 origin/main，Surefire 全仓 1164 测全绿，前端 vitest 90 测全绿，E2E 14/14 全绿；CI 外部终验随后登记）。当前在途任务数 0。
-- **外部 CI 门槛状态**：TASK-273 封盘批次经 CI run **`39136624184`** 权威核验 conclusion=**success** 全 job 绿（build ✓ 10m29s / web ✓ 21s）；TASK-274 封盘批次推送后 CI run 39147321152 偶现单测隔离问题，已在 TASK-275 R0 中以 TableInfoHelper 稳妥闭环；TASK-275 封盘批次已推送，CI run 待观察（全绿后由补记笔登记运行号）。
-- **工作树状态**：TASK-275 已封盘，封盘批次已推送，工作树纯净。
-- **当前在途任务数**：`0` 个。
+- **当前分支与 HEAD**：`main` 分支，最新已终裁闭环任务为 **TASK-275**（跑团俱乐部与团队里程榜系统，FULL 档；立项笔 `a642d5d` / C-01 `53732b0` / C-02 `ec7f517` / 封盘笔 `fba1cb3` 已统一推送 origin/main，Surefire 全仓 1164 测全绿，前端 vitest 90 测全绿，E2E 14/14 全绿；CI 外部终验随后登记）。当前在途推进任务为 **TASK-276（跑团域二期：团长移交 · 里程入账与贡献明细 · memberCount 真实计数，FULL 档，开工基线 = TASK-276 立项笔（哈希见实施派发书），立项派发实施中）**，后继串行任务 **TASK-277（mapmatch Checkstyle 存量清零治理，MEDIUM 档，待 TASK-276 封盘后开工）**。
+- **外部 CI 门槛状态**：TASK-273 封盘批次经 CI run **`39136624184`** 权威核验 conclusion=**success** 全 job 绿（build ✓ 10m29s / web ✓ 21s）；TASK-274 封盘批次推送后 CI run 39147321152 偶现单测隔离问题，已在 TASK-275 R0 中以 TableInfoHelper 稳妥闭环；TASK-275 封盘批次已推送，CI run `39184001453` 观察中（全绿后由补记笔登记运行号）。
+- **工作树状态**：TASK-276 立项中（立项笔待落库后与 TASK-275 补记笔一并随批次推送节奏管理）。
+- **当前在途任务数**：`2` 个（TASK-276 实施中 + TASK-277 立项待串行）。
 
 
 
@@ -120,13 +120,13 @@
 
 ## 4. 当前推进与唯一推荐动作
 
-- **当前推进**：**TASK-275（跑团俱乐部与团队里程榜系统，FULL 档）已终裁 ACCEPT 予以封盘**（开工基线 main @ `a642d5d`（立项笔）；白名单恰 24+1 文件，包含 running_club/club_member DDL 双写迁移、ClubDTO 四组领域 DTO、WeeklyDigestServiceTest TableInfoHelper 隔离加固（R0）、ClubService 七方法与 ClubController 七端点、LeaderboardService 跑团总/周榜 ZSet 双 ZINCRBY 与名称 Hash 缓存、前端跑团广场/创建 Modal/成员抽屉/榜单跑团 Tab/首页我的跑团卡片/导航入口、E2E mock 补齐）；指导亲核三块 + 独立复核五块双 PASS 零阻断；surefire 全仓 1135→1164 测全绿（user +20 / leaderboard +9）、vitest 90、E2E 14/14。当前在途 0 个。
+- **当前推进**：**TASK-276（跑团域二期：团长移交 · 里程入账与贡献明细 · memberCount 真实计数，FULL 档）立项完成**（开工基线 main @ `fba1cb3`；白名单 21 项：api Feign 契约扩展 6 + record 入账服务 3 + user 移交与 internal 4 + leaderboard 贡献与计数 3 + web 4 + handoff；核心设计：R2 入账挂 SportRecordService.statusCallback 终态对账（Redisson recordId 幂等 + best-effort 旁路 + 申诉改判净额正确），R3 成员贡献 ZSet `leaderboard:club:member:{clubId}`，R4 memberCount 经 InternalClubController 批查真实计数降级 0；零 DDL）；后继串行 **TASK-277（mapmatch Checkstyle 存量清零治理，MEDIUM 档，266 项零语义清零）** 已立项待 TASK-276 封盘后派发。当前在途 2 个。
   - **唯一推荐动作**：
-    1. 封盘批次（4 笔 = TASK-275 立项笔 `a642d5d` + C-01 `53732b0` + C-02 `ec7f517` + 封盘笔）统一推送至 origin/main；
-    2. 观察 GitHub Actions CI 外部终验结果（待 CI 全绿后由补记笔登记运行号并闭环）；
-    3. **10-19 挂账事项（沿 TASK-252）**：ubuntu-26.04 标签可用后，手动 `workflow_dispatch` 触发 probe26=true 试跑 probe-ubuntu26 job，读数随补记笔登记；通过后另立课题平移 runs-on；
-    4. **治理挂账（非阻断，随下一课题/批次顺手）**：词面门脚本入库或 spec 引用修正（`check-public-wording.sh` 不在仓，词面门实体为手跑命令 + `.trae/tmp/lex268.txt` 模式文件）、`scripts/verify/README.md` TASK-184 状态滞后订正、token 计数口径统一（TASK-254 N2：逐项 git grep -cF 文件出现次数为权威口径）；
-    5. **后续业务演进**：可推进「方向二：个人全城运动足迹热力图」，或跑团域二期（团长移交、跑团里程贡献明细、memberCount 真实计数同步链路——TASK-275 预留恒 0 字位），或 `mapmatch-service` Checkstyle 规则集治理。
+    1. 派发实施子 Agent 执行 TASK-276（按指导侧实施派发包），C-01/C-02 落库后走指导亲核三块 + 独立复核五块（FULL 档）终裁封盘；
+    2. TASK-276 封盘后串行派发 TASK-277（MEDIUM 档免独立复核，指导亲核收口）；
+    3. TASK-275 封盘批次 CI run `39184001453` 观察中，全绿后补记笔随下一批次推送；若红按签名归因（重点观察 WeeklyDigestServiceTest R0 修复效果）；
+    4. **10-19 挂账事项（沿 TASK-252）**：ubuntu-26.04 标签可用后手动 `workflow_dispatch` 触发 probe26 试跑，读数随补记笔登记；
+    5. **治理挂账（非阻断）**：词面门脚本入库或 spec 引用修正（check-public-wording.sh 不在仓）、`scripts/verify/README.md` TASK-184 状态滞后订正、token 计数口径统一（TASK-254 N2）。
 
 
 

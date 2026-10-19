@@ -998,3 +998,37 @@ ecord-service/src/test/java/com/sportverify/record/controller/BadgeControllerTes
 | 独立复核 | 五块全 PASS 零阻断：块一提交链规范与白名单双向全等（25 路径逐位匹配）；块二红线与零触碰（零破坏性 DDL、双写 VERBATIM-IDENTICAL、零未声明依赖 jakarta.validation 既有声明、−11 删除行逐行审阅全为 UI 替换改写、R0 独立单跑 18 测全绿）；块三七门禁独立复跑 7/7 亲自实测吻合（surefire 1164、契约门 rc=0 + 负例对照、token 三树 2481/2481/2510 逐位、词面门四 locale ZERO_HIT + 阳性对照、diff 净、blob CR=0 无 BOM）；块四证据链核对（§3 读数逐位一致、R0–R6 每项代码实证、§5 四项决策全部坐实——e512add 负例 rc=1 实证基线口径偏差必要性、包级私有顶级类 Spring 装配、错误码复用、memberCount 恒 0 javadoc）；块五只改清单三向全等；非阻断 4 项登记（.trae/tmp scratch 维持现状 gitignored、check-public-wording.sh 引用缺口词面门实体为手跑命令、R0 单跑等价离线口径透明登记、scripts/verify/README.md TASK-184 状态滞后顺带观察） |
 | 是否到达外部门槛 | **已到达本地封盘**：封盘批次（4 笔 = TASK-275 立项笔 `a642d5d` + C-01 `53732b0` + C-02 `ec7f517` + 封盘笔）统一推送 origin/main，GitHub Actions CI 外部终验随后登记 |
 | 状态 | **已终裁 ACCEPT（2026-10-19 指导侧）**：指导亲核三块 + 独立复核五块双 PASS 零阻断；25 文件白名单双向全等；跑团俱乐部与团队里程榜系统全链路闭环；封盘批次统一推送 origin/main，待 CI 外部终验 |
+
+## TASK-276：跑团域二期（团长移交 · 里程入账与贡献明细 · memberCount 真实计数）
+
+| 项 | 内容 |
+| :--- | :--- |
+| 立项时间 | 2026-10-19 |
+| 任务分级 | **FULL 档**（跨 user/record/leaderboard 核心服务逻辑 + 结算链路扩展） |
+| spec / handoff | work/mailbox/tasks/TASK-276/spec.md / handoff.md |
+| 背景 | TASK-275 遗留四缺口：transferCaptain 不存在（仅拦截提示语）、recordClubDistance 生产链路零调用（里程榜无数据源）、贡献明细无承载、memberCount 恒 0 |
+| 核心要点 | R1 团长移交端点与双 role 同事务更新；R2 record 侧 ClubDistanceSettleService 挂 statusCallback 终态对账入账（Redisson recordId 幂等 + best-effort 旁路 + 申诉改判净额正确）；R3 成员贡献 ZSet `leaderboard:club:member:{clubId}` 与贡献榜端点；R4 InternalClubController 批查 + memberCount 真实计数（降级 0）；R5 前端贡献展示与 E2E mock；零 DDL |
+| 白名单 | 21 项（20 业务/测试/UI + 1 handoff），零触碰 sql/、pom、gateway/verify/mapmatch |
+| 门禁要求 | 七门禁全绿，基线 1164 测只增不减（详见 spec §四） |
+| 实施与门禁 | （待子 Agent 落地回填） |
+| 指导亲核 | （待子 Agent 落地后执行） |
+| 独立复核 | （FULL 档，待子 Agent 落地后派发） |
+| 是否到达外部门槛 | **进行中（待实施）** |
+| 状态 | **进行中（2026-10-19 指导侧立项）**：TASK-276 跑团域二期立项，实施派发令生效中 |
+
+## TASK-277：mapmatch-service Checkstyle 存量清零治理
+
+| 项 | 内容 |
+| :--- | :--- |
+| 立项时间 | 2026-10-19 |
+| 任务分级 | **MEDIUM 档**（零核心逻辑/安全语义改动；触碰 pom 基建故门禁全量逐位；免独立复核，指导侧亲核收口） |
+| spec / handoff | work/mailbox/tasks/TASK-277/spec.md / handoff.md |
+| 背景 | TASK-274 确证 mapmatch Checkstyle 结构性红灯 266 项全属基线存量（无独立规则集，record/leaderboard 各有同源 checkstyle.xml），获基线豁免挂账至今 |
+| 核心要点 | R1 新增 mapmatch checkstyle.xml（与 leaderboard 逐字节一致）+ pom 插件段对齐（3.6.0/9.3 引擎同源）；R2 266 项存量零语义清零（仅注释/格式/命名，禁可执行语义变更）；R3 --static=mapmatch-service 0 违规 + leaderboard 连带漂移复跑；串行开工（TASK-276 封盘后） |
+| 白名单 | 上限 19 项（pom + 新配置 + mapmatch 6 主类 + 10 测试文件择实 + handoff），handoff 声明与 diff 双向全等 |
+| 门禁要求 | 七门禁全绿，mapmatch 57 测持平或增（详见 spec §四） |
+| 实施与门禁 | （待子 Agent 落地回填） |
+| 指导亲核 | （待子 Agent 落地后执行） |
+| 独立复核 | （MEDIUM 档免独立复核；执行侧回报与亲核矛盾时升级回 FULL） |
+| 是否到达外部门槛 | **进行中（待实施）** |
+| 状态 | **进行中（2026-10-19 指导侧立项）**：TASK-277 立项完成，待 TASK-276 封盘后串行派发 |
