@@ -1032,3 +1032,20 @@ ecord-service/src/test/java/com/sportverify/record/controller/BadgeControllerTes
 | 独立复核 | （MEDIUM 档免独立复核；执行侧回报与亲核零矛盾，未触发升级回 FULL） |
 | 是否到达外部门槛 | **已到达本地封盘**：封盘批次（4 笔 = C-01 `0689459` + C-02 `8ef0919` + TASK-276 补记笔 `26696a6` + 封盘笔）统一推送 origin/main，CI 外部终验随后登记 |
 | 状态 | **已终裁 ACCEPT（2026-10-19 指导侧）**：指导亲核三块 PASS；mapmatch 独立规则集补齐 + 266 项存量零语义清零；sun_checks 字面全零不可达四条理由如实记账（JavadocPackage 需 4 个 package-info 白名单外 / HideUtilityClassConstructor 须改可执行语义 / JavadocStyle 中文句读冲突 / FinalParameters 触签名红线）未用 suppressions 掩盖；MatchProperties 14 项全落裁剪类别与 10 测试类扫描面外均不入 diff 口径成立；封盘批次统一推送 origin/main，待 CI 外部终验 |
+
+## TASK-278：跑团里程对账与回退补偿（锚点持久化 + 对账任务）
+
+| 项 | 内容 |
+| :--- | :--- |
+| 立项时间 | 2026-10-19 |
+| 任务分级 | **FULL 档**（核心结算旁路重构 + DDL + 跨服务对账语义，强制独立复核） |
+| spec / handoff | work/mailbox/tasks/TASK-278/spec.md / handoff.md |
+| 背景 | TASK-276 复核 N3/N4/N5 收敛课题（BACKLOG 条目 22）：跑团里程幂等态与入账快照仅存 24h TTL Redis 键，无持久化锚点、无对账权威源；立项侦察另坐实两处——跨周错扣（weekStart 归一回退时当周）与跑团三组 ZSet 对账空缺（settleAndReconcile 只覆盖个人总榜） |
+| 核心要点 | R1 `club_distance_contribution` 锚点表（record_db，沿 leaderboard_contribution 范式，02 双写 + migrations 幂等迁移）；R2 record 侧锚点化重构（Redis 幂等键退役、回退取入账时点快照 clubId/week_start/distance、best-effort 保持）；R3 leaderboard 对账任务扩展（三组键 ZADD 纠偏 + 孤儿回滚 + 残留清理 + 解散团清零）；R4 N6/N7 顺手项（Javadoc 表述精确化 + size 语义核对） |
+| 白名单 | 上限 13 项（2 SQL + 4 record 主类与测试 + 4 leaderboard 主类与测试 + 2 择实 + handoff），零触碰 api 模块/statusCallback 挂点/状态机/MQ 参数（详见 spec §三） |
+| 门禁要求 | 七门禁全量逐位 + DDL 幂等双跑，基线 1197 = 63/79/250/406/203/139/57 只增不减（详见 spec §四） |
+| 实施与门禁 | （待子 Agent 落地回填） |
+| 指导亲核 | （待子 Agent 落地后执行） |
+| 独立复核 | （FULL 档强制；复核派发包由指导侧生成，用户派发复核子 Agent） |
+| 是否到达外部门槛 | **进行中（待实施）** |
+| 状态 | **进行中（2026-10-19 指导侧立项）**：立项侦察行号级证据坐实五处病灶（含新发现跨周错扣），六项预注册裁决定案（锚点表落 record_db / 幂等键退役 / 回退取锚点快照 / Feign 失败不回滚占位 / 历史周键残留接受 / 解散团清零），待派发实施 |

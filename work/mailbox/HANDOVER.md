@@ -8,10 +8,10 @@
 
 ## 1. 当前代码基线与外部状态
 
-- **当前分支与 HEAD**：`main` 分支，最新已终裁闭环任务为 **TASK-277**（mapmatch-service Checkstyle 存量清零治理，MEDIUM 档；开工基线 `5daff7e` / C-01 `0689459` / C-02 `8ef0919` / TASK-276 补记笔 `26696a6` / 封盘笔已统一推送 origin/main，Surefire 全仓 1197 测全绿，vitest 90，E2E 14/14，mapmatch Checkstyle 266→0；CI 外部终验随后登记）。当前在途任务数 `0`（跑团域两期 + mapmatch 治理全部收口）。
+- **当前分支与 HEAD**：`main` 分支，最新已终裁闭环任务为 **TASK-277**（mapmatch-service Checkstyle 存量清零治理，MEDIUM 档；开工基线 `5daff7e` / C-01 `0689459` / C-02 `8ef0919` / TASK-276 补记笔 `26696a6` / 封盘笔已统一推送 origin/main，Surefire 全仓 1197 测全绿，vitest 90，E2E 14/14，mapmatch Checkstyle 266→0；CI 外部终验随后登记）。当前在途推进任务为 **TASK-278（跑团里程对账与回退补偿，FULL 档，立项就绪待派发实施）**。
 - **外部 CI 门槛状态**：TASK-273 封盘批次经 CI run **`39136624184`** 权威核验 conclusion=**success** 全 job 绿（build ✓ 10m29s / web ✓ 21s）；TASK-274 封盘批次 CI run 39147321152 偶现单测隔离问题已在 TASK-275 R0 以 TableInfoHelper 闭环；**TASK-275 封盘批次经 CI run `39184001453` 权威核验 conclusion=success 全 job 绿（2026-10-19 补记；R0 修复验证通过，前述红因未复现）**；TASK-276 封盘批次经 CI run **`39192071882`** 权威核验 conclusion=**success** 全 job 绿（2026-10-19 补记；本地两次 watch exit 1 均系进程误报非 run 失败）。
-- **工作树状态**：TASK-277 已封盘，封盘批次已推送，工作树纯净。
-- **当前在途任务数**：`0` 个。
+- **工作树状态**：TASK-278 已立项（立项笔本地落库，随其封盘批次统一推送），工作树纯净。
+- **当前在途任务数**：`1` 个（TASK-278 跑团里程对账与回退补偿，FULL 档，立项就绪待派发实施）。
 
 
 
@@ -122,12 +122,12 @@
 
 ## 4. 当前推进与唯一推荐动作
 
-- **当前推进**：**TASK-277（mapmatch Checkstyle 存量清零治理，MEDIUM 档）已终裁 ACCEPT 予以封盘**（开工基线 `5daff7e` / C-01 `0689459` 恰 7 文件 +365/−6 / C-02 `8ef0919` 台账 / TASK-276 补记笔 `26696a6` / 封盘笔，批次 4 笔统一推送 origin/main；surefire 1197 持平（mapmatch 57 改前后双跑逐位一致）、--static=mapmatch-service Checkstyle 266→0 且 SpotBugs High=0 / PMD 0、leaderboard 零连带漂移、token 三树 2539/2539/2568；TASK-276 CI run `39192071882` 全绿补记完整闭环）。**当前在途 0，跑团域两期 + mapmatch 治理全部收口。**
+- **当前推进**：**TASK-278（跑团里程对账与回退补偿，FULL 档）立项完成**：立项侦察行号级证据坐实五处病灶（N3 双记窗口含正向对称 / N4 TTL 过期静默跳过 / N5 跨团漂移（club_member 物理 DELETE 换团历史零记录）/ 新发现跨周错扣（weekStart 归一回退时当周）/ 跑团三组 ZSet 对账空缺），修法定案锚点表范式（`club_distance_contribution` 持久化 + Redis 幂等键退役 + 回退取入账时点快照 + 对账任务扩展），六项预注册裁决定案见 spec §五；spec/handoff 已在 `work/mailbox/tasks/TASK-278/` 备妥，立项笔本地落库随其封盘批次统一推送。TASK-277 封盘批次 CI run `39197076329` 观察中。
   - **唯一推荐动作**：
-    1. TASK-277 封盘批次 CI run 观察中，全绿后补记笔随下一批次推送；若红按签名归因不刷绿；
-    2. **10-19 挂账事项（沿 TASK-252）**：ubuntu-26.04 标签可用后手动 `workflow_dispatch` 触发 probe26 试跑，读数随补记笔登记；
-    3. **治理挂账（非阻断）**：跑团里程对账与回退补偿课题（BACKLOG 条目 22：N3 双记窗口/N4 TTL 过期/N5 跨团漂移 + N6/N7 顺手项）、词面门脚本入库或 spec 引用修正、`scripts/verify/README.md` TASK-184 状态滞后订正、token 计数口径统一（TASK-254 N2）；
-    4. **下一课题方向待用户拍板**：候选为 BACKLOG 条目 22 跑团里程对账课题立项，或启动新一轮立项侦察。
+    1. 派发实施子 Agent 执行 TASK-278（FULL 档：七门禁全量逐位 + 指导亲核 + 独立复核三环节；核心验收 = 锚点表落地 + 幂等键退役 + 对账任务三组键纠偏 + 基线 1197 只增不减）；
+    2. TASK-277 封盘批次 CI run `39197076329` 观察中，全绿后补记笔随 TASK-278 批次推送；若红按签名归因不刷绿；
+    3. **10-19 挂账事项（沿 TASK-252）**：ubuntu-26.04 标签可用后手动 `workflow_dispatch` 触发 probe26 试跑，读数随补记笔登记；
+    4. **治理挂账（非阻断）**：词面门脚本入库或 spec 引用修正、`scripts/verify/README.md` TASK-184 状态滞后订正、token 计数口径统一（TASK-254 N2）。
 
 
 
