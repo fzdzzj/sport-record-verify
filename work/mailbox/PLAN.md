@@ -1061,4 +1061,4 @@ ecord-service/src/test/java/com/sportverify/record/controller/BadgeControllerTes
 | 核心要点 | R1 挑战赛系统（challenge/challenge_participant + @Scheduled 结算 + BadgeService 直调徽章联动）；R2 跑团对抗赛（club_challenge + 锚点表 (club_id, week_start) 同库聚合定胜负）；R3 评论系统（record_comment + CommentEvent MQ best-effort + user-service 新消费者仅 2 件沿 NotificationEventConsumer 逐字范式）；R4 年度报告（独立 YearReportService COALESCE 口径聚合 + 前端报告页/海报）；R5 收口 |
 | 白名单 | 上限 40 项（2 SQL + 16 record 主类 + 4 record 测试 + 2 user 消费者 + 2 api DTO + 8 web + 2 择实 + 5 台账），零触碰 SportRecordService 既有行 / 锚点表语义 / 四服务 src / pom / package.json（详见 spec §三） |
 | 门禁要求 | 七门禁全量逐位 + DDL 幂等双跑，基线 1208 = 63/79/250/411/203/145/57 只增不减，token 期望 C-02 树 = 基线 + 29（详见 spec §四） |
-| 状态 | **已撤项（2026-10-19 项目封盘）**：用户决策项目就此封盘（面试素材已饱和，业务域堆叠边际收益趋零），已立项未派发零实施零代码改动；spec/handoff 保留为历史记录，I 系候选全部冻结 |
+| 状态 | **已撤项（2026-10-19 项目封盘）**：用户决策项目就此封盘（复盘素材已饱和，业务域堆叠边际收益趋零），已立项未派发零实施零代码改动；spec/handoff 保留为历史记录，I 系候选全部冻结 |
