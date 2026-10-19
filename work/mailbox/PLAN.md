@@ -1010,11 +1010,11 @@ ecord-service/src/test/java/com/sportverify/record/controller/BadgeControllerTes
 | 核心要点 | R1 团长移交端点与双 role 同事务更新；R2 record 侧 ClubDistanceSettleService 挂 statusCallback 终态对账入账（Redisson recordId 幂等 + best-effort 旁路 + 申诉改判净额正确）；R3 成员贡献 ZSet `leaderboard:club:member:{clubId}` 与贡献榜端点；R4 InternalClubController 批查 + memberCount 真实计数（降级 0）；R5 前端贡献展示与 E2E mock；零 DDL |
 | 白名单 | 21 项（20 业务/测试/UI + 1 handoff），零触碰 sql/、pom、gateway/verify/mapmatch |
 | 门禁要求 | 七门禁全绿，基线 1164 测只增不减（详见 spec §四） |
-| 实施与门禁 | （待子 Agent 落地回填） |
-| 指导亲核 | （待子 Agent 落地后执行） |
-| 独立复核 | （FULL 档，待子 Agent 落地后派发） |
-| 是否到达外部门槛 | **进行中（待实施）** |
-| 状态 | **进行中（2026-10-19 指导侧立项）**：TASK-276 跑团域二期立项，实施派发令生效中 |
+| 实施与门禁 | C-01 `fb6adea`（feat(record,user,leaderboard,web)，20 文件 +1437/−40：ClubMemberContributionDTO + UserApi/LeaderboardApi 契约扩展（Fallback 读降级/写显式 4008）+ ClubDistanceSettleService 终态对账入账（trySet+compareAndSet 双向幂等、best-effort 旁路）+ transferCaptain 双 role 同事务 + InternalClubController + 成员贡献 ZSet 与贡献榜端点 + memberCount 批查真实计数（降级 0）+ 前端贡献标签/贡献抽屉/跑团 Tab 成员数 + E2E mock）+ C-02 `fe2e4bd`（台账 1 文件 +92/−12）；门禁全绿：surefire 1197 测（user 241→250 +9、record 392→406 +14、leaderboard 129→139 +10）0 败 0 错 0 跳、Checkstyle 0 违规、vitest 90、vue-tsc 0 错、E2E 14/14、契约门 21 路径 rc=0、token 三树 2510/2510/2539（=B+29）、词面门官方排除口径 ZERO_HIT、diff 净（纯 LF 无 BOM） |
+| 指导亲核 | FULL 档亲核三块全 PASS：①Git 对账（porcelain 空、恰 3 笔、21 文件与白名单双向全等、零推送）；②定向抽查（ClubDistanceSettleService 终态对账净额映射含 RE_CONFIRMED→RE_PASSED 再补账链路、trySet+CAS 幂等自洽从未入账不产生负里程、best-effort 全 catch 零抛；recordClubDistance 带符号三处 ZINCRBY 同号累加 + null weekStart 归一当周周一；transferCaptain 校验链完整双 role 同事务、错误码复用无新增段）；③一致性裁决（复核实测与 handoff §3 逐位吻合，三处申报判断均获独立实证）。三处申报判断（带符号净额/required=false 可选注入/trySet+CAS 复合幂等）均裁定合理采纳 |
+| 独立复核 | 五块全 PASS 零阻断：块一提交链 21 路径双向全等；块二红线（零触碰正则命中 0、−40 删除行逐行审阅无功能损失、负数 ZINCRBY 断言覆盖不弱于原 invalidArgs、内网端点网关 AuthGlobalFilter 404 不可达、required=false 旁路零 NPE 且 CircularDependencyTest 未改全绿、Fallback 4008 语义衔接正确、DTO 范式三要素齐备）；块三七门禁 7/7 独立复跑吻合（1197、token 2510/2510/2539 逐位、契约 21 路径 rc=0、词面门官方排除口径 3 树 × 4 locale 零命中 + 阴阳对照、diff 净、21 blob 纯 LF）；块四证据链（§3 逐位复现、R1–R5 代码实证——移交 7 用例含成员数/创建者不变断言、Settle 14/14、贡献查询降序/占位/钳制、幂等键为全新常量）；块五双向全等；非阻断 8 项登记（N1 台账逐文件统计 7 处精度偏差、N2 词面门未注明排除口径、N3 回退方向先占位后调用双记窗口、N4 幂等键 TTL 24h 过期回退静默跳过、N5 跨团漂移贡献残留、N6 size<=0 默认 20 先例一致、N7 javadoc 恒非负表述强于实现、N8 E2E TMP 环境依赖） |
+| 是否到达外部门槛 | **已到达本地封盘**：封盘批次（5 笔 = 立项笔 `9ab922d` + C-01 `fb6adea` + C-02 `fe2e4bd` + TASK-275 补记笔 `daec333` + 封盘笔）统一推送 origin/main，CI 外部终验随后登记 |
+| 状态 | **已终裁 ACCEPT（2026-10-19 指导侧）**：指导亲核三块 + 独立复核五块双 PASS 零阻断；21 文件白名单双向全等；团长移交 + 里程入账贡献链路 + memberCount 真实计数全链路闭环（零 DDL）；N3/N4/N5 收敛为对账课题挂账；封盘批次统一推送 origin/main，待 CI 外部终验 |
 
 ## TASK-277：mapmatch-service Checkstyle 存量清零治理
 
