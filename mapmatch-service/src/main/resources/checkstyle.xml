@@ -1,0 +1,262 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE module PUBLIC
+          "-//Checkstyle//DTD Checkstyle Configuration 1.3//EN"
+          "https://checkstyle.org/dtds/configuration_1_3.dtd">
+
+<!--
+  leaderboard-service 静态检查规则集（TASK-018）
+
+  一、来源与口径
+  本文件由 checkstyle 9.3 内置 sun_checks.xml 派生。派生方式是「有据裁剪」而非重写：
+  基线为「不配 configLocation 时 maven-checkstyle-plugin 3.6.0 的默认规则集」，
+  实测 N_default = 374 条违规（13 种规则），逐条裁剪理由见下方 [豁免] 注释。
+  保留的规则即本模块的静态检查闸门，全部实测 0 违规。
+
+  二、N_default 构成（checkstyle 9.3 / sun_checks，2026-09-22 实测）
+    JavadocStyle               90      ③ 豁免（本文件不启用）
+    JavadocMethod              82      ③ 豁免
+    LineLength                 79      ③ 保留但放宽阈值 80 -> 140
+    FinalParameters            65      ③ 豁免
+    JavadocVariable            22      ③ 豁免
+    JavadocPackage              8      ③ 豁免
+    HiddenField                 7      ③ 豁免
+    MissingJavadocMethod        5      ③ 豁免
+    OperatorWrap                4      ③ 豁免
+    MagicNumber                 4      ③ 豁免
+    DesignForExtension          4      ② 豁免
+    UnusedImports               3      ③ 豁免
+    HideUtilityClassConstructor 1      ① 豁免
+    ============================================================
+    合计                      374
+
+  三、豁免分类定义（四类，与任务包口径一致）
+    ① 误报
+    ② Lombok / 框架生成代码所致
+    ③ 风格项与既有代码库冲突
+    ④ 工具间重复规则
+
+  四、硬边界
+  本任务白名单内无 Java 源文件改动权，故凡「需改源码才能消除」的违规一律走显式豁免，
+  不做文件级屏蔽（不使用 suppressions 文件把问题藏起来），每条豁免在文件内就地注明理由。
+  红线：spotbugs 的 CORRECTNESS / MALICIOUS_CODE 类 High priority 问题不得豁免——本模块
+  实测该项为空（无 High priority），详见 TASK-018 handoff。
+
+  五、与 .editorconfig 的分工
+  .editorconfig 承载编辑器层约定（UTF-8 / LF / 4 空格 / 去尾空白），本文件承载可机械执行的
+  闸门；两者在「缩进用空格」「文件末尾留空行」「行尾不留空白」三条上同源。
+-->
+<module name="Checker">
+  <property name="severity" value="error"/>
+
+  <property name="fileExtensions" value="java, properties, xml"/>
+
+  <!-- 排除 module-info.java（sun 基线同款） -->
+  <module name="BeforeExecutionExclusionFileFilter">
+    <property name="fileNamePattern" value="module\-info\.java$"/>
+  </module>
+
+  <!--
+    文件级屏蔽入口（sun 基线同款）：声明的是 checkstyle-suppressions.xml，
+    该文件当前不存在且 optional=true，故恒为空操作。
+    口径：如需新增文件级豁免，须走评审并在 handoff 记账，不得用本入口静默掩盖。
+  -->
+  <module name="SuppressionFilter">
+    <property name="file" value="${org.checkstyle.sun.suppressionfilter.config}"
+              default="checkstyle-suppressions.xml" />
+    <property name="optional" value="true"/>
+  </module>
+
+  <!--
+    [豁免-③] JavadocPackage（N_default=8）
+    理由：要求每个包下存在 package-info.java；本模块 8 个包均无该文件，
+    新增 8 个文件超出本任务白名单（只授权 pom/checkstyle.xml/.editorconfig）。
+  -->
+  <!-- <module name="JavadocPackage"/> -->
+
+  <!-- 文件以换行符结尾 -->
+  <module name="NewlineAtEndOfFile"/>
+
+  <!-- properties 文件的键集合一致（本模块无 properties，保留以备后续） -->
+  <module name="Translation"/>
+
+  <!-- 单文件行数上限（sun 默认 2000） -->
+  <module name="FileLength"/>
+
+  <!--
+    [放宽-③] LineLength（N_default=79）
+    理由：sun 默认 max=80，而本仓既有代码最长行为 CacheConfig.java:89 的 136 字符
+    （实测 4 行超 120：CacheConfig:88/89/112、LeaderboardService:229）。
+    取 120 会引入 4 条存量违规，本任务白名单无 Java 源改动权；取 140 给既有最长行留余量，
+    同时仍能拦住真正失控的超长行（红绿取证即用本规则触发）。
+  -->
+  <module name="LineLength">
+    <property name="fileExtensions" value="java"/>
+    <property name="max" value="140"/>
+  </module>
+
+  <!-- 禁止用制表符缩进（与 .editorconfig indent_style=space 同源） -->
+  <module name="FileTabCharacter"/>
+
+  <!-- 禁止行尾空白（与 .editorconfig trim_trailing_whitespace=true 同源） -->
+  <module name="RegexpSingleline">
+    <property name="format" value="\s+$"/>
+    <property name="minimum" value="0"/>
+    <property name="maximum" value="0"/>
+    <property name="message" value="Line has trailing spaces."/>
+  </module>
+
+  <module name="TreeWalker">
+
+    <!-- ==================== Javadoc ==================== -->
+    <!-- Javadoc 注释必须写在声明正前方 -->
+    <module name="InvalidJavadocPosition"/>
+    <!--
+      [豁免-③] JavadocMethod（N_default=82）
+      理由：要求 public 方法补齐 @param/@return；既有代码未全覆盖，补齐须改 Java 源（白名单外）。
+    -->
+    <!-- <module name="JavadocMethod"/> -->
+    <!-- 类/接口的 Javadoc 存在性（本模块实测 0 违规，保留为闸门） -->
+    <module name="JavadocType"/>
+    <!--
+      [豁免-③] JavadocVariable（N_default=22）
+      理由：要求字段级 Javadoc；命中集中在 Lombok 注入字段与内部类私有字段
+      （CacheConfig 内部类 5 处、LeaderboardService 注入字段 6 处、LeaderboardEventConsumer 8 处等），
+      本仓既有风格不为注入字段写 Javadoc，补齐须改 Java 源。
+    -->
+    <!-- <module name="JavadocVariable"/> -->
+    <!--
+      [豁免-③] JavadocStyle（N_default=90）
+      理由：要求 Javadoc 首句以英文句号结尾；本仓 Javadoc 为中文多段落风格，
+      首句普遍不以「。」结尾（而是整段以「。」收尾或直接接 <p>），与 sun 的英文约定冲突。
+    -->
+    <!-- <module name="JavadocStyle"/> -->
+    <!--
+      [豁免-③] MissingJavadocMethod（N_default=5）
+      理由：与 JavadocMethod 同源；5 处为 LbApplication.main 与 UserMileage 的 getter/setter。
+    -->
+    <!-- <module name="MissingJavadocMethod"/> -->
+
+    <!-- ==================== 命名约定 ==================== -->
+    <module name="ConstantName"/>
+    <module name="LocalFinalVariableName"/>
+    <module name="LocalVariableName"/>
+    <module name="MemberName"/>
+    <module name="MethodName"/>
+    <module name="PackageName"/>
+    <module name="ParameterName"/>
+    <module name="StaticVariableName"/>
+    <module name="TypeName"/>
+
+    <!-- ==================== import 卫生 ==================== -->
+    <module name="AvoidStarImport"/>
+    <module name="IllegalImport"/> <!-- 默认禁 sun.* -->
+    <module name="RedundantImport"/>
+    <!--
+      [豁免-③] UnusedImports（N_default=3）
+      理由：3 条真实无用导入，但消除须改 Java 源（白名单外）。位置如实记账：
+        InternalLeaderboardController.java:3  com.sportverify.api.leaderboard.LeaderboardApi
+        LeaderboardService.java:3             com.sportverify.api.event.RecordVerifyEvents
+        LeaderboardService.java:21            org.springframework.cache.annotation.EnableCaching
+      另注：PMD 默认规则集 UnnecessaryImport 命中其中后两处，为同一问题的工具间重叠，
+      该规则在 pom 的 PMD 配置中同样被豁免（见 pom.xml）。
+    -->
+    <!-- <module name="UnusedImports">
+      <property name="processJavadoc" value="false"/>
+    </module> -->
+
+    <!-- ==================== 规模 ==================== -->
+    <module name="MethodLength"/>
+    <module name="ParameterNumber"/>
+
+    <!-- ==================== 空白 ==================== -->
+    <module name="EmptyForIteratorPad"/>
+    <module name="GenericWhitespace"/>
+    <module name="MethodParamPad"/>
+    <module name="NoWhitespaceAfter"/>
+    <module name="NoWhitespaceBefore"/>
+    <!--
+      [豁免-③] OperatorWrap（N_default=4）
+      理由：要求换行时运算符另起一行；4 处均为 Mapper 注解内 SQL 字符串拼接
+      （LeaderboardContributionMapper.java:26/37/46/55 的 "+" 收在行尾），
+      改运算符位置会打乱既有 SQL 排版，且须改 Java 源。
+    -->
+    <!-- <module name="OperatorWrap"/> -->
+    <module name="ParenPad"/>
+    <module name="TypecastParenPad"/>
+    <module name="WhitespaceAfter"/>
+    <module name="WhitespaceAround"/>
+
+    <!-- ==================== 修饰符 ==================== -->
+    <module name="ModifierOrder"/>
+    <module name="RedundantModifier"/>
+
+    <!-- ==================== 块 ==================== -->
+    <module name="AvoidNestedBlocks"/>
+    <module name="EmptyBlock"/>
+    <module name="LeftCurly"/>
+    <module name="NeedBraces"/>
+    <module name="RightCurly"/>
+
+    <!-- ==================== 常见编码问题 ==================== -->
+    <module name="EmptyStatement"/>
+    <module name="EqualsHashCode"/>
+    <!--
+      [豁免-③] HiddenField（N_default=7）
+      理由：要求构造器/setter 参数不得与字段同名；7 处均为 `this.x = x` 式构造器赋值与
+      enum 构造器（ContributionStatus.java:23）、内部类构造器（CacheConfig.java:105/129）、
+      UserMileage 的 setter——本仓既有赋值风格，改名须改 Java 源。
+    -->
+    <!-- <module name="HiddenField"/> -->
+    <module name="IllegalInstantiation"/>
+    <module name="InnerAssignment"/>
+    <!--
+      [豁免-③] MagicNumber（N_default=4）
+      理由：4 处为业务常量字面量（CacheConfig:76 的 1000 容量、LeaderboardEventConsumer:101
+      的 30 秒重连间隔、LeaderboardService:212 的 1000 查询上限）；其中已提到具名常量的场合
+      sun 仍按「直接常数」判违规，逐条改须改 Java 源。
+    -->
+    <!-- <module name="MagicNumber"/> -->
+    <module name="MissingSwitchDefault"/>
+    <module name="MultipleVariableDeclarations"/>
+    <module name="SimplifyBooleanExpression"/>
+    <module name="SimplifyBooleanReturn"/>
+
+    <!-- ==================== 类设计 ==================== -->
+    <!--
+      [豁免-②] DesignForExtension（N_default=4）
+      理由：要求可被子类扩展的方法加 Javadoc 或声明 final/abstract/empty；
+      4 处全部落在 LeaderboardContributionMapper.UserMileage 的 getter/setter（Mapper:70/74/78/82），
+      该类是 MyBatis 列别名映射用的可变数据载体，为扩展而加 Javadoc/final 无实际语义收益。
+    -->
+    <!-- <module name="DesignForExtension"/> -->
+    <module name="FinalClass"/>
+    <!--
+      [豁免-①] HideUtilityClassConstructor（N_default=1）
+      理由：误报。命中 LeaderboardApplication.java:21——该类是 Spring Boot 启动类
+      （含 public static void main），不是「全静态成员的工具类」，sun 该规则按
+      「只有静态成员」判定，未识别启动类语义。
+    -->
+    <!-- <module name="HideUtilityClassConstructor"/> -->
+    <module name="InterfaceIsType"/>
+    <module name="VisibilityModifier"/>
+
+    <!-- ==================== 其他 ==================== -->
+    <module name="ArrayTypeStyle"/>
+    <!--
+      [豁免-③] FinalParameters（N_default=65）
+      理由：要求方法/构造器参数声明为 final；本仓（含 Spring 注入方法、Mapper 多参数签名）
+      既有约定不写 final 参数，65 处遍及全模块，逐条改须改 Java 源。
+    -->
+    <!-- <module name="FinalParameters"/> -->
+    <module name="TodoComment"/>
+    <module name="UpperEll"/>
+
+    <!-- 文件级屏蔽入口（sun 基线同款，当前文件不存在，恒为空操作） -->
+    <module name="SuppressionXpathFilter">
+      <property name="file" value="${org.checkstyle.sun.suppressionxpathfilter.config}"
+                default="checkstyle-xpath-suppressions.xml" />
+      <property name="optional" value="true"/>
+    </module>
+
+  </module>
+</module>

@@ -104,6 +104,58 @@
                     </excludes>
                 </configuration>
             </plugin>
+
+            <!-- checkstyle 3.6.0（2024-06 稳定版，内置 checkstyle 9.3——与基准计数同引擎）
+                 规则集与 leaderboard-service 现行 src/main/resources/checkstyle.xml 逐字节一致
+                 （sha256 289abf8d…c2e076，262 行），版本/配置项与 leaderboard-service pom 逐项对齐，
+                 仅 configLocation 指向本模块同名路径。 -->
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-checkstyle-plugin</artifactId>
+                <version>3.6.0</version>
+                <configuration>
+                    <configLocation>src/main/resources/checkstyle.xml</configLocation>
+                    <!-- 规则集含中文注释，显式锁定读取编码，避免随平台编码漂移 -->
+                    <inputEncoding>UTF-8</inputEncoding>
+                    <!-- 只检查主源码：测试源码不在本任务白名单内，纳入会引入无法消除的存量违规 -->
+                    <includeTestSourceDirectory>false</includeTestSourceDirectory>
+                    <!-- 违规必须逐条打印进构建日志，便于审计（不静默吞掉计数） -->
+                    <consoleOutput>true</consoleOutput>
+                    <logViolationsToConsole>true</logViolationsToConsole>
+                    <logViolationCountToConsole>true</logViolationCountToConsole>
+                </configuration>
+            </plugin>
+
+            <!-- PMD 3.28.0（内置 PMD 7.17.0）：规则集/口径与 leaderboard-service pom 逐项一致——
+                 显式引用插件内置默认规则集 rulesets/java/maven-pmd-plugin-default.xml，
+                 includeTests=false（口径与 checkstyle 一致），failurePriority=3、
+                 printFailingErrors=true（失败项逐条打印，不静默吞计数）。 -->
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-pmd-plugin</artifactId>
+                <version>3.28.0</version>
+                <configuration>
+                    <rulesets>
+                        <ruleset>rulesets/java/maven-pmd-plugin-default.xml</ruleset>
+                    </rulesets>
+                    <includeTests>false</includeTests>
+                    <failurePriority>3</failurePriority>
+                    <printFailingErrors>true</printFailingErrors>
+                </configuration>
+            </plugin>
+
+            <!-- SpotBugs 4.9.8.5：分析口径与阈值与 leaderboard-service pom 逐项一致
+                 （failThreshold=High、includeTests=false）。本模块仅有 EI_EXPOSE_REP2（Medium，
+                 构造器注入字段的经典误报，与 leaderboard-service 同源同判），High 级留作红线。 -->
+            <plugin>
+                <groupId>com.github.spotbugs</groupId>
+                <artifactId>spotbugs-maven-plugin</artifactId>
+                <version>4.9.8.5</version>
+                <configuration>
+                    <failThreshold>High</failThreshold>
+                    <includeTests>false</includeTests>
+                </configuration>
+            </plugin>
         </plugins>
     </build>
 

@@ -27,16 +27,27 @@ import java.util.List;
 @RequiredArgsConstructor
 public class SegmentController {
 
+    /** 赛段领域服务（构造器注入） */
     private final SegmentService segmentService;
 
-    /** 赛段列表（可选 sportType 过滤：1 RUNNING, 2 CYCLING；库空/库失联回退预置兜底赛段） */
+    /**
+     * 赛段列表（可选 sportType 过滤：1 RUNNING, 2 CYCLING；库空/库失联回退预置兜底赛段）。
+     *
+     * @param sportType 运动类型过滤（null = 全部）
+     * @return 赛段列表（统一 Result 包装）
+     */
     @GetMapping("/segments")
     public Result<List<SegmentDTO>> segments(
             @RequestParam(value = "sportType", required = false) Integer sportType) {
         return Result.success(segmentService.listSegments(sportType));
     }
 
-    /** 赛段完赛匹配（两段式：GIST 粗筛 + 两锚精匹），返回命中的冲刺成果列表（可为空） */
+    /**
+     * 赛段完赛匹配（两段式：GIST 粗筛 + 两锚精匹）。
+     *
+     * @param request 轨迹点与上报上下文（recordId/userId）
+     * @return 命中的冲刺成果列表（可为空，统一 Result 包装）
+     */
     @PostMapping("/segments/match")
     public Result<List<SegmentEffortDTO>> match(@Valid @RequestBody SegmentMatchRequestDTO request) {
         return Result.success(segmentService.matchSegments(request));

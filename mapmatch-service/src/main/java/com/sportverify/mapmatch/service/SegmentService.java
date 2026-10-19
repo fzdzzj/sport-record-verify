@@ -77,9 +77,13 @@ public class SegmentService {
     private static final List<double[][]> PRESET_COORDS = List.of(
             new double[][] {{121.5500, 31.2190}, {121.5600, 31.2190}, {121.5600, 31.2212}},
             new double[][] {{121.5000, 31.2400}, {121.5080, 31.2400}, {121.5080, 31.2470}, {121.5030, 31.2470}});
+    /** 预置赛段名称（与坐标、运动类型按索引对齐） */
     private static final List<String> PRESET_NAMES = List.of("世纪公园内圈 1.2km 冲刺段", "陆家嘴滨江 2.0km 挑战段");
+
+    /** 预置赛段运动类型（1 跑步 / 2 骑行，与坐标、名称按索引对齐） */
     private static final List<Integer> PRESET_SPORT_TYPES = List.of(1, 2);
 
+    /** JDBC 模板（构造器注入）：赛段列表与候选粗筛查询 */
     private final JdbcTemplate jdbcTemplate;
 
     // ==================== 赛段列表 ====================
@@ -89,6 +93,7 @@ public class SegmentService {
      * 表为空或空间库不可用（离线单测/开发机）时回退预置兜底赛段。
      *
      * @param sportType 运动类型过滤（null = 全部）
+     * @return 赛段列表（库内数据优先，表空或空间库不可用时为预置兜底赛段）
      */
     public List<SegmentDTO> listSegments(Integer sportType) {
         List<SegmentDTO> dbSegments = querySegmentsFromDb(sportType);
@@ -97,7 +102,7 @@ public class SegmentService {
         }
         List<SegmentDTO> fallback = new ArrayList<>();
         for (int i = 0; i < PRESET_COORDS.size(); i++) {
-            if (sportType != null && PRESET_SPORT_TYPES.get(i) != sportType) {
+            if (sportType != null && PRESET_SPORT_TYPES.get(i).intValue() != sportType) {
                 continue;
             }
             SegmentDTO dto = new SegmentDTO();
@@ -135,7 +140,7 @@ public class SegmentService {
                 dto.setDistanceMeters(((Number) row.get("distance_m")).doubleValue());
                 Object ca = row.get("created_at");
                 dto.setCreatedAt(ca instanceof Timestamp ? ((Timestamp) ca).toLocalDateTime().toString()
-                        : (ca == null ? null : ca.toString()));
+                        : ca == null ? null : ca.toString());
                 out.add(dto);
             }
             return out;
@@ -150,6 +155,9 @@ public class SegmentService {
      * 赛段完赛匹配：粗筛候选（SQL/PostGIS，库失联或表空回退预置兜底）→ 逐候选两锚精匹。
      * 轨迹点须按时间升序且携带 ts（elapsed 计算依据）；命中零个或多个赛段时返回对应条数
      * （一条轨迹可同程完赛多条赛段），无命中返回空列表（不报错，调用方按空态呈现）。
+     *
+     * @param request 轨迹点与上报上下文（recordId/userId 透传，ts 为净耗时依据）
+     * @return 命中的赛段成果列表（可为空）
      */
     public List<SegmentEffortDTO> matchSegments(SegmentMatchRequestDTO request) {
         List<MapMatchPointDTO> points = request == null ? null : request.getPoints();
@@ -364,10 +372,19 @@ public class SegmentService {
 
     /** 候选赛段（精匹入参）：库行或预置赛段的统一内存形态 */
     private static class SegmentCandidate {
+        /** 赛段 ID */
         private long id;
+
+        /** 赛段名称 */
         private String name;
+
+        /** 运动类型（1 跑步 / 2 骑行） */
         private int sportType;
+
+        /** 标称长度（米） */
         private double distanceMeters;
+
+        /** 折线坐标 {lng, lat} 序列 */
         private double[][] coords;
     }
 }

@@ -65,13 +65,18 @@ public class MapMatchService {
             "SELECT ST_AsText(geom) FROM road_edge "
                     + "WHERE ST_DWithin(geom, ST_MakeEnvelope(?, ?, ?, ?, 4326), ?)";
 
+    /** JDBC 模板（构造器注入）：只读候选边预筛查询 */
     private final JdbcTemplate jdbcTemplate;
+
+    /** 匹配算法参数（Nacos 可配，见 {@link MatchProperties}） */
     private final MatchProperties props;
 
     /**
      * 对轨迹做路网匹配并计算偏离指标。
      *
      * @param request 轨迹点（按时间升序；空轨迹返回全零指标，不报错——R5 侧按点数阈值自行跳过）
+     * @return 偏离指标（matchedRatio / offRoadRatio / avgOffRoadDistance / maxOffRoadDistance /
+     *         采样点数 / 原始点数）
      */
     public MapMatchResultDTO match(MapMatchRequestDTO request) {
         List<MapMatchPointDTO> raw = request == null ? null : request.getPoints();
@@ -459,7 +464,8 @@ public class MapMatchService {
 
     /** 点(0,0) 到线段(prev→cur) 的垂距（米，局部平面坐标系内）：垂足落在线段外时取端点距 */
     private static double pointToSegmentMeters(double cx, double cy, double ax, double ay) {
-        double dx = cx - ax, dy = cy - ay;
+        double dx = cx - ax;
+        double dy = cy - ay;
         double lenSq = dx * dx + dy * dy;
         if (lenSq == 0) {                    // 线段退化为点
             return Math.hypot(ax, ay);

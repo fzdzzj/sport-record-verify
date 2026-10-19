@@ -20,6 +20,11 @@ import org.springframework.boot.context.properties.EnableConfigurationProperties
 @EnableConfigurationProperties(MatchProperties.class)
 public class MapMatchApplication {
 
+    /**
+     * 服务入口。
+     *
+     * @param args 启动参数（透传 Spring Boot）
+     */
     public static void main(String[] args) {
         SpringApplication.run(MapMatchApplication.class, args);
     }

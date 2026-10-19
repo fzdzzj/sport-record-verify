@@ -22,9 +22,15 @@ import org.springframework.web.bind.annotation.RestController;
 @RequiredArgsConstructor
 public class MapMatchController {
 
+    /** 匹配领域服务（构造器注入） */
     private final MapMatchService mapMatchService;
 
-    /** 提交轨迹点 → 返回偏离路网指标（matchedRatio/offRoadRatio/avg/max） */
+    /**
+     * 提交轨迹点 → 返回偏离路网指标（matchedRatio/offRoadRatio/avg/max）。
+     *
+     * @param request 轨迹点（按时间升序）
+     * @return 偏离路网指标（统一 Result 包装）
+     */
     @PostMapping("/match")
     public Result<MapMatchResultDTO> match(@Valid @RequestBody MapMatchRequestDTO request) {
         return Result.success(mapMatchService.match(request));
