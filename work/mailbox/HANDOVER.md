@@ -9,7 +9,7 @@
 ## 1. 当前代码基线与外部状态
 
 - **当前分支与 HEAD**：`main` 分支，最新已终裁闭环任务为 **TASK-275**（跑团俱乐部与团队里程榜系统，FULL 档；立项笔 `a642d5d` / C-01 `53732b0` / C-02 `ec7f517` / 封盘笔 `fba1cb3` 已统一推送 origin/main，Surefire 全仓 1164 测全绿，前端 vitest 90 测全绿，E2E 14/14 全绿；CI 外部终验随后登记）。当前在途推进任务为 **TASK-276（跑团域二期：团长移交 · 里程入账与贡献明细 · memberCount 真实计数，FULL 档，开工基线 = TASK-276 立项笔（哈希见实施派发书），立项派发实施中）**，后继串行任务 **TASK-277（mapmatch Checkstyle 存量清零治理，MEDIUM 档，待 TASK-276 封盘后开工）**。
-- **外部 CI 门槛状态**：TASK-273 封盘批次经 CI run **`39136624184`** 权威核验 conclusion=**success** 全 job 绿（build ✓ 10m29s / web ✓ 21s）；TASK-274 封盘批次推送后 CI run 39147321152 偶现单测隔离问题，已在 TASK-275 R0 中以 TableInfoHelper 稳妥闭环；TASK-275 封盘批次已推送，CI run `39184001453` 观察中（全绿后由补记笔登记运行号）。
+- **外部 CI 门槛状态**：TASK-273 封盘批次经 CI run **`39136624184`** 权威核验 conclusion=**success** 全 job 绿（build ✓ 10m29s / web ✓ 21s）；TASK-274 封盘批次 CI run 39147321152 偶现单测隔离问题已在 TASK-275 R0 以 TableInfoHelper 闭环；**TASK-275 封盘批次经 CI run `39184001453` 权威核验 conclusion=success 全 job 绿（2026-10-19 补记；R0 修复验证通过，前述红因未复现）**。
 - **工作树状态**：TASK-276 立项中（立项笔待落库后与 TASK-275 补记笔一并随批次推送节奏管理）。
 - **当前在途任务数**：`2` 个（TASK-276 实施中 + TASK-277 立项待串行）。
 
