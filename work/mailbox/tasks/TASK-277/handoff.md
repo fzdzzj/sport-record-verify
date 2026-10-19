@@ -1,13 +1,13 @@
 # TASK-277 实施交接台账（handoff）
 
-> 状态：**已实施待指导侧亲核收口**（2026-10-19 实施子 Agent 落地 C-01/C-02；MEDIUM 档免独立复核；开工基线 main @ `5daff7e`，TASK-276 封盘后串行开工；门禁实测读数全部为本机 offline 口径）
+> 状态：**已终裁 ACCEPT 予以封盘**（2026-10-19 指导侧终裁；开工基线 main @ `5daff7e`；C-01 `0689459` / C-02 `8ef0919`；MEDIUM 档免独立复核，指导亲核三块 PASS，两处关键决策均裁定采纳；封盘批次统一推送 origin/main，CI 外部终验随后登记）
 
 ## 1. 基线与提交
 
 - 开工基线：main @ `5daff7e`（TASK-276 封盘笔）；开工实测 `git status --porcelain` 为空，无跨任务窗口效应；
 - 任务书：`work/mailbox/tasks/TASK-277/spec.md`；
 - C-01：`0689459` `chore(mapmatch): 补齐Checkstyle规则集并零语义清零266项存量违规（TASK-277）`——恰 7 文件，+365/−6（`git show --numstat` 实测）；落库后工作树随即纯净；
-- C-02：本笔仅本台账 1 文件（`docs(mailbox): TASK-277 实施 handoff 回填（TASK-277）`）；同一笔内无法自指哈希，C-02 哈希由指导侧封盘时以 `git log -1` 回填，本台账不事后改笔；
+- C-02：`8ef0919` `docs(mailbox): TASK-277 实施 handoff 回填（TASK-277）`——本笔仅本台账 1 文件；哈希由指导侧封盘时以 `git log -1` 回填（2026-10-19 已回填）；
 - 提交链核验：`git log --oneline 5daff7e..HEAD` 恰 2 笔线性（立项笔 `9ab922d` 已含于基线之前，见 `git merge-base --is-ancestor 9ab922d 5daff7e`）；`origin/main..HEAD` = 2 笔，严格零推送；
 - 白名单上限核对：C-01 7 文件 ⊆ spec §三上限 18 项；C-02 仅台账 1 文件；合计 8 项 ⊆ 19 项上限。
 

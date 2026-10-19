@@ -8,10 +8,10 @@
 
 ## 1. 当前代码基线与外部状态
 
-- **当前分支与 HEAD**：`main` 分支，最新已终裁闭环任务为 **TASK-276**（跑团域二期：团长移交 · 里程入账与贡献明细 · memberCount 真实计数，FULL 档；立项笔 `9ab922d` / C-01 `fb6adea` / C-02 `fe2e4bd` / TASK-275 补记笔 `daec333` / 封盘笔已统一推送 origin/main，Surefire 全仓 1197 测全绿，vitest 90，E2E 14/14；CI 外部终验随后登记）。当前在途推进任务为 **TASK-277（mapmatch Checkstyle 存量清零治理，MEDIUM 档，开工基线 = TASK-276 封盘笔，立项就绪待派发实施）**。
+- **当前分支与 HEAD**：`main` 分支，最新已终裁闭环任务为 **TASK-277**（mapmatch-service Checkstyle 存量清零治理，MEDIUM 档；开工基线 `5daff7e` / C-01 `0689459` / C-02 `8ef0919` / TASK-276 补记笔 `26696a6` / 封盘笔已统一推送 origin/main，Surefire 全仓 1197 测全绿，vitest 90，E2E 14/14，mapmatch Checkstyle 266→0；CI 外部终验随后登记）。当前在途任务数 `0`（跑团域两期 + mapmatch 治理全部收口）。
 - **外部 CI 门槛状态**：TASK-273 封盘批次经 CI run **`39136624184`** 权威核验 conclusion=**success** 全 job 绿（build ✓ 10m29s / web ✓ 21s）；TASK-274 封盘批次 CI run 39147321152 偶现单测隔离问题已在 TASK-275 R0 以 TableInfoHelper 闭环；**TASK-275 封盘批次经 CI run `39184001453` 权威核验 conclusion=success 全 job 绿（2026-10-19 补记；R0 修复验证通过，前述红因未复现）**；TASK-276 封盘批次经 CI run **`39192071882`** 权威核验 conclusion=**success** 全 job 绿（2026-10-19 补记；本地两次 watch exit 1 均系进程误报非 run 失败）。
-- **工作树状态**：TASK-276 已封盘，封盘批次推送中，工作树纯净。
-- **当前在途任务数**：`1` 个（TASK-277 立项就绪待派发）。
+- **工作树状态**：TASK-277 已封盘，封盘批次已推送，工作树纯净。
+- **当前在途任务数**：`0` 个。
 
 
 
@@ -114,6 +114,7 @@
     - **方案 B 收口与封盘（2026-10-18）**：TASK-258（E13 PostGIS 真实空间库复验，FULL 档）实施回报（C-01 `97ddde9` 恰 3 文件 +563 行 / C-02 `68afd35` 台账 1 文件）→ 指导亲核三块 PASS（Git 摘要 4 文件全等；定向抽查 MapMatchPostgisIT 5 用例真绿通过 / MapMatchSqlContractTest 纯 JVM 契约测反射锁定 / verify-postgis.sh 100755 脚本；一致性裁决：surefire 35→36 只增不减，口令漂移与假绿排查如实登记）→ 独立复核五块全 PASS 零阻断（块一 4 笔提交链全等；块二红线与零触碰 4 项全 PASS；块三双端门禁实测 7 项亲自复跑全 PASS：surefire 63/78/221/321/203/110/36、真机 PostGIS 5 用例真跑非跳过、契约门纯净 worktree rc=0、token 门 2162 精确持平、词面门四 locale ZERO_HIT+探针对照、checkstyle delta=0 且新文件不在扫描面、diff 净、ls-files 纯 LF；块四证据链核对 PASS，独立 JDBC 探针反向坐实口令漂移排查结论；块五只改清单三向全等 4=4=4；非阻断 4 项登记封盘笔）→ 指导侧终裁 **ACCEPT**：五看板滚动 + 封盘笔落库，封盘批次 5 笔统一推送 origin/main，CI 外部终验随后登记；**全仓 54 项优化候选全部闭环收口！**
    - **TASK-275 收口（2026-10-19）**：跑团俱乐部与团队里程榜系统（FULL 档）实施回报（C-01 `53732b0` 恰 24 文件 +2154/−11 / C-02 `ec7f517` 台账 1 文件 +63/−22）→ 指导亲核三块 PASS（①Git 对账：porcelain 空、恰 3 笔、25 文件与白名单双向全等、零推送；②定向抽查：add-running-club.sql USE user_db 首行/幂等建表零破坏/uk_user_club 一人一团/双写逐字一致 + ClubService 一人一团三重保障与团长保护/原子计数 + ClubController 降级拒绝鉴权范式；③一致性裁决零偏差）→ 独立复核五块全 PASS 零阻断（七门禁 7/7 独立复跑：surefire 1135→1164（user +20 ClubServiceTest、leaderboard +9 LeaderboardClubTest）0 败 0 错 0 跳、Checkstyle 0 违规、vitest 90 + vue-tsc 0 错 + E2E 14/14、契约门 a642d5d 口径 rc=0 判据 B 25 路径双向全等 + e512add 负例对照 rc=1 坐实基线口径偏差说明、token 三树 2481/2481/2510 逐位、词面门四 locale ZERO_HIT+阳性对照、diff 净 + blob CR=0 无 BOM；R0 独立单跑 18 测全绿；§5 四项决策全部代码级实证；非阻断 4 项登记）→ 指导侧终裁 **ACCEPT**：五看板滚动 + 封盘笔 `fba1cb3` 落库，封盘批次 4 笔统一推送 origin/main，CI run `39184001453` 外部终验全绿（补记笔 `daec333` 随 TASK-276 批次推送）；
    - **TASK-276 收口（2026-10-19）**：跑团域二期（FULL 档）实施回报（C-01 `fb6adea` 恰 20 文件 +1437/−40 / C-02 `fe2e4bd` 台账 1 文件 +92/−12）→ 指导亲核三块 PASS（①Git 对账：porcelain 空、恰 3 笔、21 文件双向全等、零推送；②定向抽查：ClubDistanceSettleService 终态对账净额含 RE_CONFIRMED→RE_PASSED 再补账链路 + trySet+CAS 双向幂等自洽 + best-effort 全 catch 零抛、recordClubDistance 带符号三处 ZINCRBY 同号累加与 null weekStart 归一、transferCaptain 校验链与双 role 同事务；③一致性裁决零偏差；三处申报判断——带符号净额/required=false 可选注入/trySet+CAS 复合幂等——均裁定合理采纳）→ 独立复核五块全 PASS 零阻断（七门禁 7/7 独立复跑：surefire 1164→1197（user +9、record +14、leaderboard +10）0 败 0 错 0 跳、Checkstyle 0 违规、vitest 90 + vue-tsc 0 错 + E2E 14/14、契约门 21 路径 rc=0、token 三树 2510/2510/2539 逐位、词面门官方排除口径 3 树 × 4 locale 零命中 + 阴阳对照、diff 净 + 21 blob 纯 LF；三处申报判断独立实证——负数 ZINCRBY 断言覆盖不弱于原 invalidArgs、内网端点网关 AuthGlobalFilter 404 不可达、required=false 旁路零 NPE 且 CircularDependencyTest 未改全绿；−40 删除行逐行审阅无功能损失；非阻断 8 项登记 N1–N8）→ 指导侧终裁 **ACCEPT**：N1/N2 台账精度与口径不退改、N3/N4/N5（回退双记窗口/TTL 过期静默跳过/跨团漂移）收敛为对账课题挂账（BACKLOG 条目 22）、N6/N7 下次触碰顺手对齐；五看板滚动 + TASK-275 补记笔 `daec333`（CI run 39184001453 全绿）+ 封盘笔落库，封盘批次 5 笔统一推送 origin/main，CI run **`39192071882`** 权威核验 conclusion=**success** 全 job 绿（2026-10-19 补记完整闭环，补记笔随 TASK-277 封盘批次推送）；
+   - **TASK-277 收口（2026-10-19）**：mapmatch Checkstyle 存量清零治理（MEDIUM 档免独立复核）实施回报（C-01 `0689459` 恰 7 文件 +365/−6 / C-02 `8ef0919` 台账 1 文件 +89/−12）→ 指导亲核三块 PASS（①Git 对账：porcelain 空、恰 2 笔、origin/main..HEAD=2 零推送、8 路径双向全等 ⊆ 19 项白名单上限；②定向抽查：两模块 checkstyle.xml blob 哈希同值 `998e22c5` 逐字节一致坐实、四 Java 文件 diff 逐行审阅纯注释/格式 + 两处逐位等价重写（`.intValue()` 消 RC_REF_COMPARISON 取值域 1/2 装箱缓存内等价、三元去括号语法树等价）零可执行语义变更；③一致性裁决：七门禁逐位一致、266=196+50+20 账目闭合、两处关键决策均采纳）→ 指导侧终裁 **ACCEPT**：sun_checks 字面全零不可达四条理由如实记账（JavadocPackage 需 4 个 package-info 白名单外 / HideUtilityClassConstructor 须改可执行语义 / JavadocStyle 中文句读冲突 / FinalParameters 触签名红线），未用 suppressions 掩盖；pom spotbugs/pmd 两段对齐（不绑生命周期无新依赖）+ High 级与 PMD p4 代码层消除；五看板滚动 + TASK-276 CI 补记笔 `26696a6` + 封盘笔落库，封盘批次 4 笔统一推送 origin/main，CI 外部终验随后登记（全绿后补记笔随下一批次推送）；
 
    - 申诉审核意见（verify_db）透出限制：受限与 verify-service 红线，当前前台申诉进度条由记录状态推导，结论权威可靠。
 
@@ -121,12 +122,12 @@
 
 ## 4. 当前推进与唯一推荐动作
 
-- **当前推进**：**TASK-276（跑团域二期，FULL 档）已终裁 ACCEPT 予以封盘**（立项笔 `9ab922d` / C-01 `fb6adea` / C-02 `fe2e4bd` / TASK-275 补记笔 `daec333` / 封盘笔，批次 5 笔统一推送 origin/main；surefire 1164→1197（user +9 / record +14 / leaderboard +10）、vitest 90、E2E 14/14、token 三树 2510/2510/2539；非阻断 N3/N4/N5 收敛为对账课题挂账 BACKLOG 条目 22）。当前在途 1 个：**TASK-277（mapmatch Checkstyle 存量清零治理，MEDIUM 档）立项就绪**，开工基线 = TASK-276 封盘笔，spec/handoff 已在 `work/mailbox/tasks/TASK-277/` 备妥，待派发实施。
+- **当前推进**：**TASK-277（mapmatch Checkstyle 存量清零治理，MEDIUM 档）已终裁 ACCEPT 予以封盘**（开工基线 `5daff7e` / C-01 `0689459` 恰 7 文件 +365/−6 / C-02 `8ef0919` 台账 / TASK-276 补记笔 `26696a6` / 封盘笔，批次 4 笔统一推送 origin/main；surefire 1197 持平（mapmatch 57 改前后双跑逐位一致）、--static=mapmatch-service Checkstyle 266→0 且 SpotBugs High=0 / PMD 0、leaderboard 零连带漂移、token 三树 2539/2539/2568；TASK-276 CI run `39192071882` 全绿补记完整闭环）。**当前在途 0，跑团域两期 + mapmatch 治理全部收口。**
   - **唯一推荐动作**：
-    1. 派发实施子 Agent 执行 TASK-277（MEDIUM 档：免独立复核，七门禁全量逐位 + 指导侧亲核收口；核心验收 = `--static=mapmatch-service` Checkstyle 0 违规 + 266 项存量零语义清零 + leaderboard 连带漂移复跑）；
-    2. TASK-276 封盘批次 CI run 观察中，全绿后补记笔随 TASK-277 批次推送；若红按签名归因不刷绿；
-    3. **10-19 挂账事项（沿 TASK-252）**：ubuntu-26.04 标签可用后手动 `workflow_dispatch` 触发 probe26 试跑，读数随补记笔登记；
-    4. **治理挂账（非阻断）**：跑团里程对账与回退补偿课题（BACKLOG 条目 22：N3 双记窗口/N4 TTL 过期/N5 跨团漂移 + N6/N7 顺手项）、词面门脚本入库或 spec 引用修正、`scripts/verify/README.md` TASK-184 状态滞后订正、token 计数口径统一（TASK-254 N2）。
+    1. TASK-277 封盘批次 CI run 观察中，全绿后补记笔随下一批次推送；若红按签名归因不刷绿；
+    2. **10-19 挂账事项（沿 TASK-252）**：ubuntu-26.04 标签可用后手动 `workflow_dispatch` 触发 probe26 试跑，读数随补记笔登记；
+    3. **治理挂账（非阻断）**：跑团里程对账与回退补偿课题（BACKLOG 条目 22：N3 双记窗口/N4 TTL 过期/N5 跨团漂移 + N6/N7 顺手项）、词面门脚本入库或 spec 引用修正、`scripts/verify/README.md` TASK-184 状态滞后订正、token 计数口径统一（TASK-254 N2）；
+    4. **下一课题方向待用户拍板**：候选为 BACKLOG 条目 22 跑团里程对账课题立项，或启动新一轮立项侦察。
 
 
 

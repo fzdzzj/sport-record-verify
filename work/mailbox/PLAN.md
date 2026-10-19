@@ -1027,8 +1027,8 @@ ecord-service/src/test/java/com/sportverify/record/controller/BadgeControllerTes
 | 核心要点 | R1 新增 mapmatch checkstyle.xml（与 leaderboard 逐字节一致）+ pom 插件段对齐（3.6.0/9.3 引擎同源）；R2 266 项存量零语义清零（仅注释/格式/命名，禁可执行语义变更）；R3 --static=mapmatch-service 0 违规 + leaderboard 连带漂移复跑；串行开工（TASK-276 封盘后） |
 | 白名单 | 上限 19 项（pom + 新配置 + mapmatch 6 主类 + 10 测试文件择实 + handoff），handoff 声明与 diff 双向全等 |
 | 门禁要求 | 七门禁全绿，mapmatch 57 测持平或增（详见 spec §四） |
-| 实施与门禁 | （待子 Agent 落地回填） |
-| 指导亲核 | （待子 Agent 落地后执行） |
-| 独立复核 | （MEDIUM 档免独立复核；执行侧回报与亲核矛盾时升级回 FULL） |
-| 是否到达外部门槛 | **进行中（待实施）** |
-| 状态 | **进行中（2026-10-19 指导侧立项）**：TASK-277 立项完成，待 TASK-276 封盘后串行派发 |
+| 实施与门禁 | C-01 `0689459`（chore(mapmatch)，恰 7 文件 +365/−6：新增 checkstyle.xml 与 leaderboard 逐字节一致（blob 哈希同值 `998e22c5`）+ pom checkstyle 3.6.0/spotbugs 4.9.8.5/pmd 3.28.0 三插件段逐项对齐（不绑生命周期、无新依赖坐标）+ 5 主类零语义整改（Javadoc 补全 12 字段 7 方法 + 多变量拆行 + 2 处逐位等价重写））+ C-02 `8ef0919`（台账 1 文件 +89/−12）；门禁全绿：offline 1197 = 63/79/250/406/203/139/57（mapmatch 57 改前/改后双跑逐位一致）0 败 0 错 0 跳、--static=mapmatch-service Checkstyle **266→0 违规** + SpotBugs 3 全 Medium（High=0，RC_REF_COMPARISON 代码层消除）+ PMD 0、--static=leaderboard-service 零连带漂移（0/15 Medium/0）、vitest 90 + vue-tsc 0 错 + E2E 14/14、契约门 8 路径双向全等 rc=0、token 三树 2539/2539/2568（=B+29 逐项各 +1）、词面四 locale ZERO_HIT + 阳性对照、diff 净（8 blob CR=0 无 BOM） |
+| 指导亲核 | MEDIUM 档亲核三块全 PASS：①Git 对账（porcelain 空、恰 2 笔、origin/main..HEAD=2 零推送、8 路径与 `git diff --name-only 5daff7e` 双向全等且 ⊆ 19 项白名单上限）；②定向抽查（两模块 checkstyle.xml `git hash-object` 同值 `998e22c5` 逐字节一致坐实；C-01 四 Java 文件 diff 逐行审阅——纯 Javadoc/注释/多变量拆行 + 两处逐位等价重写：`.intValue()` 消 RC_REF_COMPARISON 且取值域 1/2 装箱缓存内行为等价、三元去括号语法树等价——零可执行语义变更）；③一致性裁决（回传七门禁与 handoff §3 逐位一致；266 = 196 裁剪类别 + 50 LineLength 80→140 + 20 代码实改账目闭合；两处关键决策均裁定采纳） |
+| 独立复核 | （MEDIUM 档免独立复核；执行侧回报与亲核零矛盾，未触发升级回 FULL） |
+| 是否到达外部门槛 | **已到达本地封盘**：封盘批次（4 笔 = C-01 `0689459` + C-02 `8ef0919` + TASK-276 补记笔 `26696a6` + 封盘笔）统一推送 origin/main，CI 外部终验随后登记 |
+| 状态 | **已终裁 ACCEPT（2026-10-19 指导侧）**：指导亲核三块 PASS；mapmatch 独立规则集补齐 + 266 项存量零语义清零；sun_checks 字面全零不可达四条理由如实记账（JavadocPackage 需 4 个 package-info 白名单外 / HideUtilityClassConstructor 须改可执行语义 / JavadocStyle 中文句读冲突 / FinalParameters 触签名红线）未用 suppressions 掩盖；MatchProperties 14 项全落裁剪类别与 10 测试类扫描面外均不入 diff 口径成立；封盘批次统一推送 origin/main，待 CI 外部终验 |
