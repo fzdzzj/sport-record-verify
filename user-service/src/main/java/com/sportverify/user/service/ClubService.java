@@ -26,6 +26,7 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 
 /**
  * 跑团服务（TASK-275 跑团俱乐部与团队里程榜系统）。
@@ -38,6 +39,8 @@ import java.util.Map;
  *       原子累加/递减，不读改写整行；</li>
  *   <li><b>退团规则</b>：团长且有其他成员 → 禁止直接退出（需先移交/解散）；仅剩团长一人 →
  *       删成员行并置 status=0 解散、计数清零；普通成员 → 删成员行并原子递减；</li>
+ *   <li><b>团长移交</b>（TASK-276 R1）：在任团长把职位移交给同团其他成员，同事务双 role 更新
+ *       （CAPTAIN→MEMBER / MEMBER→CAPTAIN），成员数与创建者不变；</li>
  *   <li><b>昵称补齐</b>：团长/成员昵称经 userMapper 批量回表（selectBatchIds 一次往返），
  *       用户缺失时昵称留空不阻断列表。</li>
  * </ul>
@@ -269,11 +272,99 @@ public class ClubService {
         return buildClubDTOs(List.of(club)).get(0);
     }
 
+    // ==================== 团长移交（TASK-276 R1） ====================
+
+    /**
+     * 团长移交（TASK-276 R1）：把 {@code clubId} 的团长职位从操作者移交给同团成员 {@code targetUserId}。
+     *
+     * <p>校验链（全部失败即拒绝，零写操作）：</p>
+     * <ol>
+     *   <li>跑团存在且未解散 → 否则 3001（RECORD_NOT_FOUND，404）；</li>
+     *   <li>操作者须为本团在册成员 → 否则 3001；</li>
+     *   <li>操作者须为<b>在任团长</b>（role=CAPTAIN）→ 否则 1002（FORBIDDEN，「仅团长可移交」）；</li>
+     *   <li>目标须为本团其他成员：目标不在本团、或目标就是操作者本人 → 3001（沿用 spec R1
+     *       目标侧统一 3001 的口径，common 错误码枚举不在本任务白名单内，禁新增 CLUB_* 段）。</li>
+     * </ol>
+     *
+     * <p>写操作：<b>同事务双 role 更新</b>（操作者 CAPTAIN→MEMBER、目标 MEMBER→CAPTAIN），
+     * {@code running_club.member_count} 与 {@code creator_id} 均不变——移交只换团长身份，
+     * 不增减成员、不改「创建者」历史归属（成员数一致性由 {@link #listMembers} 与
+     * {@code member_count} 分别承载）。</p>
+     *
+     * @param operatorId   操作者 userId（网关注入身份）
+     * @param clubId       跑团 id
+     * @param targetUserId 目标成员 userId
+     * @return 移交后的跑团 DTO（成员数等口径与 {@link #getClub} 一致）
+     */
+    @Transactional
+    public ClubDTO transferCaptain(Long operatorId, Long clubId, Long targetUserId) {
+        if (operatorId == null || clubId == null || targetUserId == null) {
+            throw new IllegalArgumentException("operatorId、clubId 与 targetUserId 不能为空");
+        }
+        RunningClub club = requireActiveClub(clubId, "跑团不存在或已解散");
+        ClubMember operator = findMembershipInClub(clubId, operatorId);
+        if (operator == null) {
+            throw new BizException(ResultCode.RECORD_NOT_FOUND, "尚未加入该跑团");
+        }
+        if (!ClubMember.ROLE_CAPTAIN.equals(operator.getRole())) {
+            throw new BizException(ResultCode.FORBIDDEN, "仅团长可移交团长职位");
+        }
+        if (targetUserId.equals(operatorId)) {
+            throw new BizException(ResultCode.RECORD_NOT_FOUND, "不能把团长职位移交给自己");
+        }
+        ClubMember target = findMembershipInClub(clubId, targetUserId);
+        if (target == null) {
+            throw new BizException(ResultCode.RECORD_NOT_FOUND, "移交目标不是本团在册成员");
+        }
+
+        // 同事务双 role 更新（本地事务覆盖两行 UPDATE，member_count 不变）
+        clubMemberMapper.update(null, new LambdaUpdateWrapper<ClubMember>()
+                .eq(ClubMember::getId, operator.getId())
+                .set(ClubMember::getRole, ClubMember.ROLE_MEMBER));
+        clubMemberMapper.update(null, new LambdaUpdateWrapper<ClubMember>()
+                .eq(ClubMember::getId, target.getId())
+                .set(ClubMember::getRole, ClubMember.ROLE_CAPTAIN));
+        log.info("团长移交成功：clubId={}, from={}, to={}", clubId, operatorId, targetUserId);
+        return buildClubDTOs(List.of(club)).get(0);
+    }
+
+    /**
+     * 跑团成员数批查（TASK-276 R4，供 internal 端点 {@code GET /internal/clubs/member-counts}）：
+     * 一次 {@code selectBatchIds} 回表，返回 clubId→member_count；不存在的跑团不出现在结果中
+     * （消费方 leaderboard-service 对缺项降级 0）。
+     */
+    public Map<Long, Integer> listMemberCounts(List<Long> clubIds) {
+        if (clubIds == null || clubIds.isEmpty()) {
+            return Map.of();
+        }
+        List<Long> distinct = clubIds.stream().filter(Objects::nonNull).distinct().toList();
+        if (distinct.isEmpty()) {
+            return Map.of();
+        }
+        List<RunningClub> clubs = runningClubMapper.selectBatchIds(distinct);
+        if (clubs == null || clubs.isEmpty()) {
+            return Map.of();
+        }
+        Map<Long, Integer> counts = new HashMap<>(clubs.size());
+        for (RunningClub club : clubs) {
+            counts.put(club.getId(), club.getMemberCount() == null ? 0 : club.getMemberCount());
+        }
+        return counts;
+    }
+
     // ==================== 内部工具 ====================
 
     /** 查询用户当前成员记录（一人一团：全仓至多一行） */
     private ClubMember findMembership(Long userId) {
         return clubMemberMapper.selectOne(new LambdaQueryWrapper<ClubMember>()
+                .eq(ClubMember::getUserId, userId)
+                .last("LIMIT 1"));
+    }
+
+    /** 查询用户在某跑团内的成员记录（移交校验用：限定 clubId，防跨团误判） */
+    private ClubMember findMembershipInClub(Long clubId, Long userId) {
+        return clubMemberMapper.selectOne(new LambdaQueryWrapper<ClubMember>()
+                .eq(ClubMember::getClubId, clubId)
                 .eq(ClubMember::getUserId, userId)
                 .last("LIMIT 1"));
     }

@@ -28,8 +28,8 @@ import java.util.List;
  * <p>路由映射：{@code GET /api/clubs} 广场（keyword/page/size）、{@code POST /api/clubs}
  * 创建、{@code GET /api/clubs/my} 我的跑团、{@code GET /api/clubs/{clubId}} 详情、
  * {@code GET /api/clubs/{clubId}/members} 成员列表、{@code POST /api/clubs/{clubId}/join}
- * 加入、{@code POST /api/clubs/{clubId}/leave} 退出。身份遵循 {@code resolveUserId}
- * 统一鉴权范式（add-jwt-auth，见 ADR-0007）。</p>
+ * 加入、{@code POST /api/clubs/{clubId}/leave} 退出、{@code POST /api/clubs/{clubId}/transfer-captain}
+ * 团长移交（TASK-276 R1）。身份遵循 {@code resolveUserId} 统一鉴权范式（add-jwt-auth，见 ADR-0007）。</p>
  */
 @Slf4j
 @RestController
@@ -90,6 +90,21 @@ public class ClubController {
     public Result<Void> leave(@PathVariable("clubId") Long clubId, HttpServletRequest request) {
         clubService.leaveClub(resolveUserId(request), clubId);
         return Result.success(null);
+    }
+
+    /**
+     * 团长移交（TASK-276 R1）：{@code POST /api/clubs/{clubId}/transfer-captain?targetUserId=}。
+     *
+     * <p>身份取网关注入的 X-User-Id（{@link #resolveUserId}）；操作者须为在任团长、目标须为本团
+     * 其他在册成员（否则 1002/3001，不新增错误码段）。目标用户经 query 参数传递而不复用自报
+     * 请求体，避免「以他人身份自报」的语义歧义（越权面收敛到网关身份一处）。成功返回移交后的
+     * 跑团 DTO（成员数不变）。</p>
+     */
+    @PostMapping("/{clubId}/transfer-captain")
+    public Result<ClubDTO> transferCaptain(@PathVariable("clubId") Long clubId,
+                                           @RequestParam("targetUserId") Long targetUserId,
+                                           HttpServletRequest request) {
+        return Result.success(clubService.transferCaptain(resolveUserId(request), clubId, targetUserId));
     }
 
     /**

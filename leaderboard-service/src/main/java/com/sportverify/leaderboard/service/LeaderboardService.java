@@ -6,6 +6,7 @@ import com.sportverify.api.mapmatch.dto.SegmentEffortDTO;
 import com.sportverify.api.mapmatch.dto.SegmentLeaderboardDTO;
 import com.sportverify.api.user.UserApi;
 import com.sportverify.api.user.dto.ClubLeaderboardDTO;
+import com.sportverify.api.user.dto.ClubMemberContributionDTO;
 import com.sportverify.api.user.dto.UserDTO;
 import com.sportverify.common.result.Result;
 import com.sportverify.common.trace.TraceIds;
@@ -85,6 +86,8 @@ public class LeaderboardService {
     public static final String CLUB_WEEKLY_ZSET_KEY_PREFIX = "leaderboard:club:weekly:";
     /** 跑团名称缓存 Hash 键（TASK-275，field=clubId，value=clubName，榜单条目补名称） */
     public static final String CLUB_NAMES_HASH_KEY = "leaderboard:club:names";
+    /** 跑团成员贡献 ZSet 键前缀（TASK-276，{clubId}=跑团，member=userId，score=成员累计里程米） */
+    public static final String CLUB_MEMBER_ZSET_KEY_PREFIX = "leaderboard:club:member:";
     /** 入榜/回滚互斥锁前缀（同一记录串行化，审批版 §7.5） */
     public static final String ROLLBACK_LOCK_PREFIX = "lock:rollback:";
     /** 定时结算防重锁（多实例仅一个执行，审批版 §7.5） */
@@ -98,6 +101,8 @@ public class LeaderboardService {
     private static final int CLUB_DEFAULT_TOP_N = 20;
     /** 跑团榜单次查询上限（防 {@code size} 传成超大值把整榜拉进内存，TASK-275） */
     private static final int CLUB_MAX_TOP_N = 100;
+    /** 跑团成员贡献榜默认取前 N 名（TASK-276 R3，与团队榜默认同口径 20） */
+    private static final int CLUB_CONTRIBUTION_DEFAULT_TOP_N = 20;
     /** 报表单次查询上限（防 {@code size} 传成 10 万把整表拉进内存） */
     private static final int DAILY_REPORT_MAX_SIZE = 500;
     /** 好友榜整榜扫描批大小（TASK-239 前实现：分批 reverseRangeWithScores 窗口；已由 Redis
@@ -790,17 +795,26 @@ public class LeaderboardService {
     // ==================== 跑团团队里程榜（TASK-275） ====================
 
     /**
-     * 跑团里程上报（TASK-275 跑团俱乐部与团队里程榜）：原子 {@code ZINCRBY} 同时累加
-     * 总榜 {@code leaderboard:club:overall} 与对应周榜 {@code leaderboard:club:weekly:{weekStart}}
-     * （member=clubId，score=累计里程米），并把 clubName 同步进名称缓存 Hash
-     * {@code leaderboard:club:names}（field=clubId）供榜单条目补名称。
+     * 跑团里程上报（TASK-275 跑团俱乐部与团队里程榜，TASK-276 R3 扩展成员贡献）：
+     * 原子 {@code ZINCRBY} 同时累加总榜 {@code leaderboard:club:overall} 与对应周榜
+     * {@code leaderboard:club:weekly:{weekStart}}（member=clubId，score=累计里程米），
+     * 并把 clubName 同步进名称缓存 Hash {@code leaderboard:club:names}（field=clubId）供榜单条目补名称。
+     *
+     * <p><b>净额增量口径</b>（TASK-276 R2）：{@code distanceMeters} 为<b>带符号</b>增量——
+     * 正数入账（记录迁移至 PASSED/RE_PASSED）、负数回退（迁移至 RE_CONFIRMED 且此前已入账），
+     * 0 非法（无变化不应上报）。三处 ZINCRBY 同号累加，保证团队榜与成员贡献榜恒等对账。</p>
+     *
+     * <p><b>成员贡献</b>（TASK-276 R3）：{@code userId} 非空时同步累加成员贡献 ZSet
+     * {@code leaderboard:club:member:{clubId}}（member=userId，score=成员累计米），供
+     * {@link #getClubContributions} 出团内贡献明细；userId 为空（历史调用/内部重放）则只累加团队榜。</p>
      *
      * <p>无分布式锁（与赛段榜同哲学）：纯 Redis 单键原子写，并发上报天然累加不丢增量；
      * weekStart 缺省时归一化到当周周一（与 record-service 周报周一锚点同口径）。</p>
      */
-    public void recordClubDistance(Long clubId, String clubName, Double distanceMeters, LocalDate weekStart) {
-        if (clubId == null || distanceMeters == null || distanceMeters <= 0) {
-            throw new IllegalArgumentException("跑团里程上报参数非法：clubId 必填且 distanceMeters 必须为正");
+    public void recordClubDistance(Long clubId, String clubName, Double distanceMeters,
+                                   LocalDate weekStart, Long userId) {
+        if (clubId == null || distanceMeters == null || distanceMeters == 0.0) {
+            throw new IllegalArgumentException("跑团里程上报参数非法：clubId 必填且 distanceMeters 不得为 0（正数入账/负数回退）");
         }
         String member = String.valueOf(clubId);
         stringRedisTemplate.opsForZSet().incrementScore(CLUB_OVERALL_ZSET_KEY, member, distanceMeters);
@@ -808,7 +822,12 @@ public class LeaderboardService {
         if (clubName != null && !clubName.isBlank()) {
             stringRedisTemplate.opsForHash().put(CLUB_NAMES_HASH_KEY, member, clubName);
         }
-        log.info("跑团里程入榜：clubId={}, +{}m, weekStart={}", clubId, distanceMeters, weekStart);
+        if (userId != null) {
+            stringRedisTemplate.opsForZSet().incrementScore(
+                    CLUB_MEMBER_ZSET_KEY_PREFIX + clubId, String.valueOf(userId), distanceMeters);
+        }
+        log.info("跑团里程入榜：clubId={}, userId={}, +{}m, weekStart={}",
+                clubId, userId, distanceMeters, weekStart);
     }
 
     /**
@@ -817,7 +836,9 @@ public class LeaderboardService {
      * 公里数保留 2 位小数并同步产出格式化串。
      *
      * <p>period：{@code overall}（缺省）读总榜键；{@code weekly} 读当周周一键；
-     * 其余值 400。memberCount 为预留字段（ZSet/Hash 不携带，恒 0），由后续计数同步链路填充。</p>
+     * 其余值 400。<b>memberCount</b>（TASK-276 R4）不再是恒 0 预留字段——组装前经
+     * {@link UserApi#listClubMemberCounts} 一次批查榜单内各团真实 {@code member_count}；
+     * 查询失败或返回缺项时<b>降级 0</b>并保持占位语义（榜单主体不因计数缺失而失败）。</p>
      */
     public List<ClubLeaderboardDTO> getClubLeaderboard(String period, Integer size) {
         int topN = (size == null || size <= 0) ? CLUB_DEFAULT_TOP_N : Math.min(size, CLUB_MAX_TOP_N);
@@ -836,6 +857,8 @@ public class LeaderboardService {
         }
         List<TypedTuple<String>> ordered = new ArrayList<>(tuples);
         Map<Object, Object> clubNames = stringRedisTemplate.opsForHash().entries(CLUB_NAMES_HASH_KEY);
+        List<Long> clubIds = ordered.stream().map(t -> Long.valueOf(t.getValue())).toList();
+        Map<Long, Integer> memberCounts = resolveClubMemberCounts(clubIds);
 
         List<ClubLeaderboardDTO> result = new ArrayList<>(ordered.size());
         for (int i = 0; i < ordered.size(); i++) {
@@ -845,20 +868,79 @@ public class LeaderboardService {
             // 米 → 公里保留 2 位小数（先放大两位再整圆回缩，规避二进制浮点截断误差）
             double km = Math.round(meters / 10.0) / 100.0;
             Object nameRaw = clubNames.get(String.valueOf(clubId));
+            Integer count = memberCounts.get(clubId);
             result.add(assembleClubEntry(i + 1, clubId,
-                    nameRaw == null ? null : nameRaw.toString(), km));
+                    nameRaw == null ? null : nameRaw.toString(), km, count == null ? 0 : count));
         }
         return result;
     }
 
-    /** 跑团榜单条目组装：rank（入参序即里程降序）+ Hash 名称补齐 + 公里格式化 */
+    /**
+     * 跑团成员贡献明细（TASK-276 R3）：{@code ZREVRANGE} 降序取前 N（默认 20、上限 100），
+     * member=userId、score=成员累计贡献米；昵称一次 Feign 批量补齐，缺失/空昵称回退
+     * 「跑者{userId}」（与总榜「用户{id}」同哲学：user-service 降级时榜单仍可用）。
+     *
+     * <p>负数净额（回退）已由 {@link #recordClubDistance} 的带符号 ZINCRBY 抵消，正常口径下
+     * 成员分值为非负；刻意不加 {@code @Cacheable}（CacheConfig 只注册 {@code leaderboard:overall}
+     * 一个缓存名，且写路径 bean 须零代理，ADR-0009 哨兵）。</p>
+     */
+    public List<ClubMemberContributionDTO> getClubContributions(Long clubId, Integer size) {
+        if (clubId == null) {
+            throw new IllegalArgumentException("clubId 不能为空");
+        }
+        int topN = (size == null || size <= 0)
+                ? CLUB_CONTRIBUTION_DEFAULT_TOP_N : Math.min(size, CLUB_MAX_TOP_N);
+        Set<TypedTuple<String>> tuples = stringRedisTemplate.opsForZSet()
+                .reverseRangeWithScores(CLUB_MEMBER_ZSET_KEY_PREFIX + clubId, 0, topN - 1L);
+        if (tuples == null || tuples.isEmpty()) {
+            return List.of();
+        }
+        List<TypedTuple<String>> ordered = new ArrayList<>(tuples);
+        List<Long> userIds = ordered.stream().map(t -> Long.valueOf(t.getValue())).toList();
+        Map<Long, String> nicknames = resolveNicknames(userIds);
+
+        List<ClubMemberContributionDTO> result = new ArrayList<>(ordered.size());
+        for (int i = 0; i < ordered.size(); i++) {
+            TypedTuple<String> t = ordered.get(i);
+            Long uid = Long.valueOf(t.getValue());
+            String nickname = nicknames.get(uid);
+            ClubMemberContributionDTO dto = new ClubMemberContributionDTO();
+            dto.setRank(i + 1);
+            dto.setUserId(uid);
+            dto.setNickname(nickname == null || nickname.isBlank() ? "跑者" + uid : nickname);
+            dto.setDistanceMeters(t.getScore() == null ? 0d : t.getScore());
+            result.add(dto);
+        }
+        return result;
+    }
+
+    /**
+     * 榜单内各跑团真实成员数批查（TASK-276 R4）：一次 Feign 调用
+     * {@link UserApi#listClubMemberCounts}；user-service 不可用 / 降级返回空表 / 响应缺项
+     * 均降级为空映射（调用方按 0 组装），<b>不得</b>让计数失败拖垮榜单主体。
+     */
+    private Map<Long, Integer> resolveClubMemberCounts(List<Long> clubIds) {
+        if (clubIds.isEmpty()) {
+            return Map.of();
+        }
+        try {
+            Result<Map<Long, Integer>> res = userApi.listClubMemberCounts(clubIds);
+            Map<Long, Integer> data = res == null ? null : res.getData();
+            return data == null ? Map.of() : data;
+        } catch (Exception e) {
+            log.warn("跑团成员数批查失败，memberCount 降级 0：clubIds={}", clubIds, e);
+            return Map.of();
+        }
+    }
+
+    /** 跑团榜单条目组装：rank（入参序即里程降序）+ Hash 名称补齐 + 真实成员数 + 公里格式化 */
     private static ClubLeaderboardDTO assembleClubEntry(int rank, Long clubId, String clubName,
-                                                        double totalDistanceKm) {
+                                                        double totalDistanceKm, int memberCount) {
         ClubLeaderboardDTO dto = new ClubLeaderboardDTO();
         dto.setRank(rank);
         dto.setClubId(clubId);
         dto.setClubName(clubName == null || clubName.isBlank() ? "跑团" + clubId : clubName);
-        dto.setMemberCount(0);
+        dto.setMemberCount(memberCount);
         dto.setTotalDistanceKm(totalDistanceKm);
         dto.setFormattedDistance(String.format("%.2f km", totalDistanceKm));
         return dto;

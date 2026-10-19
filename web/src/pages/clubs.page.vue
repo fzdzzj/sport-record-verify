@@ -58,11 +58,15 @@
       <a-alert v-if="loadError" class="mt-2" type="error" :message="loadError" />
     </a-card>
 
-    <!-- 成员抽屉：按加入时间升序，团长/团员标识 -->
+    <!-- 成员抽屉：按加入时间升序，团长/团员标识 + 成员贡献明细（TASK-276 R3） -->
     <a-drawer v-model:open="memberDrawerOpen" :title="`成员名单 - ${memberClubName}`" width="420">
       <div v-if="memberLoading" class="py-4 text-gray-500">加载成员中…</div>
       <a-empty v-else-if="!members.length" description="暂无成员" />
       <div v-else class="space-y-2">
+        <p class="mb-2 text-xs text-gray-400">
+          贡献取自 GET /leaderboard/api/leaderboard/clubs/{clubId}/contributions
+          （团内成员里程降序 TOP N，未上榜成员不显示贡献）。
+        </p>
         <div
           v-for="m in members"
           :key="m.id"
@@ -73,8 +77,20 @@
             <a-tag :color="m.role === 'CAPTAIN' ? 'gold' : 'blue'">
               {{ m.role === 'CAPTAIN' ? '团长' : '团员' }}
             </a-tag>
+            <a-tag v-if="contributionOf(m.userId)" color="purple">{{ contributionOf(m.userId) }}</a-tag>
           </div>
-          <span class="text-xs text-gray-400">{{ formatDate(m.joinedAt) }} 加入</span>
+          <div class="flex items-center gap-2">
+            <a-popconfirm
+              v-if="isCaptain && m.role !== 'CAPTAIN'"
+              title="确认把团长移交给该成员？移交后你将成为团员。"
+              ok-text="确认"
+              cancel-text="取消"
+              @confirm="handleTransferCaptain(m)"
+            >
+              <a class="text-xs text-blue-500">移交团长</a>
+            </a-popconfirm>
+            <span class="text-xs text-gray-400">{{ formatDate(m.joinedAt) }} 加入</span>
+          </div>
         </div>
       </div>
     </a-drawer>
@@ -108,13 +124,16 @@ import { computed, onMounted, reactive, ref } from 'vue'
 import { message } from 'ant-design-vue'
 import {
   createClub,
+  getClubContributions,
   getClubMembers,
   getClubs,
   getMyClub,
   getUserProfile,
   joinClub,
   leaveClub,
+  transferClubCaptain,
   type ClubDTO,
+  type ClubMemberContributionDTO,
   type ClubMemberDTO,
 } from '@/api/client'
 
@@ -201,19 +220,55 @@ const memberDrawerOpen = ref(false)
 const memberClubName = ref('')
 const memberLoading = ref(false)
 const members = ref<ClubMemberDTO[]>([])
+/** 成员贡献明细（TASK-276 R3）：userId → 贡献行（贡献榜 TOP N 才有条目） */
+const contributions = ref<Record<number, ClubMemberContributionDTO>>({})
+
+/** 本人是否为团长（成员抽屉内的「移交团长」仅团长可见） */
+const isCaptain = computed(() => myRoleLabel.value === '团长')
+
+/** 成员贡献标签：贡献榜命中才展示（米 → 公里 2 位小数 + 名次） */
+function contributionOf(userId: number): string {
+  const row = contributions.value[userId]
+  if (!row) return ''
+  return `贡献 ${(row.distanceMeters / 1000).toFixed(2)} km · 第${row.rank}名`
+}
 
 async function openMembers(clubId: number, name?: string) {
   memberClubName.value = name || ''
   memberDrawerOpen.value = true
   memberLoading.value = true
   members.value = []
+  contributions.value = {}
   try {
-    const res = await getClubMembers(clubId)
-    members.value = res.data || []
+    // 贡献明细是展示增强：单独 catch 归零，user-service/leaderboard-service 降级不阻断成员名单
+    const [membersRes, contribRes] = await Promise.all([
+      getClubMembers(clubId),
+      getClubContributions(clubId).catch(() => null),
+    ])
+    members.value = membersRes.data || []
+    const map: Record<number, ClubMemberContributionDTO> = {}
+    for (const row of (contribRes && contribRes.data) || []) {
+      map[row.userId] = row
+    }
+    contributions.value = map
   } catch (e: any) {
     message.error(e.code ? `[${e.code}] ${e.message}` : (e.message || '成员列表加载失败'))
   } finally {
     memberLoading.value = false
+  }
+}
+
+/** 团长移交（TASK-276 R1）：成功后本人降为团员，成员名单与广场成员数重拉 */
+async function handleTransferCaptain(m: ClubMemberDTO) {
+  const club = myClub.value
+  if (!club) return
+  try {
+    await transferClubCaptain(club.id, m.userId)
+    message.success(`已将团长移交给「${m.nickname || `用户${m.userId}`}」`)
+    myRoleLabel.value = '团员'
+    await Promise.all([loadMyClub(), loadClubs(), openMembers(club.id, memberClubName.value)])
+  } catch (e: any) {
+    message.error(e.code ? `[${e.code}] ${e.message}` : (e.message || '移交失败'))
   }
 }
 

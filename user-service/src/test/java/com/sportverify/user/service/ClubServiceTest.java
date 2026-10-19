@@ -25,6 +25,7 @@ import org.springframework.dao.DuplicateKeyException;
 
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -35,6 +36,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -43,6 +45,10 @@ import static org.mockito.Mockito.when;
  * 广场分页（钳制与关键词）/ 详情与成员（昵称批量补齐）/ 加入（重复加入拦截、
  * 解散团拦截、原子累加、并发撞键兜底）/ 退出（团长移交拦截、仅剩团长解散、
  * 普通成员递减）/ 我的跑团（未入团 null）。
+ *
+ * <p>TASK-276 R1/R4 扩展：团长移交（成功双 role 交换、非团长 1002、操作者未入团 3001、
+ * 目标非本团成员 / 目标未入团 / 目标是自己 3001、参数缺失 400）与成员数批查
+ * （一次 selectBatchIds、缺项不出现、空入参不查库）。</p>
  *
  * <p>纯 Mockito：Mapper 全 mock，不依赖 MySQL；D7 家法 TableInfoHelper 显式初始化
  * 两实体 LambdaCache，支持独立单跑下的 Wrapper SQL 段断言。</p>
@@ -444,5 +450,174 @@ class ClubServiceTest {
         when(clubMemberMapper.selectOne(any())).thenReturn(member);
         when(runningClubMapper.selectById(CLUB_ID)).thenReturn(null);
         assertNull(service.getMyClub(CALLER));
+    }
+
+    // ==================== 团长移交（TASK-276 R1） ====================
+
+    private static final Long TARGET = 101L;
+
+    private static ClubMember membership(Long id, Long userId, String role) {
+        ClubMember m = new ClubMember();
+        m.setId(id);
+        m.setClubId(CLUB_ID);
+        m.setUserId(userId);
+        m.setRole(role);
+        m.setJoinedAt(LocalDateTime.of(2026, 10, 1, 7, 0));
+        return m;
+    }
+
+    /**
+     * 移交成功：同事务双 role 更新（操作者 CAPTAIN→MEMBER / 目标 MEMBER→CAPTAIN），
+     * running_club 零写入（member_count 不变），返回 DTO 成员数不变。
+     */
+    @Test
+    @SuppressWarnings("unchecked")
+    void transferCaptain_success_swapsBothRolesAndKeepsMemberCount() {
+        when(runningClubMapper.selectById(CLUB_ID)).thenReturn(
+                club(CLUB_ID, "黎明跑团", 2, RunningClub.STATUS_ACTIVE));
+        when(clubMemberMapper.selectOne(any()))
+                .thenReturn(membership(1L, CALLER, ClubMember.ROLE_CAPTAIN))
+                .thenReturn(membership(2L, TARGET, ClubMember.ROLE_MEMBER));
+        when(userMapper.selectBatchIds(any())).thenReturn(List.of(user(CALLER, "跑者甲")));
+
+        ClubDTO dto = service.transferCaptain(CALLER, CLUB_ID, TARGET);
+
+        assertEquals(2, dto.getMemberCount(), "移交不改变成员数");
+        ArgumentCaptor<LambdaUpdateWrapper<ClubMember>> updateCap =
+                ArgumentCaptor.forClass(LambdaUpdateWrapper.class);
+        verify(clubMemberMapper, times(2)).update(any(), updateCap.capture());
+        List<LambdaUpdateWrapper<ClubMember>> wrappers = updateCap.getAllValues();
+        // 双 role 更新：先降级操作者成员行（id=1 → MEMBER），再升级目标成员行（id=2 → CAPTAIN）。
+        // getSqlSet()/getSqlSegment() 触发生成 SET 与 WHERE 段，参数随之物化到 paramNameValuePairs。
+        String set0 = wrappers.get(0).getSqlSet();
+        String where0 = wrappers.get(0).getSqlSegment();
+        String set1 = wrappers.get(1).getSqlSet();
+        String where1 = wrappers.get(1).getSqlSegment();
+        assertTrue(set0.contains("role"), "应更新 role 字段：" + set0);
+        assertTrue(where0.contains("id"), "降级行按成员行 id 定位：" + where0);
+        assertTrue(wrappers.get(0).getParamNameValuePairs().containsValue(1L), "先降级操作者成员行");
+        assertTrue(wrappers.get(0).getParamNameValuePairs().containsValue(ClubMember.ROLE_MEMBER));
+        assertTrue(set1.contains("role"), "应更新 role 字段：" + set1);
+        assertTrue(where1.contains("id"), "升级行按成员行 id 定位：" + where1);
+        assertTrue(wrappers.get(1).getParamNameValuePairs().containsValue(2L), "再升级目标成员行");
+        assertTrue(wrappers.get(1).getParamNameValuePairs().containsValue(ClubMember.ROLE_CAPTAIN));
+        verify(runningClubMapper, never()).update(any(), any());
+    }
+
+    /** 非团长（普通成员）操作移交 → 1002 拦截，零写操作。 */
+    @Test
+    void transferCaptain_operatorNotCaptain_throws1002() {
+        when(runningClubMapper.selectById(CLUB_ID)).thenReturn(
+                club(CLUB_ID, "黎明跑团", 2, RunningClub.STATUS_ACTIVE));
+        when(clubMemberMapper.selectOne(any()))
+                .thenReturn(membership(2L, CALLER, ClubMember.ROLE_MEMBER));
+
+        BizException e = assertThrows(BizException.class,
+                () -> service.transferCaptain(CALLER, CLUB_ID, TARGET));
+        assertEquals(ResultCode.FORBIDDEN.getCode(), e.getCode());
+        verify(clubMemberMapper, never()).update(any(), any());
+        verify(runningClubMapper, never()).update(any(), any());
+    }
+
+    /** 操作者未加入该跑团 → 3001（404），零写操作。 */
+    @Test
+    void transferCaptain_operatorNotMember_throws3001() {
+        when(runningClubMapper.selectById(CLUB_ID)).thenReturn(
+                club(CLUB_ID, "黎明跑团", 2, RunningClub.STATUS_ACTIVE));
+        when(clubMemberMapper.selectOne(any())).thenReturn(null);
+
+        BizException e = assertThrows(BizException.class,
+                () -> service.transferCaptain(CALLER, CLUB_ID, TARGET));
+        assertEquals(ResultCode.RECORD_NOT_FOUND.getCode(), e.getCode());
+        verify(clubMemberMapper, never()).update(any(), any());
+    }
+
+    /** 目标不是本团在册成员（成员行缺失）→ 3001，零写操作。 */
+    @Test
+    void transferCaptain_targetNotMemberOfThisClub_throws3001() {
+        when(runningClubMapper.selectById(CLUB_ID)).thenReturn(
+                club(CLUB_ID, "黎明跑团", 2, RunningClub.STATUS_ACTIVE));
+        when(clubMemberMapper.selectOne(any()))
+                .thenReturn(membership(1L, CALLER, ClubMember.ROLE_CAPTAIN))
+                .thenReturn(null);
+
+        BizException e = assertThrows(BizException.class,
+                () -> service.transferCaptain(CALLER, CLUB_ID, TARGET));
+        assertEquals(ResultCode.RECORD_NOT_FOUND.getCode(), e.getCode());
+        assertTrue(e.getMessage().contains("不是本团在册成员"), "语义由 message 承载：" + e.getMessage());
+        verify(clubMemberMapper, never()).update(any(), any());
+    }
+
+    /** 目标是操作者本人 → 3001，且不再回查目标成员行（校验链短路）、零写操作。 */
+    @Test
+    void transferCaptain_targetIsOperator_throws3001AndShortCircuits() {
+        when(runningClubMapper.selectById(CLUB_ID)).thenReturn(
+                club(CLUB_ID, "黎明跑团", 2, RunningClub.STATUS_ACTIVE));
+        when(clubMemberMapper.selectOne(any()))
+                .thenReturn(membership(1L, CALLER, ClubMember.ROLE_CAPTAIN));
+
+        BizException e = assertThrows(BizException.class,
+                () -> service.transferCaptain(CALLER, CLUB_ID, CALLER));
+        assertEquals(ResultCode.RECORD_NOT_FOUND.getCode(), e.getCode());
+        assertTrue(e.getMessage().contains("移交给自己"), "语义由 message 承载：" + e.getMessage());
+        verify(clubMemberMapper, times(1)).selectOne(any());
+        verify(clubMemberMapper, never()).update(any(), any());
+    }
+
+    /** 目标用户完全未入团（无任何成员行）→ 3001，零写操作。 */
+    @Test
+    void transferCaptain_targetWithoutAnyClub_throws3001() {
+        when(runningClubMapper.selectById(CLUB_ID)).thenReturn(
+                club(CLUB_ID, "黎明跑团", 2, RunningClub.STATUS_ACTIVE));
+        // 操作者命中 → 目标（TARGET 从未入团）未命中
+        when(clubMemberMapper.selectOne(any()))
+                .thenReturn(membership(1L, CALLER, ClubMember.ROLE_CAPTAIN))
+                .thenReturn(null);
+
+        BizException e = assertThrows(BizException.class,
+                () -> service.transferCaptain(CALLER, CLUB_ID, TARGET));
+        assertEquals(ResultCode.RECORD_NOT_FOUND.getCode(), e.getCode());
+        verify(clubMemberMapper, times(2)).selectOne(any());
+        verify(clubMemberMapper, never()).update(any(), any());
+        verify(runningClubMapper, never()).update(any(), any());
+    }
+
+    /** 参数缺失 → 400 非法参数（不动库）。 */
+    @Test
+    void transferCaptain_nullArgs_throwIllegalArgument() {
+        assertThrows(IllegalArgumentException.class,
+                () -> service.transferCaptain(null, CLUB_ID, TARGET));
+        assertThrows(IllegalArgumentException.class,
+                () -> service.transferCaptain(CALLER, null, TARGET));
+        assertThrows(IllegalArgumentException.class,
+                () -> service.transferCaptain(CALLER, CLUB_ID, null));
+        verify(clubMemberMapper, never()).selectOne(any());
+    }
+
+    // ==================== 成员数批查（TASK-276 R4 内部端点支撑） ====================
+
+    /** 批查回表：一次 selectBatchIds 返回 clubId→member_count，缺项不出现在结果中。 */
+    @Test
+    @SuppressWarnings("unchecked")
+    void listMemberCounts_batchQueriesRealCounts() {
+        when(runningClubMapper.selectBatchIds(any())).thenReturn(List.of(
+                club(CLUB_ID, "黎明跑团", 12, RunningClub.STATUS_ACTIVE),
+                club(78L, "晚风跑团", 5, RunningClub.STATUS_ACTIVE)));
+
+        Map<Long, Integer> counts = service.listMemberCounts(List.of(CLUB_ID, 78L, 99L));
+
+        assertEquals(2, counts.size());
+        assertEquals(12, counts.get(CLUB_ID));
+        assertEquals(5, counts.get(78L));
+        assertNull(counts.get(99L), "不存在的跑团不出现在结果中（消费方降级 0）");
+        verify(userMapper, never()).selectBatchIds(any());
+    }
+
+    /** 空入参 / 全 null 入参：直接空表，不查库。 */
+    @Test
+    void listMemberCounts_emptyArgs_returnsEmptyMap() {
+        assertTrue(service.listMemberCounts(null).isEmpty());
+        assertTrue(service.listMemberCounts(List.of()).isEmpty());
+        verify(runningClubMapper, never()).selectBatchIds(any());
     }
 }

@@ -42,6 +42,8 @@
         <template #bodyCell="{ column, record }">
           <span v-if="column.key === 'distance'">{{ record.distance }}</span>
           <span v-else-if="column.key === 'elapsed'">{{ formatElapsed(record.elapsedSeconds) }}</span>
+          <span v-else-if="column.key === 'memberCount'">{{ record.memberCount }} 人</span>
+          <a v-else-if="column.key === 'contributions'" @click="openContributions(record)">成员贡献</a>
           <span v-else>{{ record[column.dataIndex] }}</span>
         </template>
       </a-table>
@@ -49,20 +51,49 @@
       <div v-if="lbError" class="mt-2">
         <a-alert type="error" :message="lbError" />
       </div>
-      <div class="mt-2 text-xs text-gray-500">好友榜：当前用户无好友或好友无上榜数据时返回空数组。总榜无需登录（但演示用登录会话）。赛段 KOM 榜走 GET /leaderboard/api/leaderboard/segments/{segmentId}，赛段列表走 GET /mapmatch/segments。</div>
+      <div class="mt-2 text-xs text-gray-500">好友榜：当前用户无好友或好友无上榜数据时返回空数组。总榜无需登录（但演示用登录会话）。赛段 KOM 榜走 GET /leaderboard/api/leaderboard/segments/{segmentId}，赛段列表走 GET /mapmatch/segments。跑团榜成员数自 TASK-276 起为真实计数（查询失败降级 0），行内「成员贡献」打开团内贡献榜。</div>
     </a-card>
+
+    <!-- 成员贡献榜抽屉（TASK-276 R3）：跑团榜行「成员贡献」按需拉取贡献明细端点 -->
+    <a-drawer v-model:open="contribOpen" :title="`成员贡献 - ${contribClubName}`" width="420">
+      <div v-if="contribLoading" class="py-4 text-gray-500">加载贡献榜中…</div>
+      <a-empty
+        v-else-if="!contributions.length"
+        description="暂无成员贡献（该团成员尚无通过校验的里程）"
+      />
+      <a-table
+        v-else
+        :data-source="contributions"
+        :columns="contributionColumns"
+        row-key="userId"
+        size="small"
+        :pagination="false"
+      >
+        <template #bodyCell="{ column, record }">
+          <span v-if="column.key === 'distanceKm'">{{ (record.distanceMeters / 1000).toFixed(2) }} km</span>
+          <span v-else>{{ record[column.dataIndex] }}</span>
+        </template>
+      </a-table>
+      <p class="mt-2 text-xs text-gray-400">
+        GET /leaderboard/api/leaderboard/clubs/{clubId}/contributions?size=（TOP N 降序，
+        默认 20 上限 100；昵称缺失回退「跑者{userId}」）。
+      </p>
+    </a-drawer>
   </div>
 </template>
 
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue'
+import { message } from 'ant-design-vue'
 import {
+  getClubContributions,
   getClubLeaderboard,
   getLeaderboard,
   getLeaderboardRange,
   getSegments,
   getSegmentLeaderboard,
   type ClubLeaderboardDTO,
+  type ClubMemberContributionDTO,
   type LeaderboardDTO,
   type SegmentLeaderboardDTO,
 } from '@/api/client'
@@ -133,7 +164,7 @@ const segmentColumns = [
   { title: 'pace', dataIndex: 'paceFormatted', key: 'paceFormatted' },
 ]
 
-/** 跑团里程榜列（TASK-275）：排名 / 跑团名称 / 成员数 / 累计跑量 */
+/** 跑团里程榜列（TASK-275）：排名 / 跑团名称 / 成员数 / 累计跑量；TASK-276 增成员贡献入口 */
 const clubColumns = [
   { title: 'rank', dataIndex: 'rank', key: 'rank' },
   { title: 'clubId', dataIndex: 'clubId', key: 'clubId' },
@@ -141,6 +172,7 @@ const clubColumns = [
   { title: '成员数', dataIndex: 'memberCount', key: 'memberCount' },
   { title: '总里程 (km)', dataIndex: 'totalDistanceKm', key: 'totalDistanceKm' },
   { title: 'formatted', dataIndex: 'formattedDistance', key: 'formattedDistance' },
+  { title: '成员贡献', key: 'contributions' },
 ]
 
 const lbColumns = computed(() => {
@@ -291,4 +323,34 @@ async function loadClubBoard() {
 onMounted(() => {
   loadLb()
 })
+
+// ===== 成员贡献榜（TASK-276 R3）：跑团榜行「成员贡献」按需拉取（挂载期零请求） =====
+const contribOpen = ref(false)
+const contribLoading = ref(false)
+const contribClubName = ref('')
+const contributions = ref<ClubMemberContributionDTO[]>([])
+
+/** 贡献榜列：名次 / 成员 / 昵称 / 贡献里程（米 → 公里由 bodyCell 格式化） */
+const contributionColumns = [
+  { title: 'rank', dataIndex: 'rank', key: 'rank' },
+  { title: 'userId', dataIndex: 'userId', key: 'userId' },
+  { title: 'nickname', dataIndex: 'nickname', key: 'nickname' },
+  { title: '贡献里程', key: 'distanceKm' },
+]
+
+/** 打开某跑团的成员贡献榜（默认 TOP 20；失败只写错误提示，不清空已展示的主榜） */
+async function openContributions(record: ClubLeaderboardDTO) {
+  contribClubName.value = record.clubName
+  contribOpen.value = true
+  contribLoading.value = true
+  contributions.value = []
+  try {
+    const res = await getClubContributions(record.clubId)
+    contributions.value = res.data || []
+  } catch (e: any) {
+    message.error(e.code ? `[${e.code}] ${e.message}` : (e.message || '成员贡献加载失败'))
+  } finally {
+    contribLoading.value = false
+  }
+}
 </script>

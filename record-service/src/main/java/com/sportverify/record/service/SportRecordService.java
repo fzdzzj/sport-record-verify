@@ -98,6 +98,8 @@ public class SportRecordService {
     private RecordLikeService recordLikeService;
     /** leaderboard-service Feign（TASK-223 D1 删除后回撤榜单里程贡献，经 setter 注入避免构造参数超 8）。 */
     private LeaderboardApi leaderboardApi;
+    /** 跑团里程入账旁路（TASK-276 R2，经 setter 注入避免构造参数超 8）。 */
+    private ClubDistanceSettleService clubDistanceSettleService;
 
     @Autowired
     public SportRecordService(SportRecordMapper sportRecordMapper,
@@ -132,6 +134,18 @@ public class SportRecordService {
     @Autowired
     public void setLeaderboardApi(LeaderboardApi leaderboardApi) {
         this.leaderboardApi = leaderboardApi;
+    }
+
+    /**
+     * 注入跑团里程入账旁路（TASK-276 R2 终态迁移成功后入账/回退跑团里程）。
+     *
+     * <p>{@code required=false}：入账是<b>可选旁路</b>，裁剪上下文（如 {@code RecordServiceCircularDependencyTest}
+     * 的按需装配上下文）不注册该 bean 时不应阻断 SportRecordService 装配；缺省未注入时
+     * {@link #statusCallback} 按「无旁路」降级（零操作），生产上下文由组件扫描正常注入。</p>
+     */
+    @Autowired(required = false)
+    public void setClubDistanceSettleService(ClubDistanceSettleService clubDistanceSettleService) {
+        this.clubDistanceSettleService = clubDistanceSettleService;
     }
 
     /** 提交事务分段计时开关（TASK-139 插桩，默认关闭；true 时日志周期打 SUBMIT_TX_TIMING snapshot） */
@@ -318,6 +332,11 @@ public class SportRecordService {
     /**
      * 状态回调（verify 判定/终判后驱动迁移，规范「校验状态机」）。
      * 乐观锁并发控制：影响 0 行 → 3003；目标状态与当前一致视为幂等成功（重试场景）。
+     *
+     * <p>跑团里程入账旁路（TASK-276 R2）：终态迁移<b>成功后</b>调用
+     * {@link ClubDistanceSettleService#settleOnMigration} 按净额增量入账/回退用户所在跑团的里程。
+     * 该调用为 best-effort 旁路——服务自身已吞并全部异常，此处再兜一层保险，
+     * 任何失败只 WARN 留证，<b>绝不阻断</b>状态回调主流程（跨服务最终一致，ADR-0009）。</p>
      */
     public void statusCallback(StatusCallbackDTO dto) {
         SportRecord record = sportRecordMapper.selectById(dto.getRecordId());
@@ -335,6 +354,15 @@ public class SportRecordService {
             throw new BizException(ResultCode.RECORD_STATUS_INVALID, "并发冲突：记录状态或版本已变更");
         }
         log.info("状态回调成功：recordId={}, {} → {}", dto.getRecordId(), dto.getFromStatus(), dto.getToStatus());
+        // 终态迁移成功分支：跑团里程入账旁路（best-effort，失败仅日志告警，不抛出阻断主流程）
+        if (clubDistanceSettleService != null) {
+            try {
+                clubDistanceSettleService.settleOnMigration(dto.getRecordId(), dto.getToStatus());
+            } catch (Exception e) {
+                log.warn("跑团里程入账旁路异常（best-effort，不阻断状态回调）：recordId={}",
+                        dto.getRecordId(), e);
+            }
+        }
     }
 
     /**

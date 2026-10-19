@@ -712,7 +712,8 @@ export interface ClubCreatePayload {
   badgeUrl?: string
 }
 
-/** 跑团团队里程榜条目（后端 ClubLeaderboardDTO 同构）：ZSet 里程降序，rank 从 1 起 */
+/** 跑团团队里程榜条目（后端 ClubLeaderboardDTO 同构）：ZSet 里程降序，rank 从 1 起。
+ *  memberCount 自 TASK-276 起为真实计数（user-service 批查），查询失败降级 0。 */
 export interface ClubLeaderboardDTO {
   rank: number
   clubId: number
@@ -720,6 +721,15 @@ export interface ClubLeaderboardDTO {
   memberCount: number
   totalDistanceKm: number
   formattedDistance: string
+}
+
+/** 跑团成员贡献明细（后端 ClubMemberContributionDTO 同构，TASK-276 R3）：
+ *  ZSet leaderboard:club:member:{clubId} 贡献里程米降序，rank 从 1 起；昵称缺失回退「跑者{userId}」。 */
+export interface ClubMemberContributionDTO {
+  rank: number
+  userId: number
+  nickname: string
+  distanceMeters: number
 }
 
 /** 跑团广场分页（GET /user/api/clubs）：keyword 名称模糊，page/size 钳制 1..100 */
@@ -767,6 +777,24 @@ export async function getClubLeaderboard(
   size = 20,
 ): Promise<Result<ClubLeaderboardDTO[]>> {
   return api.get('/leaderboard/api/leaderboard/clubs', { params: { period, size } })
+}
+
+/** 跑团成员贡献榜（GET /leaderboard/api/leaderboard/clubs/{id}/contributions，TASK-276 R3）：
+ *  TOP N 降序，size 由服务端钳制 1..100（默认 20），distanceMeters 为成员累计贡献米。 */
+export async function getClubContributions(
+  clubId: number | string,
+  size = 20,
+): Promise<Result<ClubMemberContributionDTO[]>> {
+  return api.get(`/leaderboard/api/leaderboard/clubs/${clubId}/contributions`, { params: { size } })
+}
+
+/** 团长移交（POST /user/api/clubs/{id}/transfer-captain?targetUserId=，TASK-276 R1）：
+ *  仅团长可移交，目标须为本团其他在册成员；成员数不变，返回移交后的跑团。 */
+export async function transferClubCaptain(
+  clubId: number | string,
+  targetUserId: number,
+): Promise<Result<ClubDTO>> {
+  return api.post(`/user/api/clubs/${clubId}/transfer-captain`, null, { params: { targetUserId } })
 }
 
 

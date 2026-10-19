@@ -4,6 +4,7 @@ import com.sportverify.api.record.dto.LeaderboardDTO;
 import com.sportverify.api.mapmatch.dto.SegmentEffortDTO;
 import com.sportverify.api.mapmatch.dto.SegmentLeaderboardDTO;
 import com.sportverify.api.user.dto.ClubLeaderboardDTO;
+import com.sportverify.api.user.dto.ClubMemberContributionDTO;
 import com.sportverify.common.exception.BizException;
 import com.sportverify.common.result.Result;
 import com.sportverify.common.result.ResultCode;
@@ -145,6 +146,18 @@ public class LeaderboardController {
     }
 
     /**
+     * 跑团成员贡献明细（TASK-276 R3）：{@code GET /api/leaderboard/clubs/{clubId}/contributions?size=20}。
+     * ZSet {@code leaderboard:club:member:{clubId}} 降序前 N（默认 20、上限 100，service 内收敛），
+     * 返回 rank/userId/nickname/distanceMeters；昵称缺失回退「跑者{userId}」。
+     */
+    @GetMapping("/clubs/{clubId}/contributions")
+    public Result<List<ClubMemberContributionDTO>> clubContributions(
+            @PathVariable("clubId") Long clubId,
+            @RequestParam(value = "size", required = false) Integer size) {
+        return Result.success(leaderboardService.getClubContributions(clubId, size));
+    }
+
+    /**
      * 身份认定（数据隔离核心，见 ADR-0007）：true 时以网关 X-User-Id 为准，
      * 显式携带值不一致 → 403（1002，越权）；false 时降级为显式携带值（旧行为）。
      */
@@ -181,14 +194,14 @@ class ClubLeaderboardInternalController {
 
     private final LeaderboardService leaderboardService;
 
-    /** 跑团里程上报（POST /internal/leaderboard/clubs/distance）：body 携带 clubId/clubName/distanceMeters/weekStart */
+    /** 跑团里程上报（POST /internal/leaderboard/clubs/distance）：body 携带 clubId/clubName/distanceMeters/weekStart/userId */
     @PostMapping("/distance")
     public Result<Boolean> recordDistance(@RequestBody ClubDistancePayload payload) {
         if (payload == null || payload.getClubId() == null) {
             throw new IllegalArgumentException("跑团里程上报必须携带 clubId");
         }
         leaderboardService.recordClubDistance(payload.getClubId(), payload.getClubName(),
-                payload.getDistanceMeters(), payload.getWeekStart());
+                payload.getDistanceMeters(), payload.getWeekStart(), payload.getUserId());
         return Result.success(Boolean.TRUE);
     }
 
@@ -199,9 +212,11 @@ class ClubLeaderboardInternalController {
         private Long clubId;
         /** 跑团名称（同步进名称缓存 Hash；可空则不更新名称） */
         private String clubName;
-        /** 本次累计里程（米，必须为正） */
+        /** 净额增量（米）：正数入账 / 负数回退，不得为 0（TASK-276 R2 带符号口径） */
         private Double distanceMeters;
         /** 周一锚点日期（ISO yyyy-MM-dd） */
         private LocalDate weekStart;
+        /** 贡献成员用户ID（TASK-276 R3 成员贡献 ZSet member；可空则不计成员明细） */
+        private Long userId;
     }
 }

@@ -1,6 +1,7 @@
 package com.sportverify.api.user;
 
 import com.sportverify.api.common.PageResult;
+import com.sportverify.api.user.dto.ClubDTO;
 import com.sportverify.api.user.dto.FriendDTO;
 import com.sportverify.api.user.dto.FriendRequestCreateDTO;
 import com.sportverify.api.user.dto.FriendRequestDTO;
@@ -14,6 +15,7 @@ import org.springframework.stereotype.Component;
 
 import java.util.Collections;
 import java.util.List;
+import java.util.Map;
 
 /**
  * user-service Feign 降级工厂（add-resilience-hardening）。
@@ -86,6 +88,23 @@ public class UserApiFallback implements FallbackFactory<UserApi> {
                 log.warn("user-service 熔断降级：areFriends 返回 false（失败安全隐私），userId={}, otherUserId={}, cause={}",
                         userId, otherUserId, cause == null ? "unknown" : cause.toString());
                 return Result.success(false);
+            }
+
+            @Override
+            public Result<ClubDTO> getClubByUserId(Long userId) {
+                // 读路径软降级为空（视作未入团）：跑团里程入账旁路自然跳过（宁少记不误记），
+                // 团队榜 memberCount 亦按降级 0 处理，均不得阻断调用方主链路。
+                log.warn("user-service 熔断降级：getClubByUserId 返回 null（视作未入团），userId={}, cause={}",
+                        userId, cause == null ? "unknown" : cause.toString());
+                return Result.success(null);
+            }
+
+            @Override
+            public Result<Map<Long, Integer>> listClubMemberCounts(List<Long> ids) {
+                // 读路径软降级：空映射 → 调用方榜单 memberCount 降级 0（保持占位语义，榜单主体照常返回）
+                log.warn("user-service 熔断降级：listClubMemberCounts 返回空表（memberCount 降级 0），ids={}, cause={}",
+                        ids == null ? 0 : ids.size(), cause == null ? "unknown" : cause.toString());
+                return Result.success(Collections.emptyMap());
             }
         };
     }

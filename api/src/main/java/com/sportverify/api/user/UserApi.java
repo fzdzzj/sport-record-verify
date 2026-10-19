@@ -1,6 +1,7 @@
 package com.sportverify.api.user;
 
 import com.sportverify.api.common.PageResult;
+import com.sportverify.api.user.dto.ClubDTO;
 import com.sportverify.api.user.dto.FriendDTO;
 import com.sportverify.api.user.dto.FriendRequestCreateDTO;
 import com.sportverify.api.user.dto.FriendRequestDTO;
@@ -14,6 +15,7 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestParam;
 
 import java.util.List;
+import java.util.Map;
 
 /**
  * user-service Feign 契约（user-api）。
@@ -96,4 +98,31 @@ public interface UserApi {
      */
     @GetMapping("/friends/ids")
     Result<List<Long>> listFriendIds(@RequestParam("userId") Long userId);
+
+    // ===== 跑团域（TASK-276：里程入账定位所在跑团 + 团队榜 memberCount 真实计数）=====
+
+    /**
+     * 用户所在跑团（TASK-276 R2/R4）：按 {@code userId} 反查其 {@code club_member} 行对应的
+     * 跑团（一人一团约束下至多一行），<b>未入团返回 {@code Result.success(null)}</b>（data=null，
+     * 不是 404）；跑团行缺失（脏数据）同样返回 null。
+     *
+     * <p>消费方两组：record-service 在运动记录终态迁移后据此判断是否需要上报跑团里程
+     * （未入团跳过，见 {@code ClubDistanceSettleService}）；leaderboard-service 组装团队榜
+     * 时作为单团定位入口。</p>
+     *
+     * <p>降级（{@link UserApiFallback}）：user-service 不可用时同样返回 data=null（视作未入团），
+     * 使里程入账旁路自然跳过——宁少记不误记，且不得阻断状态回调主链路。</p>
+     */
+    @GetMapping("/clubs/user/{userId}")
+    Result<ClubDTO> getClubByUserId(@PathVariable("userId") Long userId);
+
+    /**
+     * 跑团成员数批查（TASK-276 R4）：{@code ids} 为 clubId 列表，返回 clubId→member_count
+     * 映射；不存在的跑团/已解散跑团不出现在结果中（由消费方降级 0）。
+     *
+     * <p>供 leaderboard-service 组装团队榜前 N 名时<b>一次</b>拉齐真实成员数，避免逐团远程调用。
+     * 降级（{@link UserApiFallback}）：user-service 不可用时返回空表 → 榜单 memberCount 降级 0。</p>
+     */
+    @GetMapping("/clubs/member-counts")
+    Result<Map<Long, Integer>> listClubMemberCounts(@RequestParam("ids") List<Long> ids);
 }

@@ -84,6 +84,9 @@ export async function installRouteMocks(page: Page, ctx: ApiCtx, stores: Stores)
   await page.route('**/leaderboard/api/leaderboard/segments*', (route) => handleLeaderboardSegments(route, ctx))
   // TASK-275：跑团团队里程榜请求面由 route-mock 承接（命中分支即无真实网络）
   await page.route('**/leaderboard/api/leaderboard/clubs*', (route) => handleLeaderboardClubs(route, ctx))
+  // TASK-276：跑团成员贡献明细（clubs/{id}/contributions）单独承接——通配 clubs* 的 * 不跨路径分隔符，
+  // 贡献端点须由本行匹配，否则广场成员抽屉/榜单贡献抽屉会落到 404 兜底并计入 unmocked
+  await page.route('**/leaderboard/api/leaderboard/clubs/*/contributions*', (route) => handleLeaderboardClubs(route, ctx))
   page.on('request', (req) => {
     const p = new URL(req.url()).pathname
     // 仅统计后端 API 前缀（排除 dev server 下的 /src/api/*.ts 源码模块）
@@ -204,10 +207,16 @@ const CLUB_MEMBERS_FIXTURE = [
   { id: 2, clubId: 7, userId: 101, nickname: '跑友甲', role: 'MEMBER', joinedAt: '2026-10-02T08:00:00' },
 ]
 
-/** 跑团团队里程榜夹具（TASK-275）：ZSet 里程降序，memberCount 为预留字段 */
+/** 跑团团队里程榜夹具（TASK-275）：ZSet 里程降序；memberCount 自 TASK-276 起为真实计数（降级口径为 0） */
 const CLUB_BOARD_FIXTURE = [
   { rank: 1, clubId: 7, clubName: '黎明跑团', memberCount: 12, totalDistanceKm: 15.35, formattedDistance: '15.35 km' },
   { rank: 2, clubId: 9, clubName: '晚风跑团', memberCount: 5, totalDistanceKm: 8.0, formattedDistance: '8.00 km' },
+]
+
+/** 跑团成员贡献榜夹具（TASK-276 R3）：团内成员贡献里程（米）降序，rank 从 1 起 */
+const CLUB_CONTRIBUTIONS_FIXTURE = [
+  { rank: 1, userId: 100, nickname: '演示用户', distanceMeters: 15345.6 },
+  { rank: 2, userId: 101, nickname: '跑友甲', distanceMeters: 8000 },
 ]
 
 /** 赛段相关 mock（TASK-272）：GET /mapmatch/segments 列表 + POST /mapmatch/segments/match 匹配；
@@ -262,13 +271,19 @@ async function handleLeaderboardSegments(route: Route, ctx: ApiCtx): Promise<voi
   route.fulfill({ status: 404, contentType: 'application/json', body: JSON.stringify({ code: 9999, message: 'mock unmapped: ' + p }) })
 }
 
-/** 跑团团队里程榜 mock（TASK-275）：GET /leaderboard/api/leaderboard/clubs（period=overall|weekly） */
+/** 跑团团队里程榜 mock（TASK-275）：GET /leaderboard/api/leaderboard/clubs（period=overall|weekly）
+ *  + TASK-276：GET /leaderboard/api/leaderboard/clubs/{clubId}/contributions（成员贡献明细） */
 async function handleLeaderboardClubs(route: Route, ctx: ApiCtx): Promise<void> {
   const req = route.request()
   const p = new URL(req.url()).pathname
   const method = req.method()
   if (p === '/leaderboard/api/leaderboard/clubs' && method === 'GET') {
     route.fulfill(ok(CLUB_BOARD_FIXTURE))
+    return
+  }
+  const contributions = p.match(/^\/leaderboard\/api\/leaderboard\/clubs\/(\d+)\/contributions$/)
+  if (contributions && method === 'GET') {
+    route.fulfill(ok(CLUB_CONTRIBUTIONS_FIXTURE))
     return
   }
   ctx.unmocked.push(`${method} ${p}`)
