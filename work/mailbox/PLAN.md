@@ -872,7 +872,16 @@
 | 开工基线 | main @ 3b34b81（TASK-268 封盘笔；本地与 origin/main 平齐，CI run 39101746775 全绿） |
 | 分级定档 | MEDIUM（涉及 record_db 新增 user_badge 表与迁移、9 大徽章定义、BadgeService 读时结算与佩戴、BadgeController、前端个人中心勋章墙与动态流外显；指导亲核三块把关，免独立复核子 agent） |
 | 亲验证据 | 三项全部坐实：①平台具备完善的运动记录状态机、连续打卡天数与运动目标，但缺少正向激励的成就勋章系统；②读时结算+增量幂等持久化模式对 submitRecord 写链路 0 侵入、0 性能损耗，并能自动追溯历史记录达成；③静态检查与测试基准稳固（1035 测全绿，Checkstyle 0 违规） |
-| 白名单 | 14+1 项：sql/02-record-db.sql + sql/migrations/add-user-badge-table.sql + ecord-service/src/test/java/com/sportverify/record/db/SqlMigrationContractTest.java + ecord-service/src/main/java/com/sportverify/record/entity/UserBadge.java + ecord-service/src/main/java/com/sportverify/record/enums/BadgeType.java + ecord-service/src/main/java/com/sportverify/record/dto/BadgeDTO.java + ecord-service/src/main/java/com/sportverify/record/mapper/UserBadgeMapper.java + ecord-service/src/main/java/com/sportverify/record/service/BadgeService.java + ecord-service/src/main/java/com/sportverify/record/controller/BadgeController.java + ecord-service/src/test/java/com/sportverify/record/service/BadgeServiceTest.java + ecord-service/src/test/java/com/sportverify/record/controller/BadgeControllerTest.java + web/src/pages/index.page.vue + web/src/pages/feed.page.vue + web/src/api/client.ts + 台账 work/mailbox/tasks/TASK-269/handoff.md |
+| 白名单 | 14+1 项：sql/02-record-db.sql + sql/migrations/add-user-badge-table.sql +
+ecord-service/src/test/java/com/sportverify/record/db/SqlMigrationContractTest.java +
+ecord-service/src/main/java/com/sportverify/record/entity/UserBadge.java +
+ecord-service/src/main/java/com/sportverify/record/enums/BadgeType.java +
+ecord-service/src/main/java/com/sportverify/record/dto/BadgeDTO.java +
+ecord-service/src/main/java/com/sportverify/record/mapper/UserBadgeMapper.java +
+ecord-service/src/main/java/com/sportverify/record/service/BadgeService.java +
+ecord-service/src/main/java/com/sportverify/record/controller/BadgeController.java +
+ecord-service/src/test/java/com/sportverify/record/service/BadgeServiceTest.java +
+ecord-service/src/test/java/com/sportverify/record/controller/BadgeControllerTest.java + web/src/pages/index.page.vue + web/src/pages/feed.page.vue + web/src/api/client.ts + 台账 work/mailbox/tasks/TASK-269/handoff.md |
 | 核心实现 | R1 user_badge DDL 与迁移脚本；R2 9 大初始成就枚举定义；R3 BadgeService 判定与佩戴；R4 BadgeController 端点；R5 前端个人主页勋章墙与动态流外显；R6 测试全覆盖 |
 | 门禁要求 | 七门禁全量逐位（surefire record-service 323 测净增，全仓 1035+ 测）+ checkstyle --static=record-service 退出码 0 + 契约门（判据 B 机器比对）+ token 门 29 项逐位持平 + 词面门四 locale ZERO_HIT + 探针阳性对照 + diff --check 净；双提交 C-01/C-02 |
 | 受限预登记 | 保持依赖纯净，不变更微服务对外核心业务 API 契约与已有表结构 |
@@ -984,8 +993,8 @@
 | 核心实现 | R0 WeeklyDigestServiceTest 补齐 TableInfoHelper 隔离初始化；R1 增量迁移 add-running-club.sql（USE user_db;）与 01-user-db.sql 双写；R2 api 领域 DTO（ClubDTO/ClubMemberDTO/ClubCreateDTO/ClubLeaderboardDTO）；R3 user-service 跑团实体/Mapper/Service/Controller/单测；R4 leaderboard-service 跑团总/周榜 Redis ZSet 与端点/单测；R5 前端跑团广场、详情、成员、创建跑团 Modal、榜单跑团 Tab、首页卡片、导航入口与自动路由；R6 E2E mock 分支补齐 |
 | 门禁要求 | 七门禁全量逐位（surefire 63/79/221/392/203/120/57 保持只增不减，总计 1135 测）+ checkstyle --static=leaderboard-service 退出码 0 + 契约门 + token 门 29 项逐位持平 + 词面门四 locale ZERO_HIT + diff --check 净；双提交 C-01/C-02 |
 | 受限预登记 | 跑团里程统计通过 Redis ZSet 累加，不破坏运动记录与校验主链路的异步解耦架构 |
-| 实施与门禁 | （待子 Agent 落地回填） |
-| 指导亲核 | （待子 Agent 落地后执行） |
-| 独立复核 | （待子 Agent 落地后执行） |
-| 是否到达外部门槛 | **进行中（待实施）** |
-| 状态 | **进行中（2026-10-19 指导侧立项）**：TASK-275 跑团俱乐部与团队里程榜系统立项，派发令生效中 |
+| 实施与门禁 | C-01 `53732b0`（feat(user,leaderboard,web)，24 文件 +2154/−11：running_club/club_member DDL 双写 + ClubDTO/ClubMemberDTO/ClubCreateDTO/ClubLeaderboardDTO 四组 DTO + WeeklyDigestServiceTest TableInfoHelper 隔离加固 + ClubService 七方法与 ClubServiceTest 20 用例 + ClubController 七端点 + LeaderboardService 跑团总/周榜 ZSet 双 ZINCRBY 与名称 Hash 缓存及 LeaderboardClubTest 9 用例 + 前端跑团广场/创建 Modal/成员抽屉/榜单跑团 Tab/首页我的跑团卡片/导航入口/typed-router + E2E mock 七分支与 4 组夹具）+ C-02 `ec7f517`（台账 1 文件 +63/−22）；门禁全绿：surefire 1164 测全绿（0 失败 0 错误 0 跳过，user 221→241 净增 +20、leaderboard 120→129 净增 +9）、静态门 leaderboard-service Checkstyle 0 违规、前端 vitest 90 全绿 + vue-tsc 类型检查 0 错 + E2E 14/14 全绿、契约门判据 B 25 路径全等 rc=0（a642d5d 口径 + e512add 负例对照 rc=1 坐实基线口径偏差说明）、token 门基线 2481 逐位持平 + 终态 2510 精确吻合期望值（自枚举各 +1）、词面门四 locale ZERO_HIT、diff --check 净（纯 LF 无 BOM） |
+| 指导亲核 | FULL 档亲核三块全 PASS：①Git 状态与提交链对账（porcelain 空、恰 3 笔、diff 25 文件与 handoff §2 逐位一致、零推送）；②高风险定向抽查（add-running-club.sql 首行 USE user_db、CREATE TABLE IF NOT EXISTS 幂等零破坏、uk_user_club 一人一团唯一键、01-user-db.sql 双写逐字一致；ClubService 一人一团三重保障（前置拦截 + DuplicateKeyException 兜底 + 事务回滚）、团长保护分支与 member_count setSql 原子增减；ClubController resolveUserId 降级拒绝鉴权范式与错误码复用）；③一致性裁决（独立复核实测与 handoff §3 读数逐位一致零偏差） |
+| 独立复核 | 五块全 PASS 零阻断：块一提交链规范与白名单双向全等（25 路径逐位匹配）；块二红线与零触碰（零破坏性 DDL、双写 VERBATIM-IDENTICAL、零未声明依赖 jakarta.validation 既有声明、−11 删除行逐行审阅全为 UI 替换改写、R0 独立单跑 18 测全绿）；块三七门禁独立复跑 7/7 亲自实测吻合（surefire 1164、契约门 rc=0 + 负例对照、token 三树 2481/2481/2510 逐位、词面门四 locale ZERO_HIT + 阳性对照、diff 净、blob CR=0 无 BOM）；块四证据链核对（§3 读数逐位一致、R0–R6 每项代码实证、§5 四项决策全部坐实——e512add 负例 rc=1 实证基线口径偏差必要性、包级私有顶级类 Spring 装配、错误码复用、memberCount 恒 0 javadoc）；块五只改清单三向全等；非阻断 4 项登记（.trae/tmp scratch 维持现状 gitignored、check-public-wording.sh 引用缺口词面门实体为手跑命令、R0 单跑等价离线口径透明登记、scripts/verify/README.md TASK-184 状态滞后顺带观察） |
+| 是否到达外部门槛 | **已到达本地封盘**：封盘批次（4 笔 = TASK-275 立项笔 `a642d5d` + C-01 `53732b0` + C-02 `ec7f517` + 封盘笔）统一推送 origin/main，GitHub Actions CI 外部终验随后登记 |
+| 状态 | **已终裁 ACCEPT（2026-10-19 指导侧）**：指导亲核三块 + 独立复核五块双 PASS 零阻断；25 文件白名单双向全等；跑团俱乐部与团队里程榜系统全链路闭环；封盘批次统一推送 origin/main，待 CI 外部终验 |

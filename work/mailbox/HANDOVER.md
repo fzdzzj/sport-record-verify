@@ -8,10 +8,10 @@
 
 ## 1. 当前代码基线与外部状态
 
-- **当前分支与 HEAD**：`main` 分支，最新已终裁闭环任务为 **TASK-274**（轨迹智能纠偏对比回放与每周运动智能周报，FULL 档；C-01 `efe8e5f` / C-02 `520762a` / 封盘笔 `e512add` 已推至 origin/main，Surefire 全仓 1135 测全绿，前端 vitest 90 测全绿）。当前在途推进任务为 **TASK-275（跑团俱乐部与团队里程榜系统，FULL 档，开工基线 main @ `e512add`，立项派发实施中）**。
-- **外部 CI 门槛状态**：TASK-273 封盘批次经 CI run **`39136624184`** 权威核验 conclusion=**success** 全 job 绿（build ✓ 10m29s / web ✓ 21s）；TASK-274 封盘批次推送后 CI run 39147321152 偶现单测隔离问题，已在 TASK-275 R0 中以 TableInfoHelper 稳妥闭环。
-- **工作树状态**：TASK-275 立项中。
-- **当前在途任务数**：`1` 个（TASK-275）。
+- **当前分支与 HEAD**：`main` 分支，最新已终裁闭环任务为 **TASK-275**（跑团俱乐部与团队里程榜系统，FULL 档；立项笔 `a642d5d` / C-01 `53732b0` / C-02 `ec7f517` / 封盘笔已统一推送 origin/main，Surefire 全仓 1164 测全绿，前端 vitest 90 测全绿，E2E 14/14 全绿；CI 外部终验随后登记）。当前在途任务数 0。
+- **外部 CI 门槛状态**：TASK-273 封盘批次经 CI run **`39136624184`** 权威核验 conclusion=**success** 全 job 绿（build ✓ 10m29s / web ✓ 21s）；TASK-274 封盘批次推送后 CI run 39147321152 偶现单测隔离问题，已在 TASK-275 R0 中以 TableInfoHelper 稳妥闭环；TASK-275 封盘批次已推送，CI run 待观察（全绿后由补记笔登记运行号）。
+- **工作树状态**：TASK-275 已封盘，封盘批次已推送，工作树纯净。
+- **当前在途任务数**：`0` 个。
 
 
 
@@ -112,6 +112,7 @@
    - **G 系批 G-5 收口与外部终验（2026-10-17）**：TASK-263 实施回报（C-01 `3c6a596` 恰 12 文件 +126/−9 / C-02 `8320acb` 台账 1 文件）→ 指导亲核三块 PASS（Git 摘要 13 文件全等；定向抽查 R1 Redis timeout 3000ms 与 Binder 配置单测 / R2 CI web pnpm actions/cache@v5 / R3 notifications Promise.all 三处 / R4 vite manualChunks 主 chunk 降至 90.64KB / R5 STOMP cause e / R6 User @JsonIgnore；一致性裁决：surefire user 219→221 净增 2 测吻合、前端 4 套 63 测全绿与构建体积大降符合预期）→ 指导侧终裁 **ACCEPT**：五看板滚动 + 封盘笔落库，批次 5 笔统一推送 origin/main，GitHub Actions CI run **`39034968218`** 权威核验 conclusion=**success** 全 job 绿（`web` ✓ 32s / `build` ✓ 10m57s / `probe-ubuntu26` skipped=if 门禁正确生效旁证），headSha `57f8d92` 匹配，外部终验达成完整闭环，补记笔本地保留随下一批次推送；**G 系 23 项已收口 21 项，余 2 项受限保持（G22/G23）**；
     - **批 G-6 收口与外部终验（2026-10-17）**：TASK-264 实施回报（C-01 `13453f2` 恰 3 文件 +66/−3 / C-02 `09923de` 台账 1 文件）→ 指导亲核三块 PASS（Git 摘要 4 文件全等；定向抽查 R1 02 脚本与迁移脚本单括号语法落位且非阻断非法双括号排除 / `SportRecordSqlContractTest` 纯 JVM 单测 0.146s 独立跑通 / 真机 MySQL 容器 `task260_scratch` 确认销毁 / `record_db` 复合函数索引建出且 EXPLAIN 走范围扫描；一致性裁决：surefire record 320→321 净增 1 契约测吻合，受限声明如实登记）→ 指导侧终裁 **ACCEPT**：五看板滚动 + 封盘笔落库，批次 5 笔统一推送 origin/main，GitHub Actions CI run **`39040084087`** 权威核验 conclusion=**success** 全 job 绿（`web` ✓ 24s / `build` ✓ 10m38s / `probe-ubuntu26` skipped=if 门禁正确生效旁证），headSha `0a7390a` 匹配，外部终验达成完整闭环，补记笔本地保留随下一批次推送；新候选 N2 语法阻断与 R5 查询形态彻底收口闭环；
     - **方案 B 收口与封盘（2026-10-18）**：TASK-258（E13 PostGIS 真实空间库复验，FULL 档）实施回报（C-01 `97ddde9` 恰 3 文件 +563 行 / C-02 `68afd35` 台账 1 文件）→ 指导亲核三块 PASS（Git 摘要 4 文件全等；定向抽查 MapMatchPostgisIT 5 用例真绿通过 / MapMatchSqlContractTest 纯 JVM 契约测反射锁定 / verify-postgis.sh 100755 脚本；一致性裁决：surefire 35→36 只增不减，口令漂移与假绿排查如实登记）→ 独立复核五块全 PASS 零阻断（块一 4 笔提交链全等；块二红线与零触碰 4 项全 PASS；块三双端门禁实测 7 项亲自复跑全 PASS：surefire 63/78/221/321/203/110/36、真机 PostGIS 5 用例真跑非跳过、契约门纯净 worktree rc=0、token 门 2162 精确持平、词面门四 locale ZERO_HIT+探针对照、checkstyle delta=0 且新文件不在扫描面、diff 净、ls-files 纯 LF；块四证据链核对 PASS，独立 JDBC 探针反向坐实口令漂移排查结论；块五只改清单三向全等 4=4=4；非阻断 4 项登记封盘笔）→ 指导侧终裁 **ACCEPT**：五看板滚动 + 封盘笔落库，封盘批次 5 笔统一推送 origin/main，CI 外部终验随后登记；**全仓 54 项优化候选全部闭环收口！**
+   - **TASK-275 收口（2026-10-19）**：跑团俱乐部与团队里程榜系统（FULL 档）实施回报（C-01 `53732b0` 恰 24 文件 +2154/−11 / C-02 `ec7f517` 台账 1 文件 +63/−22）→ 指导亲核三块 PASS（①Git 对账：porcelain 空、恰 3 笔、25 文件与白名单双向全等、零推送；②定向抽查：add-running-club.sql USE user_db 首行/幂等建表零破坏/uk_user_club 一人一团/双写逐字一致 + ClubService 一人一团三重保障与团长保护/原子计数 + ClubController 降级拒绝鉴权范式；③一致性裁决零偏差）→ 独立复核五块全 PASS 零阻断（七门禁 7/7 独立复跑：surefire 1135→1164（user +20 ClubServiceTest、leaderboard +9 LeaderboardClubTest）0 败 0 错 0 跳、Checkstyle 0 违规、vitest 90 + vue-tsc 0 错 + E2E 14/14、契约门 a642d5d 口径 rc=0 判据 B 25 路径双向全等 + e512add 负例对照 rc=1 坐实基线口径偏差说明、token 三树 2481/2481/2510 逐位、词面门四 locale ZERO_HIT+阳性对照、diff 净 + blob CR=0 无 BOM；R0 独立单跑 18 测全绿；§5 四项决策全部代码级实证；非阻断 4 项登记：.trae/tmp scratch 维持现状 gitignored、check-public-wording.sh 引用缺口（词面门实体为手跑命令，后续补脚本入库或修正 spec 引用）、R0 单跑等价离线口径透明登记、scripts/verify/README.md TASK-184 状态滞后顺带观察）→ 指导侧终裁 **ACCEPT**：五看板滚动 + 封盘笔落库，封盘批次 4 笔（立项笔 + C-01 + C-02 + 封盘笔）统一推送 origin/main，CI 外部终验随后登记（全绿后补记笔登记运行号）；
 
    - 申诉审核意见（verify_db）透出限制：受限与 verify-service 红线，当前前台申诉进度条由记录状态推导，结论权威可靠。
 
@@ -119,13 +120,13 @@
 
 ## 4. 当前推进与唯一推荐动作
 
-- **当前推进**：**TASK-274（轨迹智能纠偏对比回放与每周运动智能周报，FULL 档）已终裁 ACCEPT 予以封盘**（开工基线 main @ `11e40fb`；白名单恰 15+1 文件，包含 TrackComparisonDTO / WeeklyDigestDTO、MapMatchService compareTrack 与 /match/compare 端点、纯前端 track-playback.ts 回放工具与单测、record-detail 纠偏对比图层与动态回放器 Track Player、SportRecordService getWeeklyDigest 与 /records/weekly-digest 端点、首页周报小结卡片与纯 CSS 海报 Modal、client.ts 与 E2E mock 补齐）；当前在途 0 个。
+- **当前推进**：**TASK-275（跑团俱乐部与团队里程榜系统，FULL 档）已终裁 ACCEPT 予以封盘**（开工基线 main @ `a642d5d`（立项笔）；白名单恰 24+1 文件，包含 running_club/club_member DDL 双写迁移、ClubDTO 四组领域 DTO、WeeklyDigestServiceTest TableInfoHelper 隔离加固（R0）、ClubService 七方法与 ClubController 七端点、LeaderboardService 跑团总/周榜 ZSet 双 ZINCRBY 与名称 Hash 缓存、前端跑团广场/创建 Modal/成员抽屉/榜单跑团 Tab/首页我的跑团卡片/导航入口、E2E mock 补齐）；指导亲核三块 + 独立复核五块双 PASS 零阻断；surefire 全仓 1135→1164 测全绿（user +20 / leaderboard +9）、vitest 90、E2E 14/14。当前在途 0 个。
   - **唯一推荐动作**：
-    1. 封盘批次（4 笔 = TASK-274 立项笔 `11e40fb` + C-01 `efe8e5f` + C-02 `520762a` + 封盘笔）统一推送至 origin/main；
+    1. 封盘批次（4 笔 = TASK-275 立项笔 `a642d5d` + C-01 `53732b0` + C-02 `ec7f517` + 封盘笔）统一推送至 origin/main；
     2. 观察 GitHub Actions CI 外部终验结果（待 CI 全绿后由补记笔登记运行号并闭环）；
-    3. **10-19 必做事项（沿挂账）**：ubuntu-26.04 标签可用后，手动 `workflow_dispatch` 触发 probe26=true 试跑 probe-ubuntu26 job，读数随补记笔登记；通过后另立课题平移 runs-on 并摘除钉扎注释；
-    4. **后续业务演进**：可推进「方向二：个人全城运动足迹热力图」或「方向三：跑团俱乐部与团队对抗 PK」，或单独立项为 `mapmatch-service` 引入规范的 Checkstyle 规则集治理。
-  - **治理挂账（非阻断，随下一课题/批次顺手）**：token 计数口径统一（TASK-254 N2：逐项 git grep -cF 文件出现次数为权威口径）、零触碰面路径书写以仓内实存路径为准（N1）。
+    3. **10-19 挂账事项（沿 TASK-252）**：ubuntu-26.04 标签可用后，手动 `workflow_dispatch` 触发 probe26=true 试跑 probe-ubuntu26 job，读数随补记笔登记；通过后另立课题平移 runs-on；
+    4. **治理挂账（非阻断，随下一课题/批次顺手）**：词面门脚本入库或 spec 引用修正（`check-public-wording.sh` 不在仓，词面门实体为手跑命令 + `.trae/tmp/lex268.txt` 模式文件）、`scripts/verify/README.md` TASK-184 状态滞后订正、token 计数口径统一（TASK-254 N2：逐项 git grep -cF 文件出现次数为权威口径）；
+    5. **后续业务演进**：可推进「方向二：个人全城运动足迹热力图」，或跑团域二期（团长移交、跑团里程贡献明细、memberCount 真实计数同步链路——TASK-275 预留恒 0 字位），或 `mapmatch-service` Checkstyle 规则集治理。
 
 
 
