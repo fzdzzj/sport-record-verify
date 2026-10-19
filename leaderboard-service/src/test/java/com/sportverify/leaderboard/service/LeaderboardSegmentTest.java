@@ -6,6 +6,7 @@ import com.sportverify.api.user.UserApi;
 import com.sportverify.api.user.dto.UserDTO;
 import com.sportverify.common.result.Result;
 import com.sportverify.leaderboard.entity.SportRecordSnapshot;
+import com.sportverify.leaderboard.mapper.ClubDistanceContributionMapper;
 import com.sportverify.leaderboard.mapper.LeaderboardContributionMapper;
 import com.sportverify.leaderboard.mapper.LeaderboardDailySummaryMapper;
 import com.sportverify.leaderboard.mapper.SportRecordMapper;
@@ -75,7 +76,8 @@ class LeaderboardSegmentTest {
         when(redis.opsForZSet()).thenReturn(zSetOps);
         when(redis.opsForHash()).thenReturn(hashOps);
         service = new LeaderboardService(sportRecordMapper, contributionMapper, dailySummaryMapper,
-                redis, mock(RedissonClient.class), userApi, cacheManager);
+                redis, mock(RedissonClient.class), userApi, cacheManager,
+                mock(ClubDistanceContributionMapper.class));
     }
 
     // ==================== 成绩上报（PR 维护 / KOM 判定） ====================

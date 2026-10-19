@@ -5,6 +5,7 @@ import com.sportverify.api.user.UserApi;
 import com.sportverify.api.user.dto.FriendDTO;
 import com.sportverify.common.result.Result;
 import com.sportverify.leaderboard.controller.LeaderboardController;
+import com.sportverify.leaderboard.mapper.ClubDistanceContributionMapper;
 import com.sportverify.leaderboard.mapper.LeaderboardContributionMapper;
 import com.sportverify.leaderboard.mapper.LeaderboardDailySummaryMapper;
 import com.sportverify.leaderboard.mapper.SportRecordMapper;
@@ -197,7 +198,8 @@ class LeaderboardCacheInvocationTest {
                     redis,
                     mock(org.redisson.api.RedissonClient.class),
                     userApi,
-                    cacheManager);
+                    cacheManager,
+                    mock(ClubDistanceContributionMapper.class));
         }
 
         @Bean

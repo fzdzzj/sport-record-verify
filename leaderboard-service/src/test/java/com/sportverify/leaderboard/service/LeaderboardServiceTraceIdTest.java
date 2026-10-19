@@ -2,6 +2,7 @@ package com.sportverify.leaderboard.service;
 
 import com.sportverify.api.user.UserApi;
 import com.sportverify.common.trace.TraceIds;
+import com.sportverify.leaderboard.mapper.ClubDistanceContributionMapper;
 import com.sportverify.leaderboard.mapper.LeaderboardContributionMapper;
 import com.sportverify.leaderboard.mapper.LeaderboardDailySummaryMapper;
 import com.sportverify.leaderboard.mapper.SportRecordMapper;
@@ -60,7 +61,8 @@ class LeaderboardServiceTraceIdTest {
         doReturn(true).when(lock).tryLock(anyLong(), anyLong(), any(TimeUnit.class));
         when(redissonClient.getLock(anyString())).thenReturn(lock);
         service = new LeaderboardService(sportRecordMapper, contributionMapper,
-                dailySummaryMapper, redis, redissonClient, mock(UserApi.class), mock(CacheManager.class));
+                dailySummaryMapper, redis, redissonClient, mock(UserApi.class), mock(CacheManager.class),
+                mock(ClubDistanceContributionMapper.class));
     }
 
     @AfterEach

@@ -7,6 +7,7 @@ import com.sportverify.api.user.dto.UserDTO;
 import com.sportverify.common.result.Result;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import com.sportverify.leaderboard.mapper.ClubDistanceContributionMapper;
 import org.redisson.api.RedissonClient;
 import org.springframework.cache.CacheManager;
 import org.springframework.data.redis.core.HashOperations;
@@ -70,7 +71,8 @@ class LeaderboardClubTest {
         when(redis.opsForZSet()).thenReturn(zSetOps);
         when(redis.opsForHash()).thenReturn(hashOps);
         service = new LeaderboardService(null, null, null, redis,
-                mock(RedissonClient.class), userApi, mock(CacheManager.class));
+                mock(RedissonClient.class), userApi, mock(CacheManager.class),
+                mock(ClubDistanceContributionMapper.class));
     }
 
     private static TypedTuple<String> tuple(String clubId, double meters) {

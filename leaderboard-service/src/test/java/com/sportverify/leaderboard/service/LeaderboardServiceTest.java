@@ -10,6 +10,7 @@ import com.sportverify.common.result.Result;
 import com.sportverify.leaderboard.entity.LeaderboardContribution;
 import com.sportverify.leaderboard.entity.SportRecordSnapshot;
 import com.sportverify.leaderboard.enums.ContributionStatus;
+import com.sportverify.leaderboard.mapper.ClubDistanceContributionMapper;
 import com.sportverify.leaderboard.mapper.LeaderboardContributionMapper;
 import com.sportverify.leaderboard.entity.LeaderboardDailySummary;
 import com.sportverify.leaderboard.mapper.LeaderboardContributionMapper.UserMileage;
@@ -77,6 +78,7 @@ class LeaderboardServiceTest {
 
     private SportRecordMapper sportRecordMapper;
     private LeaderboardContributionMapper contributionMapper;
+    private ClubDistanceContributionMapper clubDistanceContributionMapper;
     private LeaderboardDailySummaryMapper dailySummaryMapper;
     private StringRedisTemplate redis;
     private ZSetOperations<String, String> zSetOps;
@@ -92,6 +94,7 @@ class LeaderboardServiceTest {
     void setUp() throws InterruptedException {
         sportRecordMapper = mock(SportRecordMapper.class);
         contributionMapper = mock(LeaderboardContributionMapper.class);
+        clubDistanceContributionMapper = mock(ClubDistanceContributionMapper.class);
         dailySummaryMapper = mock(LeaderboardDailySummaryMapper.class);
         redis = mock(StringRedisTemplate.class);
         zSetOps = mock(ZSetOperations.class);
@@ -108,7 +111,7 @@ class LeaderboardServiceTest {
         when(redissonClient.getLock(anyString())).thenReturn(lock);
 
         service = new LeaderboardService(sportRecordMapper, contributionMapper, dailySummaryMapper,
-                redis, redissonClient, userApi, cacheManager);
+                redis, redissonClient, userApi, cacheManager, clubDistanceContributionMapper);
     }
 
     // ==================== 入榜（VERIFIED：仅 pass + 幂等） ====================

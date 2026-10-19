@@ -10,10 +10,12 @@ import com.sportverify.api.user.dto.ClubMemberContributionDTO;
 import com.sportverify.api.user.dto.UserDTO;
 import com.sportverify.common.result.Result;
 import com.sportverify.common.trace.TraceIds;
+import com.sportverify.leaderboard.entity.ClubDistanceContribution;
 import com.sportverify.leaderboard.entity.LeaderboardContribution;
 import com.sportverify.leaderboard.entity.LeaderboardDailySummary;
 import com.sportverify.leaderboard.entity.SportRecordSnapshot;
 import com.sportverify.leaderboard.enums.ContributionStatus;
+import com.sportverify.leaderboard.mapper.ClubDistanceContributionMapper;
 import com.sportverify.leaderboard.mapper.LeaderboardContributionMapper;
 import com.sportverify.leaderboard.mapper.LeaderboardDailySummaryMapper;
 import com.sportverify.leaderboard.mapper.LeaderboardContributionMapper.UserMileage;
@@ -37,6 +39,7 @@ import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -147,6 +150,12 @@ public class LeaderboardService {
      * （ADR-0009 哨兵 {@code LeaderboardWritePathStaysUnproxiedTest}），故此处显式调用管理器。
      */
     private final CacheManager cacheManager;
+    /**
+     * 跑团里程锚点只读 Mapper（TASK-278 R3）：以锚点 {@code CREDITED} 汇总为跑团三组 ZSet 的
+     * 权威源。只读边界（不继承 {@code BaseMapper}，无写方法）——本服务对锚点表零写入，
+     * 「曾入账」是历史事实，孤儿记录仅经汇总 JOIN 存活过滤剔出榜单。
+     */
+    private final ClubDistanceContributionMapper clubDistanceContributionMapper;
 
     // ==================== 事件驱动入榜（VERIFIED） ====================
 
@@ -449,6 +458,9 @@ public class LeaderboardService {
      *       游标分批遍历比对（批次 500），不再整榜 range(0,-1) 倾倒进 JVM 堆；</li>
      *   <li>（B18）容量截断保护：结算末尾对 {@code OVERALL_ZSET_KEY} 截断，仅保留前
      *       {@value #OVERALL_ZSET_MAX} 名，消除历史未活跃用户无限累积撑爆 Redis 内存；</li>
+     *   <li>（TASK-278 R3）跑团三组 ZSet 对账：以锚点 {@code club_distance_contribution}
+     *       的 CREDITED 汇总为权威源，覆盖纠偏 {@code club:overall} / {@code club:weekly:*} /
+     *       {@code club:member:{clubId}} 并清理残留（见 {@link #reconcileClubDistance}）；</li>
      *   <li>批量为 ACTIVE 行盖 settled_at（快照口径）。</li>
      * </ol>
      *
@@ -529,6 +541,8 @@ public class LeaderboardService {
                         .removeRange(OVERALL_ZSET_KEY, 0, -(OVERALL_ZSET_MAX + 1));
                 // 3.1) D1：ZSet 纠偏完成，恰一次失效总榜缓存，避免结算后总榜最长 5min 仍读旧值
                 evictOverallCache();
+                // 3.2) TASK-278 R3：跑团三组 ZSet 以锚点 CREDITED 汇总为准纠偏（同锁同周期，best-effort）
+                int clubPruned = reconcileClubDistance();
                 // 4) 标记 settled_at（快照口径：本行已随最近一次结算对账）
                 if (!summaries.isEmpty()) {
                     contributionMapper.markSettled(ContributionStatus.ACTIVE.getCode(), LocalDateTime.now());
@@ -539,8 +553,9 @@ public class LeaderboardService {
                 int upserted = dailySummaryMapper.upsertFromActiveContributions(
                         ContributionStatus.ACTIVE.getCode());
                 int purged = dailySummaryMapper.deleteStaleToday(ContributionStatus.ACTIVE.getCode());
-                log.info("榜单结算完成：孤儿回滚 {} 条，ACTIVE 汇总 {} 名，清理残留 {} 名，容量截断 {} 条，报表写入 {} / 清理 {} 行",
-                        orphanRolledBack, target.size(), pruned, trimmed, upserted, purged);
+                log.info("榜单结算完成：孤儿回滚 {} 条，ACTIVE 汇总 {} 名，清理残留 {} 名，容量截断 {} 条，"
+                                + "跑团对账清理 {} 条，报表写入 {} / 清理 {} 行",
+                        orphanRolledBack, target.size(), pruned, trimmed, clubPruned, upserted, purged);
             } finally {
                 unlock(lock, locked);
             }
@@ -605,6 +620,142 @@ public class LeaderboardService {
             staleBatch.clear();
             return 0;
         }
+    }
+
+    // ==================== 跑团三组 ZSet 对账（TASK-278 R3） ====================
+
+    /**
+     * 跑团三组 ZSet 对账纠偏（TASK-278 R3，在 {@link #settleAndReconcile} 同锁同周期内执行）。
+     *
+     * <p><b>权威源</b>：record-service 写入的 {@code club_distance_contribution} 锚点表，
+     * 以 {@code status = CREDITED} 且 {@code sport_record} 行仍存活（汇总 SQL 内
+     * {@code INNER JOIN}）的行为唯一计入口径——孤儿锚点（记录已物理删除）自然落出汇总、
+     * 榜上随之剔除，<b>锚点行不翻转状态</b>（「曾入账」是历史事实，本服务对锚点表零写入，裁决①）。</p>
+     *
+     * <p><b>纠偏口径</b>（覆盖式 ZADD = 幂等纠偏，Redis 丢键/漂移/重启均可自愈）：</p>
+     * <ul>
+     *   <li>{@code club:overall}：按 {@code (club_id) → SUM} 覆盖；无 CREDITED 汇总之团 ZREM
+     *       （含解散团自然清零，裁决⑥），并整键 DEL 其成员贡献键；</li>
+     *   <li>{@code club:weekly:{weekStart}}：按 {@code (club_id, week_start) → SUM} 逐周键覆盖，
+     *       锚点分组可达的周键与<b>当周键</b>参与纠偏并清理键内残留；<b>历史周键不主动遍历</b>
+     *       （锚点不可达的键不清理，漂移超集接受，裁决⑤）；</li>
+     *   <li>{@code club:member:{clubId}}：按 {@code (club_id, user_id) → SUM} 逐团覆盖并清理
+     *       该键内已无权威里程的成员（回退后残留的正分由此收敛）。</li>
+     * </ul>
+     *
+     * <p><b>整键读口径说明</b>：跑团键的成员规模以「跑团数 / 单团成员数」为上界，故按整键
+     * {@code ZREVRANGE} 读成员比对；个人总榜（可达 1w 级）仍走 {@code SCAN} 分批，B18/D3 口径不变。
+     * 整轮 best-effort：任一汇总查询异常只 WARN（本轮跳过跑团纠偏），不影响个人榜结算与报表快照，
+     * 下一轮收敛。</p>
+     *
+     * @return 本轮从跑团三组键中清除的残留成员（或整键）条数，仅用于结算日志留痕
+     */
+    private int reconcileClubDistance() {
+        try {
+            int pruned = 0;
+            // a) 跑团总榜：club:overall ← (club_id) 汇总
+            Map<String, Double> clubTarget = new HashMap<>();
+            for (ClubDistanceContribution row : nullSafeRows(clubDistanceContributionMapper
+                    .selectCreditedClubSummaries(ClubDistanceContribution.STATUS_CREDITED))) {
+                if (row == null || row.getClubId() == null) {
+                    continue;
+                }
+                clubTarget.put(String.valueOf(row.getClubId()), metersOf(row));
+            }
+            zaddAll(CLUB_OVERALL_ZSET_KEY, clubTarget);
+            Set<String> staleClubs = staleMembers(CLUB_OVERALL_ZSET_KEY, clubTarget);
+            if (!staleClubs.isEmpty()) {
+                stringRedisTemplate.opsForZSet().remove(CLUB_OVERALL_ZSET_KEY, staleClubs.toArray(new Object[0]));
+                pruned += staleClubs.size();
+            }
+            // 无 CREDITED 汇总之团：团内成员贡献整键清空（解散即清榜，成员明细不应留半截）
+            for (String staleClub : staleClubs) {
+                stringRedisTemplate.delete(CLUB_MEMBER_ZSET_KEY_PREFIX + staleClub);
+            }
+            // b) 周榜：仅锚点分组可达的周键 + 当周键参与纠偏（历史周键不主动遍历，裁决⑤）
+            Map<String, Map<String, Double>> weeklyTargets = new HashMap<>();
+            for (ClubDistanceContribution row : nullSafeRows(clubDistanceContributionMapper
+                    .selectCreditedWeeklySummaries(ClubDistanceContribution.STATUS_CREDITED))) {
+                if (row == null || row.getClubId() == null || row.getWeekStart() == null) {
+                    continue;
+                }
+                weeklyTargets.computeIfAbsent(clubWeeklyKey(row.getWeekStart()), k -> new HashMap<>())
+                        .merge(String.valueOf(row.getClubId()), metersOf(row), Double::sum);
+            }
+            weeklyTargets.computeIfAbsent(clubWeeklyKey(null), k -> new HashMap<>());
+            for (Map.Entry<String, Map<String, Double>> week : weeklyTargets.entrySet()) {
+                zaddAll(week.getKey(), week.getValue());
+                Set<String> stale = staleMembers(week.getKey(), week.getValue());
+                if (!stale.isEmpty()) {
+                    stringRedisTemplate.opsForZSet().remove(week.getKey(), stale.toArray(new Object[0]));
+                    pruned += stale.size();
+                }
+            }
+            // c) 成员贡献：club:member:{clubId} ← (club_id, user_id) 汇总
+            Map<Long, Map<String, Double>> memberTargets = new HashMap<>();
+            for (ClubDistanceContribution row : nullSafeRows(clubDistanceContributionMapper
+                    .selectCreditedMemberSummaries(ClubDistanceContribution.STATUS_CREDITED))) {
+                if (row == null || row.getClubId() == null || row.getUserId() == null) {
+                    continue;
+                }
+                memberTargets.computeIfAbsent(row.getClubId(), k -> new HashMap<>())
+                        .merge(String.valueOf(row.getUserId()), metersOf(row), Double::sum);
+            }
+            for (Map.Entry<Long, Map<String, Double>> club : memberTargets.entrySet()) {
+                String key = CLUB_MEMBER_ZSET_KEY_PREFIX + club.getKey();
+                zaddAll(key, club.getValue());
+                Set<String> stale = staleMembers(key, club.getValue());
+                if (!stale.isEmpty()) {
+                    stringRedisTemplate.opsForZSet().remove(key, stale.toArray(new Object[0]));
+                    pruned += stale.size();
+                }
+            }
+            return pruned;
+        } catch (Exception e) {
+            // 跑团对账 best-effort：异常不拖垮个人榜结算/报表快照，残留由下一轮收敛
+            log.warn("跑团里程对账异常（best-effort，本轮跳过，下一轮收敛）", e);
+            return 0;
+        }
+    }
+
+    /** 覆盖式 ZADD：以权威汇总无条件覆盖成员分值（幂等纠偏；空汇总不下发任何写） */
+    private void zaddAll(String key, Map<String, Double> target) {
+        if (target == null || target.isEmpty()) {
+            return;
+        }
+        Set<TypedTuple<String>> tuples = new HashSet<>();
+        for (Map.Entry<String, Double> entry : target.entrySet()) {
+            tuples.add(TypedTuple.of(entry.getKey(), entry.getValue()));
+        }
+        stringRedisTemplate.opsForZSet().add(key, tuples);
+    }
+
+    /**
+     * 键内残留成员识别（只读）：现有成员中不在权威汇总里的即残留（待调用方 ZREM / 整键 DEL）。
+     * 键内成员以跑团/成员数为上界，整键读取成本可控（个人总榜另有 SCAN 分批口径）。
+     */
+    private Set<String> staleMembers(String key, Map<String, Double> target) {
+        Set<String> existing = stringRedisTemplate.opsForZSet().reverseRange(key, 0, -1);
+        if (existing == null || existing.isEmpty()) {
+            return Set.of();
+        }
+        Set<String> stale = new LinkedHashSet<>();
+        for (String member : existing) {
+            if (member != null && !target.containsKey(member)) {
+                stale.add(member);
+            }
+        }
+        return stale;
+    }
+
+    /** 汇总行空安全（Mapper 返回 null 视为无汇总，不阻断其余对账步骤） */
+    private static List<ClubDistanceContribution> nullSafeRows(List<ClubDistanceContribution> rows) {
+        return rows == null ? List.of() : rows;
+    }
+
+    /** 汇总值 → 米（SUM 空值按 0 处理，避免 NPE 阻断整轮对账） */
+    private static double metersOf(ClubDistanceContribution row) {
+        return row.getTotalDistance() == null ? 0d : row.getTotalDistance().doubleValue();
     }
 
     // ==================== 每日报表只读查询 ====================
@@ -810,6 +961,10 @@ public class LeaderboardService {
      *
      * <p>无分布式锁（与赛段榜同哲学）：纯 Redis 单键原子写，并发上报天然累加不丢增量；
      * weekStart 缺省时归一化到当周周一（与 record-service 周报周一锚点同口径）。</p>
+     *
+     * <p><b>权威源边界（TASK-278）</b>：本方法是跑团里程的<b>投影写入</b>，权威源为 record-service
+     * 的 {@code club_distance_contribution} 锚点行（入账时点团/周/里程快照）；本服务对锚点表零写入，
+     * 投影漂移（上报丢失、Redis 丢键、成对失败）由 {@code settleAndReconcile} 以锚点汇总裁剪收敛。</p>
      */
     public void recordClubDistance(Long clubId, String clubName, Double distanceMeters,
                                    LocalDate weekStart, Long userId) {
@@ -880,9 +1035,13 @@ public class LeaderboardService {
      * member=userId、score=成员累计贡献米；昵称一次 Feign 批量补齐，缺失/空昵称回退
      * 「跑者{userId}」（与总榜「用户{id}」同哲学：user-service 降级时榜单仍可用）。
      *
-     * <p>负数净额（回退）已由 {@link #recordClubDistance} 的带符号 ZINCRBY 抵消，正常口径下
-     * 成员分值为非负；刻意不加 {@code @Cacheable}（CacheConfig 只注册 {@code leaderboard:overall}
-     * 一个缓存名，且写路径 bean 须零代理，ADR-0009 哨兵）。</p>
+     * <p><b>分值口径（TASK-278 R4 精确化）</b>：入账/回退成对落库时，负增量已由
+     * {@link #recordClubDistance} 的带符号 ZINCRBY 抵消，成员分值为非负；但本方法<b>不承诺</b>
+     * 分值恒非负——旁路为 best-effort（Feign 抖动 / 锚点已落库而上报未达），短窗口内可能出现
+     * 负分或残留正分，该异常窗口由定时对账 {@link #settleAndReconcile} 以锚点 CREDITED 汇总
+     * 覆盖纠偏 + 残留清理收敛，而非由读路径钳位掩盖。刻意不加 {@code @Cacheable}
+     * （CacheConfig 只注册 {@code leaderboard:overall} 一个缓存名，且写路径 bean 须零代理，
+     * ADR-0009 哨兵）。</p>
      */
     public List<ClubMemberContributionDTO> getClubContributions(Long clubId, Integer size) {
         if (clubId == null) {

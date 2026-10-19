@@ -113,3 +113,20 @@ CREATE TABLE IF NOT EXISTS `user_badge` (
     KEY `idx_user_equipped` (`user_id`, `is_equipped`)
 ) ENGINE = InnoDB
   DEFAULT CHARSET = utf8mb4 COMMENT ='用户勋章与成就表';
+
+-- 跑团里程入账锚点表（TASK-278）：record_id 作入账/回退锚点，入账时点的团/周/里程成快照
+-- 与 sql/migrations/add-club-distance-contribution.sql 的同名 DDL 必须逐字一致
+CREATE TABLE IF NOT EXISTS `club_distance_contribution` (
+    `record_id`       BIGINT        NOT NULL COMMENT '记录ID（入账/回退锚点，单列主键）',
+    `club_id`         BIGINT        NOT NULL COMMENT '入账时点所在跑团',
+    `user_id`         BIGINT        NOT NULL COMMENT '所属用户（成员贡献 ZSet member）',
+    `distance_meters` DECIMAL(10,2) NOT NULL COMMENT '入账时点里程（米，恒正快照）',
+    `week_start`      DATE          NOT NULL COMMENT '入账时点周锚点（东八口径周一）',
+    `status`          TINYINT       NOT NULL COMMENT '锚点状态：1 CREDITED / 0 REVERSED',
+    `created_at`      DATETIME      DEFAULT NULL COMMENT '入账时间',
+    `reversed_at`     DATETIME      DEFAULT NULL COMMENT '回退时间（CREDITED 时恒 NULL）',
+    PRIMARY KEY (`record_id`),
+    KEY `idx_club_status` (`club_id`, `status`),
+    KEY `idx_week` (`week_start`, `status`)
+) ENGINE = InnoDB
+  DEFAULT CHARSET = utf8mb4 COMMENT ='跑团里程入账锚点表（回退以本行快照为权威值）';

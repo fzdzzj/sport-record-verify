@@ -2,6 +2,7 @@ package com.sportverify.leaderboard.service;
 
 import com.sportverify.api.user.UserApi;
 import com.sportverify.leaderboard.controller.LeaderboardController;
+import com.sportverify.leaderboard.mapper.ClubDistanceContributionMapper;
 import com.sportverify.leaderboard.mapper.LeaderboardContributionMapper;
 import com.sportverify.leaderboard.mapper.LeaderboardDailySummaryMapper;
 import com.sportverify.leaderboard.mapper.SportRecordMapper;
@@ -42,7 +43,7 @@ class LeaderboardWritePathStaysUnproxiedTest {
             mock(SportRecordMapper.class), mock(LeaderboardContributionMapper.class),
             mock(LeaderboardDailySummaryMapper.class),
             mock(StringRedisTemplate.class), mock(RedissonClient.class), mock(UserApi.class),
-            mock(CacheManager.class));
+            mock(CacheManager.class), mock(ClubDistanceContributionMapper.class));
 
     private final ApplicationContextRunner runner = new ApplicationContextRunner()
             .withConfiguration(AutoConfigurations.of(
