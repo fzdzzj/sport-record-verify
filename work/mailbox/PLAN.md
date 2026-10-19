@@ -1049,3 +1049,16 @@ ecord-service/src/test/java/com/sportverify/record/controller/BadgeControllerTes
 | 独立复核 | FULL 档五块全 PASS 零阻断、总结论 **ACCEPT**：R1 Git 状态与提交链（amend 订正范围核实 = §1/§7 两读数行）；R2 红线与白名单（17 路径双向全等、零触碰面 0 命中、02-record-db.sql 仅末尾追加、migrations 仅新增）；R3 双端门禁全量复跑（八门禁逐位一致）；R4 证据链核对（token 29 项三树逐项全等、决策 1–12 逐条成立）；R5 关键决策独立实证（只读 Mapper 反射断言、快照回退断言级核验、reactivate SET 列覆盖、SCAN 哨兵未破坏、测试禁删弱核对 14→19 既有断言逐条保留）；非阻断 9 项 N1–N9（N1/N2/N3/N9 台账订正已随封盘笔回填，N5 逐成员 ZREM 专属断言挂账，N8 E2E TMP 环境前置注记） |
 | 是否到达外部门槛 | **已到达**：封盘批次（4 笔 = 立项笔 `1e4462b` + C-01 `a28d18d` + C-02 `c33150c` + 封盘笔 `c392b4e`）统一推送 origin/main，CI run `39206590509` 权威核验 conclusion=**success** 全 job 绿（2026-10-19 补记） |
 | 状态 | **已终裁 ACCEPT（2026-10-19 指导侧）**：指导亲核三块 + 独立复核五块双 PASS 零阻断；锚点持久化 + 幂等键退役 + 对账任务三件套落地，N3/N4/N5/跨周错扣/对账空缺五处病灶全部收敛；测试基线 1197→1208 只增不减；封盘批次统一推送 origin/main，CI run `39206590509` 全绿，外部终验达成完整闭环 |
+
+## TASK-279：社交与活动批——挑战赛 + 跑团对抗赛 + 评论 + 年度报告（I2+I3+I4+I6）
+
+| 项 | 内容 |
+| :--- | :--- |
+| 立项时间 | 2026-10-19 |
+| 任务分级 | **FULL 档**（跨服务新业务域 + DDL + 结算任务 + MQ 新消费者，强制独立复核） |
+| spec / handoff | work/mailbox/tasks/TASK-279/spec.md / handoff.md |
+| 背景 | I 系新方向立项侦察产出（指导侧全景避重：BACKLOG F/B/D/E/G/H 系 54+ 项闭环零重叠），用户拍板 I2 挑战赛 + I3 跑团对抗赛 + I4 评论 + I6 年度报告组合批 |
+| 核心要点 | R1 挑战赛系统（challenge/challenge_participant + @Scheduled 结算 + BadgeService 直调徽章联动）；R2 跑团对抗赛（club_challenge + 锚点表 (club_id, week_start) 同库聚合定胜负）；R3 评论系统（record_comment + CommentEvent MQ best-effort + user-service 新消费者仅 2 件沿 NotificationEventConsumer 逐字范式）；R4 年度报告（独立 YearReportService COALESCE 口径聚合 + 前端报告页/海报）；R5 收口 |
+| 白名单 | 上限 40 项（2 SQL + 16 record 主类 + 4 record 测试 + 2 user 消费者 + 2 api DTO + 8 web + 2 择实 + 5 台账），零触碰 SportRecordService 既有行 / 锚点表语义 / 四服务 src / pom / package.json（详见 spec §三） |
+| 门禁要求 | 七门禁全量逐位 + DDL 幂等双跑，基线 1208 = 63/79/250/411/203/145/57 只增不减，token 期望 C-02 树 = 基线 + 29（详见 spec §四） |
+| 状态 | **已立项待派发**（2026-10-19；实施派发包提示词已生成待用户派发执行子agent） |

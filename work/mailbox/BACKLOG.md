@@ -178,3 +178,24 @@
 20. **跑团域二期已封盘 TASK-276（2026-10-19，FULL 档）：团长移交 · 里程入账与贡献明细 · memberCount 真实计数**：transferCaptain 端点与双 role 同事务更新、record 侧 ClubDistanceSettleService 挂 statusCallback 终态对账入账（trySet+compareAndSet 双向幂等 + best-effort 旁路 + 申诉改判净额）、成员贡献 ZSet `leaderboard:club:member:{clubId}` 与贡献榜端点、InternalClubController 批查与 memberCount 真实计数（降级 0）、前端贡献展示与 E2E mock；零 DDL；surefire user 241→250 +9、record 392→406 +14、leaderboard 129→139 +10，全仓七模块 1197 测全绿，vitest 90、E2E 14/14，C-01 `fb6adea` / C-02 `fe2e4bd`，指导亲核三块 + 独立复核五块双 PASS 零阻断，终裁 ACCEPT。
 21. **mapmatch Checkstyle 存量清零治理已封盘 TASK-277（2026-10-19，MEDIUM 档）**：新增 mapmatch 独立 checkstyle.xml（与 leaderboard 逐字节一致，blob 哈希同值）+ pom checkstyle/spotbugs/pmd 三插件段对齐 + 266 项基线存量零语义清零（196 项落规则集裁剪类别 + 50 项 LineLength 80→140 放宽 + 20 项代码层实改，账目闭合），--static=mapmatch-service 收口 Checkstyle 0 违规、SpotBugs High=0、PMD 0，leaderboard 零连带漂移；指导亲核三块 PASS 终裁 ACCEPT，CI 外部终验随后登记。
 22. **跑团里程对账与回退补偿已封盘 TASK-278（2026-10-19，FULL 档）**：`club_distance_contribution` 锚点表持久化（record 写 / leaderboard 只读，沿 leaderboard_contribution 范式）+ record 侧锚点化重构（Redis 幂等键退役、回退取入账时点快照治跨团/跨周漂移）+ leaderboard 对账任务扩展（三组键纠偏、孤儿回滚、解散团清零）；覆盖 N3 双记窗口（含正向对称）/ N4 TTL 过期 / N5 跨团漂移 + 立项侦察新发现跨周错扣 + 跑团三组 ZSet 对账空缺；含 N6/N7 顺手项；指导亲核三块 + 独立复核五块双 PASS 零阻断终裁 ACCEPT，surefire 1197→1208（record +5 / leaderboard +6），C-01 `a28d18d` / C-02 `c33150c`，封盘批次统一推送 origin/main，CI 外部终验随后登记；N5 逐成员 ZREM 专属断言挂账后续小课题。
+
+## 2026-10-19 批（I 系新方向立项侦察产出，10 项候选；指导侧全景避重——Explore 子代理两次仅返回片段引用改指导侧自扫）
+
+| 编号 | 方向 | 依据 | 价值 | 预估档 | 状态 |
+| --- | --- | --- | --- | --- | --- |
+| I1 | 个人纪录 PR 中心 | splits 分段基建齐备（TASK-273），缺 PR 抓取与时间线 | 跑者核心诉求（Strava/Garmin 标配） | MEDIUM | 候选 |
+| I2 | 挑战赛活动系统 | 目标/徽章/榜单三基建齐备直接复利 | 粘性王牌 | FULL | **已立项 TASK-279（2026-10-19，I2+I3+I4+I6 组合批）** |
+| I3 | 跑团对抗赛 | 跑团域三期闭环 + 锚点表资产直接复用 | 竞争深化 | FULL | **已立项 TASK-279（同批）** |
+| I4 | 社交评论系统 | 现仅点赞，MQ/通知基建可复用 | 社交深度补全 | MEDIUM | **已立项 TASK-279（同批）** |
+| I5 | 装备管理 | 无外部依赖低风险 CRUD | 换鞋周期刚需 | MEDIUM | 候选 |
+| I6 | 年度运动报告 | 统计面板/myStats 口径可复用 | 传播裂变 | MEDIUM 小 | **已立项 TASK-279（同批）** |
+| I7 | 运动日历视图 | 纯前端为主 | 直观训练回顾 | LIGHT | 候选 |
+| I8 | 体重与身体指标 | 纯 CRUD | 健康闭环 | LIGHT/MEDIUM | 候选 |
+| I9 | 路线收藏与分享 | PostGIS 基建复用 | UGC 沉淀 | MEDIUM/FULL | 候选 |
+| I10 | 训练负荷与恢复分析 | 无心率设备的科学训练替代（里程口径 ACWR） | 训练科学化 | MEDIUM | 候选 |
+
+> 排除项：天气联动（外部 API 依赖违反零新依赖基调）、AI 智能建议（DashScope 真实调用涉成本需单独授权另议）。
+
+推荐序：
+1. **TASK-279（I2+I3+I4+I6 组合批）已立项待派发**（2026-10-19，FULL 档）；
+2. 余项候选：I5/I7/I8 轻量生活群可组 LIGHT/MEDIUM 批；I1/I10 训练分析群可组对标批；I9 视容量后置——待用户拍板。
